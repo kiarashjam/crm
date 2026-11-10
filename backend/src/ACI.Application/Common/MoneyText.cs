@@ -3,12 +3,14 @@ namespace ACI.Application.Common;
 using System.Globalization;
 
 /// <summary>
-/// Reading an amount out of the free-text <c>Deal.Value</c> column.
+/// Reading an amount out of text: the free-text <c>Deal.Value</c> of deals saved before
+/// amounts were numbers, and the text older clients still send instead of an amount.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Deal values are stored as text, so they arrive in whatever shape whoever typed
-/// them used: <c>"85,500"</c>, <c>"CHF 85 500"</c>, <c>"€50.000"</c>,
+/// A deal's money is now <c>Deal.Amount</c>, a number, with <c>Value</c> written from it
+/// (<see cref="DealMoney"/>). Before that, values were stored as text, so they arrived in
+/// whatever shape whoever typed them used: <c>"85,500"</c>, <c>"CHF 85 500"</c>, <c>"€50.000"</c>,
 /// <c>"$1,234.56"</c>. The reporting queries previously did
 /// <c>value.Replace("$", "").Replace(",", "")</c> and fell through to <c>0</c>
 /// when <c>decimal.TryParse</c> failed — so every deal priced in anything but
@@ -100,11 +102,42 @@ public static class MoneyText
         return true;
     }
 
+    /// <summary>The largest amount a decimal(18,2) column holds.</summary>
+    private const decimal MaxStoredAmount = 9_999_999_999_999_999.99m;
+
     /// <summary>
-    /// The currency to attribute an amount to. Never guesses from the text: an
-    /// unset currency is reported as USD, which is what the rest of the system
-    /// already assumes, rather than inferred from a symbol that may not be there.
+    /// A deal value as the number stored next to it in <c>Deal.Amount</c>: rounded to
+    /// cents, or null when the text holds no readable number.
     /// </summary>
-    public static string NormaliseCurrency(string? currency)
-        => string.IsNullOrWhiteSpace(currency) ? "USD" : currency.Trim().ToUpperInvariant();
+    /// <remarks>
+    /// The column is decimal(18,2). A value typed with more digits than that would make
+    /// the whole save fail on SQL Server, so it is treated as unreadable instead, which
+    /// is how reports already disclose a value they could not read.
+    /// </remarks>
+    public static decimal? StoredAmount(string? raw)
+    {
+        if (!TryParseAmount(raw, out var value)) return null;
+        return StoredAmount(value);
+    }
+
+    /// <summary>
+    /// An amount as <c>Deal.Amount</c> holds it: rounded to cents, or null when it has more
+    /// digits than decimal(18,2) holds. Line items add up to totals like 99.39999999999999,
+    /// which the column cannot store and nobody meant.
+    /// </summary>
+    public static decimal? StoredAmount(decimal value)
+    {
+        var cents = Math.Round(value, 2, MidpointRounding.AwayFromZero);
+        return Math.Abs(cents) > MaxStoredAmount ? null : cents;
+    }
+
+    /// <summary>
+    /// The text <c>Deal.Value</c> keeps for an amount: plain digits, a point and cents only
+    /// when there are any ("85500", "99.40"). Older clients, the MCP tools and outbound
+    /// webhooks still read the text, and this is the one shape every parser agrees on.
+    /// </summary>
+    public static string ValueText(decimal amount) =>
+        amount == decimal.Truncate(amount)
+            ? decimal.Truncate(amount).ToString("0", CultureInfo.InvariantCulture)
+            : amount.ToString("0.00", CultureInfo.InvariantCulture);
 }

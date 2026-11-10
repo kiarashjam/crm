@@ -46,6 +46,8 @@ import PageHero, { heroPrimary, heroSecondary } from '@/app/components/PageHero'
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import { setClubCurrency } from '@/app/hooks/useClubMoney';
 import { CLUB_CURRENCIES, normaliseCurrency } from '@/app/lib/clubMoney';
+import { WriteOnly } from '@/app/components/WriteOnly';
+import { PERMISSION } from '@/app/api/organizations';
 
 const TIER_COLOR: Record<MemberTier, string> = {
   Bronze: 'from-amber-400 to-amber-600',
@@ -170,15 +172,17 @@ export default function HospitalitySettings() {
                     </>
                   )}
                 </Button>
-                <Button onClick={save} disabled={saving} className={heroPrimary('indigo')}>
-                  {saving ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <>
-                      <Save className="h-4 w-4" /> Save changes
-                    </>
-                  )}
-                </Button>
+                <WriteOnly permission={PERMISSION.ManageSettings}>
+                  <Button onClick={save} disabled={saving} className={heroPrimary('indigo')}>
+                    {saving ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4" /> Save changes
+                      </>
+                    )}
+                  </Button>
+                </WriteOnly>
               </>
             }
           />

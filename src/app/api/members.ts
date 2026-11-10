@@ -7,7 +7,7 @@
 // offline so the UI is fully exercisable without server changes.
 
 import { apiWithFallback, authFetch, authFetchJson, ensureOk } from './apiClient';
-import { createMockStore, mockId } from './mockStore';
+import { createMockStore, demoPatch, mockId } from './mockStore';
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -168,12 +168,21 @@ export async function createMember(input: MemberInput): Promise<Member | null> {
   );
 }
 
-export async function updateMember(id: string, patch: Partial<MemberInput>): Promise<Member | null> {
+/**
+ * The fields of a member to change. A field left out is kept; the phone and the notes
+ * are taken off when sent as null.
+ */
+export type MemberUpdate = Partial<Omit<MemberInput, 'phone' | 'notes'>> & {
+  phone?: string | null;
+  notes?: string | null;
+};
+
+export async function updateMember(id: string, patch: MemberUpdate): Promise<Member | null> {
   return apiWithFallback(
     () => authFetchJson<Member>(`/api/members/${id}`, { method: 'PUT', body: JSON.stringify(patch) }),
     async () => {
       await delay(120);
-      return memberStore.update(id, patch);
+      return memberStore.update(id, demoPatch<Member>(patch));
     },
   );
 }

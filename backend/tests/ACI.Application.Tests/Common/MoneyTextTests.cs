@@ -108,28 +108,79 @@ public class MoneyTextTests
     }
 
     [Fact]
-    public void NormaliseCurrencyDefaultsToTheAssumptionAlreadyInTheSystem()
-    {
-        MoneyText.NormaliseCurrency(null).Should().Be("USD");
-        MoneyText.NormaliseCurrency("").Should().Be("USD");
-        MoneyText.NormaliseCurrency("  ").Should().Be("USD");
-    }
-
-    [Fact]
-    public void NormaliseCurrencyUppercasesAndTrims()
-    {
-        MoneyText.NormaliseCurrency(" chf ").Should().Be("CHF");
-        MoneyText.NormaliseCurrency("eur").Should().Be("EUR");
-    }
-
-    [Fact]
     public void NeverInfersCurrencyFromTheAmountText()
     {
         // A "€" in the value column does not make the deal's currency EUR — the
         // currency lives in its own column, and guessing would let a typo in a
-        // free-text field silently reassign a deal's currency.
-        MoneyText.NormaliseCurrency(null).Should().Be("USD");
+        // free-text field silently reassign a deal's currency. A deal that names
+        // none is in its workspace's.
+        DealMoney.CurrencyOf(null, "CHF").Value.Should().Be("CHF");
         MoneyText.TryParseAmount("€50,000", out var value).Should().BeTrue();
         value.Should().Be(50000m);
+    }
+
+    [Theory]
+    [InlineData(" chf ", "CHF")]
+    [InlineData("eur", "EUR")]
+    public void ACurrencyCodeInAnotherCaseIsTheSameCode(string requested, string expected)
+    {
+        DealMoney.CurrencyOf(requested, "CHF").Value.Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("€")]
+    [InlineData("Fr.")]
+    [InlineData("EURO")]
+    public void ASymbolOrAWordIsNotACurrencyCode(string requested)
+    {
+        DealMoney.CurrencyOf(requested, "CHF").IsFailure.Should().BeTrue();
+    }
+
+    // ── the number stored beside the text, for reports ───────────────────────
+
+    [Theory]
+    [InlineData("CHF 85,500", 85500)]
+    [InlineData("1.234", 1234)]
+    [InlineData("1234.567", 1234.57)]
+    [InlineData("-2500", -2500)]
+    public void StoresTheSameNumberTheReportsRead(string raw, decimal expected)
+    {
+        MoneyText.StoredAmount(raw).Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("tbd")]
+    [InlineData(null)]
+    // More digits than decimal(18,2) holds: stored, it would fail the whole save.
+    [InlineData("99999999999999999999")]
+    public void StoresNothingForAValueWithoutAUsableNumber(string? raw)
+    {
+        MoneyText.StoredAmount(raw).Should().BeNull();
+    }
+
+    // ── the text written from a typed amount ─────────────────────────────────
+
+    [Theory]
+    [InlineData("85500", "85500")]
+    [InlineData("85500.00", "85500")]
+    [InlineData("99.4", "99.40")]
+    [InlineData("-2500", "-2500")]
+    [InlineData("0", "0")]
+    public void WritesTheTextEveryParserReadsTheSame(string amount, string expected)
+    {
+        var value = decimal.Parse(amount, System.Globalization.CultureInfo.InvariantCulture);
+        MoneyText.ValueText(value).Should().Be(expected);
+        // Read back by the reports' parser, the text is the same number.
+        MoneyText.StoredAmount(MoneyText.ValueText(value)).Should().Be(value);
+    }
+
+    [Fact]
+    public void ATypedAmountIsKeptToTheCentOrNotAtAll()
+    {
+        // A line-item total in floating point, and a half cent.
+        MoneyText.StoredAmount(99.39999999999999m).Should().Be(99.40m);
+        MoneyText.StoredAmount(29.985m).Should().Be(29.99m);
+        MoneyText.StoredAmount(99999999999999999999m).Should().BeNull("decimal(18,2) cannot hold it");
     }
 }

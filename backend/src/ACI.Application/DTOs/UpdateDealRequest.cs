@@ -1,11 +1,13 @@
 using System.ComponentModel.DataAnnotations;
+using ACI.Application.Common;
 
 namespace ACI.Application.DTOs;
 
 /// <summary>
-/// Request to update an existing deal.
+/// Request to update an existing deal. A field left out is kept; the company, contact,
+/// owner, expected close date, probability and description are cleared when sent as null.
 /// </summary>
-public record UpdateDealRequest
+public record UpdateDealRequest : IMergePatchRequest
 {
     /// <summary>
     /// Deal name/title.
@@ -14,14 +16,20 @@ public record UpdateDealRequest
     public string? Name { get; init; }
 
     /// <summary>
-    /// Deal value/amount.
+    /// The deal's new amount, rounded to cents. When both this and <see cref="Value"/> are
+    /// sent, this one counts.
+    /// </summary>
+    public decimal? Amount { get; init; }
+
+    /// <summary>
+    /// The new amount as text, for clients from before <see cref="Amount"/>. Plain digits only.
     /// </summary>
     [StringLength(50, ErrorMessage = "Value cannot exceed 50 characters")]
     [RegularExpression(@"^-?\d+(\.\d{1,2})?$", ErrorMessage = "Value must be a valid number (e.g., 1000 or 1000.50)")]
     public string? Value { get; init; }
 
     /// <summary>
-    /// Currency code (e.g., USD, EUR, CHF).
+    /// ISO 4217 code (e.g. CHF, EUR). Changing it relabels the amount; nothing is converted.
     /// </summary>
     [StringLength(10, ErrorMessage = "Currency cannot exceed 10 characters")]
     public string? Currency { get; init; }
@@ -29,7 +37,9 @@ public record UpdateDealRequest
     /// <summary>
     /// Deal stage name (legacy, prefer using DealStageId).
     /// </summary>
-    [StringLength(50, ErrorMessage = "Stage cannot exceed 50 characters")]
+    // As long as a stage's name can be: the board sends the name with the stage's id,
+    // and capped at 50 a move into a stage with a longer name was refused.
+    [StringLength(128, ErrorMessage = "Stage cannot exceed 128 characters")]
     public string? Stage { get; init; }
 
     /// <summary>
@@ -96,4 +106,16 @@ public record UpdateDealRequest
 
     /// <summary>The sales team this deal belongs to.</summary>
     public Guid? TeamId { get; init; }
+
+    /// <summary>
+    /// The deal's version as this edit read it (<c>version</c> on the deal, or its ETag).
+    /// When sent, the edit is refused with 409 if anyone has saved the deal since, rather
+    /// than written over their changes. Left out, the edit is applied to the deal as it
+    /// is now: right for a change to one field that reads nothing else, such as a move to another stage.
+    /// </summary>
+    public Guid? Version { get; init; }
+
+    /// <inheritdoc />
+    [System.Text.Json.Serialization.JsonIgnore]
+    public ISet<string> NullsSent { get; } = new HashSet<string>(StringComparer.Ordinal);
 }

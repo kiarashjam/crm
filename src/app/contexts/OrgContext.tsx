@@ -15,8 +15,10 @@ import {
   type InviteDto,
 } from '@/app/api/organizations';
 import {
-  getCurrentOrganizationId,
   setCurrentOrganizationId,
+  keepWorkspaceInThisTab,
+  offerWorkspaceToNewTabs,
+  watchSessionInOtherTabs,
   getAuthToken,
   AUTH_SESSION_CHANGED,
 } from '@/app/lib/auth';
@@ -56,7 +58,8 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     servesDemoData() ? [...DEMO_ORGANIZATIONS] : []
   );
   const [pendingInvites, setPendingInvites] = useState<InviteDto[]>([]);
-  const [currentOrgId, setCurrentOrgIdState] = useState<string | null>(() => getCurrentOrganizationId());
+  // This tab keeps the workspace it opened in, whatever another tab picks later.
+  const [currentOrgId, setCurrentOrgIdState] = useState<string | null>(() => keepWorkspaceInThisTab());
   const [loading, setLoading] = useState(false);
   const [hasFetched, setHasFetched] = useState(() => servesDemoData());
 
@@ -85,7 +88,11 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       ]);
       setOrganizations(orgs);
       setPendingInvites(invites);
-      const stored = getCurrentOrganizationId();
+      // This tab's own workspace, or, if it has none yet (it was opened signed out and
+      // another tab has just signed in), the shared one, now made this tab's own.
+      // Taking the shared one without keeping it left this tab following every switch
+      // made in other tabs, while its header still named the one it took.
+      const stored = keepWorkspaceInThisTab();
       const storedIsValid = Boolean(stored && orgs.some((o) => o.id === stored));
       if (storedIsValid) {
         setCurrentOrgIdState(stored);
@@ -121,8 +128,20 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       void refreshOrgs();
     };
     window.addEventListener(AUTH_SESSION_CHANGED, onSessionChanged);
-    return () => window.removeEventListener(AUTH_SESSION_CHANGED, onSessionChanged);
+    // A sign-in or sign-out in another tab is this tab's too: they share the token.
+    const stopWatching = watchSessionInOtherTabs();
+    return () => {
+      window.removeEventListener(AUTH_SESSION_CHANGED, onSessionChanged);
+      stopWatching();
+    };
   }, [refreshOrgs]);
+
+  // A tab opened from this one (a deal opened in a new tab, a middle-clicked link)
+  // opens in this tab's workspace, not in the one last picked in some other tab.
+  useEffect(() => {
+    window.addEventListener('focus', offerWorkspaceToNewTabs);
+    return () => window.removeEventListener('focus', offerWorkspaceToNewTabs);
+  }, []);
 
   const setCurrentOrg = useCallback((orgId: string | null) => {
     setCurrentOrganizationId(orgId);

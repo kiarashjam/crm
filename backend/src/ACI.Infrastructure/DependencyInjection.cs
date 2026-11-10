@@ -29,6 +29,7 @@ public static class DependencyInjection
 
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IContactRepository, ContactRepository>();
+        services.AddScoped<IDuplicateRepository, DuplicateRepository>();
         services.AddScoped<IContactRelationshipRepository, ContactRelationshipRepository>();
         services.AddScoped<IDealRepository, DealRepository>();
         services.AddScoped<ILeadRepository, LeadRepository>();
@@ -52,16 +53,19 @@ public static class DependencyInjection
         services.AddScoped<IWorkspaceRecords, WorkspaceRecords>();
         services.AddScoped<IDealLineItemRepository, DealLineItemRepository>();
         services.AddScoped<IProductRepository, ProductRepository>();
-        services.AddScoped<ISentMessageRepository, SentMessageRepository>();
+        services.AddScoped<IOutboxRepository, OutboxRepository>();
         services.AddScoped<IAutomationRepository, AutomationRepository>();
         services.AddScoped<IClubRepository, ClubRepository>();
         services.AddScoped<IClubDocumentRepository, ClubDocumentRepository>();
+        services.AddScoped<IImportRepository, ImportRepository>();
         services.AddSingleton<IAttachmentLinks, AttachmentLinkSigner>();
         services.AddSingleton<IUnsubscribeLinks, UnsubscribeLinkSigner>();
         services.AddScoped<ITemplateRepository, TemplateRepository>();
         services.AddScoped<ICopyHistoryRepository, CopyHistoryRepository>();
         services.AddScoped<IReportingService, ReportingService>();
-        services.AddScoped<IOutboundWebhookPublisher, OutboundWebhookPublisher>();
+        services.AddScoped<IDealBoardService, DealBoardService>();
+        services.AddScoped<WeeklyDigestService>();
+        services.AddScoped<IWebhookTransport, WebhookTransport>();
         
         // Application services
         services.AddScoped<ITemplateService, TemplateService>();

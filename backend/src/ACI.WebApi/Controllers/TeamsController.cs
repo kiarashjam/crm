@@ -1,6 +1,7 @@
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
 using ACI.Infrastructure.Persistence;
+using ACI.Domain.Common;
 using ACI.WebApi.Filters;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -8,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ACI.WebApi.Controllers;
 
-/// <summary>Sales teams in the workspace. Everyone can see them; the owner or a manager changes them.</summary>
+/// <summary>Sales teams in the workspace. Everyone can see them; whoever manages the team (the owner and managers by default) changes them.</summary>
 [ApiController]
 [Route("api/teams")]
 [Authorize]
@@ -41,7 +42,7 @@ public class TeamsController : ControllerBase
     }
 
     [HttpPost]
-    [ManagersOnly("change teams")]
+    [Requires(MemberPermissions.ManageMembers, What = "change teams")]
     public async Task<IActionResult> Create([FromBody] TeamWrite body, CancellationToken ct)
     {
         if (_user.UserId == null || _user.CurrentOrganizationId is not { } orgId) return Unauthorized();
@@ -55,7 +56,7 @@ public class TeamsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/members")]
-    [ManagersOnly("change teams")]
+    [Requires(MemberPermissions.ManageMembers, What = "change teams")]
     public async Task<IActionResult> AddMember(Guid id, [FromBody] TeamMemberWrite body, CancellationToken ct)
     {
         if (_user.UserId == null || _user.CurrentOrganizationId is not { } orgId) return Unauthorized();
@@ -74,7 +75,7 @@ public class TeamsController : ControllerBase
     }
 
     [HttpDelete("{id:guid}/members/{userId:guid}")]
-    [ManagersOnly("change teams")]
+    [Requires(MemberPermissions.ManageMembers, What = "change teams")]
     public async Task<IActionResult> RemoveMember(Guid id, Guid userId, CancellationToken ct)
     {
         if (_user.CurrentOrganizationId is not { } orgId) return Unauthorized();

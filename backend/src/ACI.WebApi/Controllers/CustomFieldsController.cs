@@ -4,6 +4,8 @@ using ACI.Application.Interfaces;
 using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ACI.Domain.Common;
+using ACI.WebApi.Filters;
 
 namespace ACI.WebApi.Controllers;
 
@@ -42,7 +44,8 @@ public class CustomFieldsController : ControllerBase
 
     /// <summary>Adds a field. Its key is derived from the label and never changes.</summary>
     /// <response code="200">Returns the new definition.</response>
-    /// <response code="403">Only the owner or a manager can change custom fields.</response>
+    /// <response code="403">The caller's role does not let them manage the workspace's settings.</response>
+    [Requires(MemberPermissions.ManageSettings, What = "change custom fields")]
     [HttpPost]
     [ProducesResponseType(typeof(CustomFieldDefinitionDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -56,8 +59,9 @@ public class CustomFieldsController : ControllerBase
 
     /// <summary>Changes a field's label, type, options or whether it is required.</summary>
     /// <response code="200">Returns the definition.</response>
-    /// <response code="403">Only the owner or a manager can change custom fields.</response>
+    /// <response code="403">The caller's role does not let them manage the workspace's settings.</response>
     /// <response code="404">Not in this workspace.</response>
+    [Requires(MemberPermissions.ManageSettings, What = "change custom fields")]
     [HttpPut("{id:guid}")]
     [ProducesResponseType(typeof(CustomFieldDefinitionDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -72,8 +76,9 @@ public class CustomFieldsController : ControllerBase
 
     /// <summary>Removes a field. Values already entered for it are no longer returned.</summary>
     /// <response code="204">Removed.</response>
-    /// <response code="403">Only the owner or a manager can change custom fields.</response>
+    /// <response code="403">The caller's role does not let them manage the workspace's settings.</response>
     /// <response code="404">Not in this workspace.</response>
+    [Requires(MemberPermissions.ManageSettings, What = "change custom fields")]
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -100,6 +105,7 @@ public class CustomFieldsController : ControllerBase
     /// <response code="204">Saved.</response>
     /// <response code="400">A value does not fit its field.</response>
     /// <response code="404">The record is not in this workspace.</response>
+    [Requires(MemberPermissions.EditRecords)]
     [HttpPut("values")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]

@@ -16,6 +16,8 @@ import {
   BarChart3,
   Lock,
   Unlock,
+  Clock,
+  Hourglass,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -24,12 +26,13 @@ import { RecordSkeleton } from '@/app/components/PageSkeleton';
 import DealLineItemsCard from '@/app/components/DealLineItemsCard';
 import CustomFieldsCard from '@/app/components/CustomFieldsCard';
 import AttachmentsCard from '@/app/components/AttachmentsCard';
+import StageHistoryCard from '@/app/components/StageHistoryCard';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { getDealById, updateDeal, deleteDeal, messages } from '@/app/api';
+import { getDealById, getDealStageHistory, updateDeal, deleteDeal, messages } from '@/app/api';
 import { getActivitiesByDeal, createActivity } from '@/app/api/activities';
 import { getTasksByDeal } from '@/app/api/tasks';
-import type { Deal, Activity, TaskItem } from '@/app/api/types';
+import type { Deal, Activity, TaskItem, DealStageChange } from '@/app/api/types';
 import { Button } from '@/app/components/ui/button';
 import { Label } from '@/app/components/ui/label';
 import {
@@ -40,17 +43,22 @@ import {
   DialogFooter,
 } from '@/app/components/ui/dialog';
 import { cn } from '@/app/components/ui/utils';
-import { UrgencyBadge, getDaysUntilClose, STAGE_COLORS } from './pipeline/DealCard';
+import { UrgencyBadge, STAGE_COLORS } from './pipeline/DealCard';
+import { daysSince, formatCloseDate, formatDays, getDaysUntilClose } from './pipeline/utils';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary, heroSecondary } from '@/app/components/PageHero';
 import { RecordCard } from '@/app/components/RecordCard';
-import { ActivityLogForm, ActivityRow } from '@/app/components/RecordActivity';
+import { ActivityLogForm, ActivityRow, withActivity, type ActivityDraft } from '@/app/components/RecordActivity';
+import { activityTime, factsPayload } from '@/app/lib/activityFacts';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
-import { currencyOf, formatMoney, parseAmount } from '@/app/lib/money';
+import { currencyOf } from '@/app/lib/money';
+import { useMoney } from '@/app/hooks/useMoney';
+import { PERMISSION } from '@/app/api/organizations';
 
 export default function DealDetail() {
+  const money = useMoney();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [deal, setDeal] = useState<Deal | null>(null);
@@ -60,12 +68,16 @@ export default function DealDetail() {
   // Activities
   const [activities, setActivities] = useState<Activity[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
-  const [activityForm, setActivityForm] = useState({ type: 'note', subject: '', body: '' });
+  const [activityForm, setActivityForm] = useState<ActivityDraft>({ type: 'note', subject: '', body: '' });
   const [savingActivity, setSavingActivity] = useState(false);
 
   // Linked Tasks
   const [dealTasks, setDealTasks] = useState<TaskItem[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
+
+  // The stages it has been in, from the server's history
+  const [stageHistory, setStageHistory] = useState<DealStageChange[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   // Close deal dialog
   const [closeOpen, setCloseOpen] = useState(false);
@@ -98,6 +110,17 @@ export default function DealDetail() {
       .finally(() => setActivitiesLoading(false));
   }, [id]);
 
+  // Load the stage history again whenever the deal's stage or outcome changes here.
+  const historyKey = `${deal?.dealStageId ?? deal?.stage ?? ''}|${deal?.isWon ?? ''}`;
+  useEffect(() => {
+    if (!id) return;
+    setHistoryLoading(true);
+    getDealStageHistory(id)
+      .then(setStageHistory)
+      .catch(() => setStageHistory([]))
+      .finally(() => setHistoryLoading(false));
+  }, [id, historyKey]);
+
   // Load linked tasks
   useEffect(() => {
     if (!id) return;
@@ -118,14 +141,16 @@ export default function DealDetail() {
         subject: activityForm.subject.trim(),
         body: activityForm.body.trim() || undefined,
         dealId: deal.id,
+        ...factsPayload(activityForm.type, activityForm.facts),
       });
       if (activity) {
-        setActivities((prev) => [activity, ...prev]);
+        setActivities((prev) => withActivity(prev, activity));
         setActivityForm({ type: 'note', subject: '', body: '' });
         toast.success('Activity logged');
       }
-    } catch {
-      toast.error('Failed to log activity');
+    } catch (err) {
+      // The server says what it refused, a time in the future say, rather than only that it failed.
+      toast.error(err instanceof Error && err.message ? err.message : 'Failed to log activity');
     } finally {
       setSavingActivity(false);
     }
@@ -189,11 +214,11 @@ export default function DealDetail() {
   };
 
   const stageName = deal?.dealStageName || deal?.stage || 'Qualification';
-  const daysToClose = getDaysUntilClose(deal?.expectedCloseDateUtc);
+  const daysToClose = getDaysUntilClose(deal?.expectedCloseDateUtc, money.timeZone);
+  const daysInStage = daysSince(deal?.stageEnteredAtUtc);
+  const quietDays = daysSince(deal?.idleSinceUtc);
   const stageColors = STAGE_COLORS[stageName];
-  const closeLabel = deal?.expectedCloseDateUtc
-    ? new Date(deal.expectedCloseDateUtc).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-    : null;
+  const closeLabel = deal?.expectedCloseDateUtc ? formatCloseDate(deal.expectedCloseDateUtc) : null;
 
   if (loading) {
     return (
@@ -247,6 +272,14 @@ export default function DealDetail() {
                 {deal.isPrivate && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
                     <Lock className="h-3 w-3" aria-hidden /> Private
+                  </span>
+                )}
+                {deal.isStale && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800"
+                    title={deal.staleAfterDays ? `Stale after ${deal.staleAfterDays} days without activity` : undefined}
+                  >
+                    <Clock className="h-3 w-3" aria-hidden /> Stale{quietDays !== null ? `: no activity for ${formatDays(quietDays)}` : ''}
                   </span>
                 )}
               </>
@@ -304,7 +337,7 @@ export default function DealDetail() {
                     </WriteOnly>
                   </>
                 )}
-                <WriteOnly>
+                <WriteOnly permission={[PERMISSION.EditRecords, PERMISSION.DeleteRecords]} all>
                   <Button
                     variant="outline"
                     aria-label="Delete deal"
@@ -317,12 +350,14 @@ export default function DealDetail() {
               </>
             }
             stats={[
-              { label: 'Value', value: parseAmount(deal.value), icon: Target, tone: 'emerald', format: (n) => formatMoney(n, currencyOf(deal)), hint: deal.pipelineName ?? undefined },
+              { label: 'Value', value: deal.amount ?? '—', icon: Target, tone: 'emerald', format: (n) => money.format(n, currencyOf(deal, money.currency)), hint: deal.pipelineName ?? undefined },
               ...(deal.probability != null
                 ? [{ label: 'Win probability', value: deal.probability, icon: BarChart3, tone: 'blue' as const, format: (n: number) => `${Math.round(n)}%` }]
                 : []),
               { label: 'Expected close', value: closeLabel ?? '—', icon: Calendar, tone: 'amber', hint: daysToClose === null ? undefined : daysToClose < 0 ? `${-daysToClose}d overdue` : `in ${daysToClose}d` },
-              { label: 'Activities', value: activities.length, icon: ActivityIcon, tone: 'sky', hint: activities[0] ? `last ${new Date(activities[0].createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : 'none yet' },
+              // From the stage history; a deal from before it was kept does not say.
+              { label: 'In stage', value: daysInStage === null ? '—' : formatDays(daysInStage), icon: Hourglass, tone: 'violet', hint: daysInStage === null ? 'not recorded' : stageName },
+              { label: 'Activities', value: activities.length, icon: ActivityIcon, tone: 'sky', hint: activities[0] ? `last ${new Date(activityTime(activities[0])).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : 'none yet' },
               { label: 'Tasks', value: dealTasks.filter((t) => t.status !== 'completed').length, icon: CheckCircle2, tone: 'violet', hint: `${dealTasks.length} linked` },
             ]}
           />
@@ -349,12 +384,14 @@ export default function DealDetail() {
                 )}
               </RecordCard>
 
+              <StageHistoryCard history={stageHistory} loading={historyLoading} index={1} />
+
               {/* Products & line items */}
               <DealLineItemsCard
                 dealId={deal.id}
                 currency={deal.currency}
                 className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800"
-                onValueSynced={(t) => setDeal((prev) => (prev ? { ...prev, value: String(t) } : prev))}
+                onValueSynced={(t) => setDeal((prev) => (prev ? { ...prev, amount: t, value: String(t) } : prev))}
               />
 
               <RecordCard title="Linked tasks" icon={<CheckCircle2 className="h-3.5 w-3.5" />} tone="violet" count={dealTasks.length} index={1}>
@@ -471,7 +508,7 @@ export default function DealDetail() {
                     <div className="min-w-0">
                       <dt className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Expected close</dt>
                       <dd className="mt-0.5 font-medium text-slate-800 dark:text-slate-200">
-                        {new Date(deal.expectedCloseDateUtc).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
+                        {formatCloseDate(deal.expectedCloseDateUtc, 'long')}
                       </dd>
                     </div>
                   )}

@@ -24,16 +24,27 @@ public record ConvertLeadRequest
     public string? DealName { get; init; }
 
     /// <summary>
-    /// Value for the new deal.
+    /// Amount of the new deal, rounded to cents. Counts over <see cref="DealValue"/> when both are sent.
+    /// </summary>
+    public decimal? DealAmount { get; init; }
+
+    /// <summary>
+    /// The new deal's amount as text, for clients from before <see cref="DealAmount"/>.
     /// </summary>
     [StringLength(50, ErrorMessage = "Deal value cannot exceed 50 characters")]
     [RegularExpression(@"^-?\d+(\.\d{1,2})?$", ErrorMessage = "Deal value must be a valid number")]
     public string? DealValue { get; init; }
 
     /// <summary>
+    /// ISO 4217 code of the new deal. Left out, it is the workspace's currency.
+    /// </summary>
+    [StringLength(10, ErrorMessage = "Deal currency cannot exceed 10 characters")]
+    public string? DealCurrency { get; init; }
+
+    /// <summary>
     /// Stage for the new deal (legacy, prefer DealStageId).
     /// </summary>
-    [StringLength(50, ErrorMessage = "Deal stage cannot exceed 50 characters")]
+    [StringLength(128, ErrorMessage = "Deal stage cannot exceed 128 characters")]
     public string? DealStage { get; init; }
 
     /// <summary>

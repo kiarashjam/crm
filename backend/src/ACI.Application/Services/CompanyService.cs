@@ -20,29 +20,75 @@ public class CompanyService : ICompanyService
         _logger = logger;
     }
 
+    /// <summary>The most rows one export writes, as for contacts.</summary>
+    public const int MaxExportRows = 50_000;
+
     /// <inheritdoc />
     public async Task<PagedResult<CompanyDto>> GetCompaniesPagedAsync(
-        Guid userId, 
-        Guid? organizationId, 
-        int page = 1, 
-        int pageSize = 20, 
+        Guid userId,
+        Guid? organizationId,
+        int page = 1,
+        int pageSize = 20,
         string? search = null,
+        CancellationToken ct = default)
+    {
+        var paged = await GetCompaniesPagedAsync(userId, organizationId, page, pageSize, new CompanyQueryOptions { Search = search }, ct);
+        return PagedResult<CompanyDto>.Create(paged.Items.Select(Map).ToList(), paged.TotalCount, paged.Page, paged.PageSize);
+    }
+
+    /// <inheritdoc />
+    public async Task<PagedResult<CompanyListItemDto>> GetCompaniesPagedAsync(
+        Guid userId,
+        Guid? organizationId,
+        int page,
+        int pageSize,
+        CompanyQueryOptions options,
         CancellationToken ct = default)
     {
         _logger.LogDebug(
             "Getting paged companies for user {UserId}, organization {OrganizationId}, page {Page}, pageSize {PageSize}, search '{Search}'",
-            userId, organizationId, page, pageSize, search);
+            userId, organizationId, page, pageSize, options.Search);
 
-        var skip = (page - 1) * pageSize;
-        var (items, totalCount) = await _repository.GetPagedAsync(userId, organizationId, skip, pageSize, search, ct);
-        
-        var dtos = items.Select(Map).ToList();
-        
+        page = Math.Max(page, 1);
+        var (items, totalCount) = await _repository.GetPagedAsync(userId, organizationId, (page - 1) * pageSize, pageSize, options, ct);
+        // The counts for this page's companies only; the page used to fetch them for every company.
+        var stats = (await _repository.GetStatsAsync(items.Select(c => c.Id).ToList(), userId, organizationId, ct))
+            .ToDictionary(s => s.CompanyId);
+        var dtos = items.Select(c => stats.TryGetValue(c.Id, out var s)
+            ? ListItem(c, s.ContactCount, s.DealCount, s.DealTotals)
+            : ListItem(c, 0, 0, Array.Empty<CurrencyTotalDto>())).ToList();
+
         _logger.LogInformation(
             "Retrieved {Count} of {Total} companies for user {UserId} (page {Page})",
             items.Count, totalCount, userId, page);
 
-        return PagedResult<CompanyDto>.Create(dtos, totalCount, page, pageSize);
+        return PagedResult<CompanyListItemDto>.Create(dtos, totalCount, page, pageSize);
+    }
+
+    /// <inheritdoc />
+    public Task<CompanySummaryDto> GetSummaryAsync(Guid userId, Guid? organizationId, CancellationToken ct = default) =>
+        _repository.GetSummaryAsync(userId, organizationId, ct);
+
+    /// <inheritdoc />
+    public async Task<ExportFile> ExportAsync(Guid userId, Guid? organizationId, CompanyQueryOptions options, CancellationToken ct = default)
+    {
+        var (rows, total) = await _repository.GetExportRowsAsync(userId, organizationId, options, MaxExportRows, ct);
+        var stats = new Dictionary<Guid, (Guid CompanyId, int ContactCount, int DealCount, IReadOnlyList<CurrencyTotalDto> DealTotals)>();
+        foreach (var chunk in rows.Select(r => r.Id).Chunk(1000))
+            foreach (var s in await _repository.GetStatsAsync(chunk, userId, organizationId, ct))
+                stats[s.CompanyId] = s;
+
+        var csv = new CsvExport("Name", "Domain", "Industry", "Size", "Website", "Location", "Contacts", "Deals", "Deal value", "Added (UTC)");
+        foreach (var c in rows)
+        {
+            stats.TryGetValue(c.Id, out var s);
+            // Each currency on its own, never added together: "CHF 40000; EUR 25000".
+            var value = string.Join("; ", (s.DealTotals ?? Array.Empty<CurrencyTotalDto>()).Select(t => t.Currency + " " + CsvExport.Number(t.Value)));
+            csv.Row(c.Name, c.Domain, c.Industry, c.Size, c.Website, c.Location,
+                CsvExport.Number(s.ContactCount), CsvExport.Number(s.DealCount), value, CsvExport.Utc(c.CreatedAtUtc));
+        }
+        _logger.LogInformation("Exported {Count} of {Total} companies for user {UserId}", rows.Count, total, userId);
+        return new ExportFile("companies-" + DateTime.UtcNow.ToString("yyyy-MM-dd") + ".csv", csv.ToBytes(), rows.Count, total);
     }
 
     /// <inheritdoc />
@@ -184,6 +230,11 @@ public class CompanyService : ICompanyService
             _logger.LogWarning("Company {CompanyId} not found for update", id);
             return DomainErrors.Company.NotFound;
         }
+
+        // Made from an older read: saving would write the form's older values over what
+        // someone saved since. See UpdateCompanyRequest.Version.
+        if (request.Version is Guid readVersion && readVersion != existing.Version)
+            return DomainErrors.Company.Changed;
         
         // Validate domain format if provided
         if (!string.IsNullOrWhiteSpace(request.Domain) && !ValidationHelper.IsValidDomain(request.Domain))
@@ -199,13 +250,14 @@ public class CompanyService : ICompanyService
             return string.IsNullOrEmpty(trimmed) ? null : trimmed;
         }
 
+        // A field sent empty, or as null, is taken off; one left out is kept.
         if (request.Name != null) existing.Name = request.Name.Trim();
-        if (request.Domain != null) existing.Domain = NormalizeNullable(request.Domain);
-        if (request.Industry != null) existing.Industry = NormalizeNullable(request.Industry);
-        if (request.Size != null) existing.Size = NormalizeNullable(request.Size);
-        if (request.Description != null) existing.Description = NormalizeNullable(request.Description);
-        if (request.Website != null) existing.Website = NormalizeNullable(request.Website);
-        if (request.Location != null) existing.Location = NormalizeNullable(request.Location);
+        if (request.Domain != null || request.Clears(nameof(request.Domain))) existing.Domain = NormalizeNullable(request.Domain);
+        if (request.Industry != null || request.Clears(nameof(request.Industry))) existing.Industry = NormalizeNullable(request.Industry);
+        if (request.Size != null || request.Clears(nameof(request.Size))) existing.Size = NormalizeNullable(request.Size);
+        if (request.Description != null || request.Clears(nameof(request.Description))) existing.Description = NormalizeNullable(request.Description);
+        if (request.Website != null || request.Clears(nameof(request.Website))) existing.Website = NormalizeNullable(request.Website);
+        if (request.Location != null || request.Clears(nameof(request.Location))) existing.Location = NormalizeNullable(request.Location);
         
         try
         {
@@ -220,6 +272,12 @@ public class CompanyService : ICompanyService
             _logger.LogInformation("Successfully updated company {CompanyId}", id);
             return Map(existing);
         }
+        catch (ConcurrencyConflictException)
+        {
+            // Saved by someone else between this request reading the company and writing
+            // it: an answer, not a server error.
+            return DomainErrors.Company.Changed;
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error updating company {CompanyId}", id);
@@ -233,7 +291,7 @@ public class CompanyService : ICompanyService
     {
         _logger.LogDebug("Getting company stats for user {UserId}, org {OrganizationId}", userId, organizationId);
         var raw = await _repository.GetStatsAsync(userId, organizationId, ct);
-        return raw.Select(r => new CompanyStatsItemDto(r.CompanyId, r.ContactCount, r.DealCount, r.TotalDealValue)).ToList();
+        return raw.Select(r => new CompanyStatsItemDto(r.CompanyId, r.ContactCount, r.DealCount, r.DealTotals)).ToList();
     }
 
     /// <inheritdoc />
@@ -275,6 +333,14 @@ public class CompanyService : ICompanyService
         return Result.Success();
     }
 
+    private static CompanyListItemDto ListItem(Company c, int contacts, int deals, IReadOnlyList<CurrencyTotalDto> totals) => new(
+        c.Id, c.Name, c.Domain, c.Industry, c.Size, c.Description, c.Website, c.Location, c.CreatedAtUtc, c.UpdatedAtUtc,
+        contacts, deals, totals, c.Version);
+
+    /// <summary>A list item as the plain company, for the callers that ask for that.</summary>
+    private static CompanyDto Map(CompanyListItemDto c) => new(
+        c.Id, c.Name, c.Domain, c.Industry, c.Size, c.Description, c.Website, c.Location, c.CreatedAtUtc, c.UpdatedAtUtc, c.Version);
+
     private static CompanyDto Map(Company c) => new(
         c.Id, 
         c.Name, 
@@ -285,6 +351,7 @@ public class CompanyService : ICompanyService
         c.Website,
         c.Location,
         c.CreatedAtUtc,
-        c.UpdatedAtUtc
+        c.UpdatedAtUtc,
+        c.Version
     );
 }

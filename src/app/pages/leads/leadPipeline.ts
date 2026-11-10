@@ -227,6 +227,61 @@ export function serializePipeline(p: LeadPipeline): string {
   return JSON.stringify(p);
 }
 
+type PipelineFields = Record<string, unknown>;
+
+/**
+ * The change from `base` to `next`, in the shape the server merges into the stored
+ * pipeline (a JSON merge patch): each step whose value changed, and each step taken
+ * off, as null. Steps the two agree on are left out.
+ *
+ * Sending the whole pipeline wrote this tab's copy over the stored one, so a step
+ * recorded meanwhile somewhere else (an e-signed contract, a colleague) disappeared.
+ * `base` is the pipeline the edit was made on, not the one last saved: an edit made
+ * before the previous one has answered still sends only its own change.
+ */
+export function pipelinePatch(base: LeadPipeline, next: LeadPipeline): PipelineFields {
+  const before = base as PipelineFields;
+  const after = next as PipelineFields;
+  const patch: PipelineFields = {};
+  for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    const was = before[key];
+    const now = after[key];
+    if (now === undefined) {
+      if (was !== undefined) patch[key] = null;
+    } else if (JSON.stringify(now) !== JSON.stringify(was)) {
+      patch[key] = now;
+    }
+  }
+  return patch;
+}
+
+/**
+ * `patch` applied to a stored pipeline the way the server applies it (RFC 7396): a
+ * value replaces, a null removes, an object merges into the object there. For demo
+ * mode, which keeps leads in this browser and has no server to do it.
+ */
+export function applyPipelinePatch(stored: string | null | undefined, patch: string): string {
+  let base: unknown = {};
+  try {
+    base = stored ? JSON.parse(stored) : {};
+  } catch {
+    base = {};
+  }
+  return JSON.stringify(mergePatch(base, JSON.parse(patch) as unknown));
+}
+
+function mergePatch(target: unknown, patch: unknown): unknown {
+  if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return patch;
+  const result: PipelineFields = target && typeof target === 'object' && !Array.isArray(target)
+    ? { ...(target as PipelineFields) }
+    : {};
+  for (const [key, value] of Object.entries(patch as PipelineFields)) {
+    if (value === null) delete result[key];
+    else result[key] = mergePatch(result[key], value);
+  }
+  return result;
+}
+
 /** Whether each of the 5 phases is fully satisfied (index 0 = phase 1). */
 export function phaseCompletion(p: LeadPipeline): boolean[] {
   const p1 = p.outreachStatus === 'contacted' && p.contactOutcome === 'meeting_scheduled' && !!p.meetingDate;

@@ -49,7 +49,10 @@ public class ContractConfiguration : IEntityTypeConfiguration<Contract>
             .WithOne(e => e.Contract!)
             .HasForeignKey(e => e.ContractId)
             // A contract's audit trail has no meaning without the contract.
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Cascade)
+            // The name the start-up DDL gave it before the baseline migration, so a
+            // migration that drops or changes it finds it on every database.
+            .HasConstraintName("FK_ContractEvents_Contracts");
     }
 }
 

@@ -10,7 +10,9 @@ namespace ACI.Infrastructure.Persistence;
 /// <remarks>
 /// They are keyed by record type and id rather than by a foreign key, because one
 /// table serves four kinds of record. Doing it here covers every way a record is
-/// deleted, and never reads the bytes of a file it is removing.
+/// deleted, and never reads the bytes of a file it is removing. They are found whatever
+/// workspace the save acts for (IgnoreQueryFilters): a record's id is its own, and its
+/// files and values must go with it even when the code deleting it acts for none.
 /// </remarks>
 internal static class RecordDependents
 {
@@ -37,9 +39,9 @@ internal static class RecordDependents
         {
             var type = group.Key;
             var ids = group.Select(r => r.Id).ToList();
-            var attachmentIds = await db.Attachments
+            var attachmentIds = await db.Attachments.IgnoreQueryFilters()
                 .Where(a => a.EntityType == type && ids.Contains(a.RecordId)).Select(a => a.Id).ToListAsync(ct);
-            var valueSets = await db.CustomFieldValues
+            var valueSets = await db.CustomFieldValues.IgnoreQueryFilters()
                 .Where(v => v.EntityType == type && ids.Contains(v.RecordId)).ToListAsync(ct);
             var lineItems = type == RecordTypes.Deal
                 ? await db.DealLineItems.Where(i => ids.Contains(i.DealId)).ToListAsync(ct)
@@ -54,9 +56,9 @@ internal static class RecordDependents
         {
             var type = group.Key;
             var ids = group.Select(r => r.Id).ToList();
-            var attachmentIds = db.Attachments
+            var attachmentIds = db.Attachments.IgnoreQueryFilters()
                 .Where(a => a.EntityType == type && ids.Contains(a.RecordId)).Select(a => a.Id).ToList();
-            var valueSets = db.CustomFieldValues
+            var valueSets = db.CustomFieldValues.IgnoreQueryFilters()
                 .Where(v => v.EntityType == type && ids.Contains(v.RecordId)).ToList();
             var lineItems = type == RecordTypes.Deal
                 ? db.DealLineItems.Where(i => ids.Contains(i.DealId)).ToList()

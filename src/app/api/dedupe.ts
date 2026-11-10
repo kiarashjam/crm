@@ -1,25 +1,28 @@
 // Duplicate detection and merging, for every kind of record that can be entered twice.
 //
-// Detection runs in the browser over the whole list, the same way in demo mode and
-// against the server. It is deliberately strict: two records are the same only
-// when they share an identifier (an email, a domain) or share a name and nothing
-// known about them disagrees. Two different John Smiths with different emails are
-// not offered for merging.
+// Contacts and companies are found by the server (GET /api/duplicates/contacts and
+// /companies), with the rules below; the browser runs the same rules in demo mode and
+// for the other kinds. Two records are the same when they share an identifier, or share
+// a name and nothing known about them disagrees. A contact's email is unique in its
+// workspace, so for contacts a different email rules nothing out: the same person
+// entered twice has two addresses. Leads keep the strict rule, as their emails are not
+// unique. "Not the same" is the workspace's decision, kept on the server.
 //
 // Merging goes to the server, which moves everything attached to the duplicates
 // onto the record kept (see the merge endpoints). In demo mode it happens here,
 // with the same rules: the kept record's values stay, its empty fields are filled
 // from the others, and whatever pointed at a duplicate points at it instead.
 
-import { authFetch, ensureOk, servesDemoData } from './apiClient';
+import { authFetch, authFetchJson, ensureOk, servesDemoData, type RequestOptions } from './apiClient';
 import { relinkMockRecords } from './mockStore';
-import { getContacts, updateContact, deleteContact } from './contacts';
-import { getCompanies, updateCompany, deleteCompany } from './companies';
+import { getContacts, updateContact, deleteContact, mapContact, type ApiContact } from './contacts';
+import { getCompanies, updateCompany, deleteCompany, mapCompany, type CompanyRaw } from './companies';
 import { getLeads, updateLead, deleteLead } from './leads';
 import { getDeals, updateDeal, deleteDeal } from './deals';
 import { getMembers, updateMember, deleteMember, type Member } from './members';
 import type { Household } from './households';
 import type { Contact, Company, Lead, Deal } from './types';
+import { amountOf, currencyOf, formatMoney } from '@/app/lib/money';
 
 export interface DuplicateGroup<T> {
   /** Stable for the same set of records, whatever order they load in. */
@@ -65,9 +68,10 @@ export interface MatchRule<T> {
 
 /**
  * Records that any rule links, directly or through one another, form a group. A
- * record is in at most one group.
+ * record is in at most one group. With `maxShared`, a value more records share than
+ * that links none of them, as on the server (DuplicateRules.MaxShared).
  */
-export function groupDuplicates<T extends { id: string }>(records: T[], rules: MatchRule<T>[]): DuplicateGroup<T>[] {
+export function groupDuplicates<T extends { id: string }>(records: T[], rules: MatchRule<T>[], maxShared = Infinity): DuplicateGroup<T>[] {
   const parent = new Map<string, string>();
   const find = (id: string): string => {
     let root = id;
@@ -103,7 +107,7 @@ export function groupDuplicates<T extends { id: string }>(records: T[], rules: M
       else buckets.set(k, [r]);
     }
     for (const list of buckets.values()) {
-      if (list.length < 2) continue;
+      if (list.length < 2 || list.length > maxShared) continue;
       list.forEach((a, i) => {
         for (const b of list.slice(i + 1)) {
           if (!rule.same || rule.same(a, b)) union(a.id, b.id, rule.reason);
@@ -149,8 +153,38 @@ function personRules<T extends Person>(): MatchRule<T>[] {
   ];
 }
 
+/**
+ * More contacts or companies than this sharing one phone, name or domain (an office
+ * switchboard, a common name) says nothing about any two of them. The server's own
+ * limit (DuplicateRules.MaxShared), so demo mode and the assistant offer what the
+ * Duplicates page does.
+ */
+const MAX_SHARED = 50;
+
+/** A name as the server matches it (MatchKeys.Name): one letter says nothing. */
+const nameKey = (s?: string | null) => {
+  const name = normalizeName(s);
+  return name.length > 1 ? name : '';
+};
+
+/**
+ * Contacts, as the server finds them (DuplicateRules): the same email, the same phone
+ * however it is written, or the same name when neither phone nor company disagrees.
+ */
+function contactRules<T extends Person>(): MatchRule<T>[] {
+  return [
+    { reason: 'Same email', key: (p) => norm(p.email) },
+    { reason: 'Same phone', key: (p) => normalizePhone(p.phone) },
+    {
+      reason: 'Same name',
+      key: (p) => nameKey(p.name),
+      same: (a, b) => !conflicts(normalizePhone(a.phone), normalizePhone(b.phone)) && !conflicts(company(a), company(b)),
+    },
+  ];
+}
+
 export function duplicateContactGroups<T extends Person>(contacts: T[]): DuplicateGroup<T>[] {
-  return groupDuplicates(contacts, personRules<T>());
+  return groupDuplicates(contacts, contactRules<T>(), MAX_SHARED);
 }
 
 export function duplicateLeadGroups<T extends Person>(leads: T[]): DuplicateGroup<T>[] {
@@ -163,8 +197,8 @@ const domainOf = (c: CompanyLike) => normalizeDomain(c.domain || c.website);
 export function duplicateCompanyGroups<T extends CompanyLike>(companies: T[]): DuplicateGroup<T>[] {
   return groupDuplicates(companies, [
     { reason: 'Same domain', key: domainOf },
-    { reason: 'Same name', key: (c) => normalizeName(c.name), same: (a, b) => !conflicts(domainOf(a), domainOf(b)) },
-  ]);
+    { reason: 'Same name', key: (c) => nameKey(c.name), same: (a, b) => !conflicts(domainOf(a), domainOf(b)) },
+  ], MAX_SHARED);
 }
 
 type DealLike = { id: string; name?: string | null; companyId?: string | null; contactId?: string | null; isWon?: boolean | null };
@@ -210,11 +244,77 @@ export function duplicateHouseholdGroups<T extends { id: string; name?: string |
 }
 
 export async function findDuplicateContacts(): Promise<DuplicateGroup<Contact>[]> {
+  if (!servesDemoData()) return (await scanContactDuplicates()).groups;
   return duplicateContactGroups(await getContacts());
 }
 
 export async function findDuplicateCompanies(): Promise<DuplicateGroup<Company>[]> {
+  if (!servesDemoData()) return (await scanCompanyDuplicates()).groups;
   return duplicateCompanyGroups(await getCompanies());
+}
+
+// ── Found on the server, decided for the team ───────────────────────────────
+
+/** A group someone said is not the same records, by its records' ids, so it can be offered again. */
+export interface NotSameGroup {
+  key: string;
+  recordIds: string[];
+}
+
+/** A kind's duplicates, as the server found them, and the groups hidden by "not the same". */
+export interface DuplicateScan<T> {
+  groups: DuplicateGroup<T>[];
+  notSame: NotSameGroup[];
+}
+
+interface ApiScan<R> {
+  groups?: { key: string; reason: string; records?: R[] }[];
+  notSame?: { key: string; recordIds?: string[] }[];
+}
+
+function scanOf<R, T>(raw: ApiScan<R> | undefined, map: (record: R) => T): DuplicateScan<T> {
+  return {
+    groups: (raw?.groups ?? []).map((g) => ({ key: g.key, reason: g.reason, records: (g.records ?? []).map(map) })),
+    notSame: (raw?.notSame ?? []).map((g) => ({ key: g.key, recordIds: g.recordIds ?? g.key.split('|') })),
+  };
+}
+
+/** The workspace's duplicate contacts, found by the server over every contact. */
+export async function scanContactDuplicates(): Promise<DuplicateScan<Contact>> {
+  return scanOf(await authFetchJson<ApiScan<ApiContact>>('/api/duplicates/contacts'), mapContact);
+}
+
+/** The workspace's duplicate companies, found by the server. */
+export async function scanCompanyDuplicates(): Promise<DuplicateScan<Company>> {
+  return scanOf(await authFetchJson<ApiScan<CompanyRaw>>('/api/duplicates/companies'), mapCompany);
+}
+
+/** Two record ids, written one way whichever comes first. */
+export const pairKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+
+/** Every pair among these records. */
+export function pairsOf(ids: string[]): string[] {
+  const pairs: string[] = [];
+  ids.forEach((a, i) => ids.slice(i + 1).forEach((b) => pairs.push(pairKey(a, b))));
+  return pairs;
+}
+
+/** The pairs of this kind the workspace said are not the same. */
+export async function getNotSamePairs(kind: MergeKind, req?: RequestOptions): Promise<string[]> {
+  const pairs = await authFetchJson<{ recordIdA: string; recordIdB: string }[]>(`/api/duplicates/${kind}/not-same`, req);
+  return Array.isArray(pairs) ? pairs.map((p) => pairKey(p.recordIdA, p.recordIdB)) : [];
+}
+
+/** "These are not the same": never offered again, to anyone in the workspace. */
+export async function markNotSame(kind: MergeKind, recordIds: string[]): Promise<void> {
+  const res = await authFetch(`/api/duplicates/${kind}/not-same`, { method: 'POST', body: JSON.stringify({ recordIds }) });
+  await ensureOk(res);
+}
+
+/** Offer these records as possible duplicates again. */
+export async function clearNotSame(kind: MergeKind, recordIds: string[]): Promise<void> {
+  const res = await authFetch(`/api/duplicates/${kind}/not-same/clear`, { method: 'POST', body: JSON.stringify({ recordIds }) });
+  await ensureOk(res);
 }
 
 // ── What the merged record looks like ───────────────────────────────────────
@@ -426,11 +526,11 @@ export const LEAD_MERGE_FIELDS: MergeField<Lead>[] = [
   { label: 'First seen', keys: ['createdAtUtc'], rule: 'earliest', format: (l) => date(l.createdAtUtc) },
 ];
 
+// The stored amount in the deal's own currency; the text was read again with Number(),
+// which made "CHF 85,500" unreadable and showed it as typed.
 const money = (d: Deal) => {
-  if (isBlank(d.value, true)) return undefined;
-  const n = Number(d.value);
-  const amount = Number.isFinite(n) ? n.toLocaleString() : d.value;
-  return d.currency ? `${d.currency} ${amount}` : amount;
+  const amount = amountOf(d);
+  return amount === null || amount === 0 ? undefined : formatMoney(amount, currencyOf(d));
 };
 const outcome = (d: Deal) => (d.isWon === true ? 'Won' : d.isWon === false ? 'Lost' : 'Open');
 
@@ -438,7 +538,7 @@ export const DEAL_MERGE_FIELDS: MergeField<Deal>[] = [
   { label: 'Name', keys: ['name'], rule: 'keep' },
   { label: 'Stage', keys: ['dealStageId', 'dealStageName', 'stage', 'pipelineId', 'pipelineName'], rule: 'keep', format: (d) => d.dealStageName || d.stage },
   { label: 'Outcome', keys: ['isWon'], rule: 'keep', format: outcome },
-  { label: 'Value', keys: ['value', 'currency'], rule: 'fillAmount', format: money },
+  { label: 'Value', keys: ['amount', 'value', 'currency'], rule: 'fillAmount', format: money },
   { label: 'Company', keys: ['companyId', 'companyName'], rule: 'fill', format: (d) => d.companyName || (d.companyId ? 'Linked company' : undefined) },
   { label: 'Contact', keys: ['contactId', 'contactName'], rule: 'fill', format: (d) => d.contactName || (d.contactId ? 'Linked contact' : undefined) },
   { label: 'Owner', keys: ['assigneeId', 'assigneeName'], rule: 'fill', format: (d) => d.assigneeName || (d.assigneeId ? 'Assigned' : undefined) },

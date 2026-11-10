@@ -19,6 +19,12 @@ public interface IDealService
     Task<IReadOnlyList<DealDto>> GetDealsAsync(Guid userId, Guid? organizationId, CancellationToken ct = default);
 
     /// <summary>
+    /// Deals still owing something (open, or lost with no reason), the caller's own (see
+    /// WorkScope) or the team's: at most <paramref name="take"/>, and whether there were more.
+    /// </summary>
+    Task<(IReadOnlyList<DealDto> Items, bool More)> GetOpenWorkAsync(Guid userId, Guid? organizationId, bool mineOnly, int take, CancellationToken ct = default);
+
+    /// <summary>
     /// Searches deals by name or value.
     /// </summary>
     Task<IReadOnlyList<DealDto>> SearchAsync(Guid userId, Guid? organizationId, string query, CancellationToken ct = default, int? take = null);
@@ -45,4 +51,10 @@ public interface IDealService
 
     /// <summary>Keeps one deal and folds a duplicate of it into it.</summary>
     Task<Result> MergeAsync(Guid keepId, Guid dropId, Guid userId, Guid? organizationId, CancellationToken ct = default);
+
+    /// <summary>
+    /// The stages the deal has been in, newest first: when it came into each, from where,
+    /// who moved it, and when it left again.
+    /// </summary>
+    Task<Result<IReadOnlyList<DealStageChangeDto>>> GetStageHistoryAsync(Guid dealId, Guid userId, Guid? organizationId, CancellationToken ct = default);
 }

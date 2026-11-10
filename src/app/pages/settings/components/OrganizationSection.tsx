@@ -2,7 +2,9 @@ import { Link } from 'react-router-dom';
 import { Building2, UserPlus, Mail, Check, X, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { servesDemoData } from '@/app/api/apiClient';
-import { isOrgAdmin, type InviteDto, type JoinRequestDto, type OrgMemberDto } from '@/app/api/organizations';
+import { orgCan, PERMISSION, PRESET_LABELS, type InviteDto, type JoinRequestDto, type OrgMemberDto } from '@/app/api/organizations';
+import { RegionalSettingsCard } from './RegionalSettingsCard';
+import { EmailSendingCard } from './EmailSendingCard';
 
 export interface OrganizationSectionProps {
   organizations: { id: string; name: string; isOwner: boolean; role?: number }[];
@@ -88,7 +90,11 @@ export function OrganizationSection({
         </div>
       )}
 
-      {!servesDemoData() && isOrgAdmin(currentOrg) && (
+      <RegionalSettingsCard />
+
+      <EmailSendingCard />
+
+      {!servesDemoData() && Boolean(currentOrg) && orgCan(currentOrg, PERMISSION.ManageMembers) && (
         <>
           <div className="pt-6 border-t border-slate-200">
             <h3 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
@@ -204,6 +210,19 @@ export function OrganizationSection({
                             {isOwner ? (
                               <span className="inline-flex items-center px-2 py-1 bg-orange-100 text-orange-700 text-xs font-medium rounded-full">
                                 Owner
+                              </span>
+                            ) : m.preset ? (
+                              // What they may do is a preset now, set on the Team page. The
+                              // old Member / Manager list here named a read-only accountant
+                              // "Member", and choosing a role reset what the owner had set.
+                              <span className="inline-flex flex-wrap items-center gap-2">
+                                <span className="inline-flex items-center px-2 py-1 bg-slate-100 text-slate-700 text-xs font-medium rounded-full">
+                                  {PRESET_LABELS[m.preset] ?? m.preset}
+                                  {m.customised ? ', changed' : ''}
+                                </span>
+                                <Link to="/team" className="text-xs text-orange-700 hover:text-orange-800 font-medium">
+                                  Change on the Team page
+                                </Link>
                               </span>
                             ) : (
                               <select

@@ -62,7 +62,8 @@ public sealed class LeadOpsRepository : ILeadOpsRepository
             .FirstOrDefaultAsync(r => r.Id == rule.Id && r.OrganizationId == rule.OrganizationId, ct);
         if (existing == null)
         {
-            if (await _db.LeadAssignmentRules.AnyAsync(r => r.Id == rule.Id, ct)) rule.Id = Guid.NewGuid();
+            // Taken in any workspace, it cannot be used again: ids are unique across all of them.
+            if (await _db.LeadAssignmentRules.IgnoreQueryFilters().AnyAsync(r => r.Id == rule.Id, ct)) rule.Id = Guid.NewGuid();
             _db.LeadAssignmentRules.Add(rule);
         }
         else
@@ -97,7 +98,8 @@ public sealed class LeadOpsRepository : ILeadOpsRepository
             .FirstOrDefaultAsync(t => t.Id == territory.Id && t.OrganizationId == territory.OrganizationId, ct);
         if (existing == null)
         {
-            if (await _db.LeadTerritories.AnyAsync(t => t.Id == territory.Id, ct)) territory.Id = Guid.NewGuid();
+            // Taken in any workspace, it cannot be used again: ids are unique across all of them.
+            if (await _db.LeadTerritories.IgnoreQueryFilters().AnyAsync(t => t.Id == territory.Id, ct)) territory.Id = Guid.NewGuid();
             _db.LeadTerritories.Add(territory);
         }
         else
@@ -126,7 +128,8 @@ public sealed class LeadOpsRepository : ILeadOpsRepository
             .FirstOrDefaultAsync(q => q.Id == queue.Id && q.OrganizationId == queue.OrganizationId, ct);
         if (existing == null)
         {
-            if (await _db.LeadQueues.AnyAsync(q => q.Id == queue.Id, ct)) queue.Id = Guid.NewGuid();
+            // Taken in any workspace, it cannot be used again: ids are unique across all of them.
+            if (await _db.LeadQueues.IgnoreQueryFilters().AnyAsync(q => q.Id == queue.Id, ct)) queue.Id = Guid.NewGuid();
             _db.LeadQueues.Add(queue);
         }
         else
@@ -190,8 +193,10 @@ public sealed class LeadOpsRepository : ILeadOpsRepository
     public async Task<IReadOnlyList<LeadCaptureForm>> GetFormsAsync(Guid? organizationId, CancellationToken ct = default) =>
         await _db.LeadCaptureForms.Where(f => f.OrganizationId == organizationId).OrderByDescending(f => f.CreatedAtUtc).ToListAsync(ct);
 
+    // A stranger's form post names its form by token alone, before any workspace is known:
+    // the token is the authority, and the form names the workspace.
     public Task<LeadCaptureForm?> GetFormByTokenAsync(string token, CancellationToken ct = default) =>
-        _db.LeadCaptureForms.FirstOrDefaultAsync(f => f.PublicToken == token && f.IsActive, ct);
+        _db.LeadCaptureForms.IgnoreQueryFilters().FirstOrDefaultAsync(f => f.PublicToken == token && f.IsActive, ct);
 
     public async Task SaveFormAsync(LeadCaptureForm form, CancellationToken ct = default)
     {
@@ -211,8 +216,10 @@ public sealed class LeadOpsRepository : ILeadOpsRepository
             .Where(l => organizationId == null ? l.OrganizationId == null : l.OrganizationId == organizationId)
             .ToListAsync(ct);
 
+    // Every workspace's late leads: one job watches the first-response deadline for all.
     public async Task<IReadOnlyList<Lead>> OverdueFirstResponseAsync(DateTime utcNow, int take, CancellationToken ct = default) =>
         await _db.Leads
+            .IgnoreQueryFilters()
             .Where(l => !l.IsConverted
                 && l.FirstResponseAtUtc == null
                 && l.SlaNotifiedAtUtc == null
@@ -225,7 +232,10 @@ public sealed class LeadOpsRepository : ILeadOpsRepository
     public async Task SaveLeadAsync(Lead lead, CancellationToken ct = default)
     {
         _db.Leads.Update(lead);
-        await _db.SaveChangesAsync(ct);
+        // Refused when the lead changed after it was read (see IVersioned). The stale copy
+        // is let go of: left tracked, the next read would hand back the same copy, and
+        // every later save in this scope would try to write it again.
+        await _db.SaveRefusingStaleAsync(ct);
     }
 
     public Task<Lead?> GetLeadAsync(Guid id, CancellationToken ct = default) =>
@@ -233,8 +243,11 @@ public sealed class LeadOpsRepository : ILeadOpsRepository
 
     public async Task<int> IncrementEmailOpensAsync(Guid leadId, CancellationToken ct = default)
     {
-        var lead = await _db.Leads.FirstOrDefaultAsync(l => l.Id == leadId, ct);
+        // The open pixel is fetched by a mail app, signed in to nothing; the lead it names
+        // is found in whichever workspace holds it, and scored by that workspace's rules.
+        var lead = await _db.Leads.IgnoreQueryFilters().FirstOrDefaultAsync(l => l.Id == leadId, ct);
         if (lead == null) return 0;
+        using var acting = _db.ActFor(lead.OrganizationId, lead.UserId);
         lead.EmailOpenCount += 1;
         if (!lead.ScoreIsManual)
             lead.LeadScore = LeadScoreCalculator.Score(lead, await ScoringOrBuiltin(lead.OrganizationId, ct));
@@ -261,8 +274,10 @@ public sealed class LeadOpsRepository : ILeadOpsRepository
         var moved = 0;
         for (var skip = 0; ; skip += page)
         {
-            // Neither filter column changes below, so the pages stay put.
+            // Neither filter column changes below, so the pages stay put. Every workspace's
+            // leads: the job scores them all, each by its own workspace's rules.
             var leads = await _db.Leads
+                .IgnoreQueryFilters()
                 .Where(l => !l.ScoreIsManual && !l.IsConverted)
                 .OrderBy(l => l.Id)
                 .Skip(skip)
@@ -273,16 +288,50 @@ public sealed class LeadOpsRepository : ILeadOpsRepository
             {
                 var key = lead.OrganizationId ?? Guid.Empty;
                 if (!rulesByOrganization.TryGetValue(key, out var rules))
+                {
+                    using var acting = _db.ActFor(lead.OrganizationId, lead.UserId);
                     rulesByOrganization[key] = rules = await GetScoringRulesAsync(lead.OrganizationId, ct);
+                }
                 var score = LeadScoreCalculator.Score(lead, rules, utcNow);
                 if (lead.LeadScore == score) continue;
                 lead.LeadScore = score;
                 moved++;
             }
 
-            await _db.SaveChangesAsync(ct);
+            moved -= await SaveScoresAsync(ct);
             _db.ChangeTracker.Clear();
             if (leads.Count < page) return moved;
+        }
+    }
+
+    /// <summary>
+    /// Saves a page of new scores. A lead someone saved while the page was being scored
+    /// keeps what they saved, and its score is worked out again on the next run. Returns
+    /// how many leads were left out for that reason.
+    /// </summary>
+    /// <remarks>
+    /// Every lead's version is checked on save (see IVersioned) and a page is saved as one
+    /// unit, so without this one lead edited at that moment would refuse the whole page,
+    /// and every lead after it would wait six hours for the next run.
+    /// </remarks>
+    private async Task<int> SaveScoresAsync(CancellationToken ct)
+    {
+        var skipped = 0;
+        while (true)
+        {
+            try
+            {
+                await _db.SaveChangesAsync(ct);
+                return skipped;
+            }
+            catch (DbUpdateConcurrencyException ex) when (ex.Entries.Count > 0)
+            {
+                foreach (var entry in ex.Entries)
+                {
+                    entry.State = EntityState.Detached;
+                    skipped++;
+                }
+            }
         }
     }
 

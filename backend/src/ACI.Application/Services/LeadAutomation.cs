@@ -1,3 +1,4 @@
+using ACI.Application.Common;
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
 
@@ -9,7 +10,12 @@ public interface ILeadAutomation
     Task PrepareNewAsync(Lead lead, CancellationToken ct = default);
     Task RecordStatusAsync(Lead lead, string? fromStatus, string toStatus, Guid actorId, CancellationToken ct = default);
     Task RescoreAsync(Lead lead, CancellationToken ct = default);
-    Task MarkFirstResponseAsync(Guid leadId, Guid userId, Guid? organizationId, string activityType, CancellationToken ct = default);
+    /// <summary>
+    /// Someone answered the lead: a call, meeting or email logged on it. The first response
+    /// and "last contacted" are when that happened (<paramref name="occurredAtUtc"/>), not
+    /// when it was written down, and never later than now.
+    /// </summary>
+    Task MarkFirstResponseAsync(Guid leadId, Guid userId, Guid? organizationId, string activityType, DateTime? occurredAtUtc = null, CancellationToken ct = default);
 }
 
 public sealed class LeadAutomation : ILeadAutomation
@@ -65,22 +71,40 @@ public sealed class LeadAutomation : ILeadAutomation
         lead.LeadScore = LeadScoreCalculator.Score(lead, rules);
     }
 
-    public async Task MarkFirstResponseAsync(Guid leadId, Guid userId, Guid? organizationId, string activityType, CancellationToken ct = default)
+    public async Task MarkFirstResponseAsync(Guid leadId, Guid userId, Guid? organizationId, string activityType, DateTime? occurredAtUtc = null, CancellationToken ct = default)
     {
         if (!ResponseTypes.Contains(activityType)) return;
-        var lead = await _ops.GetLeadAsync(leadId, ct);
-        if (lead == null) return;
-        if (organizationId != null && lead.OrganizationId != organizationId) return;
-
-        var now = DateTime.UtcNow;
-        lead.LastContactedAt = now;
-        if (lead.FirstResponseAtUtc == null)
+        // The activity is already saved. A lead saved by someone else between the read and
+        // the save below (see IVersioned) has the answer recorded on its newer copy, rather
+        // than failing the request that logged the call: the person, told it failed, logged
+        // it again, and the first response was never recorded, so the SLA alert fired.
+        for (var attempt = 1; ; attempt++)
         {
-            lead.FirstResponseAtUtc = now;
-            lead.SlaBreached = false;
+            var lead = await _ops.GetLeadAsync(leadId, ct);
+            if (lead == null) return;
+            if (organizationId != null && lead.OrganizationId != organizationId) return;
+
+            var now = DateTime.UtcNow;
+            var when = occurredAtUtc is DateTime at && at < now ? at : now;
+            // A call logged late, for yesterday, does not make yesterday's later call older.
+            if (lead.LastContactedAt is not DateTime last || when > last) lead.LastContactedAt = when;
+            if (lead.FirstResponseAtUtc == null)
+            {
+                // Spoken to before the lead was entered (met at a fair, then typed in): the
+                // answer came as soon as there was a lead to answer.
+                lead.FirstResponseAtUtc = when < lead.CreatedAtUtc ? lead.CreatedAtUtc : when;
+                lead.SlaBreached = false;
+            }
+            await RescoreAsync(lead, ct);
+            try
+            {
+                await _ops.SaveLeadAsync(lead, ct);
+                return;
+            }
+            catch (ConcurrencyConflictException) when (attempt < 3)
+            {
+            }
         }
-        await RescoreAsync(lead, ct);
-        await _ops.SaveLeadAsync(lead, ct);
     }
 
     private async Task EnrichAsync(Lead lead, CancellationToken ct)

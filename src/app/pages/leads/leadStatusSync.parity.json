@@ -1,0 +1,189 @@
+{
+  "about": [
+    "The inputs, and the expected outcome, that leadStatusSync.ts (the browser's preview) and",
+    "LeadStatusDerivation.cs (the server, which decides) must both reproduce exactly.",
+    "Read by leadStatusSync.parity.test.ts and by LeadStatusParityTests.cs.",
+    "'derive' is every combination of the categorical fields below plus the oddities in",
+    "extraPipelines, run through parsing and stage derivation. 'plan' is the first pipeline for",
+    "each derivation rule, against every vocabulary and every status in it plus extraStatuses.",
+    "Each section is one line per case, joined with newlines and hashed with SHA-256.",
+    "If you change the rule on one side, change the other to match, then put the new digests",
+    "here. Set LEAD_STATUS_PARITY_DUMP to a directory and each test writes its listing there,",
+    "so the two can be compared with diff."
+  ],
+  "fields": {
+    "outreachStatus": [null, "attempted_no_answer", "contacted"],
+    "contactOutcome": [null, "meeting_scheduled", "follow_up", "not_interested"],
+    "meetingAttended": [null, true, false],
+    "stillInterested": [null, true, false],
+    "contractStatus": [null, "yes", "to_be_sent", "profile_rejected", "no_longer_interested"],
+    "contractSigned": [null, "yes", "pending", "no"],
+    "depositStatus": [null, "paid", "pending", "not_paid"]
+  },
+  "extraPipelines": [
+    "",
+    "null",
+    "[]",
+    "\"contacted\"",
+    "{not json",
+    "{\"depositPaid\":true}",
+    "{\"depositPaid\":false}",
+    "{\"depositPaid\":\"yes\"}",
+    "{\"depositPaid\":1}",
+    "{\"depositStatus\":null,\"depositPaid\":true}",
+    "{\"depositStatus\":\"pending\",\"depositPaid\":true}",
+    "{\"meetingAttended\":1}",
+    "{\"meetingAttended\":\"true\"}",
+    "{\"stillInterested\":\"false\"}",
+    "{\"contractSigned\":\"YES\"}",
+    "{\"contractSigned\":\"Yes\"}",
+    "{\"contractStatus\":\"Yes\"}",
+    "{\"outreachStatus\":\"Contacted\"}",
+    "{\"contactOutcome\":\"Meeting Scheduled\"}",
+    "{\"contractSigned\":\"no\",\"contractSigned\":\"yes\"}",
+    "{\"outreachStatus\":\"contacted\",\"outreachDate\":\"2026-05-13\",\"meetingDate\":\"2026-05-20\",\"contractSentDate\":\"2026-05-22\",\"signatureDate\":\"2026-05-25\",\"paymentDate\":\"2026-05-28\"}",
+    "{\"stillInterested\":true,\"dropoutReason\":\"too_soon\",\"dropoutReasonPhase\":2}",
+    "{\"notes\":\"\\ud83d\",\"contractSigned\":\"yes\"}",
+    "{\"\\ud83d\":true,\"contractSigned\":\"yes\"}",
+    "{\"contractSigned\":\"\\ud83d\"}"
+  ],
+  "vocabularies": [
+    {
+      "name": "agreed",
+      "statuses": [
+        { "id": "0b9a6a6e-0000-4000-8000-000000000000", "name": "New" },
+        { "id": "0b9a6a6e-0000-4000-8000-000000000001", "name": "Attempted Contact" },
+        { "id": "0b9a6a6e-0000-4000-8000-000000000002", "name": "Contacted" },
+        { "id": "0b9a6a6e-0000-4000-8000-000000000003", "name": "Connected" },
+        { "id": "0b9a6a6e-0000-4000-8000-000000000004", "name": "Contract Pending" },
+        { "id": "0b9a6a6e-0000-4000-8000-000000000005", "name": "Awaiting Signature" },
+        { "id": "0b9a6a6e-0000-4000-8000-000000000006", "name": "Signed" },
+        { "id": "0b9a6a6e-0000-4000-8000-000000000007", "name": "Lost / Not Interested" }
+      ]
+    },
+    {
+      "name": "legacy",
+      "statuses": [
+        { "id": "New", "name": "New" },
+        { "id": "Open", "name": "Open" },
+        { "id": "Attempted Contact", "name": "Attempted Contact" },
+        { "id": "Contacted", "name": "Contacted" },
+        { "id": "Connected", "name": "Connected" },
+        { "id": "In Progress", "name": "In Progress" },
+        { "id": "Qualified", "name": "Qualified" },
+        { "id": "Unqualified", "name": "Unqualified" },
+        { "id": "Open Deal", "name": "Open Deal" },
+        { "id": "Lost", "name": "Lost" }
+      ]
+    },
+    {
+      "name": "parked",
+      "statuses": [
+        { "id": "New", "name": "New" },
+        { "id": "Contacted", "name": "Contacted" },
+        { "id": "Connected", "name": "Connected" },
+        { "id": "Contract Pending", "name": "Contract Pending" },
+        { "id": "Signed", "name": "Signed" },
+        { "id": "Lost / Not Interested", "name": "Lost / Not Interested" },
+        { "id": "Do Not Contact", "name": "Do Not Contact" },
+        { "id": "On Hold", "name": "On Hold" },
+        { "id": "Cold Outreach Q3", "name": "Cold Outreach Q3" }
+      ]
+    },
+    {
+      "name": "rich",
+      "statuses": [
+        { "id": "New", "name": "New" },
+        { "id": "Contacted", "name": "Contacted" },
+        { "id": "Negotiation", "name": "Negotiation" },
+        { "id": "Contract Signed", "name": "Contract Signed" },
+        { "id": "Qualified", "name": "Qualified" },
+        { "id": "Lost", "name": "Lost" }
+      ]
+    },
+    {
+      "name": "top",
+      "statuses": [
+        { "id": "New", "name": "New" },
+        { "id": "Contacted", "name": "Contacted" },
+        { "id": "Qualified", "name": "Qualified" },
+        { "id": "Open Deal", "name": "Open Deal" },
+        { "id": "Closed Won", "name": "Closed Won" },
+        { "id": "Lost", "name": "Lost" }
+      ]
+    },
+    {
+      "name": "deposit",
+      "statuses": [
+        { "id": "New", "name": "New" },
+        { "id": "Qualified", "name": "Qualified" },
+        { "id": "Closed Won", "name": "Closed Won" },
+        { "id": "Deposit Paid", "name": "Deposit Paid" },
+        { "id": "Lost", "name": "Lost" }
+      ]
+    },
+    {
+      "name": "sparse",
+      "statuses": [
+        { "id": "New", "name": "New" },
+        { "id": "Won", "name": "Won" },
+        { "id": "Lost", "name": "Lost" }
+      ]
+    },
+    {
+      "name": "thin",
+      "statuses": [
+        { "id": "New", "name": "New" },
+        { "id": "Contacted", "name": "Contacted" },
+        { "id": "Lost", "name": "Lost" }
+      ]
+    },
+    {
+      "name": "spelling",
+      "statuses": [
+        { "id": "new", "name": "  NEW  " },
+        { "id": "attempted", "name": "attempted-contact" },
+        { "id": "follow", "name": "follow_up" },
+        { "id": "qualified", "name": "QUALIFIED" },
+        { "id": "won", "name": "closed   won" }
+      ]
+    },
+    {
+      "name": "french",
+      "statuses": [
+        { "id": "Nouveau", "name": "Nouveau" },
+        { "id": "Contacté", "name": "Contacté" },
+        { "id": "Qualifié", "name": "Qualifié" },
+        { "id": "Perdu", "name": "Perdu" }
+      ]
+    },
+    {
+      "name": "french-pinned",
+      "statuses": [
+        { "id": "Nouveau", "name": "Nouveau" },
+        { "id": "Contacté", "name": "Contacté" },
+        { "id": "Qualifié", "name": "Qualifié" },
+        { "id": "Perdu", "name": "Perdu" }
+      ],
+      "overrides": { "new": "Nouveau", "contacted": "Contacté", "qualified": "Qualifié", "lost": "Perdu", "unqualified": "Perdu" }
+    },
+    {
+      "name": "invisible",
+      "statuses": [
+        { "id": "new", "name": "New" },
+        { "id": "bom-contacted", "name": "\ufeffContacted" },
+        { "id": "nel-signed", "name": "Signed\u0085" },
+        { "id": "lost", "name": "Lost / Not Interested" }
+      ]
+    },
+    {
+      "name": "none",
+      "statuses": []
+    }
+  ],
+  "extraStatuses": ["", "Do Not Contact", "Cold Outreach Q3", "  qualified ", "open deal", "Lost", "\ufeffContacted", "Contacted\u0085"],
+  "expected": {
+    "derive": { "cases": 8665, "sha256": "6568238ca5914e5ed06282fa4abcc20203b57c8362dd4b35369fcd2752ed2323" },
+    "plan": { "cases": 3249, "sha256": "5daea54c4489c7d0e17eb28dff7b655a698036744bdb415b3667a4ff661ce077" }
+  }
+}

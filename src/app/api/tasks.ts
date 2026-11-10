@@ -1,7 +1,9 @@
 import type { TaskItem, TaskStats, TaskStatusType, TaskPriorityType, TaskRecurrence, PagedResult } from './types';
 import { mockTasks } from './mockData';
-import { servesDemoData, authFetchJson, authFetch } from './apiClient';
+import { servesDemoData, authFetchJson, authFetch, type RequestOptions } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
+import { getCurrentUser } from '@/app/lib/auth';
+import type { WorkScope } from '@/app/lib/workScope';
 
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -13,7 +15,7 @@ const taskStore = createMockStore<TaskItem>({
   idOf: (t) => t.id,
 });
 
-interface TaskRaw {
+export interface TaskRaw {
   id: string;
   title: string;
   description?: string | null;
@@ -39,7 +41,15 @@ interface TaskRaw {
 
 const RECURRENCES: readonly string[] = ['daily', 'weekly', 'monthly'];
 
-function mapTask(d: TaskRaw): TaskItem {
+/**
+ * Demo mode's "mine": given to the demo user, or to nobody. The demo user made every
+ * demo task, so an unassigned one is theirs, as the server's rule has it.
+ */
+export function isMineInDemo(task: { assigneeId?: string }): boolean {
+  return !task.assigneeId || task.assigneeId === getCurrentUser()?.id;
+}
+
+export function mapTask(d: TaskRaw): TaskItem {
   return {
     id: d.id,
     title: d.title,
@@ -66,6 +76,8 @@ function mapTask(d: TaskRaw): TaskItem {
 }
 
 export interface GetTasksOptions {
+  /** "mine": the caller's own tasks, given to them or made by them and given to nobody. Otherwise the team's. */
+  scope?: WorkScope;
   overdueOnly?: boolean;
   status?: TaskStatusType;
   priority?: TaskPriorityType;
@@ -144,9 +156,10 @@ export async function getTasksPaged(options?: GetTasksPagedOptions): Promise<Pag
 }
 
 /** Get all tasks with optional filters (HP-1: uses /api/tasks/all to avoid 20-item truncation). */
-export async function getTasks(options?: GetTasksOptions): Promise<TaskItem[]> {
+export async function getTasks(options?: GetTasksOptions, req?: RequestOptions): Promise<TaskItem[]> {
   if (!servesDemoData()) {
     const params = new URLSearchParams();
+    if (options?.scope) params.set('scope', options.scope);
     if (options?.overdueOnly) params.set('overdueOnly', 'true');
     if (options?.status) params.set('status', options.status);
     if (options?.priority) params.set('priority', options.priority);
@@ -156,7 +169,7 @@ export async function getTasks(options?: GetTasksOptions): Promise<TaskItem[]> {
     if (options?.contactId) params.set('contactId', options.contactId);
     const q = params.toString() ? `?${params.toString()}` : '';
     // HP-1: Call /api/tasks/all endpoint which returns ALL matching tasks (not paginated)
-    const response = await authFetchJson<TaskRaw[] | PagedResult<TaskRaw>>(`/api/tasks/all${q}`);
+    const response = await authFetchJson<TaskRaw[] | PagedResult<TaskRaw>>(`/api/tasks/all${q}`, req);
     // Handle both array response and paginated response formats
     if (Array.isArray(response)) {
       return response.map(mapTask);
@@ -169,6 +182,7 @@ export async function getTasks(options?: GetTasksOptions): Promise<TaskItem[]> {
   }
   await delay(200);
   let filtered = taskStore.list();
+  if (options?.scope === 'mine') filtered = filtered.filter(isMineInDemo);
   if (options?.overdueOnly) {
     const now = new Date();
     filtered = filtered.filter((t) => !t.completed && t.dueDateUtc && new Date(t.dueDateUtc) < now);
@@ -244,10 +258,10 @@ export async function getTasksByContact(contactId: string): Promise<TaskItem[]> 
   return [];
 }
 
-/** Get task statistics. */
-export async function getTaskStats(): Promise<TaskStats> {
+/** Get task statistics: the caller's own tasks for "mine", else the team's. */
+export async function getTaskStats(scope?: WorkScope, req?: RequestOptions): Promise<TaskStats> {
   if (!servesDemoData()) {
-    const stats = await authFetchJson<TaskStats>('/api/tasks/stats');
+    const stats = await authFetchJson<TaskStats>(scope ? `/api/tasks/stats?scope=${scope}` : '/api/tasks/stats', req);
     return stats ?? {
       total: 0,
       todo: 0,
@@ -261,7 +275,7 @@ export async function getTaskStats(): Promise<TaskStats> {
   }
   await delay(100);
   // Mock stats
-  const tasks = taskStore.list();
+  const tasks = scope === 'mine' ? taskStore.list().filter(isMineInDemo) : taskStore.list();
   const now = new Date();
   const today = new Date(now);
   today.setHours(0, 0, 0, 0);

@@ -12,11 +12,14 @@ internal sealed class DealConfiguration : IEntityTypeConfiguration<Deal>
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Name).HasMaxLength(512).IsRequired();
         builder.Property(e => e.Value).HasMaxLength(64).IsRequired();
+        builder.Property(e => e.Amount).HasPrecision(18, 2);
         builder.Property(e => e.Currency).HasMaxLength(8);
         builder.Property(e => e.Stage).HasMaxLength(128);
         builder.Property(e => e.Description).HasMaxLength(2000);
         builder.Property(e => e.ClosedReason).HasMaxLength(500);
         builder.Property(e => e.ClosedReasonCategory).HasMaxLength(50);
+        // An edit made from an older read of the deal is refused, not written over the newer one. See IVersioned.
+        builder.Property(e => e.Version).IsConcurrencyToken();
         builder.HasOne(e => e.User).WithMany(u => u.Deals).HasForeignKey(e => e.UserId);
         builder.HasOne(e => e.Organization).WithMany().HasForeignKey(e => e.OrganizationId).IsRequired(false);
         builder.HasOne(e => e.Pipeline).WithMany(p => p.Deals).HasForeignKey(e => e.PipelineId).IsRequired(false);

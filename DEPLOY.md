@@ -131,7 +131,11 @@ The script prints:
 
 ### How the Azure database is updated
 
-The backend runs **EF Core migrations on startup** (`Program.cs` → `MigrateAsync()`). When you deploy the backend to the Azure Web App, the app starts and applies any pending migrations (e.g. **SalesCrmCore**: Leads, TaskItems, Activities, Contact.Phone, Deal.ContactId, ExpectedCloseDateUtc, IsWon) to the Azure SQL database. No separate “run migration” step is needed as long as the Web App has the correct connection string (the create script sets `ConnectionStrings__DefaultConnection`).
+The schema comes from the **EF Core migrations** in `backend/src/ACI.Infrastructure/Migrations`, applied by the backend **on startup** (`Program.cs` → `MigrateAsync()`). No separate “run migration” step is needed as long as the Web App has the correct connection string (the create script sets `ConnectionStrings__DefaultConnection`). Two instances starting together take turns (a SQL Server application lock), so a scale-out or slot swap does not run a migration twice.
+
+- **A new, empty database** is made by the migrations, starting with the **baseline** migration, which creates the whole schema.
+- **A database made before the baseline** (production, and any copy of it) already has those tables. On the first start of the release that brought the baseline, the old start-up DDL brings it fully up to date, then the baseline is **recorded** in `__EFMigrationsHistory` without being run. In the log: `Recorded the baseline migration ... without running it`. A plain index the baseline has and the database lacks is made just before. Anything that still differs from the model (a missing unique index or foreign key, a type) is logged once as a warning, `The database differs from the baseline: ...`; read those before writing a migration that touches the same objects. If the database still lacks a table or column the model maps, the baseline is **not** recorded: `/db-status` reports the error and the log lists what is missing.
+- **Changing the schema** is a new migration, never new start-up DDL. From `backend/`: `dotnet ef migrations add <Name> -p src/ACI.Infrastructure -s src/ACI.Infrastructure -o Migrations` (needs the `dotnet-ef` tool, version 8). The backend tests fail when the model has a change no migration makes.
 
 ### Publish the website (frontend + backend)
 
@@ -151,7 +155,7 @@ The backend runs **EF Core migrations on startup** (`Program.cs` → `MigrateAsy
 | Check | How |
 |-------|-----|
 | Backend is live | Open `https://<AZURE_WEBAPP_NAME>.azurewebsites.net` (or `/swagger`). You should get 200 or 401, not 500. |
-| Database is updated | After a backend deploy, open Swagger or use the app: create a Lead, Task, or Activity. If those work, the SalesCrmCore migration was applied. |
+| Database is updated | After a backend deploy, `GET /db-status` answers `"status":"ok"`, and `SELECT MigrationId FROM __EFMigrationsHistory` lists the baseline and every migration after it. |
 | Frontend is live | Open your Static Web App URL (e.g. `https://<name>.azurestaticapps.net`). The app should load. |
 | Frontend → backend | Log in from the Static Web App. If `VITE_API_URL` is set correctly, login and data (leads, deals, etc.) use the Azure backend. |
 | CORS | If the frontend shows CORS errors when calling the API, ensure the Web App has `Cors__AllowedOrigins` including your Static Web App host (the create script sets this). |
@@ -162,7 +166,7 @@ The backend runs **EF Core migrations on startup** (`Program.cs` → `MigrateAsy
 
 ### Optional: run migrations against Azure from your machine
 
-If you need to apply migrations to Azure SQL without redeploying (e.g. you have the connection string and want to update the DB from local):
+If you need to apply migrations to Azure SQL without redeploying (e.g. you have the connection string and want to update the DB from local). Only on a database whose `__EFMigrationsHistory` already holds the baseline: on one made before it, start the backend once first, which records the baseline after bringing the database up to date. Run on such a database, `database update` would try to create every table again and stop at the first.
 
 1. Get the connection string from **Azure Portal** → your Web App → **Configuration** → **Application settings** → `ConnectionStrings__DefaultConnection` (or Connection strings).
 2. From the repo root:

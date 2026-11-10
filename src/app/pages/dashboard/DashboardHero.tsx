@@ -12,8 +12,9 @@ import {
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import PageHero, { heroPrimary, heroSecondary, type PageStat } from '@/app/components/PageHero';
-import { formatMoney } from '@/app/lib/money';
+import { useMoney } from '@/app/hooks/useMoney';
 import type { DashboardStats } from './types';
+import { RetryButton } from '@/app/components/LoadFailed';
 
 interface DashboardHeroProps {
   displayName: string;
@@ -23,6 +24,10 @@ interface DashboardHeroProps {
   loaded: boolean;
   /** True when the request failed, so nothing here can be trusted. */
   failed: boolean;
+  /** Read the figures again; shown with the failure. */
+  onRetry?: () => void;
+  /** A retry is on its way. */
+  retrying?: boolean;
 }
 
 /**
@@ -37,8 +42,10 @@ function figure(value: number | undefined, loaded: boolean): number | string {
   return value;
 }
 
-export function DashboardHero({ displayName, stats, loaded, failed }: DashboardHeroProps) {
+export function DashboardHero({ displayName, stats, loaded, failed, onRetry, retrying }: DashboardHeroProps) {
   const navigate = useNavigate();
+  // In the workspace's number format, like every other amount in the app.
+  const money = useMoney();
   const others = (stats?.pipelineByCurrency ?? []).slice(1);
   const unreadable = stats?.unreadableValueCount ?? 0;
   const today = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
@@ -52,7 +59,7 @@ export function DashboardHero({ displayName, stats, loaded, failed }: DashboardH
       icon: TrendingUp,
       tone: 'orange',
       hint: loaded && stats ? `in ${stats.pipelineCurrency}` : undefined,
-      format: stats ? (n) => formatMoney(n, stats.pipelineCurrency) : undefined,
+      format: stats ? (n) => money.format(n, stats.pipelineCurrency) : undefined,
     },
     {
       label: 'Active Leads',
@@ -119,17 +126,18 @@ export function DashboardHero({ displayName, stats, loaded, failed }: DashboardH
           {failed && (
             <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50/90 px-3 py-2">
               <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden />
-              <p className="text-sm text-amber-800">
+              <p className="flex-1 text-sm text-amber-800">
                 <strong className="font-semibold">These figures could not be loaded.</strong>{' '}
-                The dashes above are missing data, not zeros. Reload to try again.
+                The dashes above are missing data, not zeros.{onRetry ? '' : ' Reload to try again.'}
               </p>
+              {onRetry && <RetryButton onRetry={onRetry} retrying={retrying} />}
             </div>
           )}
           {/* Other currencies are listed, never folded into the pipeline figure:
               there is no exchange rate in this system to fold them with. */}
           {(others.length > 0 || unreadable > 0) && (
             <p className="text-xs text-slate-500">
-              {others.length > 0 && <>Open pipeline also has {others.map((c) => formatMoney(c.value, c.currency)).join(' and ')}.</>}
+              {others.length > 0 && <>Open pipeline also has {others.map((c) => money.format(c.value, c.currency)).join(' and ')}.</>}
               {others.length > 0 && unreadable > 0 && ' '}
               {unreadable > 0 && (
                 <span className="font-medium text-slate-600">

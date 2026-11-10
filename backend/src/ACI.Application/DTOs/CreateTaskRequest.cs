@@ -75,4 +75,20 @@ public record CreateTaskRequest
     /// <summary>none, daily, weekly, or monthly.</summary>
     [StringLength(16)]
     public string? Recurrence { get; init; }
+
+    /// <summary>
+    /// The automation or sequence that made the task, when no person did ("the automation
+    /// "New web lead""). The assignee's notification names it, rather than whoever set
+    /// it off, who did not hand them anything. Not bindable from a request body.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? MadeBy { get; init; }
+
+    /// <summary>
+    /// Made by a rule for a row of an import. The task is the assignee's to do, but
+    /// nobody's bell is told: an import is not new work arriving, and a line per row
+    /// buried the bell. Not bindable from a request body.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool FromImport { get; init; }
 }

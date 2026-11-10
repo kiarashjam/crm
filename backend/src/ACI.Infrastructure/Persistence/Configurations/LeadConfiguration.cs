@@ -22,6 +22,8 @@ internal sealed class LeadConfiguration : IEntityTypeConfiguration<Lead>
         builder.Property(e => e.Industry).HasMaxLength(120);
         builder.Property(e => e.CompanySize).HasMaxLength(40);
         builder.Property(e => e.EnrichedDomain).HasMaxLength(200);
+        // An edit made from an older read of the lead is refused, not written over the newer one. See IVersioned.
+        builder.Property(e => e.Version).IsConcurrencyToken();
 
         // Relationships
         builder.HasOne(e => e.User).WithMany(u => u.Leads).HasForeignKey(e => e.UserId);
@@ -44,5 +46,7 @@ internal sealed class LeadConfiguration : IEntityTypeConfiguration<Lead>
         builder.HasIndex(e => e.ReferredByContactId);
         builder.HasIndex(e => new { e.OrganizationId, e.CreatedAtUtc });
         builder.HasIndex(e => new { e.OrganizationId, e.Status });
+        // Undoing an import finds the records it created by this.
+        builder.HasIndex(e => e.ImportBatchId);
     }
 }

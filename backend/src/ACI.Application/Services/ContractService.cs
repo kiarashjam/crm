@@ -24,9 +24,10 @@ namespace ACI.Application.Services;
 /// <para>
 /// The contract flow also DRIVES the lead's five-phase pipeline rather than
 /// sitting beside it: sending satisfies the Contract phase, execution satisfies
-/// the Signature phase, and the status auto-sync already in the product carries
-/// that through to the lead's status. Without it you would get a fully executed
-/// contract next to a lead still reading "Contacted".
+/// the Signature phase, and <see cref="ILeadStatusSync"/> carries that through to
+/// the lead's status, score and automations on the server. The status used to be
+/// worked out only in the browser, so a contract signed at night left a fully
+/// executed contract next to a lead still reading "Contract Pending".
 /// </para>
 /// </remarks>
 public class ContractService : IContractService
@@ -38,6 +39,7 @@ public class ContractService : IContractService
     private readonly IEmailSender _email;
     private readonly EmailSettings _emailSettings;
     private readonly ILogger<ContractService> _logger;
+    private readonly ILeadStatusSync _statusSync;
 
     public ContractService(
         IContractRepository contracts,
@@ -46,7 +48,9 @@ public class ContractService : IContractService
         IUserRepository users,
         IEmailSender email,
         IOptions<EmailSettings> emailSettings,
-        ILogger<ContractService> logger)
+        ILogger<ContractService> logger,
+        ILeadStatusSync statusSync,
+        ITenantContext? tenant = null)
     {
         _contracts = contracts;
         _leads = leads;
@@ -55,7 +59,18 @@ public class ContractService : IContractService
         _email = email;
         _emailSettings = emailSettings.Value;
         _logger = logger;
+        _statusSync = statusSync;
+        _tenant = tenant;
     }
+
+    private readonly ITenantContext? _tenant;
+
+    /// <summary>
+    /// Reads and writes as the contract's workspace until disposed. The counterparty signs
+    /// in to nothing, so a signing link's request starts in no workspace; the link names
+    /// the contract, and the contract its workspace (the lead it moves, its owner's notice).
+    /// </summary>
+    private IDisposable? ActFor(Contract contract) => _tenant?.ActFor(contract.OrganizationId, contract.CreatedByUserId);
 
     /* ------------------------------------------------------- step 1: draft */
 
@@ -248,7 +263,7 @@ public class ContractService : IContractService
                 : $"Link created for {contract.CounterpartyEmail}, but the email could not be sent",
             userId, null, null, null, ct);
 
-        await ApplyPipelineEffectAsync(contract, userId, organizationId, ct);
+        await ApplyPipelineEffectAsync(contract, userId, organizationId, userId, ct);
 
         var dto = await ToDtoAsync(contract, ct);
         return Result.Success(new SendContractResult(dto with { SigningUrl = signingUrl }, emailSent, signingUrl));
@@ -261,6 +276,7 @@ public class ContractService : IContractService
     {
         var (contract, error) = await ResolveTokenAsync(rawToken, ct);
         if (contract is null) return Result.Failure<PublicContractDto>(error);
+        using var acting = ActFor(contract);
 
         if (contract.FirstViewedAtUtc is null)
         {
@@ -280,6 +296,7 @@ public class ContractService : IContractService
     {
         var (contract, error) = await ResolveTokenAsync(rawToken, ct);
         if (contract is null) return Result.Failure<PublicContractDto>(error);
+        using var acting = ActFor(contract);
 
         if (!ContractStateMachine.Can(contract.Status, ContractActions.ClientSign))
             return Result.Failure<PublicContractDto>(DomainErrors.Contract.NotAllowedInThisState);
@@ -318,6 +335,7 @@ public class ContractService : IContractService
     {
         var (contract, error) = await ResolveTokenAsync(rawToken, ct);
         if (contract is null) return Result.Failure<PublicContractDto>(error);
+        using var acting = ActFor(contract);
 
         if (!ContractStateMachine.Can(contract.Status, ContractActions.Decline))
             return Result.Failure<PublicContractDto>(DomainErrors.Contract.NotAllowedInThisState);
@@ -336,8 +354,9 @@ public class ContractService : IContractService
             contract.ClosedReason ?? "Declined by the counterparty",
             null, contract.CounterpartyName, ip, userAgent, ct);
 
-        // Their decision, and the pipeline has a word for it.
-        await ApplyPipelineEffectAsync(contract, contract.CreatedByUserId, contract.OrganizationId, ct);
+        // Their decision, and the pipeline has a word for it. Nobody in the workspace
+        // made the change, so the status history credits nobody.
+        await ApplyPipelineEffectAsync(contract, contract.CreatedByUserId, contract.OrganizationId, null, ct);
 
         return Result.Success(await ToPublicDtoAsync(contract, ct));
     }
@@ -391,7 +410,7 @@ public class ContractService : IContractService
         await LogEventAsync(contract.Id, "countersigned",
             $"Countersigned by {contract.CounterSignatureName}", userId, contract.CounterSignatureName, ip, null, ct);
 
-        await ApplyPipelineEffectAsync(contract, userId, organizationId, ct);
+        await ApplyPipelineEffectAsync(contract, userId, organizationId, userId, ct);
         await SendExecutedCopiesAsync(contract, userId, ct);
 
         return Result.Success(await ToDtoAsync(contract, ct));
@@ -541,6 +560,7 @@ public class ContractService : IContractService
     {
         var (contract, error) = await ResolveTokenAsync(rawToken, ct);
         if (contract is null) return Result.Failure<ContractDocument>(error);
+        using var acting = ActFor(contract);
 
         var org = await _organizations.GetByIdAsync(contract.OrganizationId, ct);
         return Document(contract, org?.Name ?? "");
@@ -762,40 +782,55 @@ public class ContractService : IContractService
     /// <remarks>
     /// The pipeline is a JSON blob the frontend owns, so this merges into it by key
     /// rather than replacing it — anything else would wipe the outreach and meeting
-    /// phases the moment a contract was sent.
+    /// phases the moment a contract was sent. The lead's status then follows on the
+    /// server: often nobody has the lead open when a counterparty signs or declines.
     /// </remarks>
-    private async Task ApplyPipelineEffectAsync(Contract contract, Guid userId, Guid organizationId, CancellationToken ct)
+    private async Task ApplyPipelineEffectAsync(Contract contract, Guid userId, Guid organizationId, Guid? changedByUserId, CancellationToken ct)
     {
         if (contract.LeadId is null) return;
 
         var effect = PipelineEffectFor(contract.Status);
         if (effect.Count == 0) return;
 
-        var lead = await _leads.GetByIdAsync(contract.LeadId.Value, userId, organizationId, ct);
-        if (lead is null) return;
-
-        JsonObject state;
-        try
+        // A lead saved by someone else between the read and the save below refuses the save
+        // (see IVersioned). The contract has already moved on and its email may have gone,
+        // so the steps are merged into the newer copy instead of failing the request.
+        for (var attempt = 1; ; attempt++)
         {
-            state = string.IsNullOrWhiteSpace(lead.PipelineState)
-                ? new JsonObject()
-                : JsonNode.Parse(lead.PipelineState!)?.AsObject() ?? new JsonObject();
-        }
-        catch (JsonException)
-        {
-            // A corrupt blob must not stop the contract flow, and must not be
-            // silently replaced either — start fresh but say so.
-            _logger.LogWarning("Lead {LeadId} has unparseable pipelineState; starting a fresh object", lead.Id);
-            state = new JsonObject();
-        }
+            var lead = await _leads.GetByIdAsync(contract.LeadId.Value, userId, organizationId, ct);
+            if (lead is null) return;
 
-        foreach (var (key, value) in effect) state[key] = value;
+            JsonObject state;
+            try
+            {
+                state = string.IsNullOrWhiteSpace(lead.PipelineState)
+                    ? new JsonObject()
+                    : JsonNode.Parse(lead.PipelineState!)?.AsObject() ?? new JsonObject();
+            }
+            catch (JsonException)
+            {
+                // A corrupt blob must not stop the contract flow, and must not be
+                // silently replaced either — start fresh but say so.
+                _logger.LogWarning("Lead {LeadId} has unparseable pipelineState; starting a fresh object", lead.Id);
+                state = new JsonObject();
+            }
 
-        lead.PipelineState = state.ToJsonString();
-        await _leads.UpdateAsync(lead, userId, organizationId, ct);
-        _logger.LogInformation(
-            "Contract {ContractId} advanced lead {LeadId} pipeline: {Keys}",
-            contract.Id, lead.Id, string.Join(", ", effect.Keys));
+            foreach (var (key, value) in effect) state[key] = value;
+
+            lead.PipelineState = state.ToJsonString();
+            try
+            {
+                await _statusSync.SaveAsync(lead, userId, organizationId, changedByUserId, ct);
+            }
+            catch (ConcurrencyConflictException) when (attempt < 3)
+            {
+                continue;
+            }
+            _logger.LogInformation(
+                "Contract {ContractId} advanced lead {LeadId} pipeline: {Keys}",
+                contract.Id, lead.Id, string.Join(", ", effect.Keys));
+            return;
+        }
     }
 
     /// <summary>

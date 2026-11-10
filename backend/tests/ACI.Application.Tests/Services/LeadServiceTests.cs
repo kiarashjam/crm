@@ -27,9 +27,6 @@ public class LeadServiceTests
         _contactRepositoryMock
             .Setup(r => r.EnsurePersonContactAsync(It.IsAny<Lead>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
-        _contactRepositoryMock
-            .Setup(r => r.EnsureMissingPersonContactsAsync(It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
         _dealRepositoryMock = new Mock<IDealRepository>();
         _loggerMock = new Mock<ILogger<LeadService>>();
         var automation = new Mock<ILeadAutomation>();
@@ -49,6 +46,7 @@ public class LeadServiceTests
             _dealRepositoryMock.Object,
             automation.Object,
             WorkspaceRecordsMock.InWorkspace().Object,
+            new StatusSyncHarness().Create(_leadRepositoryMock.Object, automation.Object),
             _loggerMock.Object);
     }
 

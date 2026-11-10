@@ -12,7 +12,8 @@ import CustomFieldsCard from '@/app/components/CustomFieldsCard';
 import AttachmentsCard from '@/app/components/AttachmentsCard';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { getCompanies, getContactsPaged, getDealsPaged, updateCompany, deleteCompany, messages } from '@/app/api';
+import { getCompanies, getCompanyById, getContactsPaged, getDealsPaged, updateCompany, deleteCompany, messages } from '@/app/api';
+import { isEditConflict, showEditConflict } from '@/app/lib/editConflict';
 import { authFetchJson, servesDemoData } from '@/app/api/apiClient';
 import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
 import type { Company, Contact, Deal } from '@/app/api/types';
@@ -32,11 +33,13 @@ import PageHero, { heroSecondary } from '@/app/components/PageHero';
 import { RecordAvatar, RecordCard, initialsOf } from '@/app/components/RecordCard';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import { cn } from '@/app/components/ui/utils';
-import { currencyOf, formatDealSum, formatMoney, parseAmount } from '@/app/lib/money';
+import { useMoney } from '@/app/hooks/useMoney';
+import { PERMISSION } from '@/app/api/organizations';
 
 type CompanyRaw = Company & Record<string, unknown>;
 
 export default function CompanyDetail() {
+  const money = useMoney();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [company, setCompany] = useState<Company | null>(null);
@@ -139,14 +142,26 @@ export default function CompanyDetail() {
         description: editForm.description.trim(),
         website: editForm.website.trim(),
         location: editForm.location.trim(),
+        // Refused, rather than written over, when someone saved the company since.
+        version: company.version,
       });
       if (updated) {
         setCompany(updated);
         toast.success('Company updated');
         setEditOpen(false);
       }
-    } catch {
-      toast.error(messages.errors?.generic || 'Failed to update company');
+    } catch (err) {
+      if (isEditConflict(err)) {
+        // The latest copy refills the form (the effect above), for the change to be made again.
+        const companyId = company.id;
+        showEditConflict(err.message, () => {
+          void getCompanyById(companyId)
+            .then((fresh) => { if (fresh) setCompany(fresh); })
+            .catch(() => toast.error('Failed to load company'));
+        });
+      } else {
+        toast.error(messages.errors?.generic || 'Failed to update company');
+      }
     } finally {
       setEditing(false);
     }
@@ -246,7 +261,7 @@ export default function CompanyDetail() {
                     <Pencil className="h-4 w-4" /> Edit
                   </Button>
                 </WriteOnly>
-                <WriteOnly>
+                <WriteOnly permission={[PERMISSION.EditRecords, PERMISSION.DeleteRecords]} all>
                   <Button
                     variant="outline"
                     onClick={() => setDeleteOpen(true)}
@@ -260,7 +275,7 @@ export default function CompanyDetail() {
             }
             stats={[
               { label: 'Contacts', value: contacts.length, icon: Users, tone: 'emerald', hint: contacts[0] ? `incl. ${contacts[0].name}` : 'none yet' },
-              { label: 'Deals', value: deals.length, icon: Briefcase, tone: 'violet', hint: deals.length > 0 ? `${formatDealSum(deals)} in all` : 'none yet' },
+              { label: 'Deals', value: deals.length, icon: Briefcase, tone: 'violet', hint: deals.length > 0 ? `${money.formatDeals(deals)} in all` : 'none yet' },
               { label: 'Industry', value: company.industry || '—', icon: Building2, tone: 'blue', hint: company.size ? `${company.size} people` : undefined },
               { label: 'Since', value: createdLabel ?? '—', icon: Clock, tone: 'amber', hint: company.updatedAtUtc ? `updated ${new Date(company.updatedAtUtc).toLocaleDateString()}` : undefined },
             ]}
@@ -332,9 +347,9 @@ export default function CompanyDetail() {
                               )}
                             </div>
                           </div>
-                          {deal.value && (
+                          {deal.amount != null && (
                             <span className="shrink-0 text-sm font-bold text-emerald-700">
-                              {formatMoney(parseAmount(deal.value), currencyOf(deal))}
+                              {money.formatDeal(deal)}
                             </span>
                           )}
                         </Link>

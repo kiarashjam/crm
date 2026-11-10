@@ -3,11 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-const api = { sendEmail: vi.fn(), createActivity: vi.fn(), generateCopy: vi.fn() };
+const api = { sendEmail: vi.fn(), cancelEmail: vi.fn(), createActivity: vi.fn(), generateCopy: vi.fn() };
 vi.mock('@/app/api', async () => {
   const { mailtoHref } = await vi.importActual<typeof import('@/app/api/email')>('@/app/api/email');
   return {
     sendEmail: (...a: unknown[]) => api.sendEmail(...a),
+    cancelEmail: (...a: unknown[]) => api.cancelEmail(...a),
     createActivity: (...a: unknown[]) => api.createActivity(...a),
     generateCopy: (...a: unknown[]) => api.generateCopy(...a),
     isUsingRealApi: () => true,
@@ -15,7 +16,7 @@ vi.mock('@/app/api', async () => {
     mailtoHref,
   };
 });
-const toast = { success: vi.fn(), error: vi.fn() };
+const toast = { success: vi.fn(), error: vi.fn(), info: vi.fn() };
 vi.mock('sonner', () => ({ toast }));
 
 const EmailComposerDialog = (await import('./EmailComposerDialog')).default;
@@ -34,13 +35,57 @@ async function send() {
 }
 
 describe('EmailComposerDialog', () => {
-  it('says sent, and logs it, when the server sent it', async () => {
+  it('says sent when the server sent it, and leaves the timeline entry to the server', async () => {
+    // The server writes the email on the record's timeline once it has gone. The
+    // composer wrote one as well, so every email showed twice.
     api.sendEmail.mockResolvedValue({ id: 'e1', status: 'sent' });
     const onOpenChange = await send();
 
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Email sent'));
-    expect(api.createActivity).toHaveBeenCalledWith(expect.objectContaining({ type: 'email', leadId: 'l1' }));
+    expect(api.sendEmail).toHaveBeenCalledWith(expect.objectContaining({ to: 'jean@example.ch', leadId: 'l1' }));
+    expect(api.createActivity).not.toHaveBeenCalled();
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('says a queued email is not sent yet, offers to cancel it, and no email-app way out', async () => {
+    api.sendEmail.mockResolvedValue({ id: 'e1', status: 'queued' });
+    api.cancelEmail.mockResolvedValue(undefined);
+    const onOpenChange = await send();
+
+    await waitFor(() => expect(toast.info).toHaveBeenCalled());
+    const [text, options] = toast.info.mock.calls[0]!;
+    expect(text).toMatch(/^Not sent yet/);
+    expect(options.action.label).toBe('Cancel sending');
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+
+    options.action.onClick();
+    await waitFor(() => expect(api.cancelEmail).toHaveBeenCalledWith('e1'));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Cancelled. It will not be sent.'));
+  });
+
+  it('when the address bounced: the reason, and no email-app way round it', async () => {
+    api.sendEmail.mockRejectedValue(new ApiError(
+      'jean@example.ch bounced on 3 Nov 2026, so email to it is suppressed and nothing was sent.', 400, '/api/email/send', true, 'Email.Suppressed'));
+    await send();
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    const [, options] = toast.error.mock.calls[0]!;
+    expect(options?.action).toBeUndefined();
+  });
+
+  it('when a placeholder has nothing to fill it: the reason, and no email-app way round it', async () => {
+    // The server fills {{firstName}} and the rest; the email app would get them as typed.
+    api.sendEmail.mockRejectedValue(new ApiError(
+      'This email uses {{firstName}}, which has nothing to fill it with here, so it was not sent. Fill it in on the record, remove it, or give it a fallback: {{firstName|…}}',
+      400, '/api/email/send', true, 'Email.MergeField'));
+    const onOpenChange = await send();
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    const [text, options] = toast.error.mock.calls[0]!;
+    expect(text).toMatch(/^This email uses \{\{firstName\}\}/);
+    expect(options?.action).toBeUndefined();
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });
 
   it('when the send fails: the reason, an email-app way out, no "sent" and no timeline entry', async () => {

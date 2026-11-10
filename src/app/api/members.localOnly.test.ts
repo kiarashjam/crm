@@ -1,15 +1,16 @@
-// Members end to end, as production runs it today: the backend has no members
-// endpoint, so every call 404s and the list lives in this browser.
+// Members against a server too old to have the members route.
 //
-// This is the case the scoping exists for. Two organizations opened in one
-// browser must keep separate lists, nobody should be shown the demo people
-// (Amelia, Daniel, Priya, ...) as if they were real members, and a Viewer's save
-// must be refused by the server rather than quietly kept on the device.
+// Production once ran without one, and every call fell back to this browser: the
+// list a manager entered on a laptop was invisible to the front desk's iPad, and
+// the save looked like it had worked. Real records are now never kept in the
+// browser. The call fails, says so, and nothing is left behind on the device; demo
+// data still lives in the browser, as it always did.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { server } from '@/test/mocks/server';
 import { createMember, getMembers, type MemberInput } from './members';
+import { NOT_ON_SERVER_MESSAGE } from './apiClient';
 import { isLocalOnly, resetLocalOnly } from './localOnly';
 
 const BASE = 'http://api.test';
@@ -34,13 +35,18 @@ function signIn(orgId: string) {
   localStorage.setItem('aci_org_id', orgId);
 }
 
+/** Every row this browser keeps for members, in any workspace. */
+function keptInBrowser(): string[] {
+  return Object.keys(localStorage).filter((key) => key.startsWith('crm.mock.members'));
+}
+
 beforeEach(() => {
   localStorage.clear();
   resetLocalOnly();
   viewer = false;
   vi.stubEnv('VITE_API_URL', BASE);
-  // What the deployed backend does: no route for members, and the read-only
-  // middleware refuses a Viewer's write before routing is even considered.
+  // A server with no route for members; its read-only middleware still refuses a
+  // Viewer's write before routing is considered.
   server.use(
     http.get(`${BASE}/api/members`, () => new HttpResponse(null, { status: 404 })),
     http.post(`${BASE}/api/members`, () =>
@@ -51,35 +57,32 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllEnvs());
 
-describe('members with no backend endpoint', () => {
-  it('shows no demo members to a signed-in user', async () => {
+describe('members when the server has no members route', () => {
+  it('says the list cannot be read, instead of showing a browser copy', async () => {
     signIn('org-a');
-    expect(await getMembers()).toEqual([]);
+    await expect(getMembers()).rejects.toThrow(NOT_ON_SERVER_MESSAGE);
+    expect(isLocalOnly(['members'])).toBe(false);
   });
 
-  it('flags the feature as saved on this device only', async () => {
+  it('refuses a new member and keeps nothing in this browser', async () => {
     signIn('org-a');
-    await getMembers();
-    expect(isLocalOnly(['members'])).toBe(true);
+    await expect(createMember(input)).rejects.toThrow(NOT_ON_SERVER_MESSAGE);
+    expect(keptInBrowser()).toEqual([]);
   });
 
-  it('keeps two organizations apart in the same browser', async () => {
-    signIn('org-a');
-    await createMember(input);
-    expect((await getMembers()).map((m) => m.email)).toEqual(['ines@example.com']);
-
-    signIn('org-b');
-    expect(await getMembers()).toEqual([]);
-
-    signIn('org-a');
-    expect(await getMembers()).toHaveLength(1);
-  });
-
-  it("refuses a Viewer's new member instead of saving it locally", async () => {
+  it("still refuses a Viewer's new member with the server's own reason", async () => {
     signIn('org-a');
     viewer = true;
     await expect(createMember(input)).rejects.toThrow('read-only');
-    viewer = false;
-    expect(await getMembers()).toEqual([]);
+    expect(keptInBrowser()).toEqual([]);
+  });
+});
+
+describe('members with demo data', () => {
+  it('keeps them in this browser, as before', async () => {
+    vi.stubEnv('VITE_API_URL', '');
+    const before = (await getMembers()).length;
+    await createMember(input);
+    expect(await getMembers()).toHaveLength(before + 1);
   });
 });

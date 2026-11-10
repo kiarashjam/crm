@@ -16,4 +16,7 @@ public record ContactDto(
     string? CompanyName = null,
     DateTime? CreatedAtUtc = null,
     DateTime? UpdatedAtUtc = null,
-    string? Description = null);
+    string? Description = null,
+    // The contact as of this read. An edit that sends it back is refused once anyone has
+    // saved the contact since (see UpdateContactRequest.Version).
+    Guid? Version = null);

@@ -1,37 +1,144 @@
-// Money formatting and summing, in one place.
+// Money: reading what someone types into an amount field, writing an amount in a
+// workspace's currency and locale, and adding deals up per currency.
 //
-// Four separate places hardcoded `currency: 'USD'` in an Intl.NumberFormat, so an
-// organisation billing in CHF saw dollar signs on the pipeline board, the deal
-// line items and the reports. Worse, the sum helpers added every deal's value
-// together regardless of currency, producing a headline figure that was not a
-// quantity of anything.
+// A deal's value used to be free text, and the board, the Reports page, the dashboard
+// and the company totals each read it with a parser of their own. They disagreed:
+// "1.234,56" was 1234.56 on one page and 1.23 on another, and the board added francs
+// and euros into one "CHF" figure. The server now keeps every deal's amount as a
+// number to the cent (Deal.amount) in an ISO currency, and every page here reads that
+// number. Text is read in one place only: what a person types (parseMoneyInput).
 //
-// There is no exchange rate anywhere in this system, so nothing here converts.
-// When a set of deals spans currencies the dominant one is shown and the
-// existence of the others is disclosed, because a visibly incomplete total is
-// safer than an invisibly wrong one.
+// The workspace says what it works in (its currency, locale and time zone, set by an
+// owner or manager in Settings), and useMoney formats through it. There is no
+// exchange rate anywhere, so nothing here converts: amounts in different currencies
+// are totalled apart and shown apart.
 
 import type { Deal } from '@/app/api/types';
 
+export const DEFAULT_CURRENCY = 'CHF';
+export const DEFAULT_LOCALE = 'de-CH';
+export const DEFAULT_TIME_ZONE = 'Europe/Zurich';
+
+/** The currencies the deal and settings pickers offer. A record in another code is still shown in it. */
+export const CURRENCIES: { code: string; name: string }[] = [
+  { code: 'CHF', name: 'Swiss franc' },
+  { code: 'EUR', name: 'Euro' },
+  { code: 'USD', name: 'US dollar' },
+  { code: 'GBP', name: 'British pound' },
+  { code: 'CAD', name: 'Canadian dollar' },
+  { code: 'AUD', name: 'Australian dollar' },
+  { code: 'JPY', name: 'Japanese yen' },
+];
+
+/** The picker's currencies, with `current` added when a record is in one the list does not have. */
+export function currencyOptions(current?: string | null): { code: string; name: string }[] {
+  const code = normaliseCurrency(current, '');
+  return code && !CURRENCIES.some((c) => c.code === code) ? [...CURRENCIES, { code, name: code }] : CURRENCIES;
+}
+
+/** What a workspace works in. */
+export interface Regional {
+  /** ISO 4217 code new deals are priced in. */
+  currency: string;
+  /** BCP 47 name amounts are written for ("de-CH"): the number format. Dates stay in the viewer's language. */
+  locale: string;
+  /** IANA zone the workspace's days and months begin in ("Europe/Zurich"). */
+  timeZone: string;
+}
+
+/** A currency code, upper-cased, or `fallback` when the text is not three letters. */
+export function normaliseCurrency(code?: string | null, fallback: string = DEFAULT_CURRENCY): string {
+  const c = String(code ?? '').trim().toUpperCase();
+  return /^[A-Z]{3}$/.test(c) ? c : fallback;
+}
+
+function knownLocale(locale?: string | null): string | null {
+  if (!locale) return null;
+  try {
+    return Intl.NumberFormat.supportedLocalesOf([locale]).length > 0 ? locale : null;
+  } catch {
+    return null;
+  }
+}
+
+function knownZone(zone?: string | null): string | null {
+  if (!zone) return null;
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: zone });
+    return zone;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * An amount out of a free-text money field, or null when there is no number in it.
- *
- * Deal values are typed by hand, so they arrive in whichever notation the writer
- * uses. The first version of this stripped everything but digits, dots and
- * minus — which read "1.234,56" as 1.23456 and "85.500" as 85.5, understating a
- * European-formatted deal by three orders of magnitude.
- *
- * Where both separators appear the LAST one is the decimal point, which settles
- * "1,234.56" and "1.234,56" without knowing the writer's locale. A lone comma is
- * a decimal point only with one or two digits after it, so "85,500" stays
- * eighty-five thousand. A lone dot with exactly three digits after and at most
- * three before is grouped thousands, so "85.500" is also eighty-five thousand
- * while "1234.567" keeps its decimal.
- *
- * Mirrors `MoneyText.TryParseAmount` on the server, which computes the same
- * totals from the same column. The two are tested against the same cases.
+ * A workspace's settings, with the defaults (CHF, de-CH, Europe/Zurich) for anything it
+ * does not say, or says in a way this browser cannot use: one bad setting must not
+ * stop a page from rendering.
  */
-export function tryParseAmount(v?: string | null): number | null {
+export function regionalOf(org?: { currency?: string | null; locale?: string | null; timeZone?: string | null } | null): Regional {
+  return {
+    currency: normaliseCurrency(org?.currency),
+    locale: knownLocale(org?.locale) ?? DEFAULT_LOCALE,
+    timeZone: knownZone(org?.timeZone) ?? DEFAULT_TIME_ZONE,
+  };
+}
+
+/**
+ * Cents on an amount: 'auto' shows them only when there are any ("CHF 85’500" but
+ * "CHF 99.40"), 'always' as the currency has them (statements, tabs), 'never' for
+ * headline figures that count up and would flicker through decimals on the way.
+ */
+export type Cents = 'auto' | 'always' | 'never';
+
+/**
+ * An amount in a currency, written for a locale.
+ *
+ * A value that rounds to zero shows as zero rather than "-CHF 0", and a code Intl
+ * does not know falls back to "XYZ 12.50" instead of throwing, so one bad record
+ * cannot blank a page.
+ */
+export function formatMoney(
+  amount: number,
+  currency: string = DEFAULT_CURRENCY,
+  options: { locale?: string; cents?: Cents } = {},
+): string {
+  const value = Number.isFinite(amount) ? amount : 0;
+  const shown = Math.abs(value) < 0.005 ? 0 : value;
+  const cents = options.cents ?? 'auto';
+  const whole = cents === 'never' || (cents === 'auto' && Math.round(shown * 100) % 100 === 0);
+  try {
+    return new Intl.NumberFormat(options.locale || DEFAULT_LOCALE, {
+      style: 'currency',
+      currency,
+      ...(whole ? { minimumFractionDigits: 0, maximumFractionDigits: 0 } : {}),
+    }).format(shown);
+  } catch {
+    return `${currency} ${whole ? Math.round(shown) : shown.toFixed(2)}`;
+  }
+}
+
+/** An amount to the cent, as the server stores it. */
+export function roundCents(amount: number): number {
+  return Math.round(amount * 100) / 100;
+}
+
+/**
+ * What someone typed into an amount field, as a number to the cent, or null when
+ * there is no number in it.
+ *
+ * People type amounts in whichever notation they use: "85,500", "CHF 85'500",
+ * "1.234,56", "$1,234.56". Where both separators appear the LAST one is the decimal
+ * point, which settles "1,234.56" and "1.234,56" without knowing the writer's locale.
+ * A lone comma is a decimal point only with one or two digits after it, so "85,500"
+ * stays eighty-five thousand. A lone dot with exactly three digits after and at most
+ * three before is grouped thousands, so "85.500" is also eighty-five thousand while
+ * "1234.567" keeps its decimal.
+ *
+ * The same rules as `MoneyText.TryParseAmount` on the server, which read the deals
+ * typed before amounts were numbers, and tested against the same cases.
+ */
+export function parseMoneyInput(v?: string | null): number | null {
   if (v === null || v === undefined) return null;
   const raw = String(v);
   const trimmed = raw.trim();
@@ -71,80 +178,78 @@ export function tryParseAmount(v?: string | null): number | null {
 
   const n = Number(normalised);
   if (!Number.isFinite(n)) return null;
-  return negative ? -n : n;
+  return roundCents(negative ? -n : n);
+}
+
+/** An amount as an amount field shows it for editing: "85500", "99.40", or empty for none. */
+export function amountInput(amount?: number | null): string {
+  if (amount === null || amount === undefined || !Number.isFinite(amount)) return '';
+  return Number.isInteger(amount) ? String(amount) : amount.toFixed(2);
+}
+
+/** What an amount field says when what was typed holds no number. */
+export const AMOUNT_HINT = "Enter the amount as a number, such as 85500 or 85'500.50.";
+
+/** A deal's amount as a number, or null for one saved without a readable number. */
+export function amountOf(deal: Pick<Deal, 'amount'>): number | null {
+  return typeof deal.amount === 'number' && Number.isFinite(deal.amount) ? deal.amount : null;
 }
 
 /**
- * The same amount, with an unreadable value treated as zero.
+ * A deal's currency: its own, trimmed and upper-cased, or the workspace's when it has
+ * none, as the server counts it.
  *
- * Kept for the many places that only need a number to add up. Anywhere the
- * difference between "worth nothing" and "we could not read it" matters — a
- * headline total, a forecast — use `tryParseAmount` and report the gap.
+ * Only a blank currency falls back. A few older deals hold a symbol or a word ("€",
+ * "Fr."), which the one-time currency fix left alone rather than guess at, and the
+ * server totals them under that name. Read as the workspace's currency here, a "€" deal
+ * was written as francs and added into the board's franc total.
  */
-export function parseAmount(v?: string | null): number {
-  return tryParseAmount(v) ?? 0;
+export function currencyOf(deal: { currency?: string | null }, fallback: string = DEFAULT_CURRENCY): string {
+  const code = String(deal.currency ?? '').trim().toUpperCase();
+  return code || fallback;
 }
 
-export const DEFAULT_CURRENCY = 'USD';
-
-/** Normalised currency code for a deal. */
-export function currencyOf(d: Pick<Deal, 'currency'>): string {
-  return (d.currency || DEFAULT_CURRENCY).toUpperCase();
-}
-
-/**
- * Format an amount in a given currency.
- *
- * An unrecognised code must not throw — Intl rejects anything that is not a
- * valid ISO 4217 code, and a single bad record should not blank a whole page.
- */
-export function formatMoney(amount: number, currency = DEFAULT_CURRENCY): string {
-  try {
-    return new Intl.NumberFormat(undefined, {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  } catch {
-    return `${currency} ${Math.round(amount).toLocaleString()}`;
-  }
+/** A deal's amount in its own currency, or "No amount" for one saved without a readable number. */
+export function formatDealAmount(deal: Pick<Deal, 'amount' | 'currency'>, regional: Pick<Regional, 'currency' | 'locale'>): string {
+  if (deal.amount === null || deal.amount === undefined) return 'No amount';
+  return formatMoney(deal.amount, currencyOf(deal, regional.currency), { locale: regional.locale });
 }
 
 export interface CurrencySum {
   currency: string;
   value: number;
+  /** Deals with an amount, the ones in `value`. */
   count: number;
 }
 
-/** Deal values totalled per currency, largest total first. */
-export function sumByCurrency(deals: Pick<Deal, 'value' | 'currency'>[]): CurrencySum[] {
+/**
+ * Deal amounts totalled per currency, largest first, ties by code so the order cannot
+ * flip between renders. A deal with no amount adds nothing and is not counted; the
+ * caller can tell how many there were from the deals it passed.
+ */
+export function sumByCurrency(deals: Pick<Deal, 'amount' | 'currency'>[], fallback: string = DEFAULT_CURRENCY): CurrencySum[] {
   const m = new Map<string, CurrencySum>();
   for (const d of deals) {
-    const currency = currencyOf(d);
+    if (d.amount === null || d.amount === undefined || !Number.isFinite(d.amount)) continue;
+    const currency = currencyOf(d, fallback);
     const e = m.get(currency) ?? { currency, value: 0, count: 0 };
-    e.value += parseAmount(d.value);
+    e.value = roundCents(e.value + d.amount);
     e.count += 1;
     m.set(currency, e);
   }
-  return [...m.values()].sort((a, b) => b.value - a.value);
-}
-
-/** The currency most of the money is in. */
-export function dominantCurrencyOf(deals: Pick<Deal, 'value' | 'currency'>[]): string {
-  return sumByCurrency(deals)[0]?.currency ?? DEFAULT_CURRENCY;
+  return [...m.values()].sort((a, b) => b.value - a.value || a.currency.localeCompare(b.currency));
 }
 
 /**
- * A single display string for a set of deals.
- *
- * With one currency this is just the total. With several it is the dominant
- * total plus a count of the currencies left out — never a silent addition across
- * them, which is what the old helpers did.
+ * Totals per currency as one line, each in its own currency: "CHF 40’000 · EUR 30’000".
+ * Nothing at all is zero in the workspace's currency.
  */
-export function formatDealSum(deals: Pick<Deal, 'value' | 'currency'>[]): string {
-  const totals = sumByCurrency(deals);
-  if (totals.length === 0) return formatMoney(0);
-  const [main, ...rest] = totals;
-  const head = formatMoney(main!.value, main!.currency);
-  return rest.length === 0 ? head : `${head} +${rest.length} other`;
+export function formatTotals(totals: Pick<CurrencySum, 'currency' | 'value'>[], regional: Pick<Regional, 'currency' | 'locale'>, cents: Cents = 'auto'): string {
+  if (totals.length === 0) return formatMoney(0, regional.currency, { locale: regional.locale, cents });
+  return totals.map((t) => formatMoney(t.value, t.currency, { locale: regional.locale, cents })).join(' · ');
+}
+
+/** A set of deals' amounts, totalled per currency, as one line. */
+export function formatDealSum(deals: Pick<Deal, 'amount' | 'currency'>[], regional: Pick<Regional, 'currency' | 'locale'>): string {
+  return formatTotals(sumByCurrency(deals, regional.currency), regional);
 }

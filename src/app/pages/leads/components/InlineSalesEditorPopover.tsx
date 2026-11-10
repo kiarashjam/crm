@@ -103,11 +103,17 @@ export function InlineSalesEditorPopover({ lead, leadName, trigger, onSaved, sta
     setSaving(true);
     try {
       const row = salesExtrasToTrackedRow(next);
-      // One PUT carries the pipeline AND any status the pipeline now implies;
-      // the hook's sequence guard drops responses from superseded edits.
-      const pipeline = trackedRowToPipeline(row, parsePipeline(lead.pipelineState));
+      // The PUT carries the pipeline alone; the server works out the status
+      // from it and returns the lead with that status. The hook's sequence
+      // guard drops responses from superseded edits.
+      const stored = parsePipeline(lead.pipelineState);
+      const pipeline = trackedRowToPipeline(row, stored);
+      // Measured against the popover before this change, so each field sends only
+      // itself, even while an earlier one is still saving.
+      const base = trackedRowToPipeline(salesExtrasToTrackedRow(extras), stored);
       const outcome = await statusSync.save(lead, pipeline, {
         onApplied: (updated) => onSaved?.(updated),
+        base,
       });
       if (!outcome.ok && !outcome.stale) setExtras(extras);
     } finally {

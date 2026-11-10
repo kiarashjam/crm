@@ -16,7 +16,9 @@ internal sealed class TaskItemConfiguration : IEntityTypeConfiguration<TaskItem>
         builder.Property(e => e.Title).HasMaxLength(512).IsRequired();
         builder.Property(e => e.Description).HasMaxLength(4096);
         builder.Property(e => e.Notes).HasMaxLength(4096);
-        
+        // The length the start-up DDL gave the column before the baseline migration.
+        builder.Property(e => e.Recurrence).HasMaxLength(16);
+
         // Status and Priority
         builder.Property(e => e.Status)
             .HasConversion<string>()

@@ -1,3 +1,5 @@
+using ACI.Domain.Common;
+using ACI.Application.Common;
 using System.ComponentModel.DataAnnotations;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
@@ -5,6 +7,7 @@ using ACI.Domain.Enums;
 using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ACI.WebApi.Filters;
 
 namespace ACI.WebApi.Controllers;
 
@@ -13,12 +16,13 @@ namespace ACI.WebApi.Controllers;
 /// </summary>
 /// <remarks>
 /// Pipelines are organization-scoped and contain deal stages.
-/// Only owners and managers can create, update, or delete pipelines.
+/// Only members who manage the workspace's settings (owners and managers by default) can create, update, or delete pipelines.
 /// </remarks>
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
 [Produces("application/json")]
+[Requires(MemberPermissions.ManageSettings, WritesOnly = true)]
 public class PipelinesController : ControllerBase
 {
     private readonly IPipelineService _pipelineService;
@@ -38,8 +42,8 @@ public class PipelinesController : ControllerBase
         if (userId == null) return Unauthorized();
         var orgId = _currentUser.CurrentOrganizationId;
         if (orgId == null) return BadRequest("X-Organization-Id required");
-        var role = await _organizationRepository.GetMemberRoleAsync(userId.Value, orgId.Value, ct);
-        if (role != OrgMemberRole.Owner && role != OrgMemberRole.Manager)
+        // The workspace's settings: the owner and managers by default (MemberPermissions).
+        if (!await _organizationRepository.HasPermissionAsync(userId.Value, orgId.Value, MemberPermissions.ManageSettings, ct))
             return Forbid();
         return null;
     }
@@ -93,7 +97,7 @@ public class PipelinesController : ControllerBase
     /// Creates a new pipeline.
     /// </summary>
     /// <remarks>
-    /// Only organization owners and managers can create pipelines.
+    /// Only members who manage the workspace's settings (owners and managers by default) can create pipelines.
     /// </remarks>
     /// <param name="request">Pipeline creation request.</param>
     /// <param name="ct">Cancellation token.</param>
@@ -101,7 +105,7 @@ public class PipelinesController : ControllerBase
     /// <response code="200">Pipeline created successfully.</response>
     /// <response code="400">Invalid request data or X-Organization-Id required.</response>
     /// <response code="401">User is not authenticated.</response>
-    /// <response code="403">User is not an owner or manager.</response>
+    /// <response code="403">The caller's role does not let them manage settings.</response>
     [HttpPost]
     [ProducesResponseType(typeof(PipelineDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -112,7 +116,7 @@ public class PipelinesController : ControllerBase
         var fail = await RequireOrgOwnerOrManager(ct);
         if (fail != null) return fail;
         var orgId = _currentUser.CurrentOrganizationId!.Value;
-        var result = await _pipelineService.CreateAsync(orgId, request.Name, request.DisplayOrder, ct);
+        var result = await _pipelineService.CreateAsync(orgId, request.Name, request.DisplayOrder, request.StaleDealDays, ct);
         return result.ToActionResult();
     }
 
@@ -120,7 +124,7 @@ public class PipelinesController : ControllerBase
     /// Updates an existing pipeline.
     /// </summary>
     /// <remarks>
-    /// Only organization owners and managers can update pipelines.
+    /// Only members who manage the workspace's settings (owners and managers by default) can update pipelines.
     /// </remarks>
     /// <param name="id">The pipeline ID.</param>
     /// <param name="request">Pipeline update request.</param>
@@ -129,7 +133,7 @@ public class PipelinesController : ControllerBase
     /// <response code="200">Pipeline updated successfully.</response>
     /// <response code="400">X-Organization-Id header is required.</response>
     /// <response code="401">User is not authenticated.</response>
-    /// <response code="403">User is not an owner or manager.</response>
+    /// <response code="403">The caller's role does not let them manage settings.</response>
     /// <response code="404">Pipeline not found.</response>
     [HttpPut("{id:guid}")]
     [ProducesResponseType(typeof(PipelineDto), StatusCodes.Status200OK)]
@@ -142,7 +146,8 @@ public class PipelinesController : ControllerBase
         var fail = await RequireOrgOwnerOrManager(ct);
         if (fail != null) return fail;
         var orgId = _currentUser.CurrentOrganizationId!.Value;
-        var result = await _pipelineService.UpdateAsync(id, orgId, request.Name, request.DisplayOrder, ct);
+        var result = await _pipelineService.UpdateAsync(id, orgId, request.Name, request.DisplayOrder,
+            request.StaleDealDays, request.FollowWorkspaceStaleDays, ct);
         return result.ToActionResult();
     }
 
@@ -150,7 +155,7 @@ public class PipelinesController : ControllerBase
     /// Deletes a pipeline.
     /// </summary>
     /// <remarks>
-    /// Only organization owners and managers can delete pipelines.
+    /// Only members who manage the workspace's settings (owners and managers by default) can delete pipelines.
     /// Pipelines with existing deals cannot be deleted.
     /// </remarks>
     /// <param name="id">The pipeline ID.</param>
@@ -159,7 +164,7 @@ public class PipelinesController : ControllerBase
     /// <response code="204">Pipeline deleted successfully.</response>
     /// <response code="400">X-Organization-Id header is required or pipeline has deals.</response>
     /// <response code="401">User is not authenticated.</response>
-    /// <response code="403">User is not an owner or manager.</response>
+    /// <response code="403">The caller's role does not let them manage settings.</response>
     /// <response code="404">Pipeline not found.</response>
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -193,6 +198,12 @@ public record CreatePipelineRequest
     /// Display order.
     /// </summary>
     public int DisplayOrder { get; init; } = 0;
+
+    /// <summary>
+    /// Days without activity after which an open deal in it is stale, 1–365, or 0 for
+    /// never (optional; left out, the workspace's setting applies).
+    /// </summary>
+    public int? StaleDealDays { get; init; }
 }
 
 /// <summary>
@@ -210,4 +221,14 @@ public record UpdatePipelineRequest
     /// New display order (optional).
     /// </summary>
     public int? DisplayOrder { get; init; }
+
+    /// <summary>
+    /// New stale-deal days for this pipeline, 1–365, or 0 for never (optional).
+    /// </summary>
+    public int? StaleDealDays { get; init; }
+
+    /// <summary>
+    /// True drops the pipeline's own stale-deal days, so the workspace's apply again.
+    /// </summary>
+    public bool FollowWorkspaceStaleDays { get; init; }
 }

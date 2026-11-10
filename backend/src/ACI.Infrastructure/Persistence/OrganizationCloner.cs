@@ -129,7 +129,7 @@ public sealed class OrganizationCloner
         foreach (var (child, parentKey, parent) in Children)
             await Count(model.FindEntityType(child)!, parentKey, keys.GetValueOrDefault(parent) ?? []);
 
-        var attachmentBytes = await _db.Attachments.Where(a => a.OrganizationId == sourceId).SumAsync(a => (long)a.Content.Length, ct);
+        var attachmentBytes = await _db.Attachments.IgnoreQueryFilters().Where(a => a.OrganizationId == sourceId).SumAsync(a => (long)a.Content.Length, ct);
         return new OrganizationClonePlan(sourceId, toCopy, leftOut, attachmentBytes);
     }
 
@@ -394,15 +394,18 @@ public sealed class OrganizationCloner
         return (keys.Count, keys);
     }
 
+    // An admin tool, run with no workspace: it names the organization it copies by id,
+    // and reads that organization's rows (and the copy's, to check them) whatever
+    // workspace the context would otherwise read as. So the workspace filters are set aside.
     private IQueryable<T> Matching<T>(string column, Guid[] ids) where T : class
     {
         if (_db.Model.FindEntityType(typeof(T))!.FindProperty(column)!.IsNullable)
         {
             var any = ids.Select(i => (Guid?)i).ToList();
-            return _db.Set<T>().AsNoTracking().Where(r => any.Contains(EF.Property<Guid?>(r, column)));
+            return _db.Set<T>().AsNoTracking().IgnoreQueryFilters().Where(r => any.Contains(EF.Property<Guid?>(r, column)));
         }
         var all = ids.ToList();
-        return _db.Set<T>().AsNoTracking().Where(r => all.Contains(EF.Property<Guid>(r, column)));
+        return _db.Set<T>().AsNoTracking().IgnoreQueryFilters().Where(r => all.Contains(EF.Property<Guid>(r, column)));
     }
 
     /// <summary>Runs <paramref name="sql"/> on the context's connection, in its transaction if it has one.</summary>
@@ -479,6 +482,22 @@ public sealed class OrganizationCloner
                 i.TokenHash = ACI.Application.Common.PasswordResetCrypto.HashRawToken(
                     ACI.Application.Common.PasswordResetCrypto.CreateRawToken());
                 return "Pending invitations get their own link";
+            case OutboundMessage m:
+                // The copy keeps the history, but an email or event still queued in the
+                // original goes out once, from the original. Replies and the mail service's
+                // reports name the original's Message-ID and reply address, so the copy's
+                // messages get their own id and no reply address.
+                if (m.Status == OutboundStatuses.Queued)
+                {
+                    m.Status = OutboundStatuses.Cancelled;
+                    m.NextAttemptAtUtc = null;
+                    m.ClaimedUntilUtc = null;
+                    m.LastError = "Copied with its organization while still queued; the original sends it.";
+                }
+                if (m.MessageIdHeader is { } header)
+                    m.MessageIdHeader = $"<{m.Id:N}{header[(header.IndexOf('@') is var at and >= 0 ? at : header.Length - 1)..]}";
+                m.ReplyToken = null;
+                return "Outbox messages still queued are sent from the original only, and copies get their own Message-ID";
             case Notification n when n.SourceKey != null && n.SourceKey == ((Notification)source).SourceKey:
                 // The key stops a person being told the same thing twice, and is unique per
                 // person. One with no copied record's id in it would be the original's exactly.

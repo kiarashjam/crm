@@ -7,11 +7,12 @@
 // store via `syncTaskReminders`, deduped by a stable `sourceKey`.
 //
 // Backends that don't (yet) implement notifications return 404 for these
-// endpoints. `apiWithFallback` already recovers by going local, but the
-// browser still logs the failed fetch on every 60-second poll, and the
-// polling wrapper below can't suppress that. To keep the console clean, we
-// remember which endpoints have returned 404 for this session and skip
-// them on subsequent calls until the tab reloads.
+// endpoints, and `apiWithFallback` reports that as an error rather than keeping
+// anything in this browser. The bell would still send the failing request on
+// every 60-second poll, and the polling wrapper below can't suppress the
+// console line it leaves. To keep the console clean, we remember which
+// endpoints have returned 404 for this session and skip them on subsequent
+// calls until the tab reloads.
 
 import { ApiError, apiWithFallback, authFetch, authFetchJson, ensureOk } from './apiClient';
 import { createMockStore, mockId } from './mockStore';

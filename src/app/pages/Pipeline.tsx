@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import {
@@ -48,10 +48,19 @@ import { Spinner } from '@/app/components/motion/CadenceLoader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { KanbanSkeleton } from '@/app/components/PageSkeleton';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { getDeals, updateDeal, createDeal, deleteDeal, getCompanies, getContacts, getPipelines, getOrgMembers, messages } from '@/app/api';
-import { getActivitiesByDeal, createActivity } from '@/app/api/activities';
-import type { Deal, Company, Contact, Pipeline, Activity } from '@/app/api/types';
-import { getCurrentOrganizationId, getCurrentUser } from '@/app/lib/auth';
+import { getDealBoardColumn, getDealById, updateDeal, createDeal, deleteDeal, messages } from '@/app/api';
+import {
+  dealBoardKey, queryKeys, recordActivitiesKey, tasksKey, useAllCompanies, useAllContacts, useAllDeals, useCacheWriter,
+  useDealBoard, useOrgMembers, usePipelines, useRecordActivities, useTasksList, useWorkspaceScope,
+} from '@/app/hooks/queries';
+import type { OrgMemberDto } from '@/app/api/organizations';
+import { LoadFailed } from '@/app/components/LoadFailed';
+import { isEditConflict, showEditConflict } from '@/app/lib/editConflict';
+import { whenChosen } from '@/app/lib/whenChosen';
+import { createActivity } from '@/app/api/activities';
+import type { Deal, Company, Contact, Pipeline, Activity, DealBoard, DealBoardColumn, DealBoardQuery } from '@/app/api/types';
+import { useDebounce } from '@/app/hooks/useDebounce';
+import { getCurrentUser } from '@/app/lib/auth';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
@@ -80,11 +89,13 @@ import { cn } from '@/app/components/ui/utils';
 // Import extracted components and utilities
 import { DroppableStageColumn } from './pipeline/DroppableStageColumn';
 import { STAGE_COLORS_MAP } from './pipeline/config';
-import { getStageList, dealOutcome, groupDealsByStage, formatDealTotal, formatAmount, getDaysUntilClose, UrgencyBadge } from './pipeline/utils';
-import { dominantCurrencyOf } from '@/app/lib/money';
-import { DealCard, getCurrencySymbol } from './pipeline/DealCard';
+import { getStageList, dealOutcome, daysSince, formatDays, getDaysUntilClose, formatCloseDate, UrgencyBadge } from './pipeline/utils';
+import { AMOUNT_HINT, amountInput, amountOf, currencyOptions, parseMoneyInput } from '@/app/lib/money';
+import { dateOnlyKey } from '@/app/lib/zonedTime';
+import { useMoney } from '@/app/hooks/useMoney';
+import { DealCard } from './pipeline/DealCard';
 import { recordHref } from '@/app/hooks/useDocumentTitle';
-import { getTasks, createTask } from '@/app/api/tasks';
+import { createTask } from '@/app/api/tasks';
 import type { TaskItem as TaskItemType } from '@/app/api/types';
 import { useOrg } from '@/app/contexts/OrgContext';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
@@ -95,19 +106,90 @@ import {
   type RecordColumn,
 } from '@/app/components/views';
 import { StaggerItem } from '@/app/components/motion/Stagger';
+import { ActivityFactsFields } from '@/app/components/ActivityFactsFields';
+import { withActivity } from '@/app/components/RecordActivity';
+import { activityFactsLine, activityTime, factsPayload, factsProblem, EMPTY_FACTS, type ActivityFactsDraft } from '@/app/lib/activityFacts';
+import { WriteOnly } from '@/app/components/WriteOnly';
+import { orgCan, PERMISSION } from '@/app/api/organizations';
+
+/** Cards per column in each page of the board. */
+const BOARD_PAGE = 25;
+
+/** The edit dialog's fields for a deal, as the dialog opens on it. */
+function editFormFor(deal: Deal) {
+  return {
+    name: deal.name,
+    value: amountInput(deal.amount),
+    currency: deal.currency ?? '',
+    expectedCloseDate: deal.expectedCloseDateUtc ? deal.expectedCloseDateUtc.slice(0, 10) : '',
+    companyId: deal.companyId || '',
+    pipelineId: deal.pipelineId ?? '',
+    stageId: deal.dealStageId ?? (deal.stage ?? ''),
+    assigneeId: deal.assigneeId ?? '',
+    description: deal.description ?? '',
+    probability: deal.probability?.toString() ?? '',
+    // The save is checked against this, so it travels with the fields it belongs to.
+    version: deal.version ?? '',
+  };
+}
+
+const NO_PIPELINES: Pipeline[] = [];
+const NO_DEALS: Deal[] = [];
+const NO_CONTACTS: Contact[] = [];
+const NO_COMPANIES: Company[] = [];
+const NO_MEMBERS: OrgMemberDto[] = [];
+const NO_TASKS: TaskItemType[] = [];
+const NO_ACTIVITIES: Activity[] = [];
+
+/** The board with one card taken from its column and put at the top of another. */
+function withCardMoved(board: DealBoard, dealId: string, toStageId: string, toStageName: string): DealBoard {
+  const card = board.columns.flatMap((c) => c.deals).find((d) => d.id === dealId);
+  const target = board.columns.find((c) => c.key === toStageId || c.dealStageId === toStageId);
+  if (!card || !target) return board;
+  const moved: Deal = { ...card, dealStageId: target.dealStageId ?? card.dealStageId, stage: toStageName };
+  return {
+    ...board,
+    columns: board.columns.map((c) => {
+      const had = c.deals.some((d) => d.id === dealId);
+      if (c === target) return had ? c : { ...c, count: c.count + 1, deals: [moved, ...c.deals] };
+      return had ? { ...c, count: Math.max(0, c.count - 1), deals: c.deals.filter((d) => d.id !== dealId) } : c;
+    }),
+  };
+}
 
 export default function Pipeline() {
-  const { isReadOnly } = useOrg();
-  const [deals, setDeals] = useState<Deal[]>([]);
-  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const { currentOrg, isReadOnly: viewOnly } = useOrg();
+  // Working deals takes records.edit: finance, the front desk and read-only members see them.
+  const isReadOnly = viewOnly || !orgCan(currentOrg, PERMISSION.EditRecords);
+  const money = useMoney();
+  // Everything here is read through the shared cache, keyed by workspace, and read again
+  // after a save that changed it (hooks/queries/invalidation).
+  const ws = useWorkspaceScope();
+  const writeCache = useCacheWriter();
+  const [loadingMore, setLoadingMore] = useState<string | null>(null);
+  const [boardSort, setBoardSort] = useState<NonNullable<DealBoardQuery['sort']>>('close');
+  // The pipelines first: the board is drawn for one of them.
+  const pipelinesQuery = usePipelines();
+  const pipelines: Pipeline[] = pipelinesQuery.data ?? NO_PIPELINES;
+  const pipelinesLoaded = !pipelinesQuery.isPending;
   const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  usePageLoading(loading);
+  useEffect(() => {
+    if (pipelines.length) setSelectedPipelineId((prev) => prev ?? pipelines[0]?.id ?? null);
+  }, [pipelines]);
+  // How this person likes deals shown: the board, a table, a list or cards, saved for them.
+  const view = useViewPreference('deals', { layouts: ['board', 'table', 'list', 'grid'] });
+  // Every deal, for the table, list and card layouts; read only when one of them is open.
+  const allDealsQuery = useAllDeals(view.layout !== 'board');
+  const deals: Deal[] = allDealsQuery.data ?? NO_DEALS;
+  /** Show a change in the full list at once, if it has been read; the read after the save confirms it. */
+  const setDeals = useCallback((update: (prev: Deal[]) => Deal[]) => {
+    writeCache<Deal[]>(queryKeys.deals.all(ws), (current) => current && update(current));
+  }, [writeCache, ws]);
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState({
     name: '',
     value: '',
-    currency: 'CHF',
+    currency: '',
     stageId: '',
     pipelineId: '',
     expectedCloseDate: '',
@@ -117,20 +199,21 @@ export default function Pipeline() {
     description: '',
     probability: '',
   });
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [contacts, setContacts] = useState<Contact[]>([]);
+  const contacts: Contact[] = useAllContacts().data ?? NO_CONTACTS;
   const [saving, setSaving] = useState(false);
   const [editDeal, setEditDeal] = useState<Deal | null>(null);
-  const [editForm, setEditForm] = useState({ name: '', value: '', currency: '', expectedCloseDate: '', companyId: '', pipelineId: '', stageId: '', assigneeId: '', description: '', probability: '' });
+  const [editForm, setEditForm] = useState({ name: '', value: '', currency: '', expectedCloseDate: '', companyId: '', pipelineId: '', stageId: '', assigneeId: '', description: '', probability: '', version: '' });
   const [savingEdit, setSavingEdit] = useState(false);
   const [deleteConfirmDeal, setDeleteConfirmDeal] = useState<Deal | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [detailDeal, setDetailDeal] = useState<Deal | null>(null);
+  // The companies to pick from, read once a deal dialog opens.
+  const companies: Company[] = useAllCompanies(createOpen || !!editDeal || !!detailDeal).data ?? NO_COMPANIES;
 
   const openDealDetail = (deal: Deal) => {
     window.open(recordHref(`/deals/${deal.id}`, deal.name, 'Deals'), '_blank', 'noopener,noreferrer');
   };
-  const [orgMembers, setOrgMembers] = useState<{ userId: string; name: string; email: string; role: number }[]>([]);
+  const orgMembers: OrgMemberDto[] = useOrgMembers().data ?? NO_MEMBERS;
   
   // HP-8: Close deal dialog state
   const [closeDeal, setCloseDeal] = useState<Deal | null>(null);
@@ -145,9 +228,13 @@ export default function Pipeline() {
   const [filterValueMax, setFilterValueMax] = useState('');
   const [filterCloseDateFrom, setFilterCloseDateFrom] = useState('');
   const [filterCloseDateTo, setFilterCloseDateTo] = useState('');
+  const [filterStale, setFilterStale] = useState(false);
 
   // HP-7 & HP-8: Tasks linked to deals
-  const [allTasks, setAllTasks] = useState<TaskItemType[]>([]);
+  const allTasks: TaskItemType[] = useTasksList().data ?? NO_TASKS;
+  // A list never read is left alone, not replaced by the one change (see Tasks.tsx).
+  const setAllTasks = (update: (prev: TaskItemType[]) => TaskItemType[]) =>
+    writeCache<TaskItemType[]>(tasksKey(ws), (current) => current && update(current));
   const [addTaskDealId, setAddTaskDealId] = useState<string | null>(null);
   const [addTaskTitle, setAddTaskTitle] = useState('');
   const [savingTask, setSavingTask] = useState(false);
@@ -164,9 +251,14 @@ export default function Pipeline() {
   }, [allTasks]);
   
   // Deal activities state
-  const [dealActivities, setDealActivities] = useState<Activity[]>([]);
-  const [activitiesLoading, setActivitiesLoading] = useState(false);
-  const [activityForm, setActivityForm] = useState({ type: 'note', subject: '', body: '' });
+  // The open deal's activities, read when its detail opens.
+  const dealActivitiesQuery = useRecordActivities('deal', detailDeal?.id);
+  const dealActivities: Activity[] = dealActivitiesQuery.data ?? NO_ACTIVITIES;
+  const activitiesLoading = !!detailDeal && dealActivitiesQuery.isPending;
+  const setDealActivities = (update: (prev: Activity[]) => Activity[]) => {
+    if (detailDeal) writeCache<Activity[]>(recordActivitiesKey(ws, 'deal', detailDeal.id), (current) => current && update(current));
+  };
+  const [activityForm, setActivityForm] = useState<{ type: string; subject: string; body: string; facts?: ActivityFactsDraft }>({ type: 'note', subject: '', body: '' });
   const [savingActivity, setSavingActivity] = useState(false);
   
   // Search and Filter state
@@ -183,62 +275,72 @@ export default function Pipeline() {
     return deals.filter((d) => (d.pipelineId ?? fallbackPipelineId) === selectedPipelineId);
   }, [deals, pipelines, selectedPipelineId]);
 
-  // Calculate deal statistics
-  const dealStats = useMemo(() => {
-    const total = pipelineDeals.length;
-    const totalValue = pipelineDeals.reduce((acc, d) => {
-      const num = parseFloat(String(d.value).replace(/[^0-9.-]/g, '')) || 0;
-      return acc + num;
-    }, 0);
-    
-    const won = pipelineDeals.filter(d => dealOutcome(d, stageList) === 'won');
-    const lost = pipelineDeals.filter(d => dealOutcome(d, stageList) === 'lost');
-    const active = pipelineDeals.filter(d => dealOutcome(d, stageList) === 'open');
-    
-    const wonValue = won.reduce((acc, d) => acc + (parseFloat(String(d.value).replace(/[^0-9.-]/g, '')) || 0), 0);
-    const activeValue = active.reduce((acc, d) => acc + (parseFloat(String(d.value).replace(/[^0-9.-]/g, '')) || 0), 0);
-    
-    const winRate = (won.length + lost.length) > 0 
-      ? Math.round((won.length / (won.length + lost.length)) * 100) 
-      : 0;
-    
-    // Overdue deals
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const overdue = active.filter(d => {
-      if (!d.expectedCloseDateUtc) return false;
-      const closeDate = new Date(d.expectedCloseDateUtc);
-      closeDate.setHours(0, 0, 0, 0);
-      return closeDate < today;
-    }).length;
-    
-    // Closing this week
-    const oneWeekFromNow = new Date();
-    oneWeekFromNow.setDate(oneWeekFromNow.getDate() + 7);
-    const closingThisWeek = active.filter(d => {
-      if (!d.expectedCloseDateUtc) return false;
-      const closeDate = new Date(d.expectedCloseDateUtc);
-      return closeDate >= today && closeDate <= oneWeekFromNow;
-    }).length;
-    
-    // Average deal size
-    const avgDealSize = total > 0 ? totalValue / total : 0;
-    
-    return { 
-      total, totalValue, won: won.length, lost: lost.length, active: active.length,
-      wonValue, activeValue, winRate, overdue, closingThisWeek, avgDealSize
-    };
-  }, [pipelineDeals, stageList]);
-
-  // Filter deals — includes HP-7 (My Deals) and HP-10 (value range, assignee)
+  // Filter deals — includes HP-7 (My Deals) and HP-10 (value range, assignee). The board
+  // sends these to the server; the table, list and card layouts filter every deal here.
   const currentUserId = useMemo(() => getCurrentUser()?.id, []);
+  // Typed filters wait for a pause in the typing, so each keystroke is not a request.
+  const debouncedSearch = useDebounce(searchQuery, 300);
+  const debouncedMin = useDebounce(filterValueMin, 300);
+  const debouncedMax = useDebounce(filterValueMax, 300);
+  const boardQuery = useMemo<DealBoardQuery>(() => ({
+    pipelineId: selectedPipelineId ?? undefined,
+    take: BOARD_PAGE,
+    sort: boardSort,
+    search: debouncedSearch.trim() || undefined,
+    mine: filterMyDeals || undefined,
+    assigneeId: filterAssignee !== 'all' && filterAssignee !== 'unassigned' ? filterAssignee : undefined,
+    unassigned: filterAssignee === 'unassigned' || undefined,
+    minAmount: parseMoneyInput(debouncedMin) ?? undefined,
+    maxAmount: parseMoneyInput(debouncedMax) ?? undefined,
+    closeFrom: filterCloseDateFrom || undefined,
+    closeTo: filterCloseDateTo || undefined,
+    staleOnly: filterStale || undefined,
+  }), [selectedPipelineId, boardSort, debouncedSearch, filterMyDeals, filterAssignee, debouncedMin, debouncedMax, filterCloseDateFrom, filterCloseDateTo, filterStale]);
+
+  // The board for the pipeline on screen and the filters set, a page of cards per stage.
+  // Keyed by those filters, so an older filter's answer can never replace the board for
+  // newer ones, and the read for filters changed since is cancelled. It waits for the
+  // pipelines, so the first read is already for the pipeline on screen.
+  const boardReady = pipelinesLoaded && (pipelines.length === 0 || selectedPipelineId !== null);
+  const boardResult = useDealBoard(boardQuery, boardReady);
+  const board: DealBoard | null = boardResult.data ?? null;
+  const loading = !boardReady || boardResult.isPending;
+  usePageLoading(loading);
+  /** Change the board on screen at once; the read after the save puts the server's figures back. */
+  const setBoard = useCallback((update: (prev: DealBoard) => DealBoard) => {
+    writeCache<DealBoard>(dealBoardKey(ws, boardQuery), (current) => current && update(current));
+  }, [writeCache, ws, boardQuery]);
+
+  // The figures above the board: the pipeline's, worked out by the server over all its
+  // deals, whatever the filters. They were added up here from every deal downloaded.
+  const summary = board?.summary;
+  const dealStats = useMemo(() => {
+    // Per currency, never across. A currency whose deals have no readable amount adds nothing.
+    const withAmounts = (rows: { currency: string; value: number; count: number; unreadable: number }[] = []) =>
+      rows.map((r) => ({ currency: r.currency, value: r.value, count: r.count - r.unreadable })).filter((r) => r.count > 0);
+    return {
+      total: summary?.total ?? 0,
+      won: summary?.won ?? 0,
+      lost: summary?.lost ?? 0,
+      active: summary?.open ?? 0,
+      activeTotals: withAmounts(summary?.openTotals),
+      wonTotals: withAmounts(summary?.wonTotals),
+      weighted: summary?.weighted ?? [],
+      winRate: summary?.winRate === undefined ? 0 : Math.round(summary.winRate * 100),
+      overdue: summary?.overdue ?? 0,
+      closingThisWeek: summary?.closingThisWeek ?? 0,
+      stale: summary?.stale ?? 0,
+    };
+  }, [summary]);
+
+
   const filteredDeals = useMemo(() => {
     let result = [...pipelineDeals];
-    
+
     // Search filter
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      result = result.filter(d => 
+      result = result.filter(d =>
         d.name.toLowerCase().includes(q) ||
         d.value.toLowerCase().includes(q) ||
         (d.contactName?.toLowerCase().includes(q)) ||
@@ -247,7 +349,7 @@ export default function Pipeline() {
         (contacts.find(c => c.id === d.contactId)?.name.toLowerCase().includes(q))
       );
     }
-    
+
     // Stage filter
     if (filterStage !== 'all') {
       result = result.filter(d => {
@@ -255,12 +357,13 @@ export default function Pipeline() {
         return stage === filterStage;
       });
     }
-    
-    // HP-7: My Deals filter
+
+    // HP-7: My Deals. The board also counts a deal nobody owns that I created; a deal's
+    // creator is not sent to the browser, so here it is the deals I own.
     if (filterMyDeals && currentUserId) {
       result = result.filter(d => d.assigneeId === currentUserId);
     }
-    
+
     // HP-10: Assignee filter
     if (filterAssignee !== 'all') {
       if (filterAssignee === 'unassigned') {
@@ -269,113 +372,117 @@ export default function Pipeline() {
         result = result.filter(d => d.assigneeId === filterAssignee);
       }
     }
-    
-    // HP-10: Value range filter
-    if (filterValueMin) {
-      const min = parseFloat(filterValueMin);
-      if (!isNaN(min)) result = result.filter(d => (parseFloat(d.value.replace(/[^0-9.-]/g, '')) || 0) >= min);
-    }
-    if (filterValueMax) {
-      const max = parseFloat(filterValueMax);
-      if (!isNaN(max)) result = result.filter(d => (parseFloat(d.value.replace(/[^0-9.-]/g, '')) || 0) <= max);
-    }
 
-    // HP-10: Expected close date range filter
+    // HP-10: Value range filter, on the stored amounts. A deal with none is outside any range.
+    const min = parseMoneyInput(filterValueMin);
+    if (min !== null) result = result.filter(d => (amountOf(d) ?? Number.NaN) >= min);
+    const max = parseMoneyInput(filterValueMax);
+    if (max !== null) result = result.filter(d => (amountOf(d) ?? Number.NaN) <= max);
+
+    // HP-10: Expected close date range filter, by the day picked.
     if (filterCloseDateFrom) {
-      const from = new Date(filterCloseDateFrom);
-      result = result.filter(d => d.expectedCloseDateUtc && new Date(d.expectedCloseDateUtc) >= from);
+      result = result.filter(d => d.expectedCloseDateUtc && dateOnlyKey(d.expectedCloseDateUtc) >= filterCloseDateFrom);
     }
     if (filterCloseDateTo) {
-      const to = new Date(filterCloseDateTo);
-      to.setHours(23, 59, 59, 999);
-      result = result.filter(d => d.expectedCloseDateUtc && new Date(d.expectedCloseDateUtc) <= to);
+      result = result.filter(d => d.expectedCloseDateUtc && dateOnlyKey(d.expectedCloseDateUtc) <= filterCloseDateTo);
     }
-    
+
+    if (filterStale) result = result.filter(d => d.isStale);
+
     return result;
-  }, [pipelineDeals, searchQuery, filterStage, contacts, stageList, filterMyDeals, currentUserId, filterAssignee, filterValueMin, filterValueMax, filterCloseDateFrom, filterCloseDateTo]);
+  }, [pipelineDeals, searchQuery, filterStage, contacts, stageList, filterMyDeals, currentUserId, filterAssignee, filterValueMin, filterValueMax, filterCloseDateFrom, filterCloseDateTo, filterStale]);
 
-  const dealsByStage = groupDealsByStage(filteredDeals, stageList);
+  // The board's columns; picking a stage shows that one alone.
+  const boardColumns = useMemo(() => {
+    const columns = board?.columns ?? [];
+    return filterStage === 'all' ? columns : columns.filter((c) => c.name === filterStage);
+  }, [board, filterStage]);
 
-  /** The board again, quietly, after duplicates were merged into one deal. */
-  const reloadDeals = () => {
-    getDeals()
-      .then(setDeals)
-      .catch(() => toast.error(messages.errors.loadFailed));
+  /**
+   * Read the board again now, and every deal if a layout shows them: after duplicates are
+   * merged, after a refused save, and on retry. A save of a deal does not need it: the
+   * cache reads the deals again once the save is announced.
+   */
+  const refresh = () => {
+    void boardResult.refetch();
+    if (view.layout !== 'board') void allDealsQuery.refetch();
   };
 
-  // Every deal, not a page: the paged endpoint caps a page at 100, so a board read
-  // from it silently dropped the rest.
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    Promise.all([getDeals(), getContacts(), getPipelines(), getTasks()])
-      .then(([dealsData, contactsData, pipelinesData, tasksData]) => {
-        if (!cancelled) {
-          setDeals(dealsData);
-          setContacts(contactsData);
-          setPipelines(pipelinesData ?? []);
-          setAllTasks(tasksData ?? []);
-          if (pipelinesData?.length) setSelectedPipelineId((prev) => prev ?? pipelinesData[0]?.id ?? null);
-        }
-      })
-      .catch(() => { if (!cancelled) toast.error(messages.errors.loadFailed); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
-
-  useEffect(() => {
-    if (createOpen || editDeal || detailDeal) {
-      getCompanies().then(setCompanies).catch(() => {});
-    }
-  }, [createOpen, editDeal, detailDeal]);
-
-  // Fetch activities when deal detail is opened
-  useEffect(() => {
-    if (detailDeal) {
-      setActivitiesLoading(true);
-      setDealActivities([]);
-      getActivitiesByDeal(detailDeal.id)
-        .then(setDealActivities)
-        .catch(() => setDealActivities([]))
-        .finally(() => setActivitiesLoading(false));
-    }
-  }, [detailDeal]);
-
-  useEffect(() => {
-    const orgId = getCurrentOrganizationId();
-    if (orgId) getOrgMembers(orgId).then(setOrgMembers).catch(() => setOrgMembers([]));
-    else setOrgMembers([]);
-  }, []);
-
-  useEffect(() => {
-    if (editDeal) {
-      setEditForm({
-        name: editDeal.name,
-        value: editDeal.value,
-        currency: editDeal.currency ?? '',
-        expectedCloseDate: editDeal.expectedCloseDateUtc ? editDeal.expectedCloseDateUtc.slice(0, 10) : '',
-        companyId: editDeal.companyId || '',
-        pipelineId: editDeal.pipelineId ?? '',
-        stageId: editDeal.dealStageId ?? (editDeal.stage ?? ''),
-        assigneeId: editDeal.assigneeId ?? '',
-        description: editDeal.description ?? '',
-        probability: editDeal.probability?.toString() ?? '',
+  /** The next cards of one column, with the board's filters and order. */
+  const loadMore = async (column: DealBoardColumn) => {
+    setLoadingMore(column.key);
+    try {
+      const page = await getDealBoardColumn(boardQuery, column.key, column.deals.length);
+      setBoard((prev) => prev && {
+        ...prev,
+        columns: prev.columns.map((c) => c.key !== column.key ? c : {
+          ...c,
+          deals: [...c.deals, ...page.deals.filter((d) => !c.deals.some((x) => x.id === d.id))],
+          hasMore: page.hasMore,
+        }),
       });
+    } catch {
+      toast.error(messages.errors.loadFailed);
+    } finally {
+      setLoadingMore(null);
     }
-  }, [editDeal]);
+  };
 
-  const funnelData = dealsByStage.map(({ stageName, deals: stageDeals }) => ({
-    name: stageName,
-    count: stageDeals.length,
-    value: stageDeals.reduce((acc, d) => {
-      const num = parseFloat(String(d.value).replace(/[^0-9.-]/g, '')) || 0;
-      return acc + num;
-    }, 0),
-    fill: STAGE_COLORS_MAP[stageName]?.bar ?? '#94a3b8',
+  /** Opens the edit dialog on a deal, with that deal's fields, in one update. */
+  const openEditDeal = (deal: Deal) => {
+    setEditDeal(deal);
+    setEditForm(editFormFor(deal));
+  };
+
+  // The board may have loaded minutes ago, and the dialog's save is checked against the
+  // version it opened with. So the dialog takes the deal as it is now, read when it
+  // opens, as long as nothing has been typed yet: a fresher copy never throws away what
+  // someone entered, and a save from the older one is refused and offers a reload.
+  const [freshEditDeal, setFreshEditDeal] = useState<Deal | null>(null);
+  const editDealId = editDeal?.id;
+  useEffect(() => {
+    if (!editDealId) return;
+    let live = true;
+    getDealById(editDealId)
+      .then((fresh) => { if (live && fresh) setFreshEditDeal(fresh); })
+      .catch(() => { /* the board's copy stands */ });
+    return () => { live = false; };
+  }, [editDealId]);
+  useEffect(() => {
+    if (!freshEditDeal) return;
+    setFreshEditDeal(null);
+    if (!editDeal || editDeal.id !== freshEditDeal.id) return;
+    // Decided inside the form's own update, against the form as it is when the update
+    // applies. Checked here and applied by a later effect, a keystroke that landed in
+    // between was overwritten by the fresh copy: an emptied description came back.
+    const opened = JSON.stringify(editFormFor(editDeal));
+    setEditForm((current) => (JSON.stringify(current) === opened ? editFormFor(freshEditDeal) : current));
+  }, [freshEditDeal, editDeal]);
+
+  /** After a refused save: the deal as it is now, in the dialog and on the board. */
+  const reloadEditDeal = async (id: string) => {
+    try {
+      const fresh = await getDealById(id);
+      if (!fresh) return;
+      setEditDeal(fresh);
+      setEditForm(editFormFor(fresh));
+      setDeals((prev) => prev.map((d) => (d.id === id ? fresh : d)));
+      refresh();
+    } catch {
+      toast.error(messages.errors.generic);
+    }
+  };
+
+  // Drawn by count: a bar per stage cannot hold money in more than one currency. The
+  // count is the stage's, from the server, not the cards loaded so far.
+  const funnelData = boardColumns.map((column) => ({
+    name: column.name,
+    count: column.count,
+    fill: STAGE_COLORS_MAP[column.name]?.bar ?? '#94a3b8',
   }));
 
   const handleMoveStage = async (dealId: string, newStageId: string, newStageName: string) => {
-    const deal = deals.find((d) => d.id === dealId);
+    const deal = board?.columns.flatMap((c) => c.deals).find((d) => d.id === dealId) ?? deals.find((d) => d.id === dealId);
     const currentStageId = deal?.dealStageId ?? deal?.stage ?? '';
     if (deal && currentStageId === newStageId) return;
     const target = stageList.find((s) => s.id === newStageId);
@@ -383,15 +490,25 @@ export default function Pipeline() {
     const payload: { stage: string; dealStageId?: string; isWon?: boolean } = { stage: newStageName };
     if (/^[0-9a-f-]{36}$/i.test(newStageId)) payload.dealStageId = newStageId;
     if (isWon !== undefined) payload.isWon = isWon;
+    // The card moves to its new column at once. The columns' counts, money and stale
+    // deals are the server's to work out again, which the cache does once the save is
+    // announced; a refused move puts the board back as it was. While the board for new
+    // filters is on its way, the one on screen is the last filters' stand-in: nothing
+    // moves in it, and it is never put back under the new filters.
+    const before = boardResult.isPlaceholderData ? null : board;
+    if (deal) setBoard((prev) => withCardMoved(prev, dealId, newStageId, newStageName));
+    const putBack = () => { if (before) writeCache<DealBoard>(dealBoardKey(ws, boardQuery), () => before); };
     try {
       const updated = await updateDeal(dealId, payload);
       if (updated) {
         setDeals((prev) => prev.map((d) => (d.id === dealId ? updated : d)));
         toast.success(messages.success.dealMoved);
       } else {
+        putBack();
         toast.error(messages.errors.generic);
       }
     } catch {
+      putBack();
       toast.error(messages.errors.generic);
     }
   };
@@ -425,6 +542,13 @@ export default function Pipeline() {
       toast.error(messages.validation.nameAndValueRequired);
       return;
     }
+    // Read once, here, the way the server read older deals: "85'500", "1.234,56" and
+    // "CHF 12,500" are all numbers. The server took plain digits only and refused the rest.
+    const amount = parseMoneyInput(editForm.value);
+    if (amount === null) {
+      toast.error(AMOUNT_HINT);
+      return;
+    }
     setSavingEdit(true);
     try {
       const expectedCloseDateUtc = editForm.expectedCloseDate
@@ -433,16 +557,21 @@ export default function Pipeline() {
       const stageName = editStageList.find((s) => s.id === editForm.stageId)?.name ?? editForm.stageId;
       const updated = await updateDeal(editDeal.id, {
         name: editForm.name.trim(),
-        value: editForm.value.trim(),
+        amount,
         currency: editForm.currency || undefined,
         stage: stageName,
         pipelineId: editForm.pipelineId || undefined,
         dealStageId: /^[0-9a-f-]{36}$/i.test(editForm.stageId) ? editForm.stageId : undefined,
-        expectedCloseDateUtc,
-        companyId: editForm.companyId || undefined,
-        assigneeId: editForm.assigneeId || undefined,
-        description: editForm.description.trim() || undefined,
-        probability: editForm.probability ? parseInt(editForm.probability, 10) : undefined,
+        // An emptied field is sent as null, which takes it off. Left out, as it was,
+        // choosing no company or no owner said "Deal updated" and changed nothing.
+        expectedCloseDateUtc: expectedCloseDateUtc ?? null,
+        companyId: editForm.companyId || null,
+        assigneeId: editForm.assigneeId || null,
+        description: editForm.description.trim() || null,
+        probability: editForm.probability ? parseInt(editForm.probability, 10) : null,
+        // The dialog sends back every field it shows, so the save is refused, rather
+        // than written over, when someone saved the deal after this copy was read.
+        version: editForm.version || undefined,
       });
       if (updated) {
         setDeals((prev) => prev.map((d) => (d.id === editDeal.id ? updated : d)));
@@ -452,8 +581,15 @@ export default function Pipeline() {
       } else {
         toast.error(messages.errors.generic);
       }
-    } catch {
-      toast.error(messages.errors.generic);
+    } catch (err) {
+      if (isEditConflict(err)) {
+        const dealId = editDeal.id;
+        showEditConflict(err.message, () => { void reloadEditDeal(dealId); });
+      } else {
+        // The server says why ("A currency is a three-letter ISO code"); "Something went
+        // wrong" left people guessing which field it was.
+        toast.error(err instanceof Error && err.message ? err.message : messages.errors.generic);
+      }
     } finally {
       setSavingEdit(false);
     }
@@ -469,10 +605,12 @@ export default function Pipeline() {
   const openCreateDeal = () => {
     const pipelineId = selectedPipelineId ?? pipelines[0]?.id ?? '';
     const firstStage = getStageList(pipelines, pipelineId)[0];
+    // Priced in the workspace's currency unless someone picks another. The dialog
+    // opened with none picked, and a deal saved like that counted as USD.
     setCreateForm({
       name: '',
       value: '',
-      currency: '',
+      currency: money.currency,
       stageId: firstStage?.id ?? 'Qualification',
       pipelineId,
       expectedCloseDate: '',
@@ -491,6 +629,11 @@ export default function Pipeline() {
       toast.error(messages.validation.nameAndValueRequired);
       return;
     }
+    const amount = parseMoneyInput(createForm.value);
+    if (amount === null) {
+      toast.error(AMOUNT_HINT);
+      return;
+    }
     setSaving(true);
     try {
       const expectedCloseDateUtc = createForm.expectedCloseDate
@@ -499,8 +642,8 @@ export default function Pipeline() {
       const stageName = createStageList.find((s) => s.id === createForm.stageId)?.name ?? createForm.stageId;
       const created = await createDeal({
         name: createForm.name.trim(),
-        value: createForm.value.trim(),
-        currency: createForm.currency.trim() || undefined,
+        amount,
+        currency: createForm.currency.trim() || money.currency,
         stage: stageName,
         pipelineId: createForm.pipelineId || undefined,
         dealStageId: /^[0-9a-f-]{36}$/i.test(createForm.stageId) ? createForm.stageId : undefined,
@@ -517,12 +660,12 @@ export default function Pipeline() {
         setCreateOpen(false);
         const pipelineId = selectedPipelineId ?? pipelines[0]?.id ?? '';
         const firstStage = getStageList(pipelines, pipelineId)[0];
-        setCreateForm({ name: '', value: '', currency: '', stageId: firstStage?.id ?? 'Qualification', pipelineId, expectedCloseDate: '', companyId: '', contactId: '', assigneeId: '', description: '', probability: '' });
+        setCreateForm({ name: '', value: '', currency: money.currency, stageId: firstStage?.id ?? 'Qualification', pipelineId, expectedCloseDate: '', companyId: '', contactId: '', assigneeId: '', description: '', probability: '' });
       } else {
         toast.error(messages.errors.generic);
       }
-    } catch {
-      toast.error(messages.errors.generic);
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : messages.errors.generic);
     } finally {
       setSaving(false);
     }
@@ -542,21 +685,26 @@ export default function Pipeline() {
         subject: activityForm.subject.trim(),
         body: activityForm.body.trim() || undefined,
         dealId: detailDeal.id,
+        ...factsPayload(activityForm.type, activityForm.facts),
       });
       if (activity) {
-        setDealActivities((prev) => [activity, ...prev]);
+        setDealActivities((prev) => withActivity(prev, activity));
         setActivityForm({ type: 'note', subject: '', body: '' });
         toast.success('Activity logged');
-        // Update the deal's lastActivityAtUtc in local state
+        // The deal's last activity moves to when this happened, and never back: a
+        // call logged late for last week does not undo what has happened since.
+        const happened = activityTime(activity);
+        const later = (current?: string | null) =>
+          current && Date.parse(current) >= Date.parse(happened) ? current : happened;
         setDeals((prev) =>
           prev.map((d) =>
             d.id === detailDeal.id
-              ? { ...d, lastActivityAtUtc: activity.createdAt }
+              ? { ...d, lastActivityAtUtc: later(d.lastActivityAtUtc) }
               : d
           )
         );
         setDetailDeal((prev) =>
-          prev ? { ...prev, lastActivityAtUtc: activity.createdAt } : prev
+          prev ? { ...prev, lastActivityAtUtc: later(prev.lastActivityAtUtc) } : prev
         );
       } else {
         toast.error('Failed to log activity');
@@ -619,15 +767,23 @@ export default function Pipeline() {
     }
     return d.stage || 'Qualification';
   };
-  const activeDeals = pipelineDeals.filter((d) => dealOutcome(d, stageList) !== 'lost');
-  const totalPipelineValue = formatDealTotal(activeDeals);
-  // Bare aggregate numbers (dealStats) carry no currency of their own, so they
-  // are shown in the currency most of the pipeline is actually in rather than a
-  // hardcoded USD.
-  const boardCurrency = dominantCurrencyOf(pipelineDeals);
-  const formatBoardAmount = (n: number) => formatAmount(n, boardCurrency);
-  // How this person likes deals shown: the board, a table, a list or cards, saved for them.
-  const view = useViewPreference('deals', { layouts: ['board', 'table', 'list', 'grid'] });
+  // The open pipeline, one figure per currency. The header badge used to count won
+  // deals in too, so it read larger than the tile beneath it.
+  const openPipeline = money.formatTotals(dealStats.activeTotals, 'never');
+  const wonText = dealStats.wonTotals.length > 0 ? money.formatTotals(dealStats.wonTotals, 'never') : null;
+  // The tile counts up one number, so it shows the currency most of the pipeline is
+  // in, and names the others beside it rather than adding them in.
+  const [mainOpen, ...otherOpen] = dealStats.activeTotals;
+  const openCurrency = mainOpen?.currency ?? money.currency;
+  // The open pipeline weighted by each deal's probability, or its stage's, per currency.
+  const weightedText = dealStats.weighted.some((w) => w.covered > 0)
+    ? money.formatTotals(dealStats.weighted.filter((w) => w.covered > 0), 'never')
+    : null;
+  // Every layout but the board filters every deal here; the board's are counted by the server.
+  const hasDeals = dealStats.total > 0;
+  const shownCount = view.layout === 'board' ? (board?.count ?? 0) : filteredDeals.length;
+  const filtersActive = !!(searchQuery || filterStage !== 'all' || filterMyDeals || filterAssignee !== 'all' || filterValueMin
+    || filterValueMax || filterCloseDateFrom || filterCloseDateTo || filterStale);
   const stagePill = (deal: Deal) => {
     const name = dealStageName(deal);
     const outcome = dealOutcome(deal, stageList);
@@ -646,25 +802,17 @@ export default function Pipeline() {
       </span>
     );
   };
-  // Values are typed text and sometimes carry their own symbol ("$50,000"); read the
-  // number out of it so the symbol is never shown twice.
-  const dealValue = (deal: Deal) => {
-    const amount = Number(String(deal.value ?? '').replace(/[^0-9.-]/g, ''));
-    return (
-      <span className="font-semibold text-emerald-700">
-        {Number.isFinite(amount) && String(deal.value ?? '').trim() !== ''
-          ? formatAmount(amount, deal.currency || boardCurrency)
-          : <><span className="text-xs">{getCurrencySymbol(deal.currency)}</span>{deal.value}</>}
-      </span>
-    );
-  };
+  // The stored amount, in the deal's own currency.
+  const dealValue = (deal: Deal) => (
+    <span className="font-semibold text-emerald-700">{money.formatDeal(deal)}</span>
+  );
   const contactOf = (deal: Deal) => (deal.contactId ? contacts.find((c) => c.id === deal.contactId)?.name : undefined) ?? deal.contactName;
   const closeDate = (deal: Deal) => {
     if (!deal.expectedCloseDateUtc) return '—';
-    const days = getDaysUntilClose(deal.expectedCloseDateUtc);
+    const days = getDaysUntilClose(deal.expectedCloseDateUtc, money.timeZone);
     return (
       <span className="flex flex-wrap items-center gap-1.5">
-        <span>{new Date(deal.expectedCloseDateUtc).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+        <span>{formatCloseDate(deal.expectedCloseDateUtc)}</span>
         {days !== null && <UrgencyBadge days={days} />}
       </span>
     );
@@ -679,6 +827,7 @@ export default function Pipeline() {
           <InitialsAvatar name={d.name} size="sm" />
           <span className="truncate">{d.name}</span>
           {d.isPrivate && <span className="shrink-0 rounded-full bg-slate-100 px-1.5 text-[10px] font-semibold text-slate-600">Private</span>}
+          {d.isStale && <span className="shrink-0 rounded-full bg-amber-100 px-1.5 text-[10px] font-semibold text-amber-800">Stale</span>}
         </span>
       ),
     },
@@ -689,6 +838,10 @@ export default function Pipeline() {
     { id: 'owner', label: 'Owner', byDefault: false, cell: (d) => d.assigneeName || '—' },
     { id: 'probability', label: 'Probability', numeric: true, byDefault: false, cell: (d) => (d.probability == null ? '—' : `${d.probability}%`) },
     { id: 'close', label: 'Close date', cell: closeDate },
+    {
+      id: 'inStage', label: 'In stage', byDefault: false,
+      cell: (d) => { const days = daysSince(d.stageEnteredAtUtc); return days === null ? '—' : formatDays(days); },
+    },
     { id: 'tasks', label: 'Tasks', numeric: true, byDefault: false, cell: (d) => taskCountsByDeal[d.id] || '—' },
   ];
   /** Edit and delete, the same on every layout. */
@@ -698,28 +851,35 @@ export default function Pipeline() {
         variant="ghost"
         size="icon"
         className="h-8 w-8 rounded-xl text-slate-500 hover:bg-emerald-50 hover:text-emerald-600"
-        onClick={() => setEditDeal(deal)}
+        onClick={() => openEditDeal(deal)}
         aria-label={`Edit ${deal.name}`}
       >
         <Pencil className="h-4 w-4" />
       </Button>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-8 w-8 rounded-xl text-slate-500 hover:bg-red-50 hover:text-red-600"
-        onClick={() => setDeleteConfirmDeal(deal)}
-        aria-label={`Delete ${deal.name}`}
-      >
-        <Trash2 className="h-4 w-4" />
-      </Button>
+      <WriteOnly permission={[PERMISSION.EditRecords, PERMISSION.DeleteRecords]} all>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 rounded-xl text-slate-500 hover:bg-red-50 hover:text-red-600"
+          onClick={() => setDeleteConfirmDeal(deal)}
+          aria-label={`Delete ${deal.name}`}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </WriteOnly>
     </>
   ));
 
   // The board's numbers, in its header. Deals Won shows the won deals.
   const dealHeroStats: PageStat[] = [
     {
-      label: 'Total Pipeline Value', value: dealStats.activeValue, icon: DollarSign, tone: 'emerald',
-      hint: `${formatBoardAmount(dealStats.wonValue)} won`, format: formatBoardAmount,
+      label: 'Total Pipeline Value', value: mainOpen?.value ?? 0, icon: DollarSign, tone: 'emerald',
+      hint: [
+        otherOpen.length > 0 ? `and ${money.formatTotals(otherOpen, 'never')}` : null,
+        weightedText ? `${weightedText} weighted` : null,
+        wonText ? `${wonText} won` : null,
+      ].filter(Boolean).join(' · ') || undefined,
+      format: (n) => money.format(n, openCurrency, 'never'),
     },
     {
       label: 'Win Rate', value: dealStats.winRate, icon: TrendingUp, tone: 'blue',
@@ -731,13 +891,22 @@ export default function Pipeline() {
     },
     {
       label: 'Deals Won', value: dealStats.won, icon: Trophy, tone: 'orange',
-      hint: dealStats.wonValue > 0 ? formatBoardAmount(dealStats.wonValue) : undefined,
+      hint: wonText ?? undefined,
       onClick: () => setFilterStage(stageList.find((st) => st.isWon)?.name ?? 'Closed Won'),
       actionLabel: `Deals won, ${dealStats.won}. Activate to show the won deals.`,
     },
     dealStats.overdue > 0
       ? { label: 'Overdue Deals', value: dealStats.overdue, icon: AlertCircle, tone: 'rose', hint: 'action needed' }
       : { label: 'All on track!', value: dealStats.overdue, icon: CheckCircle2, tone: 'emerald', hint: 'none overdue' },
+    ...(board && board.staleAfterDays > 0
+      ? [{
+        label: 'Stale Deals', value: dealStats.stale, icon: Clock, tone: dealStats.stale > 0 ? 'amber' as const : 'slate' as const,
+        hint: `no activity for ${board.staleAfterDays}+ days`,
+        onClick: () => setFilterStale((on) => !on),
+        pressed: filterStale,
+        actionLabel: `Stale deals, ${dealStats.stale}. Activate to show only the stale deals.`,
+      }]
+      : []),
   ];
 
   const detailContact = detailDeal?.contactId ? contacts.find((c) => c.id === detailDeal.contactId) : undefined;
@@ -753,7 +922,7 @@ export default function Pipeline() {
             tone="violet"
             title="Deals"
             subtitle={loading ? 'Loading your pipeline…' : 'Track opportunities from qualification to close'}
-            badges={!loading && deals.length > 0 && (
+            badges={!loading && hasDeals && (
               <>
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse motion-reduce:animate-none" aria-hidden />
@@ -761,7 +930,7 @@ export default function Pipeline() {
                 </span>
                 <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-700">
                   <TrendingUp className="h-3 w-3" aria-hidden />
-                  {totalPipelineValue}
+                  {openPipeline}
                 </span>
               </>
             )}
@@ -771,13 +940,14 @@ export default function Pipeline() {
                 New Deal
               </Button>
             )}
-            stats={!loading && deals.length > 0 ? dealHeroStats : undefined}
+            stats={!loading && hasDeals ? dealHeroStats : undefined}
           />
 
-          <DuplicateMerge spec={DEAL_DUPLICATES} onMerged={reloadDeals} />
+          {/* The board is the server's now: a merge reloads it, not only the full list. */}
+          <DuplicateMerge spec={DEAL_DUPLICATES} onMerged={refresh} />
 
           {/* Action Alert Banner */}
-          {!loading && deals.length > 0 && dealStats.overdue > 0 && (
+          {!loading && hasDeals && dealStats.overdue > 0 && (
             <motion.div 
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -812,7 +982,7 @@ export default function Pipeline() {
           )}
 
           {/* Search and filter bar */}
-          {!loading && deals.length > 0 && (
+          {!loading && hasDeals && (
             <motion.div 
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -911,6 +1081,38 @@ export default function Pipeline() {
                   My Deals
                 </button>
 
+                {board && board.staleAfterDays > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setFilterStale(!filterStale)}
+                    aria-pressed={filterStale}
+                    title={`Open deals with no activity for ${board.staleAfterDays} days or more`}
+                    className={cn(
+                      'relative h-11 px-4 rounded-xl border shadow-sm font-medium text-sm transition-all duration-300',
+                      filterStale
+                        ? 'bg-gradient-to-r from-amber-500 to-orange-500 border-amber-400/50 text-white'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-amber-50 hover:border-amber-300 hover:text-amber-700'
+                    )}
+                  >
+                    <Clock className="w-4 h-4 inline mr-1.5" />
+                    Stale
+                  </button>
+                )}
+
+                {view.layout === 'board' && (
+                  <Select value={boardSort} onValueChange={(v) => setBoardSort(v as NonNullable<DealBoardQuery['sort']>)}>
+                    <SelectTrigger aria-label="Order cards by" className="relative h-11 w-full sm:w-[170px] rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl border border-slate-200 shadow-xl">
+                      <SelectItem value="close" className="rounded-lg">Closing soonest</SelectItem>
+                      <SelectItem value="value" className="rounded-lg">Largest first</SelectItem>
+                      <SelectItem value="created" className="rounded-lg">Newest first</SelectItem>
+                      <SelectItem value="name" className="rounded-lg">By name</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+
                 {/* HP-10: Assignee filter */}
                 {orgMembers.length > 0 && (
                   <Select value={filterAssignee} onValueChange={setFilterAssignee}>
@@ -975,7 +1177,7 @@ export default function Pipeline() {
               </div>
 
               {/* Active Filter Pills */}
-              {(searchQuery || filterStage !== 'all' || filterMyDeals || filterAssignee !== 'all' || filterValueMin || filterValueMax || filterCloseDateFrom || filterCloseDateTo) && (
+              {filtersActive && (
                 <div className="relative mt-4 flex flex-wrap items-center gap-2">
                   <span className="text-xs text-slate-500 font-medium">Active filters:</span>
                   {searchQuery && (
@@ -1025,6 +1227,15 @@ export default function Pipeline() {
                       </button>
                     </span>
                   )}
+                  {filterStale && (
+                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-50 text-amber-700 text-xs font-medium border border-amber-200">
+                      <Clock className="w-3 h-3" />
+                      Stale
+                      <button type="button" onClick={() => setFilterStale(false)} aria-label="Remove stale filter" className="-my-1 -mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-amber-100 hover:text-amber-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
                   {(filterCloseDateFrom || filterCloseDateTo) && (
                     <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-cyan-50 text-cyan-700 text-xs font-medium border border-cyan-200">
                       <Calendar className="w-3 h-3" />
@@ -1035,16 +1246,21 @@ export default function Pipeline() {
                     </span>
                   )}
                   <span className="text-xs text-slate-500 ml-2">
-                    {filteredDeals.length} of {deals.length} deals
+                    {shownCount} of {view.layout === 'board' ? dealStats.total : pipelineDeals.length} deals
                   </span>
                 </div>
               )}
             </motion.div>
           )}
 
+        {!loading && boardResult.isError && board && (
+          <LoadFailed stale what="The board" error={boardResult.error} onRetry={refresh} retrying={boardResult.isFetching} className="mb-4" />
+        )}
         {loading ? (
           <KanbanSkeleton columns={5} />
-        ) : deals.length === 0 ? (
+        ) : boardResult.isError && !board ? (
+          <LoadFailed what="Your deals" error={boardResult.error} onRetry={refresh} retrying={boardResult.isFetching} />
+        ) : !hasDeals ? (
           /* Empty State - matching Leads page style */
           <div className="w-full">
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -1100,7 +1316,7 @@ export default function Pipeline() {
               </div>
             </div>
           </div>
-        ) : filteredDeals.length === 0 && (searchQuery || filterStage !== 'all') ? (
+        ) : shownCount === 0 && filtersActive ? (
           /* No results state */
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
@@ -1116,7 +1332,10 @@ export default function Pipeline() {
             </div>
             <Button 
               variant="outline" 
-              onClick={() => { setSearchQuery(''); setFilterStage('all'); }}
+              onClick={() => {
+                setSearchQuery(''); setFilterStage('all'); setFilterMyDeals(false); setFilterAssignee('all');
+                setFilterValueMin(''); setFilterValueMax(''); setFilterCloseDateFrom(''); setFilterCloseDateTo(''); setFilterStale(false);
+              }}
               className="shrink-0 h-11 px-6 rounded-xl border-2 hover:bg-slate-50"
             >
               Clear all filters
@@ -1190,7 +1409,7 @@ export default function Pipeline() {
               <div className="hidden sm:flex items-center gap-2 text-xs text-slate-500">
                 <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100">
                   <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span>{filteredDeals.length} deals</span>
+                  <span>{shownCount} deals</span>
                 </div>
               </div>
             </div>
@@ -1203,17 +1422,27 @@ export default function Pipeline() {
                   animate={{ opacity: 1 }}
                   className="flex-1 min-h-0 flex gap-5 overflow-x-auto overflow-y-hidden pb-6 -mx-2 px-2"
                 >
-                  {dealsByStage.map(({ stageId: colStageId, stageName: colStageName, deals: stageDeals }, index) => (
+                  {boardColumns.map((column, index) => (
                     // The column rises in; the deal cards in it are drag sources, so they keep their own motion.
-                    <StaggerItem key={colStageId} index={index}>
+                    <StaggerItem key={column.key} index={index}>
                       <DroppableStageColumn
-                        stageId={colStageId}
-                        stageName={colStageName}
-                        deals={stageDeals}
+                        stageId={column.key}
+                        stageName={column.name}
+                        deals={column.deals}
+                        count={column.count}
+                        totals={column.totals}
+                        weighted={column.weighted}
+                        probability={column.probability}
+                        stale={column.stale}
+                        hasMore={column.hasMore}
+                        loadingMore={loadingMore === column.key}
+                        onLoadMore={() => loadMore(column)}
+                        // Nothing is moved to "No stage": it holds deals in none of the stages.
+                        acceptsDrops={column.key !== 'unset'}
                         contacts={contacts}
                         stageList={stageList}
                         onMoveStage={handleMoveStage}
-                        onEdit={setEditDeal}
+                        onEdit={openEditDeal}
                         onDelete={setDeleteConfirmDeal}
                         onOpenDetail={openDealDetail}
                         taskCountsByDeal={taskCountsByDeal}
@@ -1262,7 +1491,7 @@ export default function Pipeline() {
                         stageId={deal.dealStageId ?? dealStageName(deal)}
                         stageName={dealStageName(deal)}
                         onMoveStage={handleMoveStage}
-                        onEdit={() => setEditDeal(deal)}
+                        onEdit={() => openEditDeal(deal)}
                         onDelete={() => setDeleteConfirmDeal(deal)}
                         onOpenDetail={() => openDealDetail(deal)}
                         stageList={stageList}
@@ -1294,7 +1523,7 @@ export default function Pipeline() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">Value</p>
-                    <p className="text-lg font-semibold text-emerald-700">{getCurrencySymbol(detailDeal.currency)} {detailDeal.value}</p>
+                    <p className="text-lg font-semibold text-emerald-700">{money.formatDeal(detailDeal)}</p>
                   </div>
                   <div>
                     <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">Stage</p>
@@ -1325,15 +1554,9 @@ export default function Pipeline() {
                 {detailDeal.expectedCloseDateUtc && (
                   <div>
                     <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">Expected close</p>
-                    <p className="text-slate-900 text-sm">
-                      {new Date(detailDeal.expectedCloseDateUtc).toLocaleDateString(undefined, {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                      })}
-                    </p>
-                    {getDaysUntilClose(detailDeal.expectedCloseDateUtc) !== null && (
-                      <UrgencyBadge days={getDaysUntilClose(detailDeal.expectedCloseDateUtc)!} />
+                    <p className="text-slate-900 text-sm">{formatCloseDate(detailDeal.expectedCloseDateUtc)}</p>
+                    {getDaysUntilClose(detailDeal.expectedCloseDateUtc, money.timeZone) !== null && (
+                      <UrgencyBadge days={getDaysUntilClose(detailDeal.expectedCloseDateUtc, money.timeZone)!} />
                     )}
                   </div>
                 )}
@@ -1387,7 +1610,7 @@ export default function Pipeline() {
                     size="sm"
                     className="flex-1 gap-2"
                     onClick={() => {
-                      setEditDeal(detailDeal);
+                      openEditDeal(detailDeal);
                       setDetailDeal(null);
                     }}
                   >
@@ -1417,17 +1640,19 @@ export default function Pipeline() {
                       </Button>
                     </>
                   )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                    onClick={() => {
-                      setDeleteConfirmDeal(detailDeal);
-                      setDetailDeal(null);
-                    }}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </Button>
+                  <WriteOnly permission={[PERMISSION.EditRecords, PERMISSION.DeleteRecords]} all>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      onClick={() => {
+                        setDeleteConfirmDeal(detailDeal);
+                        setDetailDeal(null);
+                      }}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </WriteOnly>
                 </div>
 
                 {/* Activities Section */}
@@ -1474,11 +1699,17 @@ export default function Pipeline() {
                       className="w-full px-3 py-2 text-sm border border-slate-200 rounded-md bg-white resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400"
                       rows={2}
                     />
+                    <ActivityFactsFields
+                      className="mt-2 sm:grid-cols-2"
+                      type={activityForm.type}
+                      value={activityForm.facts ?? EMPTY_FACTS}
+                      onChange={(facts) => setActivityForm((f) => ({ ...f, facts }))}
+                    />
                     <div className="flex justify-end mt-2">
                       <Button
                         type="submit"
                         size="sm"
-                        disabled={savingActivity || !activityForm.subject.trim()}
+                        disabled={savingActivity || !activityForm.subject.trim() || !!factsProblem(activityForm.type, activityForm.facts)}
                         className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
                       >
                         {savingActivity ? (
@@ -1544,7 +1775,7 @@ export default function Pipeline() {
                               <div>
                                 <p className="text-sm font-medium text-slate-800 truncate">{activity.subject || activity.type}</p>
                                 <p className="text-xs text-slate-500">
-                                  {activity.type} • {new Date(activity.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                                  {activity.type}{activityFactsLine(activity) && <> • {activityFactsLine(activity)}</>} • {new Date(activityTime(activity)).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                                 </p>
                               </div>
                             </div>
@@ -1622,9 +1853,10 @@ export default function Pipeline() {
                 </Label>
                 <Input
                   id="deal-value"
+                  inputMode="decimal"
                   value={createForm.value}
                   onChange={(e) => setCreateForm((f) => ({ ...f, value: e.target.value }))}
-                  placeholder="e.g. $50,000"
+                  placeholder="e.g. 50'000"
                   className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-emerald-300 focus:ring-emerald-100 transition-all"
                   required
                 />
@@ -1632,25 +1864,21 @@ export default function Pipeline() {
               <div className="group">
                 <Label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
                   <div className="flex items-center justify-center w-6 h-6 rounded-md bg-slate-100 text-slate-600">
-                    <span className="text-xs font-bold">$</span>
+                    <span className="text-xs font-bold">¤</span>
                   </div>
                   Currency
                 </Label>
                 <Select
-                  value={createForm.currency}
+                  value={createForm.currency || money.currency}
                   onValueChange={(v) => setCreateForm((f) => ({ ...f, currency: v }))}
                 >
                   <SelectTrigger aria-label="Currency" className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-emerald-300 focus:ring-emerald-100 transition-all">
                     <SelectValue placeholder="Select currency" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="CHF">CHF - Swiss Franc</SelectItem>
-                    <SelectItem value="EUR">EUR - Euro</SelectItem>
-                    <SelectItem value="USD">USD - US Dollar</SelectItem>
-                    <SelectItem value="GBP">GBP - British Pound</SelectItem>
-                    <SelectItem value="CAD">CAD - Canadian Dollar</SelectItem>
-                    <SelectItem value="AUD">AUD - Australian Dollar</SelectItem>
-                    <SelectItem value="JPY">JPY - Japanese Yen</SelectItem>
+                    {currencyOptions(createForm.currency || money.currency).map((c) => (
+                      <SelectItem key={c.code} value={c.code}>{c.code} - {c.name}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -1880,9 +2108,10 @@ export default function Pipeline() {
                 </Label>
                 <Input
                   id="edit-deal-value"
+                  inputMode="decimal"
                   value={editForm.value}
                   onChange={(e) => setEditForm((f) => ({ ...f, value: e.target.value }))}
-                  placeholder="e.g. $50,000"
+                  placeholder="e.g. 50'000"
                   className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-emerald-300 focus:ring-emerald-100 transition-all"
                   required
                 />
@@ -1890,25 +2119,22 @@ export default function Pipeline() {
               <div className="group">
                 <Label htmlFor="edit-deal-currency" className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
                   <div className="flex items-center justify-center w-6 h-6 rounded-md bg-slate-100 text-slate-600">
-                    <span className="text-xs font-bold">$</span>
+                    <span className="text-xs font-bold">¤</span>
                   </div>
                   Currency
                 </Label>
+                {/* What the deal is in. It said CHF for a deal with none, while the rest of the app said USD. */}
                 <Select
-                  value={editForm.currency || 'CHF'}
+                  value={editForm.currency || money.currency}
                   onValueChange={(v) => setEditForm((f) => ({ ...f, currency: v }))}
                 >
                   <SelectTrigger aria-label="Currency" className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-emerald-300 focus:ring-emerald-100 transition-all">
                     <SelectValue placeholder="Select currency" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="CHF">CHF - Swiss Franc</SelectItem>
-                    <SelectItem value="EUR">EUR - Euro</SelectItem>
-                    <SelectItem value="USD">USD - US Dollar</SelectItem>
-                    <SelectItem value="GBP">GBP - British Pound</SelectItem>
-                    <SelectItem value="CAD">CAD - Canadian Dollar</SelectItem>
-                    <SelectItem value="AUD">AUD - Australian Dollar</SelectItem>
-                    <SelectItem value="JPY">JPY - Japanese Yen</SelectItem>
+                    {currencyOptions(editForm.currency || money.currency).map((c) => (
+                      <SelectItem key={c.code} value={c.code}>{c.code} - {c.name}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -1970,7 +2196,7 @@ export default function Pipeline() {
               <Label>Company</Label>
               <Select
                 value={editForm.companyId || 'none'}
-                onValueChange={(v) => setEditForm((f) => ({ ...f, companyId: v === 'none' ? '' : v }))}
+                onValueChange={whenChosen((v) => setEditForm((f) => ({ ...f, companyId: v === 'none' ? '' : v })))}
               >
                 <SelectTrigger aria-label="Company" className="mt-1">
                   <SelectValue placeholder="Optional" />
@@ -1990,7 +2216,7 @@ export default function Pipeline() {
                 <Label>Assignee</Label>
                 <Select
                   value={editForm.assigneeId || 'none'}
-                  onValueChange={(v) => setEditForm((f) => ({ ...f, assigneeId: v === 'none' ? '' : v }))}
+                  onValueChange={whenChosen((v) => setEditForm((f) => ({ ...f, assigneeId: v === 'none' ? '' : v })))}
                 >
                   <SelectTrigger aria-label="Assignee" className="mt-1">
                     <SelectValue placeholder="Optional" />

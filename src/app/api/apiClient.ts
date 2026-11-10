@@ -5,8 +5,7 @@
  */
 
 import { clearSession, getAuthToken, getCurrentOrganizationId, isDemoMode } from '@/app/lib/auth';
-import { markLocalOnly } from './localOnly';
-import { announceDataChanged, changesRecords } from './dataChanged';
+import { announceDataChanged, changesRecords, resourcesChangedBy } from './dataChanged';
 import { isNotOnServer } from './notOnServer';
 
 export function getApiBaseUrl(): string | undefined {
@@ -35,6 +34,14 @@ export function servesDemoData(): boolean {
 }
 
 export type AuthFetchOptions = RequestInit & { skipAuth?: boolean };
+
+/**
+ * What a read takes besides its own arguments. `signal` lets the caller give up on
+ * it: a list page passes the one its query hands it, so a search typed over, a page
+ * left or a workspace switched cancels the request instead of letting it finish
+ * and land somewhere it no longer belongs.
+ */
+export type RequestOptions = { signal?: AbortSignal };
 
 export async function authFetch(path: string, options: AuthFetchOptions = {}): Promise<Response> {
   const base = getApiBaseUrl();
@@ -67,8 +74,10 @@ export async function authFetch(path: string, options: AuthFetchOptions = {}): P
   // Every write the app makes passes through here, so this is where "your copy
   // may be stale" is said once for all of them. Anonymous calls (signing a
   // contract, the public capture form) are not the signed-in user's records.
+  // It says which kinds of record changed, so a list of tasks is not re-read
+  // because a lead was saved.
   if (res.ok && !skipAuth && changesRecords(init.method, path)) {
-    announceDataChanged();
+    announceDataChanged({ resources: resourcesChangedBy(init.method, path, init.body) });
   }
   return res;
 }
@@ -165,31 +174,34 @@ export async function ensureOk(res: Response): Promise<void> {
 /**
  * The server answered that this route doesn't exist (or isn't implemented). A 404
  * with a body is the server explaining that a record wasn't found, which is an
- * answer, not a missing feature, and saving locally then would hide it.
+ * answer, not a missing feature.
  */
 function isEndpointMissing(err: unknown): err is ApiError {
   return err instanceof ApiError && !err.hasBody && (err.status === 404 || err.status === 405 || err.status === 501);
 }
 
+/** What a person is told when the server has no route for what they asked. */
+export const NOT_ON_SERVER_MESSAGE = 'This part of Cadence is not on the server yet. Nothing was kept in this browser instead.';
+
 /**
- * Run a real-API call, falling back to a local implementation when the backend
- * isn't connected or has no endpoint for the feature yet. Used by
- * frontend-built features (automations, custom fields, hospitality, …) so they
- * keep working, backed by this browser's storage, until the backend gains support.
+ * Run a real-API call, or with demo data, this browser's own implementation of it.
  *
- * Only a missing endpoint falls back. Any other failure — a 403 for a Viewer, a
- * validation error, a record the server can't find, a 500, an unreachable server —
- * is rethrown, because saving locally then would report success for a write the
- * server refused or never saw.
+ * Demo data lives in this browser and real data on the server, never a mix of the
+ * two. This used to fall back to the browser's storage, with real data too, when the
+ * server had no route for a feature (a bare 404, 405 or 501), so a member, a charge
+ * or a gift card entered then was saved where no teammate and no other device would
+ * ever see it, and the save looked like it had worked. Now such a call fails like
+ * any other, with a sentence saying nothing was kept instead.
+ *
+ * Every other failure (a 403 for a Viewer, a validation error, a record the server
+ * cannot find, a 500, an unreachable server) is rethrown as it is.
  */
 export async function apiWithFallback<T>(real: () => Promise<T>, local: () => Promise<T>): Promise<T> {
   if (servesDemoData()) return local();
   try {
     return await real();
   } catch (err) {
-    if (!isEndpointMissing(err)) throw err;
-    markLocalOnly(err.path);
-    return local();
+    if (isEndpointMissing(err)) throw new ApiError(NOT_ON_SERVER_MESSAGE, err.status, err.path, false, err.code);
+    throw err;
   }
 }
-

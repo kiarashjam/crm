@@ -54,6 +54,8 @@ export interface ContactRelationshipList {
   /** The contact the relationships hang off. Null for a lead with no contact yet. */
   contactId: string | null;
   items: ContactRelationship[];
+  /** A lead whose contact someone deleted: none is made for it again, so none is recorded. */
+  contactDeleted?: boolean;
 }
 
 /** Whose relationships: a contact, or a lead (which works on the lead's own contact). */
@@ -135,7 +137,11 @@ export function byCoupleThenName(a: ContactRelationship, b: ContactRelationship)
 export async function getRelationships(owner: RelationshipOwner): Promise<ContactRelationshipList> {
   if (!servesDemoData()) {
     const list = await authFetchJson<ContactRelationshipList>(basePath(owner));
-    return { contactId: list?.contactId ?? null, items: Array.isArray(list?.items) ? list.items : [] };
+    return {
+      contactId: list?.contactId ?? null,
+      items: Array.isArray(list?.items) ? list.items : [],
+      contactDeleted: list?.contactDeleted === true,
+    };
   }
   const contactId = await demoContactId(owner);
   return { contactId, items: contactId ? await demoList(contactId) : [] };

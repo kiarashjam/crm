@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Copy, Check, Paperclip } from 'lucide-react';
 import { getCurrentUser, isDemoMode } from '@/app/lib/auth';
@@ -8,17 +8,12 @@ import { PageTransition } from '@/app/components/PageTransition';
 import {
   getTemplateById,
   getUserSettings,
-  getCopyHistoryStats,
-  getTemplates,
-  getDashboardStats,
-  getPipelineValueByStage,
-  getPipelineValueByAssignee,
-  getLeads,
-  getContacts,
-  getDeals,
-  getActivitiesPaged,
   sendCopyToCrm,
 } from '@/app/api';
+import {
+  useActivitiesPage, useAllContacts, useAllDeals, useAllLeads, useCopyStats, useDashboardStats, usePipelineByAssignee,
+  usePipelineByStage, useTemplates,
+} from '@/app/hooks/queries';
 import { 
   generateCopyWithRecipient, 
   generateCopyInLanguage,
@@ -26,7 +21,7 @@ import {
   type SupportedLanguage,
   SUPPORTED_LANGUAGES 
 } from '@/app/api/copyGenerator';
-import type { Lead, Contact, Deal, Activity } from '@/app/api/types';
+import type { Lead, Contact, Deal } from '@/app/api/types';
 import type { PipelineValueByAssignee } from '@/app/api/reporting';
 import { toast } from 'sonner';
 import { messages } from '@/app/api/messages';
@@ -46,6 +41,12 @@ import { copyTypes, goals } from './dashboard/config';
 import { mostRecent } from './dashboard/dashboardData';
 import type { DashboardStats, CopyStats, PipelineStage } from './dashboard/types';
 
+const NO_STAGES: PipelineStage[] = [];
+const NO_TEAM: PipelineValueByAssignee[] = [];
+const NO_LEADS: Lead[] = [];
+const NO_CONTACTS: Contact[] = [];
+const NO_DEALS: Deal[] = [];
+
 export default function Dashboard() {
   const location = useLocation();
   const templateId = (location.state as { templateId?: string } | null)?.templateId;
@@ -57,36 +58,39 @@ export default function Dashboard() {
   const [length, setLength] = useState<'short' | 'medium' | 'long'>('medium');
   const [language, setLanguage] = useState<SupportedLanguage>('en');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [stats, setStats] = useState<CopyStats>({
-    // `templateCount: 8` used to sit here. It was displayed as a real figure
-    // before the fetch resolved, and stayed there forever if the fetch failed.
-    sentThisWeek: 0,
-    totalSent: 0,
-    templateCount: null,
-  });
-  const [crmStats, setCrmStats] = useState<DashboardStats | null>(null);
-  const [pipelineByStage, setPipelineByStage] = useState<PipelineStage[]>([]);
-  const [pipelineByAssignee, setPipelineByAssignee] = useState<PipelineValueByAssignee[]>([]);
-  const [recentActivity, setRecentActivity] = useState<Activity[]>([]);
-  /**
-   * Which requests have come back, and which failed.
-   *
-   * Every fetch on this page used to end in an empty `catch {}`, leaving state at
-   * its initial value — so a broken endpoint rendered a dashboard of zeros,
-   * indistinguishable from an empty CRM. Loaded and failed are tracked separately
-   * because "nothing yet", "nothing there" and "we could not look" are three
-   * different things and only the middle one is a zero.
-   */
-  const [loaded, setLoaded] = useState({ crm: false, stages: false, team: false, activity: false });
-  usePageLoading(!loaded.crm);
-  const [failed, setFailed] = useState({ crm: false, stages: false, team: false, activity: false });
-  
+  // Each figure is its own read through the shared cache, and fails on its own: a broken
+  // endpoint shows as "could not be loaded" with a retry, never as a zero, which is
+  // indistinguishable from an empty CRM. "Nothing yet", "nothing there" and "we could
+  // not look" are three different things, and only the middle one is a zero.
+  const copyStatsQuery = useCopyStats();
+  const templatesQuery = useTemplates();
+  // A template count nobody counted is left null, which the widget shows as a dash.
+  const stats: CopyStats = {
+    sentThisWeek: copyStatsQuery.data?.sentThisWeek ?? 0,
+    totalSent: copyStatsQuery.data?.totalSent ?? 0,
+    templateCount: templatesQuery.data ? templatesQuery.data.length : null,
+  };
+  const crmQuery = useDashboardStats();
+  const stagesQuery = usePipelineByStage();
+  const teamQuery = usePipelineByAssignee();
+  const activityQuery = useActivitiesPage({ page: 1, pageSize: 5 });
+  const crmStats: DashboardStats | null = crmQuery.data ?? null;
+  const pipelineByStage: PipelineStage[] = stagesQuery.data ?? NO_STAGES;
+  const pipelineByAssignee: PipelineValueByAssignee[] = teamQuery.data ?? NO_TEAM;
+  const recentActivity = useMemo(() => mostRecent(activityQuery.data?.items ?? [], 5), [activityQuery.data]);
+  usePageLoading(crmQuery.isPending);
+  /** Come back from the server (with figures or a failure), and failed with nothing to show. */
+  const loadedOf = (q: { isPending: boolean }) => !q.isPending;
+  const failedOf = (q: { isError: boolean; data: unknown }) => q.isError && q.data === undefined;
+  const retryOf = (q: { refetch: () => unknown }) => () => { void q.refetch(); };
+
   // Recipient selection states
   const [showRecipientPicker, setShowRecipientPicker] = useState(false);
   const [recipientType, setRecipientType] = useState<'lead' | 'contact' | 'deal' | null>(null);
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [contacts, setContacts] = useState<Contact[]>([]);
-  const [deals, setDeals] = useState<Deal[]>([]);
+  // The people the writer can address, read once the picker opens on their kind.
+  const leads: Lead[] = useAllLeads(showRecipientPicker && recipientType === 'lead').data ?? NO_LEADS;
+  const contacts: Contact[] = useAllContacts(showRecipientPicker && recipientType === 'contact').data ?? NO_CONTACTS;
+  const deals: Deal[] = useAllDeals(showRecipientPicker && recipientType === 'deal').data ?? NO_DEALS;
   const [selectedRecipient, setSelectedRecipient] = useState<{
     type: 'lead' | 'contact' | 'deal';
     id: string;
@@ -129,76 +133,6 @@ export default function Dashboard() {
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     writerAnchor.current?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
   }, [location.state]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const guard = <T,>(fn: (x: T) => void) => (x: T) => { if (!cancelled) fn(x); };
-    const mark = (key: 'crm' | 'stages' | 'team' | 'activity', ok: boolean) => {
-      if (cancelled) return;
-      setLoaded((prev) => ({ ...prev, [key]: true }));
-      if (!ok) setFailed((prev) => ({ ...prev, [key]: true }));
-    };
-
-    getCopyHistoryStats()
-      .then(guard((s) => setStats((prev) => ({ ...prev, ...s }))))
-      .catch(() => {});
-    getTemplates()
-      .then(guard((t) => setStats((prev) => ({ ...prev, templateCount: t.length }))))
-      // Left null on failure, which the widget renders as a dash rather than a
-      // number nobody counted.
-      .catch(() => {});
-    getActivitiesPaged({ page: 1, pageSize: 5 })
-      .then(guard((result) => {
-        setRecentActivity(mostRecent(result.items, 5));
-        mark('activity', true);
-      }))
-      .catch(() => mark('activity', false));
-
-    getDashboardStats()
-      .then(guard((s) => { setCrmStats(s); mark('crm', true); }))
-      .catch(() => mark('crm', false));
-    getPipelineValueByStage()
-      .then(guard((s) => { setPipelineByStage(s); mark('stages', true); }))
-      .catch(() => { mark('stages', false); });
-    getPipelineValueByAssignee()
-      .then(guard((s) => { setPipelineByAssignee(s); mark('team', true); }))
-      .catch(() => { mark('team', false); });
-
-    return () => { cancelled = true; };
-  }, []);
-
-  // Recipient lists are only needed once someone opens the picker.
-  const loadedRecipients = useRef({ lead: false, contact: false, deal: false });
-  useEffect(() => {
-    if (!showRecipientPicker || !recipientType) return;
-    if (loadedRecipients.current[recipientType]) return;
-    let cancelled = false;
-    const load = async () => {
-      try {
-        if (recipientType === 'lead') {
-          const rows = await getLeads();
-          if (cancelled) return;
-          setLeads(rows);
-        } else if (recipientType === 'contact') {
-          const rows = await getContacts();
-          if (cancelled) return;
-          setContacts(rows);
-        } else {
-          const rows = await getDeals();
-          if (cancelled) return;
-          setDeals(rows);
-        }
-        loadedRecipients.current[recipientType] = true;
-      } catch {
-        if (cancelled) return;
-        if (recipientType === 'lead') setLeads([]);
-        else if (recipientType === 'contact') setContacts([]);
-        else setDeals([]);
-      }
-    };
-    void load();
-    return () => { cancelled = true; };
-  }, [showRecipientPicker, recipientType]);
 
   useEffect(() => {
     if (!templateId) return;
@@ -286,8 +220,10 @@ export default function Dashboard() {
           <DashboardHero
             displayName={displayName}
             stats={crmStats}
-            loaded={loaded.crm}
-            failed={failed.crm}
+            loaded={loadedOf(crmQuery)}
+            failed={failedOf(crmQuery)}
+            onRetry={retryOf(crmQuery)}
+            retrying={crmQuery.isFetching}
           />
 
         {/* Main Content Grid */}
@@ -298,7 +234,7 @@ export default function Dashboard() {
               
               {/* Pipeline by Stage - Extracted Component */}
               <StaggerItem index={0}>
-                <PipelineChart stages={pipelineByStage} loaded={loaded.stages} failed={failed.stages} />
+                <PipelineChart stages={pipelineByStage} loaded={loadedOf(stagesQuery)} failed={failedOf(stagesQuery)} onRetry={retryOf(stagesQuery)} retrying={stagesQuery.isFetching} />
               </StaggerItem>
 
               {/* Intelligent Sales Writer - Extracted Component */}
@@ -413,7 +349,7 @@ export default function Dashboard() {
 
               {/* Team Performance - Extracted Component */}
               <StaggerItem index={2}>
-                <TeamPerformance members={pipelineByAssignee} loaded={loaded.team} failed={failed.team} />
+                <TeamPerformance members={pipelineByAssignee} loaded={loadedOf(teamQuery)} failed={failedOf(teamQuery)} onRetry={retryOf(teamQuery)} retrying={teamQuery.isFetching} />
               </StaggerItem>
             </div>
 
@@ -426,7 +362,7 @@ export default function Dashboard() {
                 <CopyStatsWidget stats={stats} />
               </StaggerItem>
               <StaggerItem index={3}>
-                <RecentActivity items={recentActivity} loaded={loaded.activity} failed={failed.activity} />
+                <RecentActivity items={recentActivity} loaded={loadedOf(activityQuery)} failed={failedOf(activityQuery)} onRetry={retryOf(activityQuery)} retrying={activityQuery.isFetching} />
               </StaggerItem>
             </div>
           </div>

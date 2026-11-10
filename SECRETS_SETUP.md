@@ -178,11 +178,56 @@ unsubscribe link at the foot of every sequence, automation and composer email. I
 empty or not an absolute http(s) URL, password reset is skipped and logged, and outreach
 goes out without its unsubscribe link (a warning is logged each time).
 
-Workspace email (composer, sequences, automations) is sent from `Email__FromAddress`
+Workspace email (composer, assistant, sequences, automations) is sent from
+`Email__FromAddress` — or the workspace's own address once its domain is verified, below —
 under the workspace's name, with Reply-To set to the person behind it, so replies reach
 that person rather than the shared sender inbox. `Email__FromName` names the product's own
 messages (password reset, invitations, reminders, contracts), and workspace email only
 when the workspace has no name.
+
+### The outbox, replies, bounces and a workspace's own sender (optional)
+
+Workspace email and outbound webhooks are queued in the database and sent by a background
+job that retries for about two days (see `backend/README.md`, "Email and the outbox"). That
+needs nothing new. Three more things can be switched on, each by settings alone; until
+then everything works as before.
+
+| Name | Value | What it switches on |
+|------|-------|---------------------|
+| `Email__VerifiedSendingDomains` | each domain SendGrid has authenticated with the workspace it belongs to, comma separated, e.g. `acme.ch=3f2b…-…, club.example=9a1c…-…` | A workspace whose own sending address (Settings → Organization → Email sender) is on a domain listed for that workspace sends from it. Add a domain only once SendGrid shows it as verified: the relay refuses mail from a domain it has not verified. The workspace id is required: anyone can sign up and save any address, so a domain listed on its own would let every workspace send as it, and is ignored. |
+| `Email__InboundReplyDomain` | e.g. `reply.yourdomain.ch` | With `Email__InboundParseSecret`: every workspace email also names `reply+<token>@` this domain in Reply-To, so a reply reaches the person and comes back into the CRM. |
+| `Email__InboundParseSecret` | a long random string, e.g. `openssl rand -hex 24` | Turns on `POST /api/public/email/inbound/<secret>`. |
+| `Email__EventWebhookSecret` | a long random string | Turns on `POST /api/public/email/events/<secret>`. |
+| `Email__EventWebhookVerificationKey` | the verification key SendGrid shows for a signed Event Webhook | Event posts must carry a valid signature (with the secret, or instead of it at `/api/public/email/events`). |
+
+**Replies (SendGrid Inbound Parse).** Pick a subdomain nobody receives mail on, e.g.
+`reply.yourdomain.ch`, and give it an MX record `mx.sendgrid.net` (priority 10). In
+**SendGrid → Settings → Inbound Parse → Add Host & URL**, enter that domain and the URL
+`https://<your-api>/api/public/email/inbound/<Email__InboundParseSecret>`. Leave "POST the raw,
+full MIME message" either way; both are read. Then set the two settings above. A reply is
+matched by its reply address or by the Message-ID it answers, goes on the record's
+timeline, stops that person's sequences and notifies whoever works the record. An
+automatic reply (an out-of-office, marked so in its headers) goes on the timeline only.
+Mail that answers nothing the workspaces sent is dropped.
+
+**Bounces and spam reports (SendGrid Event Webhook).** In **SendGrid → Settings → Mail
+Settings → Event Webhook**, set the URL to
+`https://<your-api>/api/public/email/events/<Email__EventWebhookSecret>`, select at least
+Bounced, Dropped, Spam Reports and Unsubscribes (Delivered, Deferred and Opened are
+recorded too), and enable it. For more protection, switch on **Signed Event Webhook** and
+put its verification key in `Email__EventWebhookVerificationKey`. A bounce, a spam report or
+an unsubscribe puts the address on that workspace's suppression list and stops the
+sequences writing to it; the composer then refuses the address and says why.
+
+**A workspace's own domain.** In **SendGrid → Settings → Sender Authentication →
+Authenticate Your Domain**, add the workspace's domain and give its owner the DNS records
+to publish. Once SendGrid shows it as verified, add `domain=<workspace id>` to
+`Email__VerifiedSendingDomains`; the workspace's Settings page shows its id while its
+address is not in use yet, and says which address is in use. Check that the domain really
+belongs to that workspace's organization before listing it.
+
+Both public endpoints answer 404 until their secret or key is set, and their secrets are
+kept out of the request log.
 
 Unsubscribe links are signed with ASP.NET Data Protection, the same key ring that keeps
 two-factor secrets. On Azure App Service that ring is kept under `%HOME%` and survives

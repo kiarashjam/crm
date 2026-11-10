@@ -80,7 +80,7 @@ describe('askAgent', () => {
     const rich: WorkSuggestion = { ...item, key: 'deal:d9', href: '/deals/d9', name: 'Pavilion', list: 'Deals', action: 'Send the proposal.', because: 'The deal is in Proposal.', priority: 72, guide: 'Proposal' };
     const reply = askAgent('what should I do?', world({
       items: [small, rich],
-      deals: [{ id: 'd9', name: 'Pavilion', value: '48000', probability: 80 }],
+      deals: [{ id: 'd9', name: 'Pavilion', value: '48000', amount: 48000, probability: 80 }],
     }));
     expect(reply.text).toContain('Pavilion');
     expect(reply.text).toContain('48');
@@ -92,8 +92,8 @@ describe('askAgent', () => {
     const reply = askAgent('what about their other opportunities?', world({
       items: [current],
       deals: [
-        { id: 'd1', name: 'Pavilion renewal', companyId: 'c1', companyName: 'Pavilion', value: '10000', stage: 'Proposal' },
-        { id: 'd2', name: 'Pavilion expansion', companyId: 'c1', companyName: 'Pavilion', value: '48000', stage: 'Qualification' },
+        { id: 'd1', name: 'Pavilion renewal', companyId: 'c1', companyName: 'Pavilion', value: '10000', amount: 10000, stage: 'Proposal' },
+        { id: 'd2', name: 'Pavilion expansion', companyId: 'c1', companyName: 'Pavilion', value: '48000', amount: 48000, stage: 'Qualification' },
       ],
     }), new Date(), {
       focusKey: 'deal:d1',
@@ -123,7 +123,7 @@ describe('askAgent', () => {
     expect(counted.text).toContain('Not loaded:');
 
     const found = askAgent('search for Pavilion', world({
-      deals: [{ id: 'd9', name: 'Expansion', companyName: 'Pavilion', value: '10', stage: 'Proposal' }],
+      deals: [{ id: 'd9', name: 'Expansion', companyName: 'Pavilion', value: '10', amount: 10, stage: 'Proposal' }],
     }));
     expect(found.text).toContain('Recorded matches');
     expect(found.text).toContain('Expansion');
@@ -134,24 +134,24 @@ describe('askAgent', () => {
     const deal: WorkSuggestion = { ...item, key: 'deal:d1', href: '/deals/d1', name: 'Pavilion renewal', list: 'Deals', action: 'Send the proposal.', because: 'The deal is in Proposal.', priority: 72 };
     const brief = askAgent('brief this', world({
       items: [deal],
-      deals: [{ id: 'd1', name: 'Pavilion renewal', companyName: 'Pavilion', value: '48000', stage: 'Proposal', expectedCloseDateUtc: '2026-11-01' }],
+      deals: [{ id: 'd1', name: 'Pavilion renewal', companyName: 'Pavilion', value: '48000', amount: 48000, stage: 'Proposal', expectedCloseDateUtc: '2026-11-01' }],
       activities: [{ id: 'a1', type: 'call', subject: 'Intro call', dealId: 'd1', name: 'Pavilion renewal', createdAt: '2026-10-01' }],
       tasks: [{ id: 't1', title: 'Send pricing', status: 'todo', dueDateUtc: '2026-10-20', dealId: 'd1' }],
     }), new Date('2026-10-22T00:00:00Z'), {
       focusKey: 'deal:d1', name: 'Pavilion renewal', leadId: null, dealId: 'd1', contactId: null, companyId: null, companyName: 'Pavilion',
     });
     expect(brief.text).toContain('Recorded fields only');
-    expect(brief.text).toContain(formatMoney(48000, 'USD'));
+    expect(brief.text).toContain(formatMoney(48000, 'CHF'));
     expect(brief.text).toContain('Intro call');
     expect(brief.text).toContain('Send pricing');
     expect(brief.text).toContain('Suggestion');
 
     const draft = askAgent('draft that', world({
       items: [deal],
-      deals: [{ id: 'd1', name: 'Pavilion renewal', companyName: 'Pavilion', value: '48000', stage: 'Proposal' }],
+      deals: [{ id: 'd1', name: 'Pavilion renewal', companyName: 'Pavilion', value: '48000', amount: 48000, stage: 'Proposal' }],
     }), new Date(), { focusKey: 'deal:d1', name: 'Pavilion renewal', leadId: null, dealId: 'd1', contactId: null, companyId: null, companyName: 'Pavilion' });
     expect(draft.actions[0]?.kind).toBe('draft');
-    expect(draft.actions[0]?.brief?.context).toContain(`Recorded amount: ${formatMoney(48000, 'USD')}`);
+    expect(draft.actions[0]?.brief?.context).toContain(`Recorded amount: ${formatMoney(48000, 'CHF')}`);
     expect(draft.actions[0]?.brief?.context).toContain('Use only these recorded fields');
     expect(draft.actions[0]?.brief?.goal).toBe('Send the proposal');
   });
@@ -159,12 +159,12 @@ describe('askAgent', () => {
   it('calculates open pipeline totals and proposes a deal only when the amount is present', () => {
     const totals = askAgent('where is the money?', world({
       deals: [
-        { id: 'd1', name: 'Open', value: '10000', stage: 'Proposal', isWon: null },
-        { id: 'd2', name: 'Won', value: '99999', stage: 'Closed Won', isWon: true },
+        { id: 'd1', name: 'Open', value: '10000', amount: 10000, stage: 'Proposal', isWon: null },
+        { id: 'd2', name: 'Won', value: '99999', amount: 99999, stage: 'Closed Won', isWon: true },
       ],
     }));
     expect(totals.text).toContain('Calculated from loaded open deals');
-    expect(totals.text).toContain(`Proposal: ${formatMoney(10000, 'USD')} across 1 deal`);
+    expect(totals.text).toContain(`Proposal: ${formatMoney(10000, 'CHF')} across 1 deal`);
     expect(totals.text).not.toContain('99');
 
     const missing = askAgent('create a deal called Northwind', world());
@@ -236,7 +236,7 @@ describe('askAgent', () => {
     const reply = askAgent('what should I do?', world({
       items: [{ ...item, priority: 90 }, rich],
       leads: [{ id: 'l1', name: 'Ada Lovelace', email: 'ada@example.com' }],
-      deals: [{ id: 'd9', name: 'Pavilion', value: '48000', probability: 20 }],
+      deals: [{ id: 'd9', name: 'Pavilion', value: '48000', amount: 48000, probability: 20 }],
     }));
     expect(reply.focusKey).toBe('lead:l1');
   });
@@ -424,10 +424,10 @@ describe('money', () => {
   it('totals each currency on its own and leaves out negative amounts', () => {
     const reply = askAgent('pipeline value', world({
       deals: [
-        { id: 'd1', name: 'Gala', value: '10000', currency: 'CHF', stage: 'Proposal' },
-        { id: 'd2', name: 'Retreat', value: '5000', currency: 'USD', stage: 'Proposal' },
-        { id: 'd3', name: 'Typo', value: '-200', currency: 'CHF', stage: 'Proposal' },
-        { id: 'd4', name: 'Euro style', value: '1.234,50', currency: 'CHF', stage: 'Qualification' },
+        { id: 'd1', name: 'Gala', value: '10000', amount: 10000, currency: 'CHF', stage: 'Proposal' },
+        { id: 'd2', name: 'Retreat', value: '5000', amount: 5000, currency: 'USD', stage: 'Proposal' },
+        { id: 'd3', name: 'Typo', value: '-200', amount: -200, currency: 'CHF', stage: 'Proposal' },
+        { id: 'd4', name: 'Euro style', value: '1.234,50', amount: 1234.5, currency: 'CHF', stage: 'Qualification' },
       ],
     }));
     expect(reply.text).toContain(`Open total in CHF: ${formatMoney(11234.5, 'CHF')}`);
@@ -454,7 +454,7 @@ describe('money', () => {
 
   it('will not change a deal into another currency', () => {
     const reply = askAgent('set the amount to USD 5000', world({
-      deals: [{ id: 'd1', name: 'Gala', value: '10000', currency: 'CHF', stage: 'Proposal' }],
+      deals: [{ id: 'd1', name: 'Gala', value: '10000', amount: 10000, currency: 'CHF', stage: 'Proposal' }],
     }), NOW, { ...emptyMemory(), focusKey: 'deal:d1', dealId: 'd1' });
     expect(reply.actions.some((action) => action.kind === 'update-deal')).toBe(false);
     expect(reply.text).toContain('in CHF');

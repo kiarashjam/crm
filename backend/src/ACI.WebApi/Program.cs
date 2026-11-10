@@ -61,7 +61,9 @@ try
             policy.WithOrigins(browserOrigins)
                 .AllowAnyHeader()
                 .AllowAnyMethod()
-                .AllowCredentials();
+                .AllowCredentials()
+                // The list exports say how many rows matched and how many the file holds.
+                .WithExposedHeaders("X-Total-Count", "X-Exported-Count");
         });
         // Claude and other MCP hosts call /mcp from their own origins, including preflight OPTIONS.
         options.AddPolicy("Mcp", policy =>
@@ -75,7 +77,9 @@ try
         });
     });
 
-    builder.Services.AddControllers();
+    // An update body that sends a field as null clears it; a field left out is kept.
+    builder.Services.AddControllers()
+        .AddJsonOptions(options => ACI.WebApi.Extensions.MergePatchJson.TrackNullsSent(options.JsonSerializerOptions));
 
     // The public form and tracking endpoints are partitioned by form token and by
     // lead, not by IP: behind Azure's front end the connection address may be the
@@ -264,13 +268,24 @@ try
     builder.Services.AddScoped<IDealService, DealService>();
     builder.Services.AddScoped<ILeadService, LeadService>();
     builder.Services.AddScoped<ILeadAutomation, LeadAutomation>();
+    builder.Services.AddScoped<ILeadStatusSync, LeadStatusSync>();
     builder.Services.AddScoped<ILeadOpsService, LeadOpsService>();
     builder.Services.AddScoped<ISequenceService, SequenceService>();
     builder.Services.AddScoped<IOutreachMail, OutreachMail>();
     builder.Services.AddScoped<IUnsubscribeService, UnsubscribeService>();
     builder.Services.AddScoped<IComposedEmailService, ComposedEmailService>();
+    // One outbox for every email and webhook a workspace sends (see OutboxService).
+    builder.Services.AddScoped<OutboxService>();
+    builder.Services.AddScoped<IOutbox>(sp => sp.GetRequiredService<OutboxService>());
+    builder.Services.AddScoped<IOutboundWebhookPublisher>(sp => sp.GetRequiredService<OutboxService>());
+    builder.Services.AddSingleton<OutboxSignal>();
+    builder.Services.AddSingleton<IOutboxSignal>(sp => sp.GetRequiredService<OutboxSignal>());
+    builder.Services.AddSingleton<OutboxDispatcher>();
+    builder.Services.AddScoped<IInboundEmailService, InboundEmailService>();
+    builder.Services.AddScoped<IEmailSendingService, EmailSendingService>();
     builder.Services.AddScoped<IContractService, ContractService>();
     builder.Services.AddScoped<ICompanyService, CompanyService>();
+    builder.Services.AddScoped<IDuplicateService, DuplicateService>();
     builder.Services.AddScoped<IProductService, ProductService>();
     builder.Services.AddScoped<IAutomationService, AutomationService>();
     builder.Services.AddScoped<IAutomationEngine, AutomationEngine>();
@@ -280,6 +295,9 @@ try
     builder.Services.AddScoped<ITaskService, TaskService>();
     builder.Services.AddScoped<IActivityService, ActivityService>();
     builder.Services.AddScoped<INotificationService, NotificationService>();
+    builder.Services.AddScoped<ICollaborationNotifier, CollaborationNotifier>();
+    builder.Services.AddScoped<IWorkQueueService, WorkQueueService>();
+    builder.Services.AddScoped<ICalendarService, CalendarService>();
     builder.Services.AddScoped<IAuditService, AuditService>();
     builder.Services.AddScoped<IAttachmentService, AttachmentService>();
     builder.Services.AddScoped<ICustomFieldService, CustomFieldService>();
@@ -288,6 +306,8 @@ try
     builder.Services.AddScoped<ICopyHistoryService, CopyHistoryService>();
     builder.Services.AddScoped<ISettingsService, SettingsService>();
     builder.Services.AddScoped<IOrganizationService, ACI.Application.Services.OrganizationService>();
+    // What the caller may do in the request's organization (MemberPermissions), read once per request.
+    builder.Services.AddScoped<ACI.Application.Common.IPermissionService, ACI.Application.Common.PermissionService>();
     builder.Services.AddScoped<IInviteService, ACI.Application.Services.InviteService>();
     builder.Services.AddScoped<IJoinRequestService, ACI.Application.Services.JoinRequestService>();
     builder.Services.AddScoped<ICopyGeneratorApplicationService, CopyGeneratorService>();
@@ -297,21 +317,28 @@ try
     builder.Services.AddScoped<ILeadStatusService, LeadStatusService>();
     builder.Services.AddScoped<ILeadSourceService, LeadSourceService>();
     builder.Services.AddScoped<IGlobalSearchService, GlobalSearchService>();
+    builder.Services.AddScoped<IImportService, ImportService>();
     builder.Services.AddScoped<ACI.WebApi.Mcp.CrmMcpTools>();
 
     // Background services
     builder.Services.AddHostedService<ACI.WebApi.Services.TaskReminderBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.ContractReminderBackgroundService>();
-    // Posted while a lead or deal is saved, so a slow receiver may hold that save up
-    // for this long at most, and the handler dials public addresses only.
-    builder.Services.AddHttpClient(nameof(ACI.Infrastructure.Services.OutboundWebhookPublisher),
-            client => client.Timeout = TimeSpan.FromSeconds(5))
-        .ConfigurePrimaryHttpMessageHandler(ACI.Infrastructure.Services.OutboundWebhookPublisher.PublicOnlyHandler);
+    // Posted by the outbox, not while a lead or deal is saved, so a receiver gets a little
+    // longer to answer than a save could wait; the handler dials public addresses only.
+    builder.Services.AddHttpClient(ACI.Infrastructure.Services.WebhookTransport.ClientName,
+            client => client.Timeout = TimeSpan.FromSeconds(10))
+        .ConfigurePrimaryHttpMessageHandler(ACI.Infrastructure.Services.WebhookTransport.PublicOnlyHandler);
+    builder.Services.AddHostedService<ACI.WebApi.Services.OutboxDispatcherBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.LeadFollowUpBackgroundService>();
+    builder.Services.AddHostedService<ACI.WebApi.Services.WeeklyDigestBackgroundService>();
+    builder.Services.AddHostedService<ACI.WebApi.Services.PersonContactBackfillBackgroundService>();
 
     // HTTP Context accessor for current user service
     builder.Services.AddHttpContextAccessor();
     builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
+    // The workspace every read is filtered to (AppDbContext's query filters): the
+    // request's, or whichever one a key, a token or a job says it acts for.
+    builder.Services.AddScoped<ITenantContext, ACI.WebApi.Services.TenantContext>();
 
     // JWT Authentication
     // The default below is in the repository, so anyone can sign a token with it for
@@ -459,14 +486,14 @@ try
             var maskedConnStr = connStr.Length > 30 ? connStr.Substring(0, 30) + "..." : connStr;
             Log.Information("Database connection: {ConnectionString}", maskedConnStr);
             
-            // The schema work below adds to the tables InitialCreate makes (its first
-            // statement points a foreign key at Users), but the migrations only run after
-            // it. So a new database -- missing, or created empty -- failed on its first
-            // statement on every start and was never set up. An empty one is now given the
-            // migrations first. A database with any table in it, as production's has,
-            // skips this and is set up in exactly the order it always was.
+            // The schema comes from the EF migrations (ACI.Infrastructure/Migrations), the
+            // first of which, the baseline, makes the whole schema as it stood when they
+            // became its only source. A new database is made by them, here. One made before
+            // them, by the first migrations and the start-up DDL below, has the baseline
+            // recorded without running it, further down (see SchemaBaseline), and from then
+            // on both get every migration after the baseline from the same MigrateAsync.
             //
-            // A missing one is only created in development (docker-compose's first
+            // A missing database is only created in development (docker-compose's first
             // start). Anywhere else the database is provisioned first, so a missing one
             // means a mistyped name in the connection string: creating it would start
             // the app on a new, empty database (on Azure, one at the default, paid tier)
@@ -479,13 +506,43 @@ try
                     "The database named in the connection string does not exist. Outside development it is not "
                     + "created at start-up: create it first (the scripts in scripts/ do), or correct the name.");
             }
-            if (!databaseExists || !await databaseCreator.HasTablesAsync())
+            if (!databaseExists)
             {
-                Log.Information("Empty database: creating the core tables from the migrations first...");
+                Log.Information("No database yet: creating it (development only)...");
+                await databaseCreator.CreateAsync();
+            }
+
+            // One instance at a time from here to the end of the schema work and seeding
+            // (see SchemaLock): two starting together both ran the same migrations.
+            await using var schemaLock = await ACI.WebApi.SchemaLock.AcquireAsync(
+                db.Database.GetConnectionString()!, TimeSpan.FromMinutes(10));
+
+            // Empty but for, at most, the history table a cut-off first start left behind
+            // (see SchemaBaseline.IsEmptyAsync).
+            if (await ACI.WebApi.SchemaBaseline.IsEmptyAsync(db))
+            {
+                Log.Information("Empty database: creating it from the migrations...");
                 await db.Database.MigrateAsync();
             }
-            
-            // First, create missing tables and fix schema
+
+            // SAFETY NET, FOR ONE RELEASE: the start-up DDL that made the schema before the
+            // baseline migration, left to run as it always has so that a database made
+            // before the baseline is brought fully up to date before the baseline is recorded
+            // on it. Every statement is guarded, so on a database the migrations made it
+            // changes nothing but the AppliedDataFixes ledger (SchemaMigrationTests compares
+            // the two).
+            //
+            // - Add nothing to it. A schema change is a migration now, from backend/:
+            //   dotnet ef migrations add <Name> -p src/ACI.Infrastructure -s src/ACI.Infrastructure -o Migrations
+            // - While it is here, a migration must not drop or rename anything it adds, or
+            //   it would put that back on the next start.
+            // - Once every database has started on this release (its __EFMigrationsHistory
+            //   holds the baseline), delete everything from here to "Schema check complete",
+            //   the one-time data fixes in it and the lead status alignment further down
+            //   included (each is in AppliedDataFixes by then). Keep the ContactEmailIndexes
+            //   call: where active contacts in one workspace share an email it has not yet
+            //   been able to build the two unique indexes, and it builds them once the
+            //   duplicates are merged (until then each start logs that they are missing).
             Log.Information("Checking and fixing database schema...");
             
             // Create Organizations table if missing
@@ -548,6 +605,16 @@ try
                     );
                     CREATE INDEX [IX_OrganizationMembers_UserId] ON [OrganizationMembers] ([UserId]);
                 END;
+            ");
+
+            // What each member may do (MemberPermissions): the preset they start from, and
+            // their own list when the owner changed it. Null in both for every member from
+            // before, who keeps exactly what their role allowed.
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF COL_LENGTH(N'dbo.OrganizationMembers', N'PermissionPreset') IS NULL
+                    ALTER TABLE [OrganizationMembers] ADD [PermissionPreset] nvarchar(40) NULL;
+                IF COL_LENGTH(N'dbo.OrganizationMembers', N'Permissions') IS NULL
+                    ALTER TABLE [OrganizationMembers] ADD [Permissions] nvarchar(400) NULL;
             ");
             
             // Create OrgSettings table if missing
@@ -735,6 +802,20 @@ try
                     ALTER TABLE [UserSettings] ADD [InAppSoundEnabled] bit NOT NULL DEFAULT 1;
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'BrowserNotificationsEnabled')
                     ALTER TABLE [UserSettings] ADD [BrowserNotificationsEnabled] bit NOT NULL DEFAULT 0;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'WeeklyDigestEnabled')
+                    ALTER TABLE [UserSettings] ADD [WeeklyDigestEnabled] bit NOT NULL DEFAULT 0;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'WeeklyDigestSentAtUtc')
+                    ALTER TABLE [UserSettings] ADD [WeeklyDigestSentAtUtc] datetime2 NULL;
+                -- The first migration made an EmailDigestFrequency column, NOT NULL with no
+                -- default, that the model has not had since. On a database it created, the
+                -- first settings save of anyone without settings yet failed on it, the
+                -- weekly digest switch included. A default lets the insert through; the
+                -- column and anything in it are left alone.
+                IF COL_LENGTH('UserSettings', 'EmailDigestFrequency') IS NOT NULL
+                    AND NOT EXISTS (SELECT 1 FROM sys.default_constraints
+                        WHERE parent_object_id = OBJECT_ID('UserSettings')
+                          AND parent_column_id = COLUMNPROPERTY(OBJECT_ID('UserSettings'), 'EmailDigestFrequency', 'ColumnId'))
+                    ALTER TABLE [UserSettings] ADD CONSTRAINT [DF_UserSettings_EmailDigestFrequency] DEFAULT 0 FOR [EmailDigestFrequency];
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'DefaultPipelineId')
                     ALTER TABLE [UserSettings] ADD [DefaultPipelineId] nvarchar(64) NULL;
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'DefaultLeadStatusId')
@@ -865,6 +946,9 @@ try
                     ALTER TABLE [Leads] ADD [EmailOpenCount] int NOT NULL CONSTRAINT DF_Leads_EmailOpenCount DEFAULT 0;
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'EnrichedDomain')
                     ALTER TABLE [Leads] ADD [EnrichedDomain] nvarchar(200) NULL;
+                -- When someone deleted the lead's person contact, so it is not made again (see Lead).
+                IF COL_LENGTH(N'dbo.Leads', N'PersonContactRemovedAtUtc') IS NULL
+                    ALTER TABLE [Leads] ADD [PersonContactRemovedAtUtc] datetime2 NULL;
             ");
 
             // One-time data fixes (see DataFixes). A failure is logged and retried on
@@ -1043,9 +1127,25 @@ try
                 );
                 IF COL_LENGTH('Deals', 'IsPrivate') IS NULL ALTER TABLE [Deals] ADD [IsPrivate] bit NOT NULL CONSTRAINT DF_Deals_IsPrivate DEFAULT 0;
                 IF COL_LENGTH('Deals', 'TeamId') IS NULL ALTER TABLE [Deals] ADD [TeamId] uniqueidentifier NULL;
+                IF COL_LENGTH('Deals', 'Amount') IS NULL ALTER TABLE [Deals] ADD [Amount] decimal(18,2) NULL;
                 IF COL_LENGTH('TaskItems', 'Recurrence') IS NULL ALTER TABLE [TaskItems] ADD [Recurrence] nvarchar(16) NULL;
                 IF COL_LENGTH('Organizations', 'OutboundWebhookUrl') IS NULL ALTER TABLE [Organizations] ADD [OutboundWebhookUrl] nvarchar(500) NULL;
                 IF COL_LENGTH('Organizations', 'OutboundWebhookSecret') IS NULL ALTER TABLE [Organizations] ADD [OutboundWebhookSecret] nvarchar(200) NULL;
+                -- The workspace's own sender address, used only once its domain is verified (see Organization.SendingAddress).
+                IF COL_LENGTH('Organizations', 'SendingAddress') IS NULL ALTER TABLE [Organizations] ADD [SendingAddress] nvarchar(256) NULL;
+                -- What a workspace works in (see RegionalSettings). The defaults, a Swiss
+                -- club's, fill the organisations already there; until now their months
+                -- began at UTC midnight and a deal with no currency counted as dollars.
+                IF COL_LENGTH('Organizations', 'Currency') IS NULL ALTER TABLE [Organizations] ADD [Currency] nvarchar(3) NOT NULL CONSTRAINT DF_Organizations_Currency DEFAULT N'CHF';
+                IF COL_LENGTH('Organizations', 'Locale') IS NULL ALTER TABLE [Organizations] ADD [Locale] nvarchar(35) NOT NULL CONSTRAINT DF_Organizations_Locale DEFAULT N'de-CH';
+                IF COL_LENGTH('Organizations', 'TimeZone') IS NULL ALTER TABLE [Organizations] ADD [TimeZone] nvarchar(64) NOT NULL CONSTRAINT DF_Organizations_TimeZone DEFAULT N'Europe/Zurich';
+                -- How the board judges a deal: after how many days without activity an
+                -- open deal is stale (the workspace's, which the default fills in for the
+                -- organisations already there, unless its pipeline has its own), and the
+                -- probability a stage gives the deals in it that have none of their own.
+                IF COL_LENGTH('Organizations', 'StaleDealDays') IS NULL ALTER TABLE [Organizations] ADD [StaleDealDays] int NOT NULL CONSTRAINT DF_Organizations_StaleDealDays DEFAULT 30;
+                IF COL_LENGTH('Pipelines', 'StaleDealDays') IS NULL ALTER TABLE [Pipelines] ADD [StaleDealDays] int NULL;
+                IF COL_LENGTH('DealStages', 'Probability') IS NULL ALTER TABLE [DealStages] ADD [Probability] int NULL;
                 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'SalesTeams')
                 CREATE TABLE [SalesTeams] (
                     [Id] uniqueidentifier NOT NULL PRIMARY KEY,
@@ -1189,11 +1289,73 @@ try
                 );
             ");
 
+            // Saved forecasts are kept rather than replaced, each save's lines sharing a
+            // SnapshotId. Before this, a month held one save at most (saving again deleted
+            // the last), so the lines already there are grouped by when and by whom they
+            // were saved, inside the same transaction that adds the column. The default
+            // covers a row written by an instance still running the previous code during a
+            // deploy. ByCloseDate marks lines counted by close date; the ones already there
+            // counted every open deal, and get 0.
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF COL_LENGTH('ForecastSnapshots', 'SnapshotId') IS NULL
+                BEGIN
+                BEGIN TRY
+                    BEGIN TRANSACTION;
+                    ALTER TABLE [ForecastSnapshots] ADD [SnapshotId] uniqueidentifier NULL;
+                    EXEC(N'
+                        DECLARE @saves TABLE ([OrganizationId] uniqueidentifier NULL, [SavedByUserId] uniqueidentifier NOT NULL,
+                            [MonthUtc] datetime2 NOT NULL, [SavedAtUtc] datetime2 NOT NULL, [SnapshotId] uniqueidentifier NOT NULL);
+                        INSERT INTO @saves SELECT [OrganizationId], [SavedByUserId], [MonthUtc], [SavedAtUtc], NEWID()
+                            FROM [ForecastSnapshots] GROUP BY [OrganizationId], [SavedByUserId], [MonthUtc], [SavedAtUtc];
+                        UPDATE f SET [SnapshotId] = s.[SnapshotId]
+                            FROM [ForecastSnapshots] f JOIN @saves s
+                              ON (f.[OrganizationId] = s.[OrganizationId] OR (f.[OrganizationId] IS NULL AND s.[OrganizationId] IS NULL))
+                             AND f.[SavedByUserId] = s.[SavedByUserId] AND f.[MonthUtc] = s.[MonthUtc] AND f.[SavedAtUtc] = s.[SavedAtUtc];
+                        ALTER TABLE [ForecastSnapshots] ALTER COLUMN [SnapshotId] uniqueidentifier NOT NULL;
+                        ALTER TABLE [ForecastSnapshots] ADD CONSTRAINT [DF_ForecastSnapshots_SnapshotId] DEFAULT NEWID() FOR [SnapshotId];');
+                    COMMIT TRANSACTION;
+                END TRY
+                BEGIN CATCH
+                    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+                    THROW;
+                END CATCH;
+                END
+                IF COL_LENGTH('ForecastSnapshots', 'ByCloseDate') IS NULL
+                    ALTER TABLE [ForecastSnapshots] ADD [ByCloseDate] bit NOT NULL CONSTRAINT [DF_ForecastSnapshots_ByCloseDate] DEFAULT 0;
+                IF COL_LENGTH('ForecastSnapshots', 'OverdueCount') IS NULL
+                    ALTER TABLE [ForecastSnapshots] ADD [OverdueCount] int NOT NULL CONSTRAINT [DF_ForecastSnapshots_OverdueCount] DEFAULT 0;
+                IF COL_LENGTH('ForecastSnapshots', 'OverdueValue') IS NULL
+                    ALTER TABLE [ForecastSnapshots] ADD [OverdueValue] decimal(18,2) NOT NULL CONSTRAINT [DF_ForecastSnapshots_OverdueValue] DEFAULT 0;
+                IF COL_LENGTH('ForecastSnapshots', 'NoCloseDateCount') IS NULL
+                    ALTER TABLE [ForecastSnapshots] ADD [NoCloseDateCount] int NOT NULL CONSTRAINT [DF_ForecastSnapshots_NoCloseDateCount] DEFAULT 0;
+                IF COL_LENGTH('ForecastSnapshots', 'UnreadableCount') IS NULL
+                    ALTER TABLE [ForecastSnapshots] ADD [UnreadableCount] int NOT NULL CONSTRAINT [DF_ForecastSnapshots_UnreadableCount] DEFAULT 0;
+            ");
+
             // Needs ClubMembers.ManualBalance, added just above (see DataFixes). Like the
             // fixes before it, a failure is logged and retried on the next start.
             try
             {
                 await db.Database.ExecuteSqlRawAsync(ACI.WebApi.DataFixes.KeepClubOpeningBalancesSql);
+            }
+            catch (Exception fixEx)
+            {
+                Log.Warning(fixEx, "A one-time data fix failed; it will be retried on the next start");
+            }
+            // Needs Deals.Amount, added just above. On its own, so a failure of the club
+            // fix does not hold it back.
+            try
+            {
+                await ACI.WebApi.DataFixes.FillDealAmountsAsync(db);
+            }
+            catch (Exception fixEx)
+            {
+                Log.Warning(fixEx, "A one-time data fix failed; it will be retried on the next start");
+            }
+            // Needs Organizations.Currency, added above, for the currency each deal gets.
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync(ACI.WebApi.DataFixes.FillDealCurrenciesSql);
             }
             catch (Exception fixEx)
             {
@@ -1487,6 +1649,54 @@ try
                     ALTER TABLE [Activities] ADD [UpdatedAtUtc] datetime2 NULL;
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Activities') AND name = 'UpdatedByUserId')
                     ALTER TABLE [Activities] ADD [UpdatedByUserId] uniqueidentifier NULL;
+                -- How a call or meeting went, how long it took, and who reached out.
+                IF COL_LENGTH('Activities', 'Outcome') IS NULL ALTER TABLE [Activities] ADD [Outcome] nvarchar(32) NULL;
+                IF COL_LENGTH('Activities', 'DurationMinutes') IS NULL ALTER TABLE [Activities] ADD [DurationMinutes] int NULL;
+                IF COL_LENGTH('Activities', 'Direction') IS NULL ALTER TABLE [Activities] ADD [Direction] nvarchar(16) NULL;
+            ");
+
+            // When an activity happened, as against when it was logged. The activities
+            // already there were logged as they happened, as far as anyone recorded, so they
+            // take their logged time, inside the transaction that adds the column. The
+            // default covers a row written by an instance still running the previous code
+            // during a deploy, which knows nothing of the column.
+            // Filling it touches every activity in one transaction, which on the Basic
+            // database tier can outlast a command's default 30 seconds. A timeout never
+            // reaches the CATCH: the transaction stayed open on its pooled connection,
+            // holding the table. So the batch has longer, and XACT_ABORT rolls back
+            // whatever stops it.
+            var commandTimeout = db.Database.GetCommandTimeout();
+            db.Database.SetCommandTimeout(TimeSpan.FromMinutes(10));
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync(@"
+                SET XACT_ABORT ON;
+                IF COL_LENGTH('Activities', 'OccurredAtUtc') IS NULL
+                BEGIN
+                BEGIN TRY
+                    BEGIN TRANSACTION;
+                    ALTER TABLE [Activities] ADD [OccurredAtUtc] datetime2 NULL;
+                    EXEC(N'
+                        UPDATE [Activities] SET [OccurredAtUtc] = [CreatedAtUtc];
+                        ALTER TABLE [Activities] ALTER COLUMN [OccurredAtUtc] datetime2 NOT NULL;
+                        ALTER TABLE [Activities] ADD CONSTRAINT [DF_Activities_OccurredAtUtc] DEFAULT SYSUTCDATETIME() FOR [OccurredAtUtc];');
+                    COMMIT TRANSACTION;
+                END TRY
+                BEGIN CATCH
+                    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+                    THROW;
+                END CATCH;
+                END
+            ");
+            }
+            finally
+            {
+                db.Database.SetCommandTimeout(commandTimeout);
+            }
+            // In a batch of its own, after the column it covers exists.
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Activities_OrganizationId_OccurredAtUtc' AND object_id = OBJECT_ID('Activities'))
+                    CREATE INDEX [IX_Activities_OrganizationId_OccurredAtUtc] ON [Activities] ([OrganizationId], [OccurredAtUtc]);
             ");
             
             // Fix TaskItems table columns
@@ -1578,8 +1788,6 @@ try
                     ALTER TABLE [Contacts] ADD [DoNotContact] bit NOT NULL DEFAULT 0;
                     CREATE INDEX [IX_Contacts_DoNotContact] ON [Contacts] ([DoNotContact]);
                 END;
-                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Contacts') AND name = 'DoNotContactReason')
-                    ALTER TABLE [Contacts] ADD [DoNotContactReason] nvarchar(512) NULL;
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Contacts') AND name = 'ConvertedAtUtc')
                     ALTER TABLE [Contacts] ADD [ConvertedAtUtc] datetime2 NULL;
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Contacts') AND name = 'JobTitle')
@@ -1614,6 +1822,253 @@ try
             {
                 Log.Warning(indexEx, "Could not put the per-workspace contact email indexes in place; it will be retried on the next start");
             }
+
+            // Imports (see ImportService). Each run is a row in ImportBatches, and the
+            // leads, contacts and companies it creates carry its id so it can be undone.
+            // Here, after the blocks above that bring those three tables up to date, so an
+            // existing database gets the columns and a new one gets them after the
+            // migrations made the tables. The indexes are guarded and caught one by one,
+            // as above: one failure must not skip the schema work after it.
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'ImportBatches')
+                CREATE TABLE [ImportBatches] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [OrganizationId] uniqueidentifier NULL,
+                    [UserId] uniqueidentifier NOT NULL,
+                    [EntityType] nvarchar(16) NOT NULL,
+                    [FileName] nvarchar(260) NOT NULL,
+                    [DuplicateMode] nvarchar(16) NOT NULL,
+                    [RanAutomations] bit NOT NULL,
+                    [TotalRows] int NOT NULL,
+                    [CreatedCount] int NOT NULL,
+                    [UpdatedCount] int NOT NULL,
+                    [SkippedCount] int NOT NULL,
+                    [FailedCount] int NOT NULL,
+                    [StartedAtUtc] datetime2 NOT NULL,
+                    [LastSavedAtUtc] datetime2 NULL,
+                    [FinishedAtUtc] datetime2 NULL,
+                    [UndoneAtUtc] datetime2 NULL,
+                    [UndoneByUserId] uniqueidentifier NULL,
+                    [RemovedCount] int NOT NULL
+                );
+                -- LastSavedAtUtc came after the first version of this table; a database
+                -- made with that version is given it here.
+                IF COL_LENGTH(N'dbo.ImportBatches', N'LastSavedAtUtc') IS NULL
+                    ALTER TABLE [ImportBatches] ADD [LastSavedAtUtc] datetime2 NULL;
+                IF COL_LENGTH(N'dbo.Leads', N'ImportBatchId') IS NULL
+                    ALTER TABLE [Leads] ADD [ImportBatchId] uniqueidentifier NULL;
+                IF COL_LENGTH(N'dbo.Contacts', N'ImportBatchId') IS NULL
+                    ALTER TABLE [Contacts] ADD [ImportBatchId] uniqueidentifier NULL;
+                IF COL_LENGTH(N'dbo.Companies', N'ImportBatchId') IS NULL
+                    ALTER TABLE [Companies] ADD [ImportBatchId] uniqueidentifier NULL;
+            ");
+            await db.Database.ExecuteSqlRawAsync(@"
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_ImportBatches_OrganizationId_StartedAtUtc')
+                        CREATE INDEX [IX_ImportBatches_OrganizationId_StartedAtUtc] ON [ImportBatches] ([OrganizationId], [StartedAtUtc]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Leads_ImportBatchId')
+                        CREATE INDEX [IX_Leads_ImportBatchId] ON [Leads] ([ImportBatchId]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Contacts_ImportBatchId')
+                        CREATE INDEX [IX_Contacts_ImportBatchId] ON [Contacts] ([ImportBatchId]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Companies_ImportBatchId')
+                        CREATE INDEX [IX_Companies_ImportBatchId] ON [Companies] ([ImportBatchId]);
+                END TRY BEGIN CATCH END CATCH;
+            ");
+
+            // Every save gives a lead, deal, contact or company a new version, and a save made
+            // from an older read of it is refused instead of written over the newer one (see
+            // IVersioned). Existing rows each take a fresh value, and the default covers a row
+            // written during a deploy by an instance still running the previous code. Adding a
+            // NOT NULL column writes every row once, which on the Basic database tier can
+            // outlast a command's default 30 seconds, so the batch has longer. Each ALTER is
+            // guarded on its own, so a start that stops part-way is finished by the next.
+            var versionTimeout = db.Database.GetCommandTimeout();
+            db.Database.SetCommandTimeout(TimeSpan.FromMinutes(10));
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync(@"
+                IF COL_LENGTH(N'dbo.Leads', N'Version') IS NULL
+                    ALTER TABLE [Leads] ADD [Version] uniqueidentifier NOT NULL CONSTRAINT [DF_Leads_Version] DEFAULT NEWID();
+                IF COL_LENGTH(N'dbo.Deals', N'Version') IS NULL
+                    ALTER TABLE [Deals] ADD [Version] uniqueidentifier NOT NULL CONSTRAINT [DF_Deals_Version] DEFAULT NEWID();
+                IF COL_LENGTH(N'dbo.Contacts', N'Version') IS NULL
+                    ALTER TABLE [Contacts] ADD [Version] uniqueidentifier NOT NULL CONSTRAINT [DF_Contacts_Version] DEFAULT NEWID();
+                IF COL_LENGTH(N'dbo.Companies', N'Version') IS NULL
+                    ALTER TABLE [Companies] ADD [Version] uniqueidentifier NOT NULL CONSTRAINT [DF_Companies_Version] DEFAULT NEWID();
+            ");
+            }
+            finally
+            {
+                db.Database.SetCommandTimeout(versionTimeout);
+            }
+
+            // Duplicates (see DuplicateService). Contacts carry the keys they are matched on, and
+            // the team's "not the same" decisions are kept in DuplicateDecisions. The contact
+            // indexes go in a batch of their own, after the columns they cover exist, each
+            // guarded and caught on its own as above.
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF COL_LENGTH(N'dbo.Contacts', N'PhoneKey') IS NULL
+                    ALTER TABLE [Contacts] ADD [PhoneKey] nvarchar(16) NULL;
+                IF COL_LENGTH(N'dbo.Contacts', N'NameKey') IS NULL
+                    ALTER TABLE [Contacts] ADD [NameKey] nvarchar(256) NULL;
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'DuplicateDecisions')
+                BEGIN
+                    CREATE TABLE [DuplicateDecisions] (
+                        [Id] uniqueidentifier NOT NULL,
+                        [OrganizationId] uniqueidentifier NULL,
+                        [UserId] uniqueidentifier NOT NULL,
+                        [Kind] nvarchar(16) NOT NULL,
+                        [RecordIdA] uniqueidentifier NOT NULL,
+                        [RecordIdB] uniqueidentifier NOT NULL,
+                        [CreatedAtUtc] datetime2 NOT NULL,
+                        CONSTRAINT [PK_DuplicateDecisions] PRIMARY KEY ([Id]),
+                        CONSTRAINT [FK_DuplicateDecisions_Organizations_OrganizationId] FOREIGN KEY ([OrganizationId])
+                            REFERENCES [Organizations] ([Id]),
+                        CONSTRAINT [FK_DuplicateDecisions_Users_UserId] FOREIGN KEY ([UserId])
+                            REFERENCES [Users] ([Id])
+                    );
+                    CREATE INDEX [IX_DuplicateDecisions_OrganizationId_Kind] ON [DuplicateDecisions] ([OrganizationId], [Kind]);
+                    CREATE INDEX [IX_DuplicateDecisions_UserId] ON [DuplicateDecisions] ([UserId]);
+                END;
+            ");
+            await db.Database.ExecuteSqlRawAsync(@"
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Contacts_OrganizationId_PhoneKey')
+                        CREATE INDEX [IX_Contacts_OrganizationId_PhoneKey] ON [Contacts] ([OrganizationId], [PhoneKey]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Contacts_OrganizationId_NameKey')
+                        CREATE INDEX [IX_Contacts_OrganizationId_NameKey] ON [Contacts] ([OrganizationId], [NameKey]);
+                END TRY BEGIN CATCH END CATCH;
+            ");
+            // The match keys of contacts saved before those columns (see ContactMatchKeys). On
+            // its own: a failure is logged and retried on the next start.
+            try
+            {
+                var keyed = await ACI.WebApi.ContactMatchKeys.FillMissingAsync(db);
+                if (keyed > 0) Log.Information("Gave {Count} contacts the keys duplicates are matched on", keyed);
+            }
+            catch (Exception keysEx)
+            {
+                Log.Warning(keysEx, "Could not give older contacts their duplicate-matching keys; it will be retried on the next start");
+            }
+
+            // The outbox (see OutboxService): every email and integration event a workspace
+            // sends, the addresses the mail service reported as bounced or complaining, and
+            // the replies matched back to what was sent. New tables, so an existing database
+            // and a new one get them the same way; the indexes follow in their own batch,
+            // each guarded and caught on its own as above.
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'OutboundMessages')
+                CREATE TABLE [OutboundMessages] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [OrganizationId] uniqueidentifier NULL,
+                    [Channel] nvarchar(16) NOT NULL,
+                    [Source] nvarchar(16) NOT NULL,
+                    [SourceId] uniqueidentifier NULL,
+                    [Status] nvarchar(16) NOT NULL,
+                    [Attempts] int NOT NULL,
+                    [NextAttemptAtUtc] datetime2 NULL,
+                    [ClaimedUntilUtc] datetime2 NULL,
+                    [LastError] nvarchar(1000) NULL,
+                    [LastStatusCode] int NULL,
+                    [CreatedAtUtc] datetime2 NOT NULL,
+                    [SentAtUtc] datetime2 NULL,
+                    [CreatedByUserId] uniqueidentifier NULL,
+                    [FromName] nvarchar(200) NULL,
+                    [FromAddress] nvarchar(256) NULL,
+                    [ReplyTo] nvarchar(600) NULL,
+                    [To] nvarchar(max) NULL,
+                    [Cc] nvarchar(max) NULL,
+                    [Bcc] nvarchar(max) NULL,
+                    [RecipientName] nvarchar(200) NULL,
+                    [Subject] nvarchar(300) NULL,
+                    [Body] nvarchar(max) NULL,
+                    [TextBody] nvarchar(max) NULL,
+                    [HtmlBody] nvarchar(max) NULL,
+                    [UnsubscribeUrl] nvarchar(1000) NULL,
+                    [MessageIdHeader] nvarchar(255) NULL,
+                    [ReplyToken] nvarchar(64) NULL,
+                    [CountsAsResponse] bit NOT NULL,
+                    [LeadId] uniqueidentifier NULL,
+                    [ContactId] uniqueidentifier NULL,
+                    [DealId] uniqueidentifier NULL,
+                    [MemberId] uniqueidentifier NULL,
+                    [ActivityId] uniqueidentifier NULL,
+                    [DeliveryStatus] nvarchar(32) NULL,
+                    [DeliveryDetail] nvarchar(500) NULL,
+                    [DeliveryUpdatedAtUtc] datetime2 NULL,
+                    [OpenedAtUtc] datetime2 NULL,
+                    [RepliedAtUtc] datetime2 NULL,
+                    [EventName] nvarchar(64) NULL,
+                    [PayloadJson] nvarchar(max) NULL
+                );
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'EmailSuppressions')
+                CREATE TABLE [EmailSuppressions] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [OrganizationId] uniqueidentifier NOT NULL,
+                    [Email] nvarchar(256) NOT NULL,
+                    [Reason] nvarchar(32) NOT NULL,
+                    [Detail] nvarchar(500) NULL,
+                    [OutboundMessageId] uniqueidentifier NULL,
+                    [CreatedAtUtc] datetime2 NOT NULL
+                );
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'InboundEmails')
+                CREATE TABLE [InboundEmails] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [OrganizationId] uniqueidentifier NOT NULL,
+                    [OutboundMessageId] uniqueidentifier NOT NULL,
+                    [MessageIdHeader] nvarchar(255) NULL,
+                    [FromAddress] nvarchar(256) NOT NULL,
+                    [Subject] nvarchar(300) NULL,
+                    [MatchedBy] nvarchar(16) NOT NULL,
+                    [ActivityId] uniqueidentifier NULL,
+                    [ReceivedAtUtc] datetime2 NOT NULL
+                );
+            ");
+            await db.Database.ExecuteSqlRawAsync(@"
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_OutboundMessages_Status_NextAttemptAtUtc')
+                        CREATE INDEX [IX_OutboundMessages_Status_NextAttemptAtUtc] ON [OutboundMessages] ([Status], [NextAttemptAtUtc]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_OutboundMessages_OrganizationId_CreatedAtUtc')
+                        CREATE INDEX [IX_OutboundMessages_OrganizationId_CreatedAtUtc] ON [OutboundMessages] ([OrganizationId], [CreatedAtUtc]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_OutboundMessages_SourceId_Status')
+                        CREATE INDEX [IX_OutboundMessages_SourceId_Status] ON [OutboundMessages] ([SourceId], [Status]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_OutboundMessages_MessageIdHeader')
+                        CREATE UNIQUE INDEX [IX_OutboundMessages_MessageIdHeader] ON [OutboundMessages] ([MessageIdHeader])
+                            WHERE [MessageIdHeader] IS NOT NULL;
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_OutboundMessages_ReplyToken')
+                        CREATE UNIQUE INDEX [IX_OutboundMessages_ReplyToken] ON [OutboundMessages] ([ReplyToken])
+                            WHERE [ReplyToken] IS NOT NULL;
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_EmailSuppressions_OrganizationId_Email')
+                        CREATE UNIQUE INDEX [IX_EmailSuppressions_OrganizationId_Email] ON [EmailSuppressions] ([OrganizationId], [Email]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_InboundEmails_OrganizationId_MessageIdHeader')
+                        CREATE UNIQUE INDEX [IX_InboundEmails_OrganizationId_MessageIdHeader] ON [InboundEmails] ([OrganizationId], [MessageIdHeader])
+                            WHERE [MessageIdHeader] IS NOT NULL;
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_InboundEmails_OutboundMessageId')
+                        CREATE INDEX [IX_InboundEmails_OutboundMessageId] ON [InboundEmails] ([OutboundMessageId]);
+                END TRY BEGIN CATCH END CATCH;
+            ");
             await db.Database.ExecuteSqlRawAsync(@"
                 -- Add missing columns to Templates table if they don't exist
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Templates') AND name = 'IsSystemTemplate')
@@ -1772,49 +2227,28 @@ try
                 WHERE [UserId] IS NULL AND [IsSystemTemplate] = 0;
             ");
             Log.Information("Schema check complete");
-            
+
+            // A database made before the baseline migration, now up to date, is recorded at
+            // the baseline without running it; one that still lacks a table or column the
+            // model maps is refused instead (see SchemaBaseline). This replaces marking
+            // InitialCreate as applied whenever MigrateAsync hit a table that already
+            // existed, which left every later migration to fail the same way.
+            await ACI.WebApi.SchemaBaseline.RecordOnExistingDatabaseAsync(
+                db, scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("ACI.WebApi.SchemaBaseline"));
+
             Log.Information("Applying database migrations...");
-            try
-            {
-                await db.Database.MigrateAsync();
-            }
-            catch (Microsoft.Data.SqlClient.SqlException sqlEx) when (sqlEx.Number == 2714) // Object already exists
-            {
-                Log.Warning("Tables already exist (error 2714), marking InitialCreate migration as applied...");
-                
-                // Ensure __EFMigrationsHistory table exists and mark InitialCreate as applied
-                await db.Database.ExecuteSqlRawAsync(@"
-                    IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = '__EFMigrationsHistory')
-                    BEGIN
-                        CREATE TABLE [__EFMigrationsHistory] (
-                            [MigrationId] nvarchar(150) NOT NULL,
-                            [ProductVersion] nvarchar(32) NOT NULL,
-                            CONSTRAINT [PK___EFMigrationsHistory] PRIMARY KEY ([MigrationId])
-                        );
-                    END;
-                    
-                    IF NOT EXISTS (SELECT 1 FROM [__EFMigrationsHistory] WHERE [MigrationId] = '20260206130556_InitialCreate')
-                    BEGIN
-                        INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion]) 
-                        VALUES ('20260206130556_InitialCreate', '8.0.11');
-                    END;
-                ");
-                
-                Log.Information("InitialCreate marked as applied, migration history fixed");
-            }
-            
+            await db.Database.MigrateAsync();
+
             Log.Information("Seeding database...");
             await SeedData.SeedAsync(db, passwordHasher, seedDemoUser: app.Environment.IsDevelopment());
             
             // Bring EXISTING organisations onto the agreed lead status vocabulary.
             //
-            // This app applies schema by the hand-written DDL above, not by EF
-            // migrations -- MigrateAsync only ever sees the three migrations that
-            // have a .Designer.cs, and AlignLeadStatusVocabulary has none, so it
-            // was never discovered and never ran. Established tenants kept the old
-            // six labels, the pipeline could not resolve a status against them, and
-            // leads stayed on "New" however much work was logged. So the alignment
-            // lives here, where this application's schema work actually happens.
+            // The AlignLeadStatusVocabulary migration that was meant to do this had no
+            // .Designer.cs, so EF never discovered it and it never ran. Established
+            // tenants kept the old six labels, the pipeline could not resolve a status
+            // against them, and leads stayed on "New" however much work was logged. So
+            // the alignment has lived here, next to the rest of the start-up work.
             //
             // It runs once, as a data fix (see DataFixes): run on every start, it
             // deleted statuses managers had made and put back ones they had removed.

@@ -80,6 +80,25 @@ public sealed class SqlServerApp : WebApplicationFactory<Program>
 
     public static Task ExecuteAsync(string database, string sql) => ScalarAsync(database, sql);
 
+    /// <summary>
+    /// Drops <paramref name="columns"/> from <paramref name="table"/>, with any default on
+    /// them, as a database from before they were added has it. A default has a name of SQL
+    /// Server's choosing on a database the migrations made and the old DDL's on one it made,
+    /// so it is found by its column.
+    /// </summary>
+    public static Task DropColumnsAsync(string database, string table, params string[] columns)
+    {
+        var names = string.Join(", ", columns.Select(c => $"N'{c}'"));
+        return ExecuteAsync(database, $@"
+            DECLARE @drop nvarchar(max) = N'';
+            SELECT @drop = @drop + N'ALTER TABLE [{table}] DROP CONSTRAINT ' + QUOTENAME(d.[name]) + N';'
+            FROM sys.default_constraints d
+            JOIN sys.columns c ON c.[object_id] = d.[parent_object_id] AND c.[column_id] = d.[parent_column_id]
+            WHERE d.[parent_object_id] = OBJECT_ID(N'dbo.{table}') AND c.[name] IN ({names});
+            EXEC sp_executesql @drop;
+            ALTER TABLE [{table}] DROP COLUMN {string.Join(", ", columns.Select(c => $"[{c}]"))};");
+    }
+
     /// <summary>Waits for the server to accept connections: a container that has just started takes a few seconds.</summary>
     public static async Task WaitForServerAsync()
     {

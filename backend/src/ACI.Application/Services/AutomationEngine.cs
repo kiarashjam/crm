@@ -15,7 +15,9 @@ public sealed record AutomationEvent(
     Guid? DealId = null,
     Guid? TaskId = null,
     string? Email = null,
-    Guid? AssigneeId = null);
+    Guid? AssigneeId = null,
+    // A row of an import the person importing asked to run the rules for.
+    bool FromImport = false);
 
 public interface IAutomationEngine
 {
@@ -44,12 +46,12 @@ public sealed class AutomationEngine : IAutomationEngine
     private readonly INotificationService _notifications;
     private readonly ILeadRepository _leads;
     private readonly IDealRepository _deals;
-    private readonly IEmailSender _email;
-    private readonly IOutreachMail _outreach;
+    private readonly IOutbox _outbox;
     private readonly ISequenceService _sequences;
     private readonly ISequenceRepository _targets;
     private readonly IOrganizationRepository _organizations;
     private readonly ILogger<AutomationEngine> _logger;
+    private readonly ICollaborationNotifier? _notifier;
 
     public AutomationEngine(
         IAutomationRepository rules,
@@ -57,24 +59,24 @@ public sealed class AutomationEngine : IAutomationEngine
         INotificationService notifications,
         ILeadRepository leads,
         IDealRepository deals,
-        IEmailSender email,
-        IOutreachMail outreach,
+        IOutbox outbox,
         ISequenceService sequences,
         ISequenceRepository targets,
         IOrganizationRepository organizations,
-        ILogger<AutomationEngine> logger)
+        ILogger<AutomationEngine> logger,
+        ICollaborationNotifier? notifier = null)
     {
         _rules = rules;
         _tasks = tasks;
         _notifications = notifications;
         _leads = leads;
         _deals = deals;
-        _email = email;
-        _outreach = outreach;
+        _outbox = outbox;
         _sequences = sequences;
         _targets = targets;
         _organizations = organizations;
         _logger = logger;
+        _notifier = notifier;
     }
 
     public async Task DispatchAsync(string trigger, AutomationEvent evt, CancellationToken ct = default)
@@ -123,16 +125,16 @@ public sealed class AutomationEngine : IAutomationEngine
             switch (type)
             {
                 case "create_task":
-                    await CreateTaskAsync(config, evt, ct);
+                    await CreateTaskAsync(rule, config, evt, ct);
                     break;
                 case "notify":
                     await NotifyAsync(rule, config, evt, ct);
                     break;
                 case "assign":
-                    await AssignAsync(config, evt, ct);
+                    await AssignAsync(rule, config, evt, ct);
                     break;
                 case "send_email":
-                    await SendAsync(config, evt, ct);
+                    await SendAsync(rule, config, evt, ct);
                     break;
                 case "add_to_sequence":
                     await EnrollAsync(config, evt, ct);
@@ -141,7 +143,7 @@ public sealed class AutomationEngine : IAutomationEngine
         }
     }
 
-    private async Task CreateTaskAsync(IReadOnlyDictionary<string, string> config, AutomationEvent evt, CancellationToken ct)
+    private async Task CreateTaskAsync(AutomationRule rule, IReadOnlyDictionary<string, string> config, AutomationEvent evt, CancellationToken ct)
     {
         var title = Value(config, "title");
         if (string.IsNullOrWhiteSpace(title)) title = "Follow up";
@@ -157,6 +159,9 @@ public sealed class AutomationEngine : IAutomationEngine
             LeadId = evt.LeadId,
             DealId = evt.DealId,
             AssigneeId = await OwnerAsync(evt, ct),
+            // The rep it goes to hears it came from this rule, not from whoever set it off.
+            MadeBy = $"the automation \"{rule.Name}\"",
+            FromImport = evt.FromImport,
         }, ct);
     }
 
@@ -181,7 +186,17 @@ public sealed class AutomationEngine : IAutomationEngine
         return null;
     }
 
-    private async Task NotifyAsync(AutomationRule rule, IReadOnlyDictionary<string, string> config, AutomationEvent evt, CancellationToken ct)
+    /// <summary>
+    /// The rep a rule hands a lead or deal to hears so, and that the rule did it; they
+    /// used to find out only by opening it. Not for an imported row: an import is not
+    /// new work arriving, and one line per row would bury the bell.
+    /// </summary>
+    private Task TellNewOwnerAsync(AutomationRule rule, string recordType, Guid recordId, string recordName, Guid ownerId, AutomationEvent evt, CancellationToken ct) =>
+        _notifier == null || evt.FromImport
+            ? Task.CompletedTask
+            : _notifier.RecordAssignedAsync(recordType, recordId, recordName, evt.OrganizationId, ownerId, evt.ActorUserId, $"the automation \"{rule.Name}\"", ct);
+
+    private async Task NotifyAsync(AutomationRule rule,IReadOnlyDictionary<string, string> config, AutomationEvent evt, CancellationToken ct)
     {
         var recipient = evt.AssigneeId ?? evt.ActorUserId;
         var message = Value(config, "message");
@@ -191,7 +206,7 @@ public sealed class AutomationEngine : IAutomationEngine
             "system", rule.Name, message, link, SourceKey: $"auto:{rule.Id}:{evt.SourceKey}"), ct);
     }
 
-    private async Task AssignAsync(IReadOnlyDictionary<string, string> config, AutomationEvent evt, CancellationToken ct)
+    private async Task AssignAsync(AutomationRule rule, IReadOnlyDictionary<string, string> config, AutomationEvent evt, CancellationToken ct)
     {
         if (!Guid.TryParse(Value(config, "userId"), out var userId)) return;
         // Checked when the rule runs, not only when it was saved: the person may have left since.
@@ -199,39 +214,56 @@ public sealed class AutomationEngine : IAutomationEngine
             || await _organizations.GetMemberRoleAsync(userId, organizationId, ct) == null) return;
         if (evt.LeadId is Guid leadId)
         {
+            var before = (await _targets.TargetStateAsync("lead", leadId, evt.OrganizationId, ct)).OwnerUserId;
             // AssignAsync, not UpdateAsync: the general update does not copy the assignee,
             // so this action used to save the lead unchanged.
-            await _leads.AssignAsync(leadId, evt.ActorUserId, evt.OrganizationId, userId, ct);
+            var lead = await _leads.AssignAsync(leadId, evt.ActorUserId, evt.OrganizationId, userId, ct);
+            if (lead != null && before != userId)
+                await TellNewOwnerAsync(rule, RecordTypes.Lead, leadId, lead.Name, userId, evt, ct);
         }
         else if (evt.DealId is Guid dealId)
         {
             var deal = await _deals.GetByIdAsync(dealId, evt.ActorUserId, evt.OrganizationId, ct);
             if (deal == null) return;
+            var before = deal.AssigneeId;
             deal.AssigneeId = userId;
             deal.UpdatedAtUtc = DateTime.UtcNow;
             await _deals.UpdateAsync(deal, evt.ActorUserId, evt.OrganizationId, ct);
+            if (before != userId)
+                await TellNewOwnerAsync(rule, RecordTypes.Deal, dealId, deal.Name, userId, evt, ct);
         }
     }
 
-    private async Task SendAsync(IReadOnlyDictionary<string, string> config, AutomationEvent evt, CancellationToken ct)
+    private async Task SendAsync(AutomationRule rule, IReadOnlyDictionary<string, string> config, AutomationEvent evt, CancellationToken ct)
     {
-        if (evt.LeadId is not Guid leadId) return;
+        if (evt.LeadId is not Guid leadId || evt.OrganizationId is not Guid organizationId) return;
         var subject = Value(config, "subject");
         var body = Value(config, "body");
         if (string.IsNullOrWhiteSpace(subject) || string.IsNullOrWhiteSpace(body)) return;
         // The lead as it is now, read the way sequences read their targets: one that is
-        // gone gets nothing, and the address is the record's own, so the same do-not-contact
-        // rules apply here as there.
+        // gone gets nothing, and the address is the record's own.
         var target = await _targets.TargetStateAsync("lead", leadId, evt.OrganizationId, ct);
-        if (!target.Exists || target.DoNotContact || string.IsNullOrWhiteSpace(target.Email)) return;
-        body = body.Replace("{{firstName}}", FirstName(target.Name ?? evt.RecordName), StringComparison.OrdinalIgnoreCase);
-        // Under the workspace's name, not the product's, and a reply reaches whoever
-        // works the lead (or whoever set the rule off) rather than the shared inbox.
-        var sender = await _outreach.SenderAsync(evt.OrganizationId, await OwnerAsync(evt, ct) ?? evt.ActorUserId, ct);
-        var mail = _outreach.Body(evt.OrganizationId, sender.WorkspaceName, body, [target.Email]);
-        await _email.SendOutreachAsync(new OutreachEmail(
-            target.Email, target.Name ?? evt.RecordName ?? "", subject, mail.Text, mail.Html,
-            sender.WorkspaceName, sender.ReplyTo, mail.UnsubscribeUrl), ct);
+        if (!target.Exists || string.IsNullOrWhiteSpace(target.Email)) return;
+        // Queued, not sent: the mail server is no longer waited on inside the save that set
+        // the rule off (a public form, a webhook lead), and a send that fails is retried
+        // instead of lost. The outbox fills every placeholder, in the subject too, refuses
+        // anyone on the suppression list, sends it under the workspace's name with replies
+        // to whoever works the lead (or whoever set the rule off), and puts it on the timeline.
+        var queued = await _outbox.QueueEmailAsync(new OutboundEmailRequest
+        {
+            OrganizationId = organizationId,
+            Source = OutboundSources.Automation,
+            SourceId = rule.Id,
+            To = [target.Email],
+            RecipientName = target.Name ?? evt.RecordName,
+            Subject = subject,
+            Body = body,
+            CreatedByUserId = evt.ActorUserId,
+            ReplyToUserId = await OwnerAsync(evt, ct) ?? evt.ActorUserId,
+            LeadId = leadId,
+        }, ct);
+        if (queued.IsFailure)
+            _logger.LogInformation("Automation {RuleId} sent no email for {Source}: {Reason}", rule.Id, evt.SourceKey, queued.Error.Description);
     }
 
     private async Task EnrollAsync(IReadOnlyDictionary<string, string> config, AutomationEvent evt, CancellationToken ct)
@@ -244,13 +276,6 @@ public sealed class AutomationEngine : IAutomationEngine
 
     private static string? Value(IReadOnlyDictionary<string, string> config, string key) =>
         config.TryGetValue(key, out var value) ? value : null;
-
-    private static string FirstName(string? name)
-    {
-        var trimmed = (name ?? "").Trim();
-        var space = trimmed.IndexOf(' ');
-        return space < 0 ? trimmed : trimmed[..space];
-    }
 
     private sealed class StoredAction
     {

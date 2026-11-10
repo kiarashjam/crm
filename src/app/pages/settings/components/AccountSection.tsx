@@ -1,22 +1,22 @@
 import { Link } from 'react-router-dom';
 import { Settings2, DollarSign, Clock, Download, RefreshCw, LogOut, Trash2 } from 'lucide-react';
-import type { UserSettings, UpdateUserSettingsRequest, CurrencyOption } from '@/app/api/types';
+import type { UserSettings, UpdateUserSettingsRequest } from '@/app/api/types';
 import { useSignOut } from '@/app/lib/useSignOut';
+import { useRegional } from '@/app/hooks/useMoney';
 
 export interface AccountSectionProps {
   settings: UserSettings;
   updateSettings: (updates: UpdateUserSettingsRequest) => void;
-  currencies: CurrencyOption[];
   handleReset: () => void;
 }
 
 export function AccountSection({
   settings,
   updateSettings,
-  currencies,
   handleReset,
 }: AccountSectionProps) {
   const signOut = useSignOut();
+  const { currency } = useRegional();
   return (
     <div className="p-6 space-y-8">
       <div>
@@ -31,21 +31,19 @@ export function AccountSection({
       <div>
         <h3 className="font-semibold text-slate-900 mb-4">Default Settings</h3>
         <div className="grid gap-4 sm:grid-cols-2">
+          {/* A personal "Default Currency" was offered here and saved, but nothing read it:
+              new deals are priced in the workspace's currency, which the owner or a manager
+              sets for everyone. It says so instead of offering a choice that does nothing. */}
           <div>
-            <label htmlFor="defaultCurrency" className="block text-sm font-medium text-slate-700 mb-2">
+            <p className="block text-sm font-medium text-slate-700 mb-2">
               <DollarSign className="w-4 h-4 inline mr-1" />
-              Default Currency
-            </label>
-            <select
-              id="defaultCurrency"
-              value={settings.defaultCurrency || 'USD'}
-              onChange={(e) => updateSettings({ defaultCurrency: e.target.value })}
-              className="w-full h-11 px-4 border border-slate-300 rounded-xl bg-white text-slate-900 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none"
-            >
-              {currencies.map((c) => (
-                <option key={c.code} value={c.code}>{c.symbol} {c.code} - {c.name}</option>
-              ))}
-            </select>
+              Currency of new deals
+            </p>
+            <p className="h-11 px-4 flex items-center border border-slate-200 rounded-xl bg-slate-50 text-slate-900">{currency}</p>
+            <p className="mt-1.5 text-xs text-slate-500">
+              The workspace's currency. The owner or a manager changes it under{' '}
+              <Link to="/settings?tab=organization" className="font-medium text-orange-700 hover:underline">Team</Link>.
+            </p>
           </div>
           <div>
             <label htmlFor="followUpDays" className="block text-sm font-medium text-slate-700 mb-2">

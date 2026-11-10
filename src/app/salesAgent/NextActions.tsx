@@ -7,7 +7,7 @@ import { useOrgOptional } from '@/app/contexts/OrgContext';
 import { useMotionPreference } from '@/app/hooks/useMotionPreference';
 import { cn } from '@/app/components/ui/utils';
 import { getCurrentUser } from '@/app/lib/auth';
-import { reloadAgentData, useAgentData, type AgentLists } from './agentData';
+import { useAgentData, type AgentLists } from './agentData';
 import { AgentDesk } from './AgentDesk';
 import { AiOrb } from './AgentChatParts';
 import { CHAT_OPEN_KEY, PANEL_OPEN_KEY, requestChatFocus, useStoredFlag, writeFlag } from './panelPrefs';
@@ -16,15 +16,20 @@ import { learnFrom, type LearnedPatterns } from './brain/patterns';
 import { useNextActionsSlot } from './NextActionsSlot';
 import { itemOnList, pageScope, type PageScope } from './pageScope';
 import { dealPlan, type PlanLine } from './recordPlan';
-import { collectWork, type WorkSuggestion } from './workspace';
+import { collectWork, type WorkspaceInput, type WorkSuggestion } from './workspace';
+import { useWorkQueue } from './workQueueData';
+import type { WorkQueue } from '@/app/api/workQueue';
+import { useWorkScope, type WorkScope } from '@/app/lib/workScope';
+import { WorkScopeToggle } from '@/app/components/WorkScopeToggle';
 import type { WriterBrief } from './writerBrief';
+import { orgCan, PERMISSION } from '@/app/api/organizations';
 
 /**
  * The sales agent's panel: the next thing worth doing, from what is already saved.
  *
  * It sits right after each page's title (NextActionsSlot), so it has to earn its
- * space. The lists come from one shared store that refreshes itself after any
- * save (agentData.ts), so the panel agrees with the page it sits on. On the
+ * space. The lists come from the shared query cache, which re-reads a list after a
+ * save that changed it (agentData.ts), so the panel agrees with the page it sits on. On the
  * Dashboard — the agent's home — it opens with the full queue; elsewhere it
  * shows the single top step, with the rest one click away, and remembers which
  * way you left it. On a record it shows that record's one next step, and
@@ -41,6 +46,23 @@ import type { WriterBrief } from './writerBrief';
 
 const MAX_SHOWN = 5;
 const EASE = [0.16, 1, 0.3, 1] as const;
+
+/**
+ * The rep's own work as the queue's rules read it: the open tasks, leads and deals the
+ * server says are theirs, and the sequence steps due on their leads. The workspace's
+ * upkeep (duplicates, contacts nobody can reach, empty automations) is the team's, so it
+ * shows with the team's work rather than in everyone's own queue.
+ */
+function myWork(queue: WorkQueue, lists: AgentLists): WorkspaceInput {
+  const myLeads = new Set(queue.leads.map((lead) => lead.id));
+  return {
+    leads: queue.leads,
+    deals: queue.deals,
+    tasks: queue.tasks,
+    enrollments: lists.enrollments.filter((e) => e.targetType === 'lead' && myLeads.has(e.targetId)),
+    sequences: lists.sequences,
+  };
+}
 
 function recipientFor(item: WorkSuggestion): { type: 'lead' | 'contact' | 'deal'; id: string; name: string } | null {
   const match = /^\/(leads|contacts|deals)\/([^/]+)$/.exec(item.href);
@@ -80,7 +102,7 @@ function AskBox({ lists, gaps, items, scope }: { lists: AgentLists; gaps: string
       // A new workspace starts a new conversation: nothing typed in the last one carries over.
       key={accountKey}
       world={askWorld(lists, items, scope, patterns, gaps)}
-      readOnly={org?.isReadOnly ?? false}
+      readOnly={(org?.isReadOnly ?? false) || (org ? !orgCan(org.currentOrg, PERMISSION.EditRecords) : false)}
       accountKey={accountKey}
     />
   );
@@ -463,11 +485,13 @@ function AskPill({ onAsk }: { onAsk: () => void }) {
  * Nothing waiting and the chat closed: one slim line instead of a whole card, so
  * a quiet page does not spend its first screen saying so. Asking opens the chat.
  */
-function QuietRow({ message, refreshing, onAsk, onClose }: {
+function QuietRow({ message, refreshing, onAsk, onClose, toggle }: {
   message: string;
   refreshing: boolean;
   onAsk: () => void;
   onClose: () => void;
+  /** Mine or the team's, in a workspace. */
+  toggle?: ReactNode;
 }) {
   const reduce = useMotionPreference();
   return (
@@ -488,6 +512,7 @@ function QuietRow({ message, refreshing, onAsk, onClose }: {
           <span className="truncate">{message}</span>
         </p>
       </div>
+      {toggle}
       <AskPill onAsk={onAsk} />
       <CloseButton onClose={onClose} />
     </Card>
@@ -580,6 +605,14 @@ export function NextActions() {
   const where: 'home' | 'page' = scope.mode === 'focus' && (pathname === '/dashboard' || pathname === '/') ? 'home' : 'page';
   const [open, setOpen] = useState(() => readOpen(where));
   const data = useAgentData(orgId, scope.mode !== 'hidden');
+  // The rep's own work by default, from the server; the team's one switch away. A
+  // record page shows that record's step whoever's it is, and a personal workspace is
+  // all the rep's own already.
+  const [whose, setWhose] = useWorkScope('assistant');
+  const inWorkspace = !!orgId;
+  const showsQueue = scope.mode === 'focus' || scope.mode === 'list';
+  const mineOnly = inWorkspace && whose === 'mine';
+  const mine = useWorkQueue(orgId, 'mine', mineOnly && showsQueue);
   const slot = useNextActionsSlot();
   const reduce = useMotionPreference();
   const [panelOpen, setPanelOpen] = useStoredFlag(PANEL_OPEN_KEY, true);
@@ -597,6 +630,10 @@ export function NextActions() {
     () => (data.lists ? collectWork(data.lists, new Date(), Number.MAX_SAFE_INTEGER) : []),
     [data.lists],
   );
+  const myItems = useMemo(
+    () => (data.lists && mine.queue ? collectWork(myWork(mine.queue, data.lists), new Date(), Number.MAX_SAFE_INTEGER) : null),
+    [data.lists, mine.queue],
+  );
 
   /** In the page's slot when it has one (after its title), else under the header. */
   const place = (content: ReactNode) =>
@@ -613,7 +650,7 @@ export function NextActions() {
           <p className="text-sm text-slate-600 dark:text-slate-300">Next steps could not be loaded.</p>
           <button
             type="button"
-            onClick={reloadAgentData}
+            onClick={data.reload}
             className={cn('inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 hover:border-[var(--brand-primary)] dark:border-slate-600 dark:text-slate-100', focusRing)}
           >
             <RotateCw className="h-4 w-4" aria-hidden="true" />
@@ -648,7 +685,43 @@ export function NextActions() {
     return place(<RecordStrip href={scope.href} step={step} items={allItems} lists={data.lists} gaps={data.gaps} refreshing={data.refreshing} chatOpen={chatOpen} onAsk={askFromClosed} onClose={closePanel} />);
   }
 
-  const scoped = scope.mode === 'list' ? allItems.filter((item) => inList(item, scope.list)) : allItems;
+  if (mineOnly && !myItems) {
+    if (mine.failed) {
+      return place(
+        <div className={cn(shell, 'flex flex-wrap items-center justify-between gap-3 px-4 py-3')} role="status">
+          <p className="text-sm text-slate-600 dark:text-slate-300">Your work could not be loaded.</p>
+          <div className="flex items-center gap-2">
+            <WorkScopeToggle value={whose} onChange={setWhose} />
+            <button
+              type="button"
+              onClick={mine.reload}
+              className={cn('inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 hover:border-[var(--brand-primary)] dark:border-slate-600 dark:text-slate-100', focusRing)}
+            >
+              <RotateCw className="h-4 w-4" aria-hidden="true" />
+              Try again
+            </button>
+          </div>
+        </div>,
+      );
+    }
+    return place(
+      <div className={cn(shell, 'flex h-16 items-center gap-3 px-4')} aria-busy="true" aria-label="Loading your next steps">
+        <Accent />
+        <div className="h-10 w-10 rounded-xl bg-slate-100 motion-safe:animate-pulse dark:bg-slate-800" />
+        <div className="space-y-2">
+          <div className="h-3.5 w-40 rounded bg-slate-100 motion-safe:animate-pulse dark:bg-slate-800" />
+          <div className="h-3 w-24 rounded bg-slate-100 motion-safe:animate-pulse dark:bg-slate-800" />
+        </div>
+      </div>,
+    );
+  }
+
+  const queueItems = mineOnly && myItems ? myItems : allItems;
+  const scoped = scope.mode === 'list' ? queueItems.filter((item) => inList(item, scope.list)) : queueItems;
+  const scopeToggle = inWorkspace ? <WorkScopeToggle value={whose} onChange={(next: WorkScope) => setWhose(next)} /> : undefined;
+  const quiet = mineOnly
+    ? (scope.mode === 'list' ? 'Nothing of yours on this page is waiting.' : 'Nothing of yours is waiting.')
+    : (scope.mode === 'list' ? 'Nothing on this page is waiting.' : 'You are all caught up.');
   const shown = scoped.slice(0, open ? MAX_SHOWN : 1);
   const beyond = scoped.length - Math.min(scoped.length, MAX_SHOWN);
   const canToggle = scoped.length > 1;
@@ -665,10 +738,11 @@ export function NextActions() {
   if (scoped.length === 0 && !chatOpen) {
     return place(
       <QuietRow
-        message={scope.mode === 'list' ? 'Nothing on this page is waiting.' : 'You are all caught up.'}
+        message={quiet}
         refreshing={data.refreshing}
         onAsk={askFromClosed}
         onClose={closePanel}
+        toggle={scopeToggle}
       />,
     );
   }
@@ -709,6 +783,7 @@ export function NextActions() {
             </motion.span>
           </button>
         )}
+        {scopeToggle}
         {!chatOpen && <AskPill onAsk={askFromClosed} />}
         <CloseButton onClose={closePanel} />
       </div>
@@ -729,7 +804,7 @@ export function NextActions() {
           >
             <Check className="h-4 w-4" />
           </motion.span>
-          {scope.mode === 'list' ? 'Nothing on this page is waiting.' : 'You are all caught up.'}
+          {quiet}
         </motion.p>
       ) : (
         <>
@@ -752,6 +827,12 @@ export function NextActions() {
               </motion.p>
             )}
           </AnimatePresence>
+          {/* Said as the server cuts each list: a lead untouched for weeks may be among those left out. */}
+          {mineOnly && mine.queue?.truncated && (
+            <p className="pb-1 text-xs text-slate-500 dark:text-slate-400">
+              More of your work is open than one read holds. Here: the tasks due and deals closing soonest, and the leads worked most lately.
+            </p>
+          )}
         </>
       )}
       {chatOpen && <AskBox lists={data.lists} gaps={data.gaps} items={scoped} scope={scope} />}

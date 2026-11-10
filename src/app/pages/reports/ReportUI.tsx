@@ -7,7 +7,10 @@
 
 import type { ReactNode } from 'react';
 import { cn } from '@/app/components/ui/utils';
+import { Download } from 'lucide-react';
 import { Reveal } from '@/app/components/motion/PageEnter';
+import { useOrgOptional } from '@/app/contexts/OrgContext';
+import { orgCan, PERMISSION } from '@/app/api/organizations';
 
 /** Section accent, so each area of the page is identifiable at a glance. */
 export type Accent = 'indigo' | 'teal' | 'violet' | 'amber' | 'rose' | 'sky' | 'emerald';
@@ -119,7 +122,7 @@ export function Kpi({
 // ── Chart / content panel ────────────────────────────────────────────────────
 
 export function Panel({
-  title, subtitle, hint, children, className, index = 0,
+  title, subtitle, hint, children, className, index = 0, actions,
 }: {
   title: string;
   subtitle?: string;
@@ -129,15 +132,20 @@ export function Panel({
   className?: string;
   /** Position in the entry cascade. See the note on Kpi. */
   index?: number;
+  /** Controls beside the title, such as a CSV export. */
+  actions?: ReactNode;
 }) {
   return (
     <Reveal as="section" index={index} className={cn(
       'rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-5',
       className,
     )}>
-      <div className="mb-3">
-        <h3 className="text-sm font-bold text-slate-800">{title}</h3>
-        {subtitle && <p className="mt-0.5 text-[11px] text-slate-500">{subtitle}</p>}
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-sm font-bold text-slate-800">{title}</h3>
+          {subtitle && <p className="mt-0.5 text-[11px] text-slate-500">{subtitle}</p>}
+        </div>
+        {actions && <div className="shrink-0">{actions}</div>}
       </div>
       {children}
       {hint && (
@@ -239,5 +247,31 @@ export function Funnel({
         );
       })}
     </ul>
+  );
+}
+
+// ── CSV export ───────────────────────────────────────────────────────────────
+
+/**
+ * The button that downloads a panel's table. Exports go through lib/exportCsv,
+ * which neutralises cells a spreadsheet would run as formulas: names reach the
+ * CRM from public forms.
+ */
+export function CsvButton({ onClick, disabled, what }: { onClick: () => void; disabled?: boolean; what: string }) {
+  const org = useOrgOptional();
+  // Reading a report takes nothing; taking its table away takes records.export.
+  if (org && !orgCan(org.currentOrg ?? null, PERMISSION.ExportRecords)) return null;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={`Download ${what} as CSV`}
+      aria-label={`Download ${what} as CSV`}
+      className="inline-flex h-7 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50"
+    >
+      <Download aria-hidden className="h-3 w-3" />
+      CSV
+    </button>
   );
 }

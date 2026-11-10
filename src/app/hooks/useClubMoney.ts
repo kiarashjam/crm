@@ -3,11 +3,15 @@
 // Read once per workspace from the hospitality settings and shared by every club page,
 // so the members list, a tab and a printed statement cannot disagree about it. Until
 // the settings answer (or if they cannot be read) amounts show in the default, CHF.
+// Amounts are written in the workspace's number format, as on the deal pages; they were
+// written in this browser's, so the same club showed "CHF 1,234.50" on a statement and
+// "CHF 1’234.50" on the board.
 
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { getHospitalitySettings } from '@/app/api/hospitalitySettings';
 import { getCurrentOrganizationId } from '@/app/lib/auth';
 import { DEFAULT_CLUB_CURRENCY, formatClubMoney, normaliseCurrency } from '@/app/lib/clubMoney';
+import { useRegional } from '@/app/hooks/useMoney';
 
 const known = new Map<string, string>();
 const loading = new Set<string>();
@@ -60,6 +64,7 @@ export function useClubMoney(): { currency: string; format: (amount: number) => 
   useEffect(() => {
     load(key);
   }, [key]);
-  const format = useCallback((amount: number) => formatClubMoney(amount, currency), [currency]);
+  const { locale } = useRegional();
+  const format = useCallback((amount: number) => formatClubMoney(amount, currency, locale), [currency, locale]);
   return { currency, format };
 }

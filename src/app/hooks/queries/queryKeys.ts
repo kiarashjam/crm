@@ -1,125 +1,110 @@
+// Every cached read is keyed by the workspace it was read in, then by the kind of
+// record it holds, then by what exactly was asked:
+//
+//   ['ws', orgId | 'personal', userId, 'leads', 'page', { page: 2, … }]
+//
+// So one organisation's rows are never served under another's, not even for a
+// moment after a switch (the new workspace's keys simply hold nothing yet); a write
+// refreshes exactly the kinds it changed, found by the fourth part of the key (see
+// api/dataChanged and invalidation.ts); and a switch or a sign-out can drop a whole
+// workspace's cache at once.
+
+import type { WorkScope } from '@/app/lib/workScope';
+
+/** Whose data a read is: the workspace (null for a personal one) and the signed-in user. */
+export interface WorkspaceScope {
+  orgId: string | null;
+  userId: string | null;
+}
+
+const PREFIX = 'ws';
+
+/** The first three parts of every key: whose data it is. */
+export function workspacePrefix(scope: WorkspaceScope): readonly [string, string, string] {
+  return [PREFIX, scope.orgId ?? 'personal', scope.userId ?? 'signed-out'];
+}
+
+/** Whether a key belongs to this workspace (`orgId` null: the personal one). */
+export function isWorkspaceKey(key: readonly unknown[], orgId?: string | null): boolean {
+  if (key[0] !== PREFIX) return false;
+  return orgId === undefined || key[1] === (orgId ?? 'personal');
+}
+
+/** The kind of record a cached read holds: the fourth part of its key. */
+export function resourceOfKey(key: readonly unknown[]): string | null {
+  return key[0] === PREFIX && typeof key[3] === 'string' ? key[3] : null;
+}
+
+const key = (scope: WorkspaceScope, resource: string, ...rest: unknown[]) =>
+  [...workspacePrefix(scope), resource, ...rest] as const;
+
 /**
- * Centralized query keys for TanStack Query
- * Using factory pattern for type-safe, consistent keys
+ * The keys, by kind of record. A kind is named as api/dataChanged names what a write
+ * changes, so a list is refreshed when, and only when, a write touched its kind.
  */
-
 export const queryKeys = {
-  // Leads
   leads: {
-    all: ['leads'] as const,
-    lists: () => [...queryKeys.leads.all, 'list'] as const,
-    list: (filters?: Record<string, unknown>) => 
-      [...queryKeys.leads.lists(), filters] as const,
-    details: () => [...queryKeys.leads.all, 'detail'] as const,
-    detail: (id: string) => [...queryKeys.leads.details(), id] as const,
+    page: (s: WorkspaceScope, params: object) => key(s, 'leads', 'page', params),
+    all: (s: WorkspaceScope) => key(s, 'leads', 'all'),
+    stats: (s: WorkspaceScope) => key(s, 'leads', 'stats'),
   },
-
-  // Companies
-  companies: {
-    all: ['companies'] as const,
-    lists: () => [...queryKeys.companies.all, 'list'] as const,
-    list: (filters?: Record<string, unknown>) => 
-      [...queryKeys.companies.lists(), filters] as const,
-    details: () => [...queryKeys.companies.all, 'detail'] as const,
-    detail: (id: string) => [...queryKeys.companies.details(), id] as const,
+  leadLookups: {
+    statuses: (s: WorkspaceScope) => key(s, 'lead-lookups', 'statuses'),
+    sources: (s: WorkspaceScope) => key(s, 'lead-lookups', 'sources'),
   },
-
-  // Contacts
-  contacts: {
-    all: ['contacts'] as const,
-    lists: () => [...queryKeys.contacts.all, 'list'] as const,
-    list: (filters?: Record<string, unknown>) => 
-      [...queryKeys.contacts.lists(), filters] as const,
-    details: () => [...queryKeys.contacts.all, 'detail'] as const,
-    detail: (id: string) => [...queryKeys.contacts.details(), id] as const,
-  },
-
-  // Deals
   deals: {
-    all: ['deals'] as const,
-    lists: () => [...queryKeys.deals.all, 'list'] as const,
-    list: (filters?: Record<string, unknown>) => 
-      [...queryKeys.deals.lists(), filters] as const,
-    details: () => [...queryKeys.deals.all, 'detail'] as const,
-    detail: (id: string) => [...queryKeys.deals.details(), id] as const,
+    all: (s: WorkspaceScope) => key(s, 'deals', 'all'),
+    page: (s: WorkspaceScope, params: object) => key(s, 'deals', 'page', params),
+    board: (s: WorkspaceScope, query: object) => key(s, 'deals', 'board', query),
   },
-
-  // Tasks
+  contacts: {
+    page: (s: WorkspaceScope, params: object) => key(s, 'contacts', 'page', params),
+    all: (s: WorkspaceScope) => key(s, 'contacts', 'all'),
+    stats: (s: WorkspaceScope) => key(s, 'contacts', 'stats'),
+  },
+  companies: {
+    page: (s: WorkspaceScope, params: object) => key(s, 'companies', 'page', params),
+    all: (s: WorkspaceScope) => key(s, 'companies', 'all'),
+    summary: (s: WorkspaceScope) => key(s, 'companies', 'summary'),
+  },
   tasks: {
-    all: ['tasks'] as const,
-    lists: () => [...queryKeys.tasks.all, 'list'] as const,
-    list: (filters?: Record<string, unknown>) => 
-      [...queryKeys.tasks.lists(), filters] as const,
-    details: () => [...queryKeys.tasks.all, 'detail'] as const,
-    detail: (id: string) => [...queryKeys.tasks.details(), id] as const,
+    list: (s: WorkspaceScope, options: object = {}) => key(s, 'tasks', 'all', options),
+    stats: (s: WorkspaceScope, scope: WorkScope | 'all') => key(s, 'tasks', 'stats', scope),
   },
-
-  // Activities
   activities: {
-    all: ['activities'] as const,
-    lists: () => [...queryKeys.activities.all, 'list'] as const,
-    list: (filters?: Record<string, unknown>) => 
-      [...queryKeys.activities.lists(), filters] as const,
-    details: () => [...queryKeys.activities.all, 'detail'] as const,
-    detail: (id: string) => [...queryKeys.activities.details(), id] as const,
+    page: (s: WorkspaceScope, params: object) => key(s, 'activities', 'page', params),
+    forRecord: (s: WorkspaceScope, kind: 'lead' | 'deal' | 'contact', id: string) => key(s, 'activities', kind, id),
+    forLeads: (s: WorkspaceScope, leadIds: readonly string[]) => key(s, 'activities', 'leads', leadIds),
   },
-
-  // Templates
-  templates: {
-    all: ['templates'] as const,
-    lists: () => [...queryKeys.templates.all, 'list'] as const,
-    list: (filters?: Record<string, unknown>) => 
-      [...queryKeys.templates.lists(), filters] as const,
-    details: () => [...queryKeys.templates.all, 'detail'] as const,
-    detail: (id: string) => [...queryKeys.templates.details(), id] as const,
-  },
-
-  // Pipelines
   pipelines: {
-    all: ['pipelines'] as const,
-    lists: () => [...queryKeys.pipelines.all, 'list'] as const,
-    details: () => [...queryKeys.pipelines.all, 'detail'] as const,
-    detail: (id: string) => [...queryKeys.pipelines.details(), id] as const,
+    all: (s: WorkspaceScope) => key(s, 'pipelines', 'all'),
   },
-
-  // Deal Stages
-  dealStages: {
-    all: ['dealStages'] as const,
-    lists: () => [...queryKeys.dealStages.all, 'list'] as const,
-    byPipeline: (pipelineId: string) => 
-      [...queryKeys.dealStages.lists(), pipelineId] as const,
-  },
-
-  // Team / Organization Members
   team: {
-    all: ['team'] as const,
-    members: () => [...queryKeys.team.all, 'members'] as const,
-    invites: () => [...queryKeys.team.all, 'invites'] as const,
+    members: (s: WorkspaceScope) => key(s, 'team', 'members'),
+    salesTeams: (s: WorkspaceScope) => key(s, 'team', 'sales-teams'),
   },
-
-  // User Settings
-  settings: {
-    all: ['settings'] as const,
-    user: () => [...queryKeys.settings.all, 'user'] as const,
+  reports: {
+    dashboard: (s: WorkspaceScope) => key(s, 'reports', 'dashboard'),
+    byStage: (s: WorkspaceScope) => key(s, 'reports', 'by-stage'),
+    byAssignee: (s: WorkspaceScope) => key(s, 'reports', 'by-assignee'),
+    summary: (s: WorkspaceScope, filters: object) => key(s, 'reports', 'summary', filters),
+    forecast: (s: WorkspaceScope, params: object) => key(s, 'reports', 'forecast', params),
   },
-
-  // Copy History
+  sequences: {
+    all: (s: WorkspaceScope) => key(s, 'sequences', 'all'),
+    enrollments: (s: WorkspaceScope) => key(s, 'sequences', 'enrollments'),
+  },
+  automations: {
+    all: (s: WorkspaceScope) => key(s, 'automations', 'all'),
+  },
+  duplicates: {
+    notSame: (s: WorkspaceScope) => key(s, 'duplicates', 'not-same'),
+  },
+  workQueue: (s: WorkspaceScope, scope: WorkScope) => key(s, 'work-queue', scope),
+  templates: {
+    all: (s: WorkspaceScope) => key(s, 'templates', 'all'),
+  },
   copyHistory: {
-    all: ['copyHistory'] as const,
-    lists: () => [...queryKeys.copyHistory.all, 'list'] as const,
-  },
-
-  // Reporting / Analytics
-  reporting: {
-    all: ['reporting'] as const,
-    dashboard: () => [...queryKeys.reporting.all, 'dashboard'] as const,
-    pipeline: () => [...queryKeys.reporting.all, 'pipeline'] as const,
-  },
-
-  // Organizations
-  organizations: {
-    all: ['organizations'] as const,
-    lists: () => [...queryKeys.organizations.all, 'list'] as const,
-    current: () => [...queryKeys.organizations.all, 'current'] as const,
+    stats: (s: WorkspaceScope) => key(s, 'copy-history', 'stats'),
   },
 } as const;

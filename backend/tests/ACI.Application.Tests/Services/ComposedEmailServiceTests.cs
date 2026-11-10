@@ -1,146 +1,131 @@
+using ACI.Application.Common;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using ACI.Application.Services;
-using ACI.Application.Configuration;
+using ACI.Domain.Entities;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 
 namespace ACI.Application.Tests.Services;
 
 /// <summary>
-/// Email from the composer: only "sent" when it was, and a clear reason when not.
+/// Email from the composer and the assistant: checked here, sent through the outbox,
+/// and only "sent" when it was. What the outbox does with it (footer, Reply-To,
+/// suppression) is in OutboxServiceTests.
 /// </summary>
 public class ComposedEmailServiceTests
 {
     private static readonly Guid Org = Guid.NewGuid();
-    private readonly Mock<IEmailSender> _sender = new();
-    private static readonly Guid Owner = Guid.NewGuid();
     private static readonly Guid Rep = Guid.NewGuid();
-    private readonly Mock<IOrganizationRepository> _organizations = new();
-    private readonly Mock<IUserRepository> _users = new();
-    private readonly Mock<IContactRepository> _contacts = new();
-    private ComposedEmail? _sent;
+    private readonly Mock<IOutbox> _outbox = new();
+    private readonly Mock<IWorkspaceRecords> _records = WorkspaceRecordsMock.InWorkspace();
+    private OutboundEmailRequest? _queued;
 
-    private ComposedEmailService Service(ComposedEmailOutcome outcome = ComposedEmailOutcome.Sent)
+    private ComposedEmailService Service(OutboxAttempt? attempt = null, Error? refusal = null)
     {
-        _sender.Setup(s => s.SendComposedAsync(It.IsAny<ComposedEmail>(), It.IsAny<CancellationToken>()))
-            .Callback((ComposedEmail email, CancellationToken _) => _sent = email)
-            .ReturnsAsync(outcome);
-        _organizations.Setup(o => o.GetByIdAsync(Org, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ACI.Domain.Entities.Organization { Id = Org, Name = "Pavillon 46", OwnerUserId = Owner });
-        foreach (var (id, email) in new[] { (Owner, "owner@pavillon46.ch"), (Rep, "anna@pavillon46.ch") })
-        {
-            _organizations.Setup(o => o.GetMemberRoleAsync(id, Org, It.IsAny<CancellationToken>())).ReturnsAsync(ACI.Domain.Enums.OrgMemberRole.Member);
-            _users.Setup(u => u.GetByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(new ACI.Domain.Entities.User { Id = id, Email = email });
-        }
-        var links = new Mock<IUnsubscribeLinks>();
-        links.Setup(l => l.CreateToken(Org, It.IsAny<string>())).Returns((Guid _, string email) => $"t-{email.Split('@')[0]}");
-        var outreach = new OutreachMail(_organizations.Object, _users.Object, links.Object,
-            Options.Create(new EmailSettings { FrontendBaseUrl = "https://crm.example.ch" }), NullLogger<OutreachMail>.Instance);
-        return new ComposedEmailService(_sender.Object, outreach, _contacts.Object, NullLogger<ComposedEmailService>.Instance);
+        _outbox.Setup(o => o.QueueEmailAsync(It.IsAny<OutboundEmailRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((OutboundEmailRequest request, CancellationToken _) =>
+            {
+                _queued = request;
+                if (refusal != null) return Result.Failure<OutboundMessage>(refusal);
+                return Result.Success(new OutboundMessage
+                {
+                    Id = Guid.NewGuid(), OrganizationId = Org, To = string.Join(", ", request.To),
+                    Cc = request.Cc.Count == 0 ? null : string.Join(", ", request.Cc), Bcc = request.Bcc.Count == 0 ? null : string.Join(", ", request.Bcc),
+                    Subject = request.Subject, Body = request.Body, CreatedAtUtc = DateTime.UtcNow,
+                });
+            });
+        _outbox.Setup(o => o.SendNowAsync(It.IsAny<OutboundMessage>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(attempt ?? new OutboxAttempt(OutboxAttemptResult.Sent));
+        return new ComposedEmailService(_outbox.Object, _records.Object, NullLogger<ComposedEmailService>.Instance);
     }
 
     [Fact]
-    public async Task EachVisibleRecipientCanUnsubscribe_ButBccIsNotNamed()
-    {
-        await Service().SendAsync(Org, new SendEmailRequest(
-            "jean@example.ch, anne@example.ch", "boss@club.ch", "archive@club.ch", "Votre visite", "Bonjour"), Rep);
-
-        foreach (var address in new[] { "jean@example.ch", "anne@example.ch", "boss@club.ch" })
-        {
-            _sent!.TextBody.Should().Contain($"{address}: https://crm.example.ch/unsubscribe/t-{address.Split('@')[0]}");
-            _sent.HtmlBody.Should().Contain($"href=\"https://crm.example.ch/unsubscribe/t-{address.Split('@')[0]}\"");
-        }
-        _sent!.TextBody.Should().StartWith("Bonjour").And.Contain("Don't want emails from Pavillon 46?").And.NotContain("archive@club.ch");
-        _sent.HtmlBody.Should().NotContain("archive@club.ch");
-    }
-
-    [Fact]
-    public async Task AReplyGoesToWhoeverWroteIt()
-    {
-        // Every workspace sends from one shared address, and nothing set Reply-To, so
-        // a prospect's answer landed in that shared inbox instead of with the rep.
-        await Service().SendAsync(Org, new SendEmailRequest("jean@example.ch", null, null, "Votre visite", "Bonjour"), Rep);
-
-        _sent!.ReplyTo.Should().Be("anna@pavillon46.ch");
-        _sent.FromName.Should().Be("Pavillon 46");
-    }
-
-    [Fact]
-    public async Task SomeoneWhoHasLeftTheWorkspaceIsNotTheReplyTo_TheOwnerIs()
-    {
-        var former = Guid.NewGuid();
-        _users.Setup(u => u.GetByIdAsync(former, It.IsAny<CancellationToken>())).ReturnsAsync(new ACI.Domain.Entities.User { Id = former, Email = "gone@example.ch" });
-
-        await Service().SendAsync(Org, new SendEmailRequest("jean@example.ch", null, null, "Votre visite", "Bonjour"), former);
-
-        _sent!.ReplyTo.Should().Be("owner@pavillon46.ch");
-    }
-
-    [Fact]
-    public async Task AnAddressMarkedDoNotContactIsNotSentTo()
-    {
-        // The flag used to be honoured only by hiding the Email button on a contact's
-        // page; the server sent to anyone.
-        _contacts.Setup(c => c.FindDoNotContactAddressAsync(Org, It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Guid _, IReadOnlyCollection<string> all, CancellationToken _) => all.Contains("Anne@Example.ch") ? "Anne@Example.ch" : null);
-
-        var result = await Service().SendAsync(Org, new SendEmailRequest("jean@example.ch", "Anne@Example.ch", null, "Hello", "Hi"));
-
-        result.Error.Code.Should().Be("Contact.DoNotContact");
-        result.Error.Description.Should().Contain("Anne@Example.ch");
-        _sender.Verify(s => s.SendComposedAsync(It.IsAny<ComposedEmail>(), It.IsAny<CancellationToken>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task ALeadWhosePersonSaidStopIsNotSentTo()
+    public async Task ItGoesThroughTheOutbox_AsThePersonsOwnResponse_WithTheFirstAttemptNow()
     {
         var lead = Guid.NewGuid();
-        _contacts.Setup(c => c.IsDoNotContactAsync(Org, lead, null, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        var result = await Service().SendAsync(Org, new SendEmailRequest(
+            "jean@example.ch; anne@example.ch", "boss@club.ch", "archive@club.ch", "Votre visite", "Bonjour <Jean>", LeadId: lead), Rep);
 
-        var result = await Service().SendAsync(Org, new SendEmailRequest("jean.private@example.ch", null, null, "Hello", "Hi", LeadId: lead));
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Status.Should().Be("sent");
+        result.Value.To.Should().Be("jean@example.ch, anne@example.ch");
+        _queued!.To.Should().Equal("jean@example.ch", "anne@example.ch");
+        _queued.Cc.Should().Equal("boss@club.ch");
+        _queued.Bcc.Should().Equal("archive@club.ch");
+        _queued.Source.Should().Be(OutboundSources.Composer);
+        _queued.CreatedByUserId.Should().Be(Rep);
+        _queued.ReplyToUserId.Should().Be(Rep, "a reply goes to whoever wrote it");
+        _queued.LeadId.Should().Be(lead);
+        _queued.CountsAsResponse.Should().BeTrue();
+        _queued.PersonWaiting.Should().BeTrue();
+        _outbox.Verify(o => o.SendNowAsync(It.IsAny<OutboundMessage>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
 
-        result.Error.Code.Should().Be("Contact.DoNotContact");
-        _sender.Verify(s => s.SendComposedAsync(It.IsAny<ComposedEmail>(), It.IsAny<CancellationToken>()), Times.Never);
+    [Theory]
+    [InlineData("lead", "Link.LeadNotFound")]
+    [InlineData("contact", "Link.ContactNotFound")]
+    [InlineData("deal", "Link.DealNotFound")]
+    public async Task ARecordThatIsNotTheWorkspacesIsRefused_AndNothingIsQueued(string type, string code)
+    {
+        // Its fields would fill the placeholders and its timeline would get the entry,
+        // so another workspace's record, or a private deal the sender cannot open, is out.
+        var id = Guid.NewGuid();
+        _records.Setup(r => r.ExistsAsync(type, id, Rep, Org, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        var request = new SendEmailRequest("jean@example.ch", null, null, "Hello {{name}}", "Hi",
+            LeadId: type == "lead" ? id : null, ContactId: type == "contact" ? id : null, DealId: type == "deal" ? id : null);
+
+        var result = await Service().SendAsync(Org, request, Rep);
+
+        result.Error.Code.Should().Be(code);
+        _outbox.Verify(o => o.QueueEmailAsync(It.IsAny<OutboundEmailRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
-    public async Task SendsToEveryRecipientWithBothParts()
+    public async Task TheAssistantSaysItIsTheAssistant()
     {
-        var result = await Service().SendAsync(Org, new SendEmailRequest(
-            "jean@example.ch; anne@example.ch", "boss@club.ch", "archive@club.ch", "Votre visite", "Bonjour <Jean>,\nÀ bientôt"));
+        await Service().SendAsync(Org, new SendEmailRequest("jean@example.ch", null, null, "Hello", "Hi", Source: "Assistant"), Rep);
+
+        _queued!.Source.Should().Be(OutboundSources.Assistant);
+    }
+
+    [Fact]
+    public async Task NotTakenYetIsQueued_NotSent()
+    {
+        var result = await Service(new OutboxAttempt(OutboxAttemptResult.Queued, "421 busy"))
+            .SendAsync(Org, new SendEmailRequest("jean@example.ch", null, null, "Hello", "Hi"), Rep);
 
         result.IsSuccess.Should().BeTrue();
-        _sent!.To.Should().Equal("jean@example.ch", "anne@example.ch");
-        _sent.Cc.Should().Equal("boss@club.ch");
-        _sent.Bcc.Should().Equal("archive@club.ch");
-        _sent.TextBody.Should().StartWith("Bonjour <Jean>,\nÀ bientôt\n\n--\n");
-        _sent.HtmlBody.Should().Contain("Bonjour &lt;Jean&gt;,<br>").And.NotContain("<Jean>");
-        // The copy kept is what the person wrote, without the footer.
-        result.Value.Body.Should().Be("Bonjour <Jean>,\nÀ bientôt");
-        result.Value.Status.Should().Be("sent");
-        result.Value.To.Should().Be("jean@example.ch, anne@example.ch");
-        _sent.FromName.Should().Be("Pavillon 46", "a lead should see the club's name, not the product's");
+        result.Value.Status.Should().Be("queued");
     }
 
     [Fact]
     public async Task NoServerMeansNotSent_AndSaysSo()
     {
         // The composer used to report "Email sent" whatever happened.
-        var result = await Service(ComposedEmailOutcome.NotConfigured)
+        var result = await Service(new OutboxAttempt(OutboxAttemptResult.NotConfigured))
             .SendAsync(Org, new SendEmailRequest("jean@example.ch", null, null, "Hello", "Hi"));
 
-        result.IsFailure.Should().BeTrue();
         result.Error.Code.Should().Be("Email.NotConfigured");
     }
 
     [Fact]
-    public async Task ARefusedSendIsAFailure()
+    public async Task ARefusalForGoodIsAFailure_WithTheServersWords()
     {
-        var result = await Service(ComposedEmailOutcome.Failed)
+        var result = await Service(new OutboxAttempt(OutboxAttemptResult.Failed, "The mail server refused it. 550 No such user"))
             .SendAsync(Org, new SendEmailRequest("jean@example.ch", null, null, "Hello", "Hi"));
 
         result.Error.Code.Should().Be("Email.SendFailed");
+        result.Error.Description.Should().Contain("550 No such user");
+    }
+
+    [Fact]
+    public async Task TheOutboxsRefusalIsPassedOn()
+    {
+        var result = await Service(refusal: new Error("Contact.DoNotContact", "anne@example.ch is marked do not contact, so nothing was sent."))
+            .SendAsync(Org, new SendEmailRequest("anne@example.ch", null, null, "Hello", "Hi"));
+
+        result.Error.Code.Should().Be("Contact.DoNotContact");
+        _outbox.Verify(o => o.SendNowAsync(It.IsAny<OutboundMessage>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Theory]
@@ -152,7 +137,7 @@ public class ComposedEmailServiceTests
         var result = await Service().SendAsync(Org, new SendEmailRequest(to, null, null, subject, "Hi"));
 
         result.Error.Code.Should().Be(code);
-        _sender.Verify(s => s.SendComposedAsync(It.IsAny<ComposedEmail>(), It.IsAny<CancellationToken>()), Times.Never);
+        _outbox.Verify(o => o.QueueEmailAsync(It.IsAny<OutboundEmailRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -177,6 +162,6 @@ public class ComposedEmailServiceTests
     {
         await Service().SendAsync(Org, new SendEmailRequest("jean@example.ch", null, null, "Hello\r\nBcc: everyone@example.ch", "Hi"));
 
-        _sent!.Subject.Should().Be("Hello Bcc: everyone@example.ch");
+        _queued!.Subject.Should().Be("Hello Bcc: everyone@example.ch");
     }
 }

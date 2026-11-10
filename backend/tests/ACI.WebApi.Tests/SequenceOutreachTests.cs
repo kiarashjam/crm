@@ -3,6 +3,7 @@ using System.Text.Json;
 using ACI.Application.Interfaces;
 using ACI.Application.Services;
 using ACI.Domain.Enums;
+using ACI.WebApi.Tests.Helpers;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
@@ -21,8 +22,10 @@ public class SequenceOutreachTests
     /// </summary>
     private sealed class App : CustomWebApplicationFactory
     {
-        public readonly List<string> SentTo = new();
-        public readonly List<OutreachEmail> Sent = new();
+        public readonly MailServer Mail = new();
+
+        public IReadOnlyList<string> SentTo => Mail.SentTo;
+        public IReadOnlyList<OutboxEmail> Sent => Mail.Sent;
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -31,18 +34,16 @@ public class SequenceOutreachTests
             {
                 var runner = services.Single(d => d.ImplementationType == typeof(ACI.WebApi.Services.LeadFollowUpBackgroundService));
                 services.Remove(runner);
-                var sender = new Mock<IEmailSender>();
-                sender.Setup(s => s.SendOutreachAsync(It.IsAny<OutreachEmail>(), It.IsAny<CancellationToken>()))
-                    .Callback((OutreachEmail email, CancellationToken _) => { Sent.Add(email); SentTo.Add(email.To); })
-                    .ReturnsAsync(true);
-                services.AddSingleton(sender.Object);
+                services.AddSingleton(Mail.Mock.Object);
             });
         }
 
+        /// <summary>Runs the due steps, then sends what they queued, as the two background jobs would.</summary>
         public async Task RunDueStepsAsync()
         {
-            using var scope = Services.CreateScope();
-            await scope.ServiceProvider.GetRequiredService<ISequenceService>().RunDueAsync();
+            using (var scope = Services.CreateScope())
+                await scope.ServiceProvider.GetRequiredService<ISequenceService>().RunDueAsync();
+            await this.DispatchOutboxAsync();
         }
     }
 
@@ -125,7 +126,7 @@ public class SequenceOutreachTests
         // record does not take that back.
         using (var scope = app.Services.CreateScope())
         {
-            var db = scope.ServiceProvider.GetRequiredService<ACI.Infrastructure.Persistence.AppDbContext>();
+            using var db = scope.ServiceProvider.EveryWorkspace();
             db.Contacts.Add(new ACI.Domain.Entities.Contact
             {
                 Id = Guid.NewGuid(), UserId = ownerId, OrganizationId = org, Name = "J. Dupont", Email = " JEAN@example.ch",
@@ -175,7 +176,118 @@ public class SequenceOutreachTests
 
         var sent = app.Sent.Should().ContainSingle().Subject;
         sent.FromName.Should().Be("Pavillon46");
-        sent.ReplyTo.Should().Be("rep@example.ch");
+        sent.ReplyTo.Should().Equal("rep@example.ch");
+    }
+
+    [Fact]
+    public async Task TheNextStepWaitsUntilTheEmailBeforeItHasGone()
+    {
+        // The step hands its email to the outbox and moves on. If the mail server does not
+        // take it, the next step must not go out first: the second email would arrive
+        // before the first.
+        await using var app = new App();
+        var (owner, ownerId) = await SignInAsync(app, "owner@example.ch");
+        owner.In(await CreateAsync(app, ownerId, "Pavillon46"));
+        var sequenceId = (await Json(await owner.PostAsync("/api/sequences", Body(new
+        {
+            name = "New lead outreach", status = "active",
+            steps = new[]
+            {
+                new { type = "email", dayOffset = 0, subject = "Hello", body = "Hi" },
+                new { type = "email", dayOffset = 0, subject = "Still there?", body = "Hi again" },
+            },
+        })), "create sequence")).GetProperty("id").GetGuid();
+        var leadId = await LeadAsync(owner);
+        var enrollmentId = (await Json(await EnrollAsync(owner, sequenceId, leadId), "enroll")).GetProperty("id").GetGuid();
+        app.Mail.Answer = MailServer.NotNow();
+
+        await app.RunDueStepsAsync();
+        // The second step is due at once (day 0), but its email waits for the first.
+        await app.RunDueStepsAsync();
+
+        (await app.Services.Read(db => db.OutboundMessages.Count())).Should().Be(1, "the second step waits for the first email");
+        app.Mail.Sent.Should().BeEmpty();
+
+        // The relay takes it on the retry; then the next step goes, in order.
+        app.Mail.Answer = OutboxSendResult.Sent;
+        await app.MakeQueuedDueAsync();
+        await app.DispatchOutboxAsync();
+        using (var scope = app.Services.CreateScope())
+        {
+            using var db = scope.ServiceProvider.EveryWorkspace();
+            db.OutreachEnrollments.Single(e => e.Id == enrollmentId).NextActionAtUtc = DateTime.UtcNow.AddMinutes(-1);
+            await db.SaveChangesAsync();
+        }
+        await app.RunDueStepsAsync();
+
+        app.Mail.Sent.Select(m => m.Subject).Should().Equal("Hello", "Still there?");
+    }
+
+    [Fact]
+    public async Task AStepEmailStillWaitingWhenThePersonAnswersIsNotSent()
+    {
+        // The relay does not take the step's email, so the outbox holds it and tries again
+        // later. The person writes back to the rep meanwhile, and the rep logs the reply.
+        // That stops the sequence; the email waiting must not follow the answer.
+        await using var app = new App();
+        var (owner, ownerId) = await SignInAsync(app, "owner@example.ch");
+        owner.In(await CreateAsync(app, ownerId, "Pavillon46"));
+        var sequenceId = await SequenceAsync(owner, new { type = "email", dayOffset = 0, subject = "Hello", body = "Hi" });
+        var leadId = await LeadAsync(owner);
+        var enrollmentId = (await Json(await EnrollAsync(owner, sequenceId, leadId), "enroll")).GetProperty("id").GetGuid();
+        app.Mail.Answer = MailServer.NotNow();
+        await app.RunDueStepsAsync();
+        (await app.Services.Read(db => db.OutboundMessages.Single().Status)).Should().Be("queued");
+
+        await Json(await owner.PostAsync("/api/activities", Body(new { type = "call", subject = "Jean rang back", leadId })), "log the reply");
+        (await EnrollmentStatusAsync(owner, enrollmentId)).Should().Be("stopped");
+        app.Mail.Answer = OutboxSendResult.Sent;
+        await app.MakeQueuedDueAsync();
+        await app.DispatchOutboxAsync();
+
+        app.Mail.Sent.Should().BeEmpty();
+        (await app.Services.Read(db => db.OutboundMessages.Single().Status)).Should().Be("cancelled");
+    }
+
+    [Fact]
+    public async Task AnEmailTheOutboxGivesUpOnStopsTheSequence_AndTellsWhoEnrolledThem()
+    {
+        await using var app = new App();
+        var (owner, ownerId) = await SignInAsync(app, "owner@example.ch");
+        owner.In(await CreateAsync(app, ownerId, "Pavillon46"));
+        var sequenceId = await SequenceAsync(owner, new { type = "email", dayOffset = 0, subject = "Hello", body = "Hi" });
+        var leadId = await LeadAsync(owner);
+        var enrollmentId = (await Json(await EnrollAsync(owner, sequenceId, leadId), "enroll")).GetProperty("id").GetGuid();
+        app.Mail.Answer = MailServer.Never();
+
+        await app.RunDueStepsAsync();
+
+        (await EnrollmentStatusAsync(owner, enrollmentId)).Should().Be("stopped");
+        (await app.Services.Read(db => db.OutboundMessages.Single().Status)).Should().Be("failed");
+        var notice = await app.Services.Read(db => db.Notifications.Single(n => n.UserId == ownerId));
+        notice.Title.Should().Be("An email could not be sent");
+        notice.Link.Should().Be($"/leads/{leadId}");
+    }
+
+    [Fact]
+    public async Task ASentStepEmailIsOnTheTimelineAsAutomated_NotAsTheRepsResponse()
+    {
+        await using var app = new App();
+        var (owner, ownerId) = await SignInAsync(app, "owner@example.ch");
+        owner.In(await CreateAsync(app, ownerId, "Pavillon46"));
+        var sequenceId = await SequenceAsync(owner, new { type = "email", dayOffset = 0, subject = "Hello {{firstName}}", body = "Hi {{firstName}} from {{workspace}}, {{nickname|friend}}" });
+        var leadId = await LeadAsync(owner);
+        await Json(await EnrollAsync(owner, sequenceId, leadId), "enroll");
+
+        await app.RunDueStepsAsync();
+
+        var sent = app.Sent.Single();
+        sent.Subject.Should().Be("Hello Jean");
+        sent.TextBody.Should().StartWith("Hi Jean from Pavillon46, friend");
+        var activity = await app.Services.Read(db => db.Activities.Single(a => a.LeadId == leadId && a.Type == "email"));
+        activity.Subject.Should().Be("Hello Jean");
+        (await app.Services.Read(db => db.Leads.Single(l => l.Id == leadId).FirstResponseAtUtc))
+            .Should().BeNull("an automated email is not somebody answering the lead");
     }
 
     [Fact]

@@ -17,9 +17,13 @@ public class LeadService : ILeadService
     private readonly IDealRepository _dealRepository;
     private readonly ILeadAutomation _automation;
     private readonly IWorkspaceRecords _records;
+    private readonly ILeadStatusSync _statusSync;
     private readonly IAutomationEngine? _automations;
     private readonly IOutboundWebhookPublisher? _webhooks;
     private readonly IContactRelationshipRepository? _relationships;
+    private readonly IOrganizationRepository? _organizations;
+    private readonly IDealStageRepository? _stages;
+    private readonly ICollaborationNotifier? _notifier;
     private readonly ILogger<LeadService> _logger;
 
     public LeadService(
@@ -29,10 +33,14 @@ public class LeadService : ILeadService
         IDealRepository dealRepository,
         ILeadAutomation automation,
         IWorkspaceRecords records,
+        ILeadStatusSync statusSync,
         ILogger<LeadService> logger,
         IAutomationEngine? automations = null,
         IOutboundWebhookPublisher? webhooks = null,
-        IContactRelationshipRepository? relationships = null)
+        IContactRelationshipRepository? relationships = null,
+        IOrganizationRepository? organizations = null,
+        IDealStageRepository? stages = null,
+        ICollaborationNotifier? notifier = null)
     {
         _repository = repository;
         _companyRepository = companyRepository;
@@ -40,10 +48,14 @@ public class LeadService : ILeadService
         _dealRepository = dealRepository;
         _automation = automation;
         _records = records;
+        _statusSync = statusSync;
         _logger = logger;
         _automations = automations;
         _webhooks = webhooks;
         _relationships = relationships;
+        _organizations = organizations;
+        _stages = stages;
+        _notifier = notifier;
     }
 
     /// <inheritdoc />
@@ -58,8 +70,6 @@ public class LeadService : ILeadService
         _logger.LogDebug(
             "Getting paged leads for user {UserId}, organization {OrganizationId}, page {Page}, pageSize {PageSize}",
             userId, organizationId, page, pageSize);
-
-        await _contactRepository.EnsureMissingPersonContactsAsync(userId, organizationId, ct);
 
         var skip = (page - 1) * pageSize;
         var (items, totalCount) = await _repository.GetPagedAsync(userId, organizationId, skip, pageSize, options, ct);
@@ -87,8 +97,6 @@ public class LeadService : ILeadService
             "Getting leads for user {UserId}, organization {OrganizationId}",
             userId, organizationId);
 
-        await _contactRepository.EnsureMissingPersonContactsAsync(userId, organizationId, ct);
-
         var list = await _repository.GetByUserIdAsync(userId, organizationId, ct);
         
         _logger.LogInformation(
@@ -96,6 +104,16 @@ public class LeadService : ILeadService
             list.Count, userId);
 
         return await MapWithRelationshipsAsync(list, userId, organizationId, ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<(IReadOnlyList<LeadDto> Items, bool More)> GetOpenWorkAsync(
+        Guid userId, Guid? organizationId, bool mineOnly, int take, CancellationToken ct = default)
+    {
+        // One more than asked for says whether the list was cut short.
+        var leads = await _repository.GetOpenAsync(userId, organizationId, mineOnly, take + 1, ct);
+        var items = await MapWithRelationshipsAsync(leads.Take(take).ToList(), userId, organizationId, ct);
+        return (items, leads.Count > take);
     }
 
     /// <inheritdoc />
@@ -220,8 +238,14 @@ public class LeadService : ILeadService
             Industry = request.Industry?.Trim(),
             CompanySize = request.CompanySize?.Trim(),
             ReferredByContactId = request.ReferredByContactId,
+            PipelineState = request.PipelineState,
             CreatedAtUtc = DateTime.UtcNow,
         };
+
+        // A lead that arrives with recorded work (an API caller, a migration) takes
+        // the status that work implies, before routing and scoring read it.
+        if (!string.IsNullOrWhiteSpace(entity.PipelineState))
+            await _statusSync.SettleAsync(entity, ct);
 
         await _automation.PrepareNewAsync(entity, ct);
         // An imported row is someone the workspace already knows, not an inquiry
@@ -240,6 +264,10 @@ public class LeadService : ILeadService
         entity = await _repository.AddAsync(entity, ct);
         await _automation.RecordStatusAsync(entity, null, entity.Status, userId, ct);
         await _contactRepository.EnsurePersonContactAsync(entity, ct);
+        // A new lead has an owner only when routing gave it one: the rep it went to hears
+        // so, rather than finding it later. An imported row is not new work arriving.
+        if (_notifier != null && !request.IsImport)
+            await _notifier.RecordAssignedAsync(RecordTypes.Lead, entity.Id, entity.Name, organizationId, entity.AssignedToUserId, userId, "lead routing", ct);
 
         _logger.LogInformation(
             "Lead {LeadId} created successfully for user {UserId}",
@@ -251,10 +279,11 @@ public class LeadService : ILeadService
         if (_automations != null && (!request.IsImport || request.RunAutomations))
         {
             await _automations.DispatchAsync("lead.created", new AutomationEvent(
-                organizationId, userId, entity.Id.ToString(), entity.Name, LeadId: entity.Id, Email: entity.Email, AssigneeId: entity.AssignedToUserId), ct);
+                organizationId, userId, entity.Id.ToString(), entity.Name, LeadId: entity.Id, Email: entity.Email, AssigneeId: entity.AssignedToUserId,
+                FromImport: request.IsImport), ct);
         }
         if (_webhooks != null && !request.IsImport)
-            await _webhooks.PublishAsync(organizationId, "lead.created", new { entity.Id, entity.Name, entity.Email }, ct);
+            await _webhooks.QueueAsync(organizationId, "lead.created", new { entity.Id, entity.Name, entity.Email }, ct);
 
         return Map(entity);
     }
@@ -289,6 +318,12 @@ public class LeadService : ILeadService
             return DomainErrors.Lead.AlreadyConverted;
         }
 
+        // Made from an older read: the edit dialogs send back every field they showed, so
+        // saving would put back whatever someone (or the pipeline, or a job) has changed
+        // since. See UpdateLeadRequest.Version.
+        if (request.Version is Guid readVersion && readVersion != existing.Version)
+            return DomainErrors.Lead.Changed;
+
         // Validate email format if provided
         if (request.Email != null && !ValidationHelper.IsValidEmail(request.Email))
         {
@@ -311,11 +346,15 @@ public class LeadService : ILeadService
 
         var previousStatus = existing.Status;
 
-        // Apply partial updates
+        // Apply partial updates. A field sent as null is taken off; one left out is kept.
+        // Only "left out" used to be possible, so choosing "No company" logged "Company
+        // cleared" while the company, and its score points, stayed.
         if (request.Name != null) existing.Name = request.Name.Trim();
         if (request.Email != null) existing.Email = request.Email.Trim();
         if (request.Phone != null) existing.Phone = request.Phone.Trim();
+        else if (request.Clears(nameof(request.Phone))) existing.Phone = null;
         if (request.CompanyId != null) existing.CompanyId = request.CompanyId;
+        else if (request.Clears(nameof(request.CompanyId))) existing.CompanyId = null;
         if (request.Source != null) existing.Source = request.Source.Trim();
         if (request.Status != null) existing.Status = request.Status.Trim();
         if (request.LeadSourceId.HasValue) existing.LeadSourceId = request.LeadSourceId;
@@ -331,12 +370,40 @@ public class LeadService : ILeadService
         }
         if (request.LastContactedAt.HasValue) existing.LastContactedAt = request.LastContactedAt;
         if (request.Description != null) existing.Description = request.Description.Trim();
+        else if (request.Clears(nameof(request.Description))) existing.Description = null;
         if (request.LifecycleStage != null) existing.LifecycleStage = request.LifecycleStage.Trim();
-        if (request.PipelineState != null) existing.PipelineState = request.PipelineState;
+        else if (request.Clears(nameof(request.LifecycleStage))) existing.LifecycleStage = null;
+        if (request.PipelineState != null)
+        {
+            // The steps this edit changed, merged into the pipeline as it is now, so a step
+            // someone else recorded meanwhile (an e-signed contract, a colleague) is kept.
+            // An empty one clears the whole pipeline, as it always did.
+            if (string.IsNullOrWhiteSpace(request.PipelineState))
+                existing.PipelineState = null;
+            else
+            {
+                var merged = PipelineStatePatch.Apply(existing.PipelineState, request.PipelineState);
+                if (merged.IsFailure) return merged.Error;
+                existing.PipelineState = merged.Value;
+            }
+        }
         if (request.JobTitle != null) existing.JobTitle = request.JobTitle.Trim();
+        else if (request.Clears(nameof(request.JobTitle))) existing.JobTitle = null;
         if (request.Country != null) existing.Country = request.Country.Trim();
+        else if (request.Clears(nameof(request.Country))) existing.Country = null;
         if (request.Industry != null) existing.Industry = request.Industry.Trim();
+        else if (request.Clears(nameof(request.Industry))) existing.Industry = null;
         if (request.CompanySize != null) existing.CompanySize = request.CompanySize.Trim();
+        else if (request.Clears(nameof(request.CompanySize))) existing.CompanySize = null;
+
+        // The pipeline decides the status, here rather than in the browser, so the
+        // answer is the same whoever sends the pipeline. A status sent alongside it is
+        // the starting point: when the pipeline implies another, the pipeline wins,
+        // unless that status is parked (do not contact) or one the rule does not know.
+        // A save without a pipeline leaves the status as sent.
+        LeadStatusDerivation.Plan? plan = null;
+        if (request.PipelineState != null)
+            plan = await _statusSync.SettleAsync(existing, ct);
 
         // Someone has worked this lead: its status left "New" (the pipeline moves it
         // when outreach is logged), or a contact date was recorded. Either one is a
@@ -357,7 +424,16 @@ public class LeadService : ILeadService
         existing.UpdatedAtUtc = DateTime.UtcNow;
         existing.UpdatedByUserId = userId;
 
-        var updated = await _repository.UpdateAsync(existing, userId, organizationId, ct);
+        Lead? updated;
+        try
+        {
+            updated = await _repository.UpdateAsync(existing, userId, organizationId, ct);
+        }
+        catch (ConcurrencyConflictException)
+        {
+            // Saved by someone else between this request reading the lead and writing it.
+            return DomainErrors.Lead.Changed;
+        }
         
         if (updated == null)
         {
@@ -369,14 +445,8 @@ public class LeadService : ILeadService
 
         await _contactRepository.EnsurePersonContactAsync(updated, ct);
         if (!string.Equals(previousStatus, updated.Status, StringComparison.Ordinal))
-        {
-            await _automation.RecordStatusAsync(updated, previousStatus, updated.Status, userId, ct);
-            if (_automations != null)
-            {
-                await _automations.DispatchAsync("lead.status_changed", new AutomationEvent(
-                    organizationId, userId, $"{updated.Id}:{updated.Status}", updated.Name, LeadId: updated.Id, Email: updated.Email, AssigneeId: updated.AssignedToUserId), ct);
-            }
-        }
+            await _statusSync.AnnounceAsync(updated, previousStatus, userId, userId, plan, ct,
+                runAutomations: !request.IsImport || request.RunAutomations, fromImport: request.IsImport);
 
         _logger.LogInformation(
             "Lead {LeadId} updated successfully",
@@ -402,6 +472,7 @@ public class LeadService : ILeadService
         var links = await _records.CheckLinksAsync(userId, organizationId, new RecordLinks { AssigneeId = assignedToUserId }, ct);
         if (links.IsFailure) return links.Error;
 
+        var ownerBefore = (await _repository.GetByIdAsync(id, userId, organizationId, ct))?.AssignedToUserId;
         var updated = await _repository.AssignAsync(id, userId, organizationId, assignedToUserId, ct);
 
         if (updated == null)
@@ -409,6 +480,8 @@ public class LeadService : ILeadService
             _logger.LogWarning("Lead assignment failed: Lead {LeadId} not found", id);
             return DomainErrors.Lead.NotFound;
         }
+        if (_notifier != null && updated.AssignedToUserId != ownerBefore)
+            await _notifier.RecordAssignedAsync(RecordTypes.Lead, updated.Id, updated.Name, organizationId, updated.AssignedToUserId, userId, null, ct);
 
         return Map(updated);
     }
@@ -496,9 +569,17 @@ public class LeadService : ILeadService
     public async Task<Result> MergeAsync(Guid keepId, Guid dropId, Guid userId, Guid? organizationId, CancellationToken ct = default)
     {
         if (keepId == dropId) return DomainErrors.Lead.NotFound;
+        var pipelineBefore = (await _repository.GetByIdAsync(keepId, userId, organizationId, ct))?.PipelineState;
         var merged = await _repository.MergeIntoAsync(keepId, dropId, userId, organizationId, ct);
         if (!merged) return DomainErrors.Lead.NotFound;
         _logger.LogInformation("Merged lead {DropId} into {KeepId}", dropId, keepId);
+
+        // A kept lead with no pipeline takes the folded-in lead's, and with it that
+        // lead's progress, so its status follows. A kept lead's own pipeline is left
+        // as it was, and so is its status.
+        var kept = await _repository.GetByIdAsync(keepId, userId, organizationId, ct);
+        if (kept != null && !string.Equals(kept.PipelineState, pipelineBefore, StringComparison.Ordinal))
+            await _statusSync.SaveAsync(kept, userId, organizationId, userId, ct);
         return Result.Success();
     }
 
@@ -540,7 +621,10 @@ public class LeadService : ILeadService
             return new Error("Lead.ConversionRequired", "At least one conversion action must be specified");
         }
 
-        // Before anything is created, so a refused pipeline or stage leaves no half-converted lead.
+        // Before anything is created, so a refused pipeline, stage, amount or currency
+        // leaves no half-converted lead.
+        decimal dealAmount = 0m;
+        string dealCurrency = RegionalSettings.DefaultCurrency;
         if (request.CreateDeal && !request.ExistingDealId.HasValue)
         {
             var links = await _records.CheckLinksAsync(userId, organizationId, new RecordLinks
@@ -549,6 +633,15 @@ public class LeadService : ILeadService
                 DealStageId = request.DealStageId,
             }, ct);
             if (links.IsFailure) return links.Error;
+
+            var amount = DealMoney.AmountOf(request.DealAmount, request.DealValue);
+            if (amount.IsFailure) return amount.Error;
+            dealAmount = amount.Value ?? 0m;
+            // The workspace's currency unless the conversion names another: a converted
+            // deal used to have none, and was counted and shown as USD.
+            var currency = DealMoney.CurrencyOf(request.DealCurrency, await _organizations.WorkspaceCurrencyAsync(organizationId, ct));
+            if (currency.IsFailure) return currency.Error;
+            dealCurrency = currency.Value;
         }
 
         // A deal to convert into must be one this workspace has. Asked together with
@@ -677,7 +770,7 @@ public class LeadService : ILeadService
                 UserId = userId,
                 OrganizationId = organizationId,
                 Name = string.IsNullOrWhiteSpace(request.DealName) ? lead.Name : request.DealName.Trim(),
-                Value = string.IsNullOrWhiteSpace(request.DealValue) ? "0" : request.DealValue.Trim(),
+                Currency = dealCurrency,
                 Stage = request.DealStage?.Trim(),
                 PipelineId = request.PipelineId,
                 DealStageId = request.DealStageId,
@@ -685,6 +778,14 @@ public class LeadService : ILeadService
                 ContactId = contactId,
                 CreatedAtUtc = DateTime.UtcNow,
             };
+            DealMoney.SetAmount(deal, dealAmount);
+            // As a deal created on the board: the stage decides its pipeline and stage
+            // name, and its history starts with the stage it was converted into.
+            if (request.DealStageId is Guid convertedStageId && _stages != null && organizationId is Guid stageOrg
+                && await _stages.GetByIdAsync(convertedStageId, stageOrg, ct) is { } stage)
+                DealStageMoves.Place(deal, stage, deal.CreatedAtUtc);
+            if (DealStageMoves.Entered(deal, null, null, null, userId, deal.CreatedAtUtc) is { } entered)
+                deal.StageChanges.Add(entered);
             await _dealRepository.AddAsync(deal, ct);
             dealId = deal.Id;
             
@@ -706,17 +807,42 @@ public class LeadService : ILeadService
             }
         }
 
-        // Mark lead as converted with full traceability
-        lead.IsConverted = true;
-        lead.ConvertedAtUtc = DateTime.UtcNow;
-        lead.UpdatedAtUtc = DateTime.UtcNow;
-        lead.UpdatedByUserId = userId;
-        
-        if (contactId.HasValue && request.CreateContact) lead.ConvertedToContactId = contactId;
-        if (dealId.HasValue && request.CreateDeal) lead.ConvertedToDealId = dealId;
-        if (newCompanyId.HasValue) lead.ConvertedToCompanyId = newCompanyId;
-        
-        await _repository.UpdateAsync(lead, userId, organizationId, ct);
+        // Mark lead as converted with full traceability. The contact, company and deal
+        // above are already saved, so a lead saved by someone else meanwhile (a call
+        // logged on it, the rescore, an email it opened: see IVersioned) is marked on
+        // its newer copy. Refused, the conversion left them behind as strays, and the
+        // retry it asked for made them all again.
+        for (var attempt = 1; ; attempt++)
+        {
+            lead.IsConverted = true;
+            lead.ConvertedAtUtc = DateTime.UtcNow;
+            lead.UpdatedAtUtc = DateTime.UtcNow;
+            lead.UpdatedByUserId = userId;
+
+            if (contactId.HasValue && request.CreateContact)
+            {
+                lead.ConvertedToContactId = contactId;
+                // Asked for in so many words, so a contact deleted earlier no longer stands
+                // in the way of the lead having one.
+                lead.PersonContactRemovedAtUtc = null;
+            }
+            if (dealId.HasValue && request.CreateDeal) lead.ConvertedToDealId = dealId;
+            if (newCompanyId.HasValue) lead.ConvertedToCompanyId = newCompanyId;
+
+            try
+            {
+                await _repository.UpdateAsync(lead, userId, organizationId, ct);
+                break;
+            }
+            catch (ConcurrencyConflictException) when (attempt < 3)
+            {
+                var fresh = await _repository.GetByIdAsync(leadId, userId, organizationId, ct);
+                if (fresh == null) return DomainErrors.Lead.NotFound;
+                // Converted by another request in that moment, such as a second click.
+                if (fresh.IsConverted) return DomainErrors.Lead.AlreadyConverted;
+                lead = fresh;
+            }
+        }
 
         _logger.LogInformation(
             "Lead {LeadId} converted successfully. CompanyId: {CompanyId}, ContactId: {ContactId}, DealId: {DealId}",
@@ -783,5 +909,6 @@ public class LeadService : ILeadService
             e.EnrichedDomain,
             e.ScoreIsManual,
             e.ReferredByContactId,
-            e.ReferredByContact?.Name);
+            e.ReferredByContact?.Name,
+            Version: e.Version);
 }

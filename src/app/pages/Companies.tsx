@@ -1,20 +1,25 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { 
   Building2, Search, Plus, Pencil, Trash2, Globe, Briefcase, Users, X,
   SlidersHorizontal, ArrowUpDown, ArrowUp, ArrowDown, BarChart3, TrendingUp,
   ExternalLink, MapPin, Calendar, Link2, Factory, Sparkles, Building, UserCircle,
-  AlertCircle, DollarSign, Target
+  AlertCircle, DollarSign, Target, Upload, Download
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
-import ExportCsvButton from '@/app/components/ExportCsvButton';
 import { PageTransition } from '@/app/components/PageTransition';
 import { ContentSkeleton } from '@/app/components/PageSkeleton';
 import DataPagination from '@/app/components/DataPagination';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { getCompaniesPaged, getCompanyStats, createCompany, updateCompany, deleteCompany, getDealsPaged, messages } from '@/app/api';
-import type { CompanyStatsItem } from '@/app/api/companies';
+import { getCompanyById, createCompany, updateCompany, deleteCompany, messages } from '@/app/api';
+import { useCompaniesPage, useCompanySummary, useDealsPage } from '@/app/hooks/queries';
+import { LoadFailed } from '@/app/components/LoadFailed';
+import { isEditConflict, showEditConflict } from '@/app/lib/editConflict';
+import {
+  exportCompanies,
+  type CompanyListFilters, type CompanyListItem, type CompanySortField, type CompanySummary,
+} from '@/app/api/companies';
 import type { Company, Deal } from '@/app/api/types';
 import { recordHref } from '@/app/hooks/useDocumentTitle';
 import { Button } from '@/app/components/ui/button';
@@ -59,8 +64,11 @@ import {
   type RecordColumn,
 } from '@/app/components/views';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
+import { useMoney } from '@/app/hooks/useMoney';
+import { PERMISSION } from '@/app/api/organizations';
 
-// Common industries for filtering
+// Industries offered when a company is added or edited. The filter lists the ones the
+// workspace's companies are really in instead, however they were typed.
 const INDUSTRIES = [
   'Technology',
   'Healthcare',
@@ -74,6 +82,19 @@ const INDUSTRIES = [
   'Other',
 ];
 
+/** The industry filter's value for companies with none. */
+const NO_INDUSTRY = '__none__';
+
+const SORTS: CompanySortField[] = ['name', 'createdAt', 'contacts', 'deals'];
+
+/** "contacts-desc" from the address or the sort menu; anything else is name A-Z. */
+function parseSort(value: string | null): [CompanySortField, 'asc' | 'desc'] {
+  const [field, dir] = (value ?? '').split('-');
+  return SORTS.includes(field as CompanySortField)
+    ? [field as CompanySortField, dir === 'desc' ? 'desc' : 'asc']
+    : ['name', 'asc'];
+}
+
 // Company sizes
 const COMPANY_SIZES = [
   { value: '1-10', label: '1-10 employees', category: 'Startup' },
@@ -84,7 +105,11 @@ const COMPANY_SIZES = [
   { value: '1000+', label: '1000+ employees', category: 'Enterprise' },
 ];
 
+const NO_COMPANIES: CompanyListItem[] = [];
+const NO_DEALS: Deal[] = [];
+
 export default function Companies() {
+  const money = useMoney();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   
@@ -92,31 +117,46 @@ export default function Companies() {
   const currentPage = Number(searchParams.get('page')) || 1;
   const pageSize = Number(searchParams.get('pageSize')) || 20;
   const searchFromUrl = searchParams.get('search') || '';
-  
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [companyStatsMap, setCompanyStatsMap] = useState<Map<string, CompanyStatsItem>>(new Map());
-  const [deals, setDeals] = useState<Deal[]>([]);
-  const [loading, setLoading] = useState(true);
-  usePageLoading(loading);
+  // The filters and the order are in the address, and the server applies them to every company.
+  const filterIndustry = searchParams.get('industry') || 'all';
+  const filterSize = searchParams.get('size') || 'all';
+  const [sortField, sortDirection] = parseSort(searchParams.get('sort'));
+
+  const [exporting, setExporting] = useState(false);
   const [searchQuery, setSearchQuery] = useState(searchFromUrl);
   const [debouncedSearch, setDebouncedSearch] = useState(searchFromUrl);
   
-  // Pagination state
-  const [totalCount, setTotalCount] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCompany, setEditingCompany] = useState<Company | null>(null);
   const [form, setForm] = useState({ name: '', domain: '', industry: '', size: '', description: '', website: '', location: '' });
   const [saving, setSaving] = useState(false);
-  const [deleteConfirmCompany, setDeleteConfirmCompany] = useState<Company | null>(null);
+  const [deleteConfirmCompany, setDeleteConfirmCompany] = useState<CompanyListItem | null>(null);
   const [deleting, setDeleting] = useState(false);
   
-  // Filter & Sort state
-  const [filterIndustry, setFilterIndustry] = useState<string>('all');
-  const [filterSize, setFilterSize] = useState<string>('all');
-  const [sortField, setSortField] = useState<'name' | 'createdAt' | 'contacts' | 'deals'>('name');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [showFilters, setShowFilters] = useState(false);
+
+  /** Change one filter in the address, back on the first page. */
+  const setListParam = (key: string, value: string | null) => {
+    const params = new URLSearchParams(searchParams);
+    if (value === null) params.delete(key);
+    else params.set(key, value);
+    params.set('page', '1');
+    setSearchParams(params);
+  };
+  const setFilterIndustry = (next: string) => setListParam('industry', next === 'all' ? null : next);
+  const setFilterSize = (next: string) => setListParam('size', next === 'all' ? null : next);
+  const setSort = (field: CompanySortField, dir: 'asc' | 'desc') =>
+    setListParam('sort', field === 'name' && dir === 'asc' ? null : `${field}-${dir}`);
+
+  // What the server is asked for, the list and the export alike.
+  const listFilters = useMemo<CompanyListFilters>(() => ({
+    search: debouncedSearch || undefined,
+    industry: filterIndustry === 'all' || filterIndustry === NO_INDUSTRY ? undefined : filterIndustry,
+    hasIndustry: filterIndustry === NO_INDUSTRY ? false : undefined,
+    size: filterSize === 'all' ? undefined : filterSize,
+    sortBy: sortField,
+    sortDir: sortDirection,
+  }), [debouncedSearch, filterIndustry, filterSize, sortField, sortDirection]);
 
   // Debounce search input
   useEffect(() => {
@@ -140,36 +180,21 @@ export default function Companies() {
     }
   }, [debouncedSearch]);
 
-  // Fetch companies with pagination
-  const fetchCompanies = useCallback(async () => {
-    setLoading(true);
-    try {
-      // HP-7: Use server-side stats instead of fetching ALL contacts/deals
-      const [pagedResult, statsData, dealsResult] = await Promise.all([
-        getCompaniesPaged({ page: currentPage, pageSize, search: debouncedSearch || undefined }),
-        getCompanyStats(),
-        getDealsPaged({ page: 1, pageSize: 500 }),
-      ]);
-      setCompanies(pagedResult.items);
-      setTotalCount(pagedResult.totalCount);
-      setTotalPages(pagedResult.totalPages);
-      // Build lookup map from stats array
-      const statsMap = new Map<string, CompanyStatsItem>();
-      for (const s of statsData) {
-        statsMap.set(s.companyId, s);
-      }
-      setCompanyStatsMap(statsMap);
-      setDeals(dealsResult.items);
-    } catch {
-      toast.error(messages.errors.loadFailed);
-    } finally {
-      setLoading(false);
-    }
-  }, [currentPage, pageSize, debouncedSearch]);
-
-  useEffect(() => {
-    fetchCompanies();
-  }, [fetchCompanies]);
+  // The page of companies, each with its own counts, and the figures above the list
+  // with the server's count of the whole workspace, through the shared cache: keyed by
+  // page and filters, re-read after a save that changed companies, and the read for a
+  // search typed over cancelled. The deals a row lists are read on their own: their
+  // failing used to blank the whole page.
+  const companiesQuery = useCompaniesPage({ page: currentPage, pageSize, ...listFilters });
+  const companies = companiesQuery.data?.items ?? NO_COMPANIES;
+  const totalCount = companiesQuery.data?.totalCount ?? 0;
+  const totalPages = companiesQuery.data?.totalPages ?? 0;
+  // The figures help; the page still works without them.
+  const summary: CompanySummary | null = useCompanySummary().data ?? null;
+  const deals: Deal[] = useDealsPage({ page: 1, pageSize: 500 }).data?.items ?? NO_DEALS;
+  const loading = companiesQuery.isPending;
+  usePageLoading(loading);
+  const reloadCompanies = () => { void companiesQuery.refetch(); };
 
   // Pagination handlers
   const handlePageChange = (page: number) => {
@@ -185,83 +210,21 @@ export default function Companies() {
     setSearchParams(params);
   };
 
-  // Calculate company statistics (HP-7: uses server-side stats)
-  const companyStats = useMemo(() => {
-    // BUG #3 fix: Use totalCount from pagination (all companies) instead of companies.length (current page)
-    const total = totalCount || companies.length;
-    
-    // Count by industry
-    const byIndustry: Record<string, number> = {};
-    companies.forEach(c => {
-      const industry = c.industry || 'Other';
-      byIndustry[industry] = (byIndustry[industry] || 0) + 1;
-    });
-    
-    // Find top industry
-    const topIndustry = Object.entries(byIndustry).sort((a, b) => b[1] - a[1])[0];
-    
-    // Companies with domain
-    const withDomain = companies.filter(c => c.domain).length;
-    
-    // Companies added this week
-    const oneWeekAgo = new Date();
-    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-    const thisWeek = companies.filter(c => c.createdAtUtc && new Date(c.createdAtUtc) >= oneWeekAgo).length;
-    
-    // HP-7: Use server-side stats — count from full stats map (all companies), not just current page
-    const allStats = Array.from(companyStatsMap.values());
-    const withContacts = allStats.filter(s => s.contactCount > 0).length;
-    const withDeals = allStats.filter(s => s.dealCount > 0).length;
-    const totalDealValue = allStats.reduce((sum, s) => sum + s.totalDealValue, 0);
-    
-    return { total, byIndustry, topIndustry, withDomain, thisWeek, withContacts, withDeals, totalDealValue };
-  }, [companies, companyStatsMap, totalCount]);
+  // The figures from the server, over the whole workspace.
+  const companyStats = {
+    total: summary?.total ?? totalCount,
+    withContacts: summary?.withContacts ?? 0,
+    withDeals: summary?.withDeals ?? 0,
+    thisWeek: summary?.addedLast7Days ?? 0,
+    dealTotals: summary?.dealTotals ?? [],
+    topIndustry: summary?.industries[0],
+  };
 
-  // HP-7: Get counts from server-side stats map
-  const getContactCount = useCallback((companyId: string) => companyStatsMap.get(companyId)?.contactCount ?? 0, [companyStatsMap]);
-  const getDealCount = useCallback((companyId: string) => companyStatsMap.get(companyId)?.dealCount ?? 0, [companyStatsMap]);
-  const getDealValue = (companyId: string) => companyStatsMap.get(companyId)?.totalDealValue ?? 0;
+  // Each row's counts came with it from the server.
+  const getContactCount = (company: CompanyListItem) => company.contactCount;
+  const getDealCount = (company: CompanyListItem) => company.dealCount;
   // HP-12: Get deals for a company (still from deals array for drill-down)
   const getDealsForCompany = (companyId: string) => deals.filter(d => d.companyId === companyId);
-
-  const filteredCompanies = useMemo(() => {
-    let result = [...companies];
-    
-    // HP-13: Removed duplicated client-side search filter.
-    // Server already filters by debouncedSearch via getCompaniesPaged.
-    
-    // Industry filter
-    if (filterIndustry !== 'all') {
-      result = result.filter(c => (c.industry || 'Other') === filterIndustry);
-    }
-    
-    // Size filter
-    if (filterSize !== 'all') {
-      result = result.filter(c => c.size === filterSize);
-    }
-    
-    // Sorting
-    result.sort((a, b) => {
-      let comparison = 0;
-      switch (sortField) {
-        case 'name':
-          comparison = a.name.localeCompare(b.name);
-          break;
-        case 'createdAt':
-          comparison = new Date(a.createdAtUtc || 0).getTime() - new Date(b.createdAtUtc || 0).getTime();
-          break;
-        case 'contacts':
-          comparison = getContactCount(a.id) - getContactCount(b.id);
-          break;
-        case 'deals':
-          comparison = getDealCount(a.id) - getDealCount(b.id);
-          break;
-      }
-      return sortDirection === 'asc' ? comparison : -comparison;
-    });
-    
-    return result;
-  }, [companies, searchQuery, filterIndustry, filterSize, sortField, sortDirection, getContactCount, getDealCount]);
 
   // Count active filters
   const activeFilterCount = [
@@ -271,9 +234,26 @@ export default function Companies() {
 
   // Clear all filters
   const clearFilters = () => {
-    setFilterIndustry('all');
-    setFilterSize('all');
+    const params = new URLSearchParams(searchParams);
+    for (const key of ['industry', 'size', 'search']) params.delete(key);
+    params.set('page', '1');
+    setSearchParams(params);
     setSearchQuery('');
+  };
+
+  // Every company the list shows with these filters, written by the server.
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const result = await exportCompanies(listFilters);
+      if (!result) toast.success('Companies exported');
+      else if (result.exported < result.total) toast.success(`Exported the first ${result.exported.toLocaleString()} of ${result.total.toLocaleString()} companies`);
+      else toast.success(`Exported ${result.exported.toLocaleString()} compan${result.exported === 1 ? 'y' : 'ies'}`);
+    } catch (error) {
+      toast.error(error instanceof Error && error.message ? error.message : 'The export failed');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const openCreate = () => {
@@ -316,11 +296,12 @@ export default function Companies() {
           description: form.description.trim(),
           website: form.website.trim(),
           location: form.location.trim(),
+          // Refused, rather than written over, when someone saved the company since.
+          version: editingCompany.version,
         });
         if (updated) {
           toast.success(messages.success.companyUpdated);
           setDialogOpen(false);
-          fetchCompanies(); // Refresh data
         } else {
           toast.error(messages.errors.generic);
         }
@@ -337,7 +318,6 @@ export default function Companies() {
         if (created) {
           toast.success(messages.success.companyCreated);
           setDialogOpen(false);
-          fetchCompanies(); // Refresh data
         } else {
           toast.error(messages.errors.generic);
         }
@@ -345,7 +325,15 @@ export default function Companies() {
     } catch (error: unknown) {
       // HP-2: Handle duplicate company name error from backend (409 Conflict)
       const msg = error instanceof Error ? error.message : '';
-      if (msg.includes('DuplicateName') || msg.includes('already exists')) {
+      if (isEditConflict(error) && editingCompany) {
+        const companyId = editingCompany.id;
+        showEditConflict(error.message, () => {
+          void getCompanyById(companyId)
+            .then((fresh) => { if (fresh) openEdit(fresh); })
+            .catch(() => toast.error(messages.errors.generic));
+          reloadCompanies();
+        });
+      } else if (msg.includes('DuplicateName') || msg.includes('already exists')) {
         toast.error('A company with this name already exists.');
       } else {
         toast.error(messages.errors.generic);
@@ -363,7 +351,6 @@ export default function Companies() {
       if (ok) {
         toast.success(messages.success.companyDeleted);
         setDeleteConfirmCompany(null);
-        fetchCompanies(); // Refresh data
       } else {
         toast.error(messages.errors.generic);
       }
@@ -398,21 +385,18 @@ export default function Companies() {
       .toUpperCase();
   };
 
-  // Format currency
-  const formatCurrency = (value: number) => {
-    if (value >= 1000000) return `$${(value / 1000000).toFixed(1)}M`;
-    if (value >= 1000) return `$${(value / 1000).toFixed(0)}K`;
-    return `$${value.toFixed(0)}`;
-  };
+  // Each currency's total in its own currency. This wrote every total with a dollar sign.
+  const formatTotals = (totals: { currency: string; value: number }[]) => (totals.length ? money.formatTotals(totals, 'never') : '—');
+  const [mainTotal, ...otherTotals] = companyStats.dealTotals;
 
   // The page's numbers, in its header. Top Industry opens the filters with
   // that industry set, as its card did.
-  const topIndustryName = companyStats.topIndustry?.[0];
-  const topIndustryCount = companyStats.topIndustry?.[1] || 0;
+  const topIndustryName = companyStats.topIndustry?.industry;
+  const topIndustryCount = companyStats.topIndustry?.count || 0;
   // How this person likes companies shown: cards, a list or a table, saved for them.
   const view = useViewPreference('companies', { layouts: ['grid', 'list', 'table'] });
   const openCompany = (c: Company) => navigate(recordHref(`/companies/${c.id}`, c.name, 'Companies'));
-  const companyColumns: RecordColumn<Company>[] = [
+  const companyColumns: RecordColumn<CompanyListItem>[] = [
     {
       id: 'name',
       label: 'Company',
@@ -428,13 +412,13 @@ export default function Companies() {
     { id: 'industry', label: 'Industry', cell: (c) => c.industry || '—' },
     { id: 'size', label: 'Size', byDefault: false, cell: (c) => c.size || '—' },
     { id: 'location', label: 'Location', byDefault: false, cell: (c) => c.location || '—' },
-    { id: 'contacts', label: 'Contacts', numeric: true, cell: (c) => getContactCount(c.id) || '—' },
-    { id: 'deals', label: 'Deals', numeric: true, cell: (c) => getDealCount(c.id) || '—' },
-    { id: 'value', label: 'Pipeline', numeric: true, cell: (c) => (getDealValue(c.id) ? formatCurrency(getDealValue(c.id)) : '—') },
+    { id: 'contacts', label: 'Contacts', numeric: true, cell: (c) => c.contactCount || '—' },
+    { id: 'deals', label: 'Deals', numeric: true, cell: (c) => c.dealCount || '—' },
+    { id: 'value', label: 'Deal value', numeric: true, cell: (c) => formatTotals(c.dealTotals) },
   ];
 
   /** The same menu on a card, a row and a table line. */
-  const companyMenu = (company: Company, triggerClassName = '') => (
+  const companyMenu = (company: CompanyListItem, triggerClassName = '') => (
     <WriteOnly>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -459,13 +443,15 @@ export default function Companies() {
             </DropdownMenuItem>
           )}
           <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={() => setDeleteConfirmCompany(company)}
-            className="text-red-600 focus:text-red-600"
-          >
-            <Trash2 className="w-4 h-4 mr-2" />
-            Delete
-          </DropdownMenuItem>
+          <WriteOnly permission={[PERMISSION.EditRecords, PERMISSION.DeleteRecords]} all>
+            <DropdownMenuItem
+              onClick={() => setDeleteConfirmCompany(company)}
+              className="text-red-600 focus:text-red-600"
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Delete
+            </DropdownMenuItem>
+          </WriteOnly>
         </DropdownMenuContent>
       </DropdownMenu>
     </WriteOnly>
@@ -475,7 +461,11 @@ export default function Companies() {
     { label: 'Total Companies', value: companyStats.total, icon: BarChart3, tone: 'blue' },
     { label: 'With Contacts', value: companyStats.withContacts, icon: UserCircle, tone: 'sky' },
     { label: 'With Deals', value: companyStats.withDeals, icon: Target, tone: 'emerald' },
-    { label: 'Total Pipeline', value: companyStats.totalDealValue, icon: DollarSign, tone: 'amber', format: formatCurrency },
+    {
+      label: 'Deal value', value: mainTotal?.value ?? 0, icon: DollarSign, tone: 'amber',
+      format: (n) => money.format(n, mainTotal?.currency ?? money.currency, 'never'),
+      hint: otherTotals.length > 0 ? `and ${money.formatTotals(otherTotals, 'never')}` : 'all deals',
+    },
     { label: 'This Week', value: companyStats.thisWeek, icon: Calendar, tone: 'violet', hint: 'added' },
     {
       label: 'Top Industry', value: topIndustryName || 'N/A', icon: Factory, tone: 'cyan', hint: `${topIndustryCount} ${topIndustryCount === 1 ? 'company' : 'companies'}`,
@@ -498,21 +488,24 @@ export default function Companies() {
             subtitle={loading ? 'Loading…' : 'Manage your business accounts'}
             actions={
               <>
-                <ExportCsvButton
-                  rows={filteredCompanies}
-                  filename="companies"
-                  className={heroSecondary}
-                  columns={[
-                    { header: 'Name', value: (c) => c.name },
-                    { header: 'Domain', value: (c) => c.domain },
-                    { header: 'Industry', value: (c) => c.industry },
-                    { header: 'Size', value: (c) => c.size },
-                    { header: 'Website', value: (c) => c.website },
-                    { header: 'Location', value: (c) => c.location },
-                    { header: 'Created', value: (c) => c.createdAtUtc },
-                  ]}
-                />
+                <WriteOnly permission={PERMISSION.ExportRecords}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => { void handleExport(); }}
+                    disabled={exporting || loading}
+                    className={heroSecondary}
+                    aria-label="Export the companies this list shows"
+                  >
+                    <Download className="h-4 w-4" /> {exporting ? 'Exporting…' : 'Export'}
+                  </Button>
+                </WriteOnly>
                 <WriteOnly>
+                  <Button onClick={() => navigate('/companies/import')} variant="outline" className={heroSecondary} aria-label="Import">
+                    <Upload className="h-4 w-4" />
+                    <span className="hidden sm:inline">Import</span>
+                  </Button>
                   <Button onClick={openCreate} className={heroPrimary('blue')}>
                     <Plus className="h-4 w-4" />
                     Add Company
@@ -520,10 +513,10 @@ export default function Companies() {
                 </WriteOnly>
               </>
             }
-            stats={!loading && companies.length > 0 ? companyHeroStats : undefined}
+            stats={!loading && companyStats.total > 0 ? companyHeroStats : undefined}
           >
             {/* Quick insight: accounts with nobody linked yet. */}
-            {!loading && companies.length > 0 && companyStats.withContacts < companyStats.total * 0.5 && (
+            {!loading && summary && companyStats.total > 0 && companyStats.withContacts < companyStats.total * 0.5 && (
               <div className="flex items-start gap-2 rounded-xl border border-violet-200 bg-violet-50/80 px-3 py-2 sm:items-center">
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-violet-600 sm:mt-0" aria-hidden />
                 <p className="min-w-0 text-sm text-violet-700">
@@ -536,7 +529,7 @@ export default function Companies() {
             )}
           </PageHero>
 
-        <DuplicateMerge spec={COMPANY_DUPLICATES} onMerged={() => { void fetchCompanies(); }} />
+        <DuplicateMerge spec={COMPANY_DUPLICATES} onMerged={reloadCompanies} />
 
         {/* Search, filter and sort */}
         <div className="relative mb-6 overflow-hidden rounded-2xl border border-slate-200/80 bg-white/85 p-4 shadow-sm backdrop-blur">
@@ -610,9 +603,8 @@ export default function Companies() {
                 <Select
                   value={`${sortField}-${sortDirection}`}
                   onValueChange={(v) => {
-                    const [field, dir] = v.split('-') as [typeof sortField, typeof sortDirection];
-                    setSortField(field);
-                    setSortDirection(dir);
+                    const [field, dir] = parseSort(v);
+                    setSort(field, dir);
                   }}
                 >
                   <SelectTrigger aria-label="Sort companies by" className="relative h-11 w-[180px] rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-violet-50 hover:border-violet-300 focus:border-violet-300 focus:ring-2 focus:ring-violet-200/60 transition-all duration-300">
@@ -678,14 +670,24 @@ export default function Companies() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All industries</SelectItem>
-                      {INDUSTRIES.map((industry) => (
+                      {/* The industries the workspace's companies are really in, however they were typed. */}
+                      {(summary?.industries ?? []).map(({ industry, count }) => (
                         <SelectItem key={industry} value={industry}>
                           <span className="flex items-center gap-2">
                             <Factory className="w-3.5 h-3.5 text-slate-500" />
                             {industry}
+                            <span className="text-xs text-slate-500">{count}</span>
                           </span>
                         </SelectItem>
                       ))}
+                      {filterIndustry !== 'all' && filterIndustry !== NO_INDUSTRY && !summary?.industries.some((i) => i.industry === filterIndustry) && (
+                        <SelectItem value={filterIndustry}>{filterIndustry}</SelectItem>
+                      )}
+                      {(summary?.withoutIndustry ?? 0) > 0 && (
+                        <SelectItem value={NO_INDUSTRY}>
+                          <span className="text-slate-500">No industry</span>
+                        </SelectItem>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -745,8 +747,8 @@ export default function Companies() {
               {filterIndustry !== 'all' && (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-cyan-50 text-cyan-700 text-xs font-medium border border-cyan-200">
                   <Factory className="w-3 h-3" />
-                  {filterIndustry}
-                  <button onClick={() => setFilterIndustry('all')} className="ml-0.5 hover:text-cyan-900 transition-colors">
+                  {filterIndustry === NO_INDUSTRY ? 'No industry' : filterIndustry}
+                  <button type="button" aria-label="Remove industry filter" onClick={() => setFilterIndustry('all')} className="ml-0.5 hover:text-cyan-900 transition-colors">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -755,21 +757,26 @@ export default function Companies() {
                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 text-xs font-medium border border-purple-200">
                   <Users className="w-3 h-3" />
                   {filterSize}
-                  <button onClick={() => setFilterSize('all')} className="ml-0.5 hover:text-purple-900 transition-colors">
+                  <button type="button" aria-label="Remove size filter" onClick={() => setFilterSize('all')} className="ml-0.5 hover:text-purple-900 transition-colors">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
               )}
               <span className="text-xs text-slate-500">
-                {filteredCompanies.length} of {totalCount || companies.length} companies
+                {totalCount.toLocaleString()} {totalCount === 1 ? 'company' : 'companies'}
               </span>
             </div>
           )}
         </div>
 
+        {!loading && companiesQuery.isError && companiesQuery.data && (
+          <LoadFailed stale what="Companies" error={companiesQuery.error} onRetry={reloadCompanies} retrying={companiesQuery.isFetching} className="mb-4" />
+        )}
         {loading ? (
           <ContentSkeleton rows={6} />
-        ) : companies.length === 0 ? (
+        ) : companiesQuery.isError && !companiesQuery.data ? (
+          <LoadFailed what="Companies" error={companiesQuery.error} onRetry={reloadCompanies} retrying={companiesQuery.isFetching} />
+        ) : companies.length === 0 && activeFilterCount === 0 && !debouncedSearch && companyStats.total === 0 ? (
           /* Enhanced Empty State */
           <div className="w-full">
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -825,7 +832,7 @@ export default function Companies() {
               </div>
             </div>
           </div>
-        ) : filteredCompanies.length === 0 ? (
+        ) : companies.length === 0 ? (
           /* No results state */
           <div className="flex items-center gap-3 p-6 rounded-xl bg-white border border-slate-200">
             <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center">
@@ -845,7 +852,7 @@ export default function Companies() {
           {view.layout === 'list' ? (
             <RecordList
               label="Companies"
-              items={filteredCompanies}
+              items={companies}
               view={view}
               getKey={(c) => c.id}
               onOpen={openCompany}
@@ -858,7 +865,7 @@ export default function Companies() {
           ) : view.layout === 'table' ? (
             <RecordTable
               label="Companies"
-              items={filteredCompanies}
+              items={companies}
               view={view}
               getKey={(c) => c.id}
               onOpen={openCompany}
@@ -868,12 +875,12 @@ export default function Companies() {
           ) : (
           /* Company Cards Grid */
           <div className={`grid sm:grid-cols-2 lg:grid-cols-3 ${gridDensity(view, 'gap-4', 'gap-3 xl:grid-cols-4')}`}>
-            {filteredCompanies.map((company, index) => {
+            {companies.map((company, index) => {
               const initials = getInitials(company.name);
               const gradient = getCompanyGradient(company.name);
-              const contactCount = getContactCount(company.id);
-              const dealCount = getDealCount(company.id);
-              const dealValue = getDealValue(company.id);
+              const contactCount = company.contactCount;
+              const dealCount = company.dealCount;
+              const dealTotals = company.dealTotals;
               
               return (
                 <StaggerItem
@@ -963,14 +970,14 @@ export default function Companies() {
                         <span className="text-sm font-medium text-slate-700">{dealCount}</span>
                         <span className="text-xs text-slate-500">deals</span>
                       </div>
-                      {dealValue > 0 && (
+                      {dealTotals.length > 0 && (
                         <div
                           className="flex items-center gap-1.5 ml-auto cursor-pointer hover:text-amber-700 transition-colors"
                           onClick={(e) => { e.stopPropagation(); navigate(`/companies/${company.id}`); }}
                           title="View deal value"
                         >
                           <DollarSign className="w-4 h-4 text-amber-500" />
-                          <span className="text-sm font-bold text-amber-700">{formatCurrency(dealValue)}</span>
+                          <span className="text-sm font-bold text-amber-700">{formatTotals(dealTotals)}</span>
                         </div>
                       )}
                     </div>
@@ -987,7 +994,7 @@ export default function Companies() {
                               className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-slate-50 transition-colors text-left group/deal"
                             >
                               <span className="text-xs font-medium text-slate-700 truncate group-hover/deal:text-emerald-600 transition-colors">{deal.name}</span>
-                              <span className="text-xs text-emerald-700 font-semibold shrink-0 ml-2">{deal.currency || '$'}{deal.value}</span>
+                              <span className="text-xs text-emerald-700 font-semibold shrink-0 ml-2">{money.formatDeal(deal)}</span>
                             </button>
                           ))}
                           {dealCount > 3 && (
@@ -1231,18 +1238,18 @@ export default function Companies() {
               <AlertDialogDescription asChild>
                 <div className="space-y-2">
                   <p>This will remove &quot;{deleteConfirmCompany?.name}&quot;. This action cannot be undone.</p>
-                  {deleteConfirmCompany && (getContactCount(deleteConfirmCompany.id) > 0 || getDealCount(deleteConfirmCompany.id) > 0) && (
+                  {deleteConfirmCompany && (getContactCount(deleteConfirmCompany) > 0 || getDealCount(deleteConfirmCompany) > 0) && (
                     <div className="mt-2 p-3 rounded-lg bg-amber-50 border border-amber-200">
                       <p className="text-sm font-medium text-amber-800 flex items-center gap-1.5">
                         <AlertCircle className="w-4 h-4" />
                         Warning: This company has linked records
                       </p>
                       <ul className="mt-1.5 text-sm text-amber-700 list-disc list-inside">
-                        {getContactCount(deleteConfirmCompany.id) > 0 && (
-                          <li>{getContactCount(deleteConfirmCompany.id)} contact{getContactCount(deleteConfirmCompany.id) > 1 ? 's' : ''} will be unlinked</li>
+                        {getContactCount(deleteConfirmCompany) > 0 && (
+                          <li>{getContactCount(deleteConfirmCompany)} contact{getContactCount(deleteConfirmCompany) > 1 ? 's' : ''} will be unlinked</li>
                         )}
-                        {getDealCount(deleteConfirmCompany.id) > 0 && (
-                          <li>{getDealCount(deleteConfirmCompany.id)} deal{getDealCount(deleteConfirmCompany.id) > 1 ? 's' : ''} will be unlinked</li>
+                        {getDealCount(deleteConfirmCompany) > 0 && (
+                          <li>{getDealCount(deleteConfirmCompany)} deal{getDealCount(deleteConfirmCompany) > 1 ? 's' : ''} will be unlinked</li>
                         )}
                       </ul>
                     </div>

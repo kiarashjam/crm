@@ -29,6 +29,11 @@ public interface ILeadOpsRepository
     Task SaveFormAsync(LeadCaptureForm form, CancellationToken ct = default);
     Task<IReadOnlyList<Lead>> LeadsForReportAsync(Guid? organizationId, CancellationToken ct = default);
     Task<IReadOnlyList<Lead>> OverdueFirstResponseAsync(DateTime utcNow, int take, CancellationToken ct = default);
+    /// <summary>
+    /// Saves a lead read through this repository. Throws ConcurrencyConflictException,
+    /// and lets go of the copy, when someone saved the lead after it was read, so a
+    /// caller that tries again reads the newer one.
+    /// </summary>
     Task SaveLeadAsync(Lead lead, CancellationToken ct = default);
     Task<Lead?> GetLeadAsync(Guid id, CancellationToken ct = default);
     Task<int> IncrementEmailOpensAsync(Guid leadId, CancellationToken ct = default);

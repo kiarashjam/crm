@@ -8,6 +8,28 @@ namespace ACI.Application.Common;
 public static class DomainErrors
 {
     /// <summary>
+    /// A member's role does not let them do this (see Domain.Common.MemberPermissions).
+    /// Answered 403, with the permission in the code ("Permission.records.delete").
+    /// </summary>
+    public static class Permission
+    {
+        /// <param name="permission">The permission that is missing.</param>
+        /// <param name="what">Finishes "Your role here does not let you …"; the permission's own words by default.</param>
+        public static Error Missing(string permission, string? what = null) => new(
+            $"Permission.{permission}",
+            Domain.Common.MemberPermissions.Refusal(what ?? Domain.Common.MemberPermissions.Phrase(permission)));
+
+        /// <summary>
+        /// Nobody hands out more than they can do themselves, or changes someone who can do
+        /// more. The owner and managers hold everything, so this only ever stops a member
+        /// the owner let manage the team with less.
+        /// </summary>
+        public static readonly Error MoreThanYourOwn = new(
+            $"Permission.{Domain.Common.MemberPermissions.ManageMembers}",
+            "You can only give a member what you can do yourself, and only change someone who can do no more than you.");
+    }
+
+    /// <summary>
     /// Deal line item errors.
     /// </summary>
     public static class DealLineItem
@@ -116,9 +138,10 @@ public static class DomainErrors
         public static readonly Error RecordNotFound = new(
             "CustomFieldRecord.NotFound", "The record was not found");
 
-        // "NotOwner" in the code is what maps this to 403 Forbidden.
+        // "NotOwner" in the code is what maps this to 403 Forbidden. It takes
+        // MemberPermissions.ManageSettings (the owner and managers by default).
         public static readonly Error NotOwnerOrManager = new(
-            "CustomField.NotOwnerOrManager", "Only the owner or a manager can change custom fields");
+            "CustomField.NotOwnerOrManager", "Your role here does not let you change custom fields");
 
         public static Error InvalidValue(string label, string expected) => new(
             "CustomField.InvalidValue", $"{label} {expected}");
@@ -248,6 +271,16 @@ public static class DomainErrors
         
         public static Error DuplicateEmailWithValue(string email) => new(
             "Contact.DuplicateEmail", $"A contact with email '{email}' already exists");
+
+        /// <summary>A 409: the code holds "Duplicate".</summary>
+        public static Error UnarchiveDuplicateEmail(string email) => new(
+            "Contact.DuplicateEmailOnRestore",
+            $"An active contact already uses '{email}', so this one cannot be restored beside it. Merge the two, or change one of the emails first");
+
+        /// <summary>A 409: the code ends ".Conflict".</summary>
+        public static readonly Error Changed = new(
+            "Contact.Changed.Conflict",
+            "Someone else changed this contact after you opened it, so your changes were not saved. Reload it to see the latest, then make your change again.");
     }
 
     /// <summary>
@@ -266,6 +299,65 @@ public static class DomainErrors
         
         public static readonly Error DomainInvalid = new(
             "Company.DomainInvalid", "The domain format is invalid");
+
+        /// <summary>A 409: the code ends ".Conflict".</summary>
+        public static readonly Error Changed = new(
+            "Company.Changed.Conflict",
+            "Someone else changed this company after you opened it, so your changes were not saved. Reload it to see the latest, then make your change again.");
+    }
+
+    /// <summary>
+    /// Errors for importing a file of leads, contacts or companies, and for undoing one.
+    /// </summary>
+    public static class Import
+    {
+        public static readonly Error InvalidKind = new(
+            "Import.InvalidKind", "You can import leads, contacts or companies");
+
+        public static readonly Error Unreadable = new(
+            "Import.Unreadable", "The file could not be read. Upload it again");
+
+        public static Error TooLarge(int megabytes) => new(
+            "Import.TooLarge", $"The file is larger than {megabytes} MB. Split it into smaller files and import them one after another");
+
+        public static readonly Error Empty = new(
+            "Import.Empty", "The file is empty");
+
+        public static readonly Error NoRows = new(
+            "Import.NoRows", "The file has a header row but no rows under it");
+
+        public static Error TooManyRows(int max) => new(
+            "Import.TooManyRows", string.Create(CultureInfo.InvariantCulture,
+                $"The file has more than {max:N0} rows. Import up to {max:N0} at a time"));
+
+        public static Error UnclosedQuote(int row) => new(
+            "Import.UnclosedQuote", $"Row {row} opens a quoted cell that never closes, so the rest of the file would be read as one cell. Check the quotes in that row");
+
+        public static readonly Error ColumnsMismatch = new(
+            "Import.ColumnsMismatch", "The column choices don't match the file's columns. Choose the columns again");
+
+        public static Error UnknownField(string field) => new(
+            "Import.UnknownField", $"\"{field}\" is not a field you can import into");
+
+        public static Error FieldMappedTwice(string label) => new(
+            "Import.FieldMappedTwice", $"Two columns are going into {label}. Choose one");
+
+        public static Error FieldRequired(string label) => new(
+            "Import.FieldRequired", $"Choose the column that holds {label}");
+
+        public static readonly Error InvalidDuplicates = new(
+            "Import.InvalidDuplicates", "Rows that match a record already here are either skipped or used to update it");
+
+        public static readonly Error NotFound = new(
+            "Import.NotFound", "The import was not found");
+
+        // "NotOwner" in the code is what maps this to 403 Forbidden.
+        public static readonly Error NotOwnerOrManager = new(
+            "Import.NotOwnerOrManager", "Only whoever ran the import, or someone who manages the workspace's settings, can undo it");
+
+        // Codes ending ".Conflict" map to 409.
+        public static readonly Error StillRunning = new(
+            "Import.Running.Conflict", "This import is still running. Undo it once it has finished");
     }
 
     /// <summary>
@@ -305,6 +397,11 @@ public static class DomainErrors
 
         public static readonly Error ReferrerIsSelf = new(
             "Lead.ReferrerIsSelf", "A lead cannot be referred by the contact made from that same lead");
+
+        /// <summary>A 409: the code ends ".Conflict".</summary>
+        public static readonly Error Changed = new(
+            "Lead.Changed.Conflict",
+            "Someone else changed this lead after you opened it, so your changes were not saved. Reload it to see the latest, then make your change again.");
     }
 
     /// <summary>
@@ -339,6 +436,26 @@ public static class DomainErrors
 
         public static readonly Error LeadHasNoContact = new(
             "ContactRelationship.LeadHasNoContact", "This lead needs a name and an email before relationships can be recorded");
+
+        public static readonly Error LeadContactDeleted = new(
+            "ContactRelationship.LeadContactDeleted",
+            "This lead's contact was deleted, so relationships are not recorded on the lead");
+    }
+
+    /// <summary>
+    /// Errors for the team's "not the same" decisions on duplicates. Not "Duplicate.": a code
+    /// with that word in it is answered as a conflict (409), and these are bad requests.
+    /// </summary>
+    public static class Dedupe
+    {
+        public static readonly Error InvalidKind = new(
+            "Dedupe.InvalidKind", "Unknown kind of record. Use one of: " + string.Join(", ", ACI.Domain.Entities.DuplicateKinds.All));
+
+        public static Error RecordCount(int max) => new(
+            "Dedupe.RecordCount", $"Name between two and {max} different records");
+
+        public static readonly Error RecordsNotInWorkspace = new(
+            "Dedupe.RecordsNotInWorkspace", "Some of these records were not found in this workspace");
     }
 
     /// <summary>
@@ -372,6 +489,12 @@ public static class DomainErrors
     /// <summary>
     /// Deal-related errors.
     /// </summary>
+    public static class Calendar
+    {
+        public static readonly Error InvalidRange = new(
+            "Calendar.InvalidRange", "A calendar reads up to 45 days at a time, from a start before its end.");
+    }
+
     public static class Deal
     {
         public static readonly Error NotFound = new(
@@ -392,12 +515,23 @@ public static class DomainErrors
         
         public static readonly Error ValueInvalid = new(
             "Deal.ValueInvalid", "The deal value must be a valid number");
-        
+
+        public static readonly Error AmountOutOfRange = new(
+            "Deal.AmountOutOfRange", "The amount is too large: a deal holds at most 16 digits before the decimal point.");
+
+        public static readonly Error InvalidCurrency = new(
+            "Deal.InvalidCurrency", "A currency is a three-letter ISO code, such as CHF or EUR.");
+
         public static readonly Error InvalidStage = new(
             "Deal.InvalidStage", "That stage is not one of this workspace's pipeline stages, or not in the pipeline chosen");
         
         public static readonly Error PipelineNotFound = new(
             "Deal.PipelineNotFound", "The pipeline was not found in this workspace");
+
+        /// <summary>A 409: the code ends ".Conflict".</summary>
+        public static readonly Error Changed = new(
+            "Deal.Changed.Conflict",
+            "Someone else changed this deal after you opened it, so your changes were not saved. Reload it to see the latest, then make your change again.");
     }
 
     /// <summary>
@@ -443,6 +577,33 @@ public static class DomainErrors
         
         public static readonly Error RelatedEntityNotFound = new(
             "Activity.RelatedEntityNotFound", "The related entity was not found");
+
+        public static readonly Error OccurredAhead = new(
+            "Activity.OccurredAhead",
+            "An activity is something that has happened, so it cannot be dated in the future. Plan what is ahead as a task.");
+
+        public static readonly Error OccurredTooEarly = new(
+            "Activity.OccurredTooEarly", "That date is too long ago to be when this happened. Check the year.");
+
+        public static Error NoOutcome(string type) => new(
+            "Activity.NoOutcome", $"A {Kind(type)} has no outcome. Outcomes are for calls and meetings.");
+
+        public static Error InvalidOutcome(string type, IReadOnlyList<string> allowed) => new(
+            "Activity.InvalidOutcome", $"A {Kind(type)} outcome is one of: {string.Join(", ", allowed)}");
+
+        public static Error NoDuration(string type) => new(
+            "Activity.NoDuration", $"A {Kind(type)} has no duration. Durations are for calls and meetings.");
+
+        public static readonly Error InvalidDuration = new(
+            "Activity.InvalidDuration", $"The duration is in minutes, from 0 to {ActivityFacts.MaxDurationMinutes}.");
+
+        public static Error NoDirection(string type) => new(
+            "Activity.NoDirection", $"A {Kind(type)} has no direction. Inbound and outbound are for calls and emails.");
+
+        public static readonly Error InvalidDirection = new(
+            "Activity.InvalidDirection", "The direction is inbound or outbound.");
+
+        private static string Kind(string type) => type.Replace('_', ' ');
     }
 
     /// <summary>
@@ -535,17 +696,35 @@ public static class DomainErrors
         public static readonly Error NotOwner = new(
             "Organization.NotOwner", "Only the organization owner can perform this action");
         
-        public static readonly Error NotOwnerOrManager = new(
-            "Organization.NotOwnerOrManager", "Only the owner or a manager can perform this action");
-        
-        public static readonly Error AlreadyMember = new(
+public static readonly Error AlreadyMember = new(
             "Organization.AlreadyMember", "This user is already a member of the organization");
         
         public static readonly Error CannotRemoveOwner = new(
             "Organization.CannotRemoveOwner", "The organization owner cannot be removed");
 
+        public static readonly Error HandOverToLeaver = new(
+            "Organization.HandOverToLeaver", "Choose someone else to take over their work: they are the one leaving.");
+
+        public static readonly Error HandOverOutsider = new(
+            "Organization.HandOverOutsider", "The person taking over their work must be a member of this organization.");
+
+        public static readonly Error HandOverReadOnly = new(
+            "Organization.HandOverReadOnly", "The person taking over their work can only read records here. Choose someone who can work them.");
+
         public static readonly Error WebhookPasswordTooLong = new(
             "Organization.WebhookPasswordTooLong", "Webhook password cannot exceed 256 characters");
+
+        public static readonly Error InvalidCurrency = new(
+            "Organization.InvalidCurrency", "A currency is a three-letter ISO code, such as CHF or EUR.");
+
+        public static readonly Error InvalidLocale = new(
+            "Organization.InvalidLocale", "A locale is a language with an optional region, such as de-CH or fr-CH.");
+
+        public static readonly Error InvalidTimeZone = new(
+            "Organization.InvalidTimeZone", "A time zone is an IANA name, such as Europe/Zurich.");
+
+        public static readonly Error InvalidStaleDealDays = new(
+            "Organization.InvalidStaleDealDays", "A deal is stale after a whole number of days from 1 to 365, or 0 to never flag deals.");
     }
 
     /// <summary>
@@ -582,6 +761,9 @@ public static class DomainErrors
         
         public static readonly Error HasDeals = new(
             "Pipeline.HasDeals", "Cannot delete pipeline with existing deals");
+
+        public static readonly Error InvalidStaleDealDays = new(
+            "Pipeline.InvalidStaleDealDays", "A deal is stale after a whole number of days from 1 to 365, or 0 to never flag deals in this pipeline.");
     }
 
     /// <summary>
@@ -626,6 +808,18 @@ public static class DomainErrors
     /// <summary>
     /// DealStage-related errors.
     /// </summary>
+    /// <summary>
+    /// The deals board.
+    /// </summary>
+    public static class DealBoard
+    {
+        public static readonly Error ColumnNotFound = new(
+            "DealBoardColumn.NotFound", "That column is not one of this board's stages.");
+
+        public static readonly Error InvalidSort = new(
+            "DealBoard.InvalidSort", "Cards are sorted by close, value, created or name.");
+    }
+
     public static class DealStage
     {
         public static readonly Error NotFound = new(
@@ -636,6 +830,9 @@ public static class DomainErrors
 
         public static readonly Error HasDeals = new(
             "DealStage.HasDeals", "Cannot delete deal stage with existing deals");
+
+        public static readonly Error InvalidProbability = new(
+            "DealStage.InvalidProbability", "A stage's probability is a whole number from 0 to 100.");
     }
 
     /// <summary>
@@ -744,7 +941,7 @@ public static class DomainErrors
             "Club.ReasonRequired", "Say why this is being voided. The reason stays on the record.");
 
         public static readonly Error ChargeCannotDelete = new(
-            "Charge.CannotDelete", "A charge can't be deleted. An owner or manager can void it, with a reason, and the record stays.");
+            "Charge.CannotDelete", "A charge can't be deleted. Someone allowed to void money can void it, with a reason, and the record stays.");
 
         public static readonly Error ChargeHasPayments = new(
             "Charge.HasPayments.Conflict", "This charge has payments against it. Void those payments first, then the charge.");
@@ -781,6 +978,42 @@ public static class DomainErrors
 
         public static Error TooLong(string what, int max) => new(
             "Club.TooLong", $"{what} can be at most {max} characters.");
+    }
+
+    /// <summary>
+    /// Reports and forecasts.
+    /// </summary>
+    public static class Reporting
+    {
+        public static readonly Error InvalidPeriod = new(
+            "Reporting.InvalidPeriod", "A report's period has to start before it ends and cover at most five years.");
+
+        public static readonly Error InvalidScope = new(
+            "Reporting.InvalidScope", "A report's scope is me, team or org.");
+
+        public static readonly Error TeamNotFound = new(
+            "Team.NotFound", "That team is not one of this workspace's.");
+
+        public static readonly Error NoTeam = new(
+            "Reporting.NoTeam", "You are in no sales team here. Pick a team, or ask a manager to add you to one.");
+
+        public static readonly Error InvalidMonth = new(
+            "Reporting.InvalidMonth", "A forecast month is a year and a month from 1 to 12, for at most 24 months.");
+
+        public static readonly Error MonthOver = new(
+            "Reporting.MonthOver", "That month is over. A forecast is saved before or during the month it is for, not after.");
+
+        public static readonly Error MonthTooFar = new(
+            "Reporting.MonthTooFar", "A forecast can be saved for at most twelve months ahead.");
+
+        public static readonly Error InvalidCurrency = new(
+            "Reporting.InvalidCurrency", "A currency is a code of at most eight letters, such as CHF.");
+
+        public static readonly Error SnapshotNotFound = new(
+            "ForecastSnapshot.NotFound", "That saved forecast is not one of this month's.");
+
+        public static readonly Error NothingToSave = new(
+            "Reporting.NothingToSave", "There are no open deals, so there is no forecast to save.");
     }
 
     /// <summary>

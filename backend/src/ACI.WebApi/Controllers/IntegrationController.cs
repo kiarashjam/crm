@@ -34,6 +34,7 @@ public sealed class IntegrationController : ControllerBase
     private readonly ITaskService _tasks;
     private readonly IActivityService _activities;
     private readonly IDealService _deals;
+    private readonly ITenantContext _tenant;
 
     public IntegrationController(
         IOrganizationService organizations,
@@ -41,7 +42,8 @@ public sealed class IntegrationController : ControllerBase
         ILeadService leads,
         ITaskService tasks,
         IActivityService activities,
-        IDealService deals)
+        IDealService deals,
+        ITenantContext tenant)
     {
         _organizations = organizations;
         _reporting = reporting;
@@ -49,6 +51,7 @@ public sealed class IntegrationController : ControllerBase
         _tasks = tasks;
         _activities = activities;
         _deals = deals;
+        _tenant = tenant;
     }
 
     /// <summary>The organization's sales figures: leads, deals and pipeline, tasks and recent activity.</summary>
@@ -62,13 +65,15 @@ public sealed class IntegrationController : ControllerBase
         var (organization, refusal) = await OrganizationFromKeyAsync(ct);
         if (organization == null)
             return refusal!;
+        using var acting = ActFor(organization);
 
         // Read as the owner, exactly as the MCP tools read this organization.
         var owner = organization.OwnerUserId;
         var deals = await _reporting.GetDashboardStatsAsync(owner, organization.Id, ct);
         var stages = await _reporting.GetPipelineValueByStageAsync(owner, organization.Id, ct);
         var leads = await _leads.GetStatsAsync(owner, organization.Id, ct);
-        var tasks = await _tasks.GetStatsAsync(owner, organization.Id, ct);
+        // No scope: the whole organization's tasks, not just the owner's own.
+        var tasks = await _tasks.GetStatsAsync(owner, organization.Id, ct: ct);
         var recent = await _activities.GetPagedAsync(owner, organization.Id, 1, RecentActivityCount, null, null, ct);
 
         Response.Headers.CacheControl = "no-store";
@@ -81,7 +86,7 @@ public sealed class IntegrationController : ControllerBase
             deals,
             stages,
             recent.Items
-                .OrderByDescending(a => a.CreatedAtUtc)
+                .OrderByDescending(HappenedAt)
                 .Select(ToActivity)
                 .ToList()));
     }
@@ -103,6 +108,7 @@ public sealed class IntegrationController : ControllerBase
         var (organization, refusal) = await OrganizationFromKeyAsync(ct);
         if (organization == null)
             return refusal!;
+        using var acting = ActFor(organization);
 
         var page = await _deals.GetDealsPagedAsync(
             organization.OwnerUserId,
@@ -136,6 +142,7 @@ public sealed class IntegrationController : ControllerBase
         var (organization, refusal) = await OrganizationFromKeyAsync(ct);
         if (organization == null)
             return refusal!;
+        using var acting = ActFor(organization);
 
         var owner = organization.OwnerUserId;
         var deal = await _deals.GetByIdAsync(id, owner, organization.Id, ct);
@@ -149,7 +156,7 @@ public sealed class IntegrationController : ControllerBase
         return Ok(new IntegrationDealDetailDto(
             ToDeal(deal.Value),
             activities
-                .OrderByDescending(a => a.CreatedAtUtc)
+                .OrderByDescending(HappenedAt)
                 .Take(RecentActivityCount)
                 .Select(ToActivity)
                 .ToList(),
@@ -159,6 +166,12 @@ public sealed class IntegrationController : ControllerBase
                 .Select(t => new IntegrationTaskDto(t.Title, t.Status, t.Priority, t.DueDateUtc, t.AssigneeName))
                 .ToList()));
     }
+
+    /// <summary>
+    /// Reads as the key's organization, as its owner, until disposed: nobody signs in here,
+    /// so without it the request would see no organization's records at all.
+    /// </summary>
+    private IDisposable ActFor(Organization organization) => _tenant.ActFor(organization.Id, organization.OwnerUserId);
 
     /// <summary>The organization whose MCP key the request carries, or the 401 to answer.</summary>
     private async Task<(Organization? Organization, IActionResult? Refusal)> OrganizationFromKeyAsync(CancellationToken ct)
@@ -175,7 +188,11 @@ public sealed class IntegrationController : ControllerBase
     }
 
     private static OrganizationActivityDto ToActivity(ActivityDto a) =>
-        new(a.Type, a.Subject, a.DealName ?? a.ContactName ?? a.LeadName, a.CreatedByName, a.CreatedAtUtc);
+        new(a.Type, a.Subject, a.DealName ?? a.ContactName ?? a.LeadName, a.CreatedByName, HappenedAt(a));
+
+    // When the activity happened, which can be before it was logged (a call written down the
+    // next day). The timeline and the MCP tools order and date activities by it too.
+    private static DateTime HappenedAt(ActivityDto a) => a.OccurredAtUtc ?? a.CreatedAtUtc;
 
     private static IntegrationDealDto ToDeal(DealDto d) => new(
         d.Id,

@@ -32,6 +32,8 @@ public class MergeDuplicatesTests
         var org = new Organization { Id = Guid.NewGuid(), Name = "Pavillon", OwnerUserId = user.Id, CreatedAtUtc = DateTime.UtcNow };
         db.AddRange(user, org);
         await db.SaveChangesAsync();
+        // A merge is a request in the organization, and reads as it.
+        db.ActFor(org.Id, user.Id);
         return new World(db, user, org);
     }
 
@@ -79,6 +81,7 @@ public class MergeDuplicatesTests
         db.Add(new Activity { Id = Guid.NewGuid(), UserId = w.User.Id, OrganizationId = w.Org.Id, Type = "note", Subject = "Met at the fair", LeadId = drop.Id, CreatedAtUtc = DateTime.UtcNow });
         db.Add(new LeadStatusEvent { Id = Guid.NewGuid(), LeadId = drop.Id, OrganizationId = w.Org.Id, ToStatus = "New", ChangedAtUtc = earlier });
         db.Add(new SentMessage { Id = Guid.NewGuid(), OrganizationId = w.Org.Id, SentByUserId = w.User.Id, To = "ada@example.ch", Subject = "Hello", Body = "Hi", LeadId = drop.Id, SentAtUtc = DateTime.UtcNow });
+        db.Add(new OutboundMessage { Id = Guid.NewGuid(), OrganizationId = w.Org.Id, Channel = OutboundChannels.Email, Source = OutboundSources.Composer, Status = OutboundStatuses.Sent, To = "ada@example.ch", Subject = "Again", Body = "Hi", LeadId = drop.Id, CreatedAtUtc = DateTime.UtcNow, NextAttemptAtUtc = DateTime.UtcNow });
         db.Add(FileOn(w, RecordTypes.Lead, drop.Id, "brief.pdf"));
         db.Add(FieldsOn(w, RecordTypes.Lead, keep.Id, """{"budget":"","tier":"Gold"}"""));
         db.Add(FieldsOn(w, RecordTypes.Lead, drop.Id, """{"budget":"5000","tier":"Silver","seats":12}"""));
@@ -100,6 +103,7 @@ public class MergeDuplicatesTests
         (await db.Activities.SingleAsync()).LeadId.Should().Be(keep.Id);
         (await db.LeadStatusEvents.SingleAsync()).LeadId.Should().Be(keep.Id);
         (await db.SentMessages.SingleAsync()).LeadId.Should().Be(keep.Id);
+        (await db.OutboundMessages.SingleAsync()).LeadId.Should().Be(keep.Id, "a reply to it, or a bounce, then lands on the lead kept");
         (await db.Contacts.SingleAsync(c => c.Id == madeFromDrop.Id)).ConvertedFromLeadId.Should().Be(keep.Id);
         var file = await db.Attachments.SingleAsync();
         file.RecordId.Should().Be(keep.Id, "the duplicate's files are not deleted with it");
@@ -274,8 +278,8 @@ public class MergeDuplicatesTests
         (await leads.MergeIntoAsync(mine.Id, theirs.Id, w.User.Id, w.Org.Id)).Should().BeFalse();
         db.ChangeTracker.Clear();
 
-        (await db.Leads.CountAsync()).Should().Be(2);
-        (await db.TaskItems.SingleAsync()).LeadId.Should().Be(theirs.Id);
+        (await db.Leads.IgnoreQueryFilters().CountAsync()).Should().Be(2);
+        (await db.TaskItems.IgnoreQueryFilters().SingleAsync()).LeadId.Should().Be(theirs.Id);
     }
 
     [Fact]

@@ -1,11 +1,13 @@
 using System.ComponentModel.DataAnnotations;
+using ACI.Application.Common;
 
 namespace ACI.Application.DTOs;
 
 /// <summary>
-/// Request to update an existing company.
+/// Request to update an existing company. A field left out is kept; every field but the
+/// name is cleared when sent as null, or empty.
 /// </summary>
-public record UpdateCompanyRequest
+public record UpdateCompanyRequest : IMergePatchRequest
 {
     /// <summary>
     /// Company name.
@@ -50,4 +52,16 @@ public record UpdateCompanyRequest
     /// </summary>
     [StringLength(300, ErrorMessage = "Location cannot exceed 300 characters")]
     public string? Location { get; init; }
+
+    /// <summary>
+    /// The company's version as this edit read it (<c>version</c> on the company, or its ETag).
+    /// When sent, the edit is refused with 409 if anyone has saved the company since, rather
+    /// than written over their changes. Left out, the edit is applied to the company as it
+    /// is now: right for a change to one field that reads nothing else, such as renaming it.
+    /// </summary>
+    public Guid? Version { get; init; }
+
+    /// <inheritdoc />
+    [System.Text.Json.Serialization.JsonIgnore]
+    public ISet<string> NullsSent { get; } = new HashSet<string>(StringComparer.Ordinal);
 }

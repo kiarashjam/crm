@@ -1,3 +1,5 @@
+using ACI.Application.Common;
+using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
 using ACI.Infrastructure.Persistence;
@@ -25,25 +27,109 @@ public sealed class CompanyRepository : ICompanyRepository
             || (c.Industry != null && c.Industry.ToLower().Contains(q)));
     }
 
+    /// <summary>
+    /// The companies list's filters and order, applied to the whole workspace in the database.
+    /// The page filtered and sorted the twenty companies it had been sent, so "most contacts"
+    /// ordered one page and an industry filter missed every other.
+    /// </summary>
+    private IQueryable<Company> Query(Guid userId, Guid? organizationId, CompanyQueryOptions options)
+    {
+        var query = ApplySearch(FilterByUserAndOrg(_db.Companies.AsNoTracking(), userId, organizationId), options.Search);
+        if (!string.IsNullOrWhiteSpace(options.Industry))
+        {
+            var industry = options.Industry.Trim().ToLower();
+            query = query.Where(c => c.Industry != null && c.Industry.Trim().ToLower() == industry);
+        }
+        else if (options.HasIndustry == false)
+            query = query.Where(c => c.Industry == null || c.Industry.Trim() == "");
+        else if (options.HasIndustry == true)
+            query = query.Where(c => c.Industry != null && c.Industry.Trim() != "");
+        if (!string.IsNullOrWhiteSpace(options.Size))
+        {
+            var size = options.Size.Trim();
+            query = query.Where(c => c.Size == size);
+        }
+
+        // Counted as the list shows them: active contacts, and deals the caller may see.
+        var contacts = _db.Contacts.Where(x => !x.IsArchived);
+        var deals = _db.Deals.VisibleTo(_db, userId, organizationId);
+        var desc = string.Equals(options.SortDir?.Trim(), "desc", StringComparison.OrdinalIgnoreCase);
+        return (options.SortBy?.Trim().ToLowerInvariant()) switch
+        {
+            "createdat" => desc
+                ? query.OrderByDescending(c => c.CreatedAtUtc).ThenBy(c => c.Name).ThenBy(c => c.Id)
+                : query.OrderBy(c => c.CreatedAtUtc).ThenBy(c => c.Name).ThenBy(c => c.Id),
+            "contacts" => desc
+                ? query.OrderByDescending(c => contacts.Count(x => x.CompanyId == c.Id)).ThenBy(c => c.Name).ThenBy(c => c.Id)
+                : query.OrderBy(c => contacts.Count(x => x.CompanyId == c.Id)).ThenBy(c => c.Name).ThenBy(c => c.Id),
+            "deals" => desc
+                ? query.OrderByDescending(c => deals.Count(d => d.CompanyId == c.Id)).ThenBy(c => c.Name).ThenBy(c => c.Id)
+                : query.OrderBy(c => deals.Count(d => d.CompanyId == c.Id)).ThenBy(c => c.Name).ThenBy(c => c.Id),
+            _ => desc
+                ? query.OrderByDescending(c => c.Name).ThenBy(c => c.Id)
+                : query.OrderBy(c => c.Name).ThenBy(c => c.Id),
+        };
+    }
+
     public async Task<(IReadOnlyList<Company> Items, int TotalCount)> GetPagedAsync(
-        Guid userId, 
-        Guid? organizationId, 
-        int skip, 
-        int take, 
-        string? search = null,
+        Guid userId,
+        Guid? organizationId,
+        int skip,
+        int take,
+        CompanyQueryOptions options,
         CancellationToken ct = default)
     {
-        var query = FilterByUserAndOrg(_db.Companies, userId, organizationId);
-        query = ApplySearch(query, search);
-        
+        var query = Query(userId, organizationId, options);
         var totalCount = await query.CountAsync(ct);
-        var items = await query
-            .OrderBy(c => c.Name)
-            .Skip(skip)
-            .Take(take)
-            .ToListAsync(ct);
-        
+        var items = await query.Skip(skip).Take(take).ToListAsync(ct);
         return (items, totalCount);
+    }
+
+    public async Task<CompanySummaryDto> GetSummaryAsync(Guid userId, Guid? organizationId, CancellationToken ct = default)
+    {
+        var weekAgo = DateTime.UtcNow.AddDays(-7);
+        var companies = FilterByUserAndOrg(_db.Companies.AsNoTracking(), userId, organizationId);
+        var deals = _db.Deals.VisibleTo(_db, userId, organizationId);
+
+        var total = await companies.CountAsync(ct);
+        var withContacts = await companies.CountAsync(c => _db.Contacts.Any(x => x.CompanyId == c.Id && !x.IsArchived), ct);
+        var withDeals = await companies.CountAsync(c => deals.Any(d => d.CompanyId == c.Id), ct);
+        var addedLast7Days = await companies.CountAsync(c => c.CreatedAtUtc >= weekAgo, ct);
+
+        // Industries as typed, merged ignoring case and spaces: "Hospitality" and
+        // "hospitality " are one industry, however the database compares text.
+        var rows = await companies.GroupBy(c => c.Industry).Select(g => new { Industry = g.Key, Count = g.Count() }).ToListAsync(ct);
+        var industries = rows
+            .Where(r => !string.IsNullOrWhiteSpace(r.Industry))
+            .GroupBy(r => r.Industry!.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(g => new IndustryCountDto(g.OrderByDescending(r => r.Count).First().Industry!.Trim(), g.Sum(r => r.Count)))
+            .OrderByDescending(i => i.Count).ThenBy(i => i.Industry, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var withoutIndustry = rows.Where(r => string.IsNullOrWhiteSpace(r.Industry)).Sum(r => r.Count);
+
+        var fallback = await FallbackCurrencyAsync(organizationId, ct);
+        var companyIds = companies.Select(c => c.Id);
+        var byCurrency = await deals
+            .Where(d => d.CompanyId != null && companyIds.Contains(d.CompanyId.Value))
+            .GroupBy(d => d.Currency == null || d.Currency.Trim() == "" ? fallback : d.Currency.Trim().ToUpper())
+            .Select(g => new { Currency = g.Key, Priced = g.Count(d => d.Amount != null), Value = g.Sum(d => d.Amount ?? 0m) })
+            .ToListAsync(ct);
+        var dealTotals = byCurrency
+            .Where(x => x.Priced > 0)
+            .Select(x => new CurrencyTotalDto(x.Currency, x.Value, x.Priced))
+            .OrderByDescending(t => t.Value).ThenBy(t => t.Currency, StringComparer.Ordinal)
+            .ToList();
+
+        return new CompanySummaryDto(total, withContacts, withDeals, addedLast7Days, dealTotals, industries, withoutIndustry);
+    }
+
+    public async Task<(IReadOnlyList<Company> Rows, int Total)> GetExportRowsAsync(
+        Guid userId, Guid? organizationId, CompanyQueryOptions options, int max, CancellationToken ct = default)
+    {
+        var query = Query(userId, organizationId, options);
+        var total = await query.CountAsync(ct);
+        var rows = await query.Take(max).ToListAsync(ct);
+        return (rows, total);
     }
 
     public async Task<int> CountAsync(Guid userId, Guid? organizationId, string? search = null, CancellationToken ct = default)
@@ -103,6 +189,7 @@ public sealed class CompanyRepository : ICompanyRepository
     {
         var existing = await FilterByUserAndOrg(_db.Companies, userId, organizationId).FirstOrDefaultAsync(c => c.Id == company.Id, ct);
         if (existing == null) return null;
+        _db.ExpectVersionOf(existing, company);
         existing.Name = company.Name;
         existing.Domain = company.Domain;
         existing.Industry = company.Industry;
@@ -112,20 +199,25 @@ public sealed class CompanyRepository : ICompanyRepository
         existing.Location = company.Location;
         existing.UpdatedAtUtc = DateTime.UtcNow;
         existing.UpdatedByUserId = userId;
-        await _db.SaveChangesAsync(ct);
+        await _db.SaveRefusingStaleAsync(ct);
         return existing;
     }
 
     // HP-7: Server-side stats per company using efficient SQL aggregations
-    public async Task<IReadOnlyList<(Guid CompanyId, int ContactCount, int DealCount, decimal TotalDealValue)>> GetStatsAsync(
+    public async Task<IReadOnlyList<(Guid CompanyId, int ContactCount, int DealCount, IReadOnlyList<CurrencyTotalDto> DealTotals)>> GetStatsAsync(
         Guid userId, Guid? organizationId, CancellationToken ct = default)
     {
         var companyIds = await FilterByUserAndOrg(_db.Companies, userId, organizationId)
             .Select(c => c.Id)
             .ToListAsync(ct);
+        return await GetStatsAsync(companyIds, userId, organizationId, ct);
+    }
 
+    public async Task<IReadOnlyList<(Guid CompanyId, int ContactCount, int DealCount, IReadOnlyList<CurrencyTotalDto> DealTotals)>> GetStatsAsync(
+        IReadOnlyCollection<Guid> companyIds, Guid userId, Guid? organizationId, CancellationToken ct = default)
+    {
         if (companyIds.Count == 0)
-            return Array.Empty<(Guid, int, int, decimal)>();
+            return Array.Empty<(Guid, int, int, IReadOnlyList<CurrencyTotalDto>)>();
 
         // Contact counts via SQL GROUP BY — exclude archived contacts so dashboard counts match the visible list.
         var contactCounts = await _db.Contacts
@@ -134,26 +226,54 @@ public sealed class CompanyRepository : ICompanyRepository
             .Select(g => new { CompanyId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.CompanyId, x => x.Count, ct);
 
-        // Deal counts and values — Deal.Value is a string, so we fetch and parse in C#
-        var dealRows = await _db.Deals.VisibleTo(_db, userId, organizationId)
+        // Deal counts and values, added up by the database from Deal.Amount, per company
+        // AND currency. Each value's text used to be stripped to digits and dots and summed
+        // here, so francs and euros went into one figure and "1.234,56" counted as 1.23. A
+        // deal with no readable amount is counted as a deal but adds nothing, and one with
+        // no currency is in its workspace's, as new deals are.
+        var fallback = await FallbackCurrencyAsync(organizationId, ct);
+        var dealGroups = await _db.Deals.VisibleTo(_db, userId, organizationId)
             .Where(d => d.CompanyId != null && companyIds.Contains(d.CompanyId.Value))
-            .Select(d => new { d.CompanyId, d.Value })
+            .GroupBy(d => new
+            {
+                CompanyId = d.CompanyId!.Value,
+                Currency = d.Currency == null || d.Currency.Trim() == "" ? fallback : d.Currency.Trim().ToUpper(),
+            })
+            .Select(g => new
+            {
+                g.Key.CompanyId,
+                g.Key.Currency,
+                Count = g.Count(),
+                Priced = g.Count(d => d.Amount != null),
+                Value = g.Sum(d => d.Amount ?? 0m),
+            })
             .ToListAsync(ct);
 
-        var dealStats = dealRows
-            .GroupBy(d => d.CompanyId!.Value)
+        var dealStats = dealGroups
+            .GroupBy(g => g.CompanyId)
             .ToDictionary(
                 g => g.Key,
-                g => (Count: g.Count(), TotalValue: g.Sum(d => decimal.TryParse(
-                    System.Text.RegularExpressions.Regex.Replace(d.Value ?? "0", @"[^0-9.\-]", ""),
-                    out var v) ? v : 0m)));
+                g => (Count: g.Sum(x => x.Count), Totals: (IReadOnlyList<CurrencyTotalDto>)g
+                    .Where(x => x.Priced > 0)
+                    .Select(x => new CurrencyTotalDto(x.Currency, x.Value, x.Priced))
+                    .OrderByDescending(t => t.Value).ThenBy(t => t.Currency, StringComparer.Ordinal)
+                    .ToList()));
 
         return companyIds.Select(id =>
         {
             var contacts = contactCounts.GetValueOrDefault(id, 0);
             var hasDealStats = dealStats.TryGetValue(id, out var ds);
-            return (id, contacts, hasDealStats ? ds.Count : 0, hasDealStats ? ds.TotalValue : 0m);
+            return (id, contacts, hasDealStats ? ds.Count : 0, hasDealStats ? ds.Totals : Array.Empty<CurrencyTotalDto>());
         }).ToList();
+    }
+
+    /// <summary>The currency a deal with none is in: its workspace's, as new deals are.</summary>
+    private async Task<string> FallbackCurrencyAsync(Guid? organizationId, CancellationToken ct)
+    {
+        var workspaceCurrency = organizationId is Guid org
+            ? await _db.Organizations.AsNoTracking().Where(o => o.Id == org).Select(o => o.Currency).FirstOrDefaultAsync(ct)
+            : null;
+        return RegionalSettings.TryCurrency(workspaceCurrency, out var code) ? code : RegionalSettings.DefaultCurrency;
     }
 
     public async Task<bool> DeleteAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default)

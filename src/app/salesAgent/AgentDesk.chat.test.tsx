@@ -39,7 +39,7 @@ function world(extra: Partial<AgentWorld> = {}): AgentWorld {
   return {
     items: [ada],
     leads: [{ id: 'a1', name: 'Ada Lovelace', email: 'ada@example.ch', phone: '555-0100' }],
-    deals: [{ id: 'd1', name: 'Pavilion renewal', value: '48000', stage: 'Proposal' }],
+    deals: [{ id: 'd1', name: 'Pavilion renewal', value: '48000', amount: 48000, stage: 'Proposal' }],
     page: { mode: 'focus' },
     patterns: { lines: [], wonDeals: 0, lostDeals: 0, lostLeads: 0 },
     ...extra,

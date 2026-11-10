@@ -55,6 +55,10 @@ public sealed class SecretPathRedactionMiddleware
         // so the log still says which file was fetched.
         new(@"^(?<keep>/api/attachments/[^/?]+/content/)(?<secret>[^/?]+)(?<rest>.*)$",
             RegexOptions.Compiled | RegexOptions.IgnoreCase),
+        // /api/public/email/inbound/{secret} and /events/{secret}: the mail service posts
+        // replies and delivery reports there, and the secret is all that lets it in.
+        new(@"^(?<keep>/api/public/email/(inbound|events)/)(?<secret>[^/?]+)(?<rest>.*)$",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase),
     };
 
     private readonly RequestDelegate _next;

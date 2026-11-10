@@ -28,8 +28,13 @@ namespace ACI.Infrastructure.Services;
 /// now go through <see cref="MoneyText"/>, which reports failure, and totals are
 /// grouped by currency instead of added across them.
 /// </para>
+/// <para>
+/// Everything here is added up by the database, over <c>Deal.Amount</c> (the value
+/// read once at save time), rather than by loading every deal to parse its text.
+/// A deal whose value could not be read has no Amount, and is counted as unreadable.
+/// </para>
 /// </remarks>
-public class ReportingService : IReportingService
+public partial class ReportingService : IReportingService
 {
     private readonly AppDbContext _db;
 
@@ -49,32 +54,40 @@ public class ReportingService : IReportingService
             : _db.Leads.AsNoTracking().Where(l => l.OrganizationId == organizationId);
 
     /// <summary>
-    /// Totals per currency, largest first, plus a count of the deals whose value
-    /// could not be read at all.
+    /// The workspace's currency and time zone. A deal saved without a currency is in the
+    /// workspace's, as new deals are, where it used to count as USD; and the zone is where
+    /// the workspace's days and months begin. A personal workspace has the defaults.
     /// </summary>
-    private static (List<CurrencyTotalDto> Totals, int Unreadable) TotalsByCurrency(IEnumerable<Deal> deals)
+    private async Task<(string Currency, TimeZoneInfo Zone)> RegionOfAsync(Guid? organizationId, CancellationToken ct)
     {
-        var sums = new Dictionary<string, (decimal Value, int Count)>();
-        var unreadable = 0;
-        foreach (var d in deals)
-        {
-            if (!MoneyText.TryParseAmount(d.Value, out var amount))
-            {
-                unreadable++;
-                continue;
-            }
-            var currency = MoneyText.NormaliseCurrency(d.Currency);
-            // `out var existing` yields default((decimal, int)) when the key is
-            // absent, which is exactly the zero starting point wanted here. The
-            // previous form used a ternary with a bare `(0m, 0)` fallback, and
-            // because that literal carries no element names the whole expression
-            // unified to an unnamed `(decimal, int)` — losing `.Value` and
-            // `.Count` and failing to compile.
-            sums.TryGetValue(currency, out var existing);
-            sums[currency] = (existing.Value + amount, existing.Count + 1);
-        }
+        var org = organizationId is Guid id
+            ? await _db.Organizations.AsNoTracking().Where(o => o.Id == id).Select(o => new { o.Currency, o.TimeZone }).FirstOrDefaultAsync(ct)
+            : null;
+        var currency = RegionalSettings.TryCurrency(org?.Currency, out var code) ? code : RegionalSettings.DefaultCurrency;
+        return (currency, RegionalSettings.ZoneOf(org?.TimeZone ?? RegionalSettings.DefaultTimeZone));
+    }
+
+    /// <summary>
+    /// The currency a deal is counted in, as SQL can work it out: its code, trimmed and
+    /// upper-cased, or <paramref name="fallback"/>, the workspace's, when it has none.
+    /// </summary>
+    private static System.Linq.Expressions.Expression<Func<Deal, string>> CurrencyOf(string fallback) =>
+        d => d.Currency == null || d.Currency.Trim() == "" ? fallback : d.Currency.Trim().ToUpper();
+
+    /// <summary>
+    /// Totals per currency, largest first, plus a count of the deals whose value
+    /// could not be read at all. Added up by the database, over Deal.Amount.
+    /// </summary>
+    private static async Task<(List<CurrencyTotalDto> Totals, int Unreadable)> TotalsByCurrencyAsync(IQueryable<Deal> deals, string fallback, CancellationToken ct)
+    {
+        var unreadable = await deals.CountAsync(d => d.Amount == null, ct);
+        var sums = await deals
+            .Where(d => d.Amount != null)
+            .GroupBy(CurrencyOf(fallback))
+            .Select(g => new { Currency = g.Key, Value = g.Sum(d => d.Amount!.Value), Count = g.Count() })
+            .ToListAsync(ct);
         var totals = sums
-            .Select(kv => new CurrencyTotalDto(kv.Key, kv.Value.Value, kv.Value.Count))
+            .Select(x => new CurrencyTotalDto(x.Currency, x.Value, x.Count))
             // Ties break on the currency code, so the order — and therefore which
             // currency is called dominant — is stable between requests.
             .OrderByDescending(t => t.Value)
@@ -85,180 +98,109 @@ public class ReportingService : IReportingService
 
     public async Task<DashboardStatsDto> GetDashboardStatsAsync(Guid userId, Guid? organizationId, CancellationToken ct = default)
     {
-        var leadsCount = await ScopedLeads(userId, organizationId).CountAsync(ct);
-        var deals = await ScopedDeals(userId, organizationId)
-            .Select(d => new Deal { IsWon = d.IsWon, Value = d.Value, Currency = d.Currency })
+        // A converted lead is a contact or a deal now, not a lead to work. The tile links
+        // to the Leads page, whose Active count leaves them out, and counting them here
+        // made the two disagree by every lead ever converted.
+        var leadsCount = await ScopedLeads(userId, organizationId).CountAsync(l => !l.IsConverted, ct);
+        var deals = ScopedDeals(userId, organizationId);
+        var outcomes = await deals
+            .GroupBy(d => d.IsWon)
+            .Select(g => new { Outcome = g.Key, Count = g.Count() })
             .ToListAsync(ct);
+        int CountOf(bool? outcome) => outcomes.Where(o => o.Outcome == outcome).Sum(o => o.Count);
 
-        var activeDeals = deals.Where(d => d.IsWon == null).ToList();
-        var wonCount = deals.Count(d => d.IsWon == true);
-        var lostCount = deals.Count(d => d.IsWon == false);
-
-        var (totals, unreadable) = TotalsByCurrency(activeDeals);
+        var (fallback, _) = await RegionOfAsync(organizationId, ct);
+        var (totals, unreadable) = await TotalsByCurrencyAsync(deals.Where(d => d.IsWon == null), fallback, ct);
         var dominant = totals.FirstOrDefault();
 
         return new DashboardStatsDto(
             leadsCount,
-            activeDeals.Count,
+            CountOf(null),
             dominant?.Value ?? 0m,
-            dominant?.Currency ?? "USD",
+            dominant?.Currency ?? fallback,
             totals,
             unreadable,
-            wonCount,
-            lostCount);
+            CountOf(true),
+            CountOf(false));
     }
 
     public async Task<IReadOnlyList<PipelineStageValueDto>> GetPipelineValueByStageAsync(Guid userId, Guid? organizationId, CancellationToken ct = default)
     {
-        var deals = await ScopedDeals(userId, organizationId)
-            .Where(d => d.IsWon == null)
-            .Select(d => new { d.DealStageId, d.Stage, d.Value, d.Currency })
-            .ToListAsync(ct);
-
-        var stageIds = deals.Where(d => d.DealStageId != null).Select(d => d.DealStageId!.Value).Distinct().ToList();
-        var stages = await _db.DealStages.AsNoTracking().Where(s => stageIds.Contains(s.Id)).ToDictionaryAsync(s => s.Id, s => s.Name, ct);
-
         // Grouped by stage AND currency: a stage holding CHF and EUR deals yields
-        // two rows rather than one meaningless sum.
-        var rows = deals
+        // two rows rather than one meaningless sum. A deal with only a stage name
+        // (from before stages had ids) is grouped by that name.
+        var (fallback, _) = await RegionOfAsync(organizationId, ct);
+        var groups = await ScopedDeals(userId, organizationId)
+            .Where(d => d.IsWon == null)
             .GroupBy(d => new
             {
-                StageKey = d.DealStageId?.ToString() ?? d.Stage ?? "Unset",
-                Currency = MoneyText.NormaliseCurrency(d.Currency),
+                d.DealStageId,
+                StageName = d.DealStageId == null ? d.Stage : null,
+                Currency = d.Currency == null || d.Currency.Trim() == "" ? fallback : d.Currency.Trim().ToUpper(),
             })
+            .Select(g => new
+            {
+                g.Key.DealStageId,
+                g.Key.StageName,
+                g.Key.Currency,
+                Count = g.Count(),
+                Value = g.Sum(d => d.Amount ?? 0m),
+                // The name the deal was saved with, for a stage since deleted.
+                SavedName = g.Max(d => d.Stage),
+            })
+            .ToListAsync(ct);
+
+        var stageIds = groups.Where(g => g.DealStageId != null).Select(g => g.DealStageId!.Value).Distinct().ToList();
+        var stages = await _db.DealStages.AsNoTracking().Where(s => stageIds.Contains(s.Id)).ToDictionaryAsync(s => s.Id, s => s.Name, ct);
+
+        return groups
             .Select(g =>
             {
-                var stageKey = g.Key.StageKey;
-                var stageName = stageKey == "Unset"
-                    ? "Unset"
-                    : (Guid.TryParse(stageKey, out var sid) && stages.TryGetValue(sid, out var name) ? name : g.First().Stage ?? stageKey);
-                var value = g.Sum(d => MoneyText.TryParseAmount(d.Value, out var v) ? v : 0m);
-                return new PipelineStageValueDto(stageKey, stageName, g.Key.Currency, g.Count(), value);
+                var stageKey = g.DealStageId?.ToString() ?? g.StageName ?? "Unset";
+                var stageName = g.DealStageId is Guid sid && stages.TryGetValue(sid, out var name)
+                    ? name
+                    : g.StageName ?? g.SavedName ?? (g.DealStageId == null ? "Unset" : stageKey);
+                return new PipelineStageValueDto(stageKey, stageName, g.Currency, g.Count, g.Value);
             })
             .OrderBy(x => x.StageName, StringComparer.Ordinal)
             .ThenBy(x => x.Currency, StringComparer.Ordinal)
             .ToList();
-        return rows;
     }
 
     public async Task<IReadOnlyList<PipelineValueByAssigneeDto>> GetPipelineValueByAssigneeAsync(Guid userId, Guid? organizationId, CancellationToken ct = default)
     {
-        var deals = await ScopedDeals(userId, organizationId)
+        var (fallback, _) = await RegionOfAsync(organizationId, ct);
+        var groups = await ScopedDeals(userId, organizationId)
             .Where(d => d.IsWon == null)
-            .Select(d => new
-            {
-                d.AssigneeId,
-                AssigneeName = d.Assignee != null ? d.Assignee.Name : null,
-                d.Value,
-                d.Currency,
-            })
-            .ToListAsync(ct);
-
-        var rows = deals
             .GroupBy(d => new
             {
-                AssigneeKey = d.AssigneeId?.ToString() ?? string.Empty,
-                Currency = MoneyText.NormaliseCurrency(d.Currency),
+                d.AssigneeId,
+                Currency = d.Currency == null || d.Currency.Trim() == "" ? fallback : d.Currency.Trim().ToUpper(),
             })
-            .Select(g =>
-            {
-                var assigneeId = g.Key.AssigneeKey;
-                var assigneeName = string.IsNullOrEmpty(assigneeId)
-                    ? "Unassigned"
-                    : (g.First().AssigneeName ?? "Unknown");
-                var value = g.Sum(d => MoneyText.TryParseAmount(d.Value, out var v) ? v : 0m);
-                return new PipelineValueByAssigneeDto(assigneeId, assigneeName, g.Key.Currency, g.Count(), value);
-            })
+            .Select(g => new { g.Key.AssigneeId, g.Key.Currency, Count = g.Count(), Value = g.Sum(d => d.Amount ?? 0m) })
+            .ToListAsync(ct);
+
+        var names = await NamesAsync(groups.Select(g => g.AssigneeId), ct);
+        return groups
+            .Select(g => new PipelineValueByAssigneeDto(
+                g.AssigneeId?.ToString() ?? string.Empty,
+                g.AssigneeId is Guid id ? names.GetValueOrDefault(id, "Unknown") : "Unassigned",
+                g.Currency,
+                g.Count,
+                g.Value))
             .OrderBy(x => x.AssigneeName, StringComparer.Ordinal)
             .ThenBy(x => x.Currency, StringComparer.Ordinal)
             .ToList();
-        return rows;
     }
 
-    public async Task<IReadOnlyList<ForecastSnapshotDto>> SaveForecastSnapshotAsync(Guid userId, Guid? organizationId, CancellationToken ct = default)
+    /// <summary>Display names of these users, by id.</summary>
+    private async Task<Dictionary<Guid, string>> NamesAsync(IEnumerable<Guid?> userIds, CancellationToken ct)
     {
-        var now = DateTime.UtcNow;
-        var month = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-        var deals = await ScopedDeals(userId, organizationId)
-            .Where(d => d.IsWon == null)
-            .Select(d => new
-            {
-                d.AssigneeId,
-                AssigneeName = d.Assignee != null ? d.Assignee.Name : null,
-                d.Value,
-                d.Currency,
-                d.Probability,
-            })
-            .ToListAsync(ct);
-
-        var rows = deals
-            .GroupBy(d => new
-            {
-                AssigneeKey = d.AssigneeId?.ToString() ?? string.Empty,
-                Currency = MoneyText.NormaliseCurrency(d.Currency),
-            })
-            .Select(g =>
-            {
-                decimal open = 0, weighted = 0;
-                var covered = 0;
-                var missing = 0;
-                foreach (var deal in g)
-                {
-                    if (!MoneyText.TryParseAmount(deal.Value, out var amount)) continue;
-                    open += amount;
-                    if (deal.Probability is int probability)
-                    {
-                        weighted += amount * probability / 100m;
-                        covered++;
-                    }
-                    else missing++;
-                }
-                return new ForecastSnapshot
-                {
-                    Id = Guid.NewGuid(),
-                    OrganizationId = organizationId,
-                    SavedByUserId = userId,
-                    MonthUtc = month,
-                    Currency = g.Key.Currency,
-                    AssigneeId = string.IsNullOrEmpty(g.Key.AssigneeKey) ? null : Guid.Parse(g.Key.AssigneeKey),
-                    AssigneeName = string.IsNullOrEmpty(g.Key.AssigneeKey) ? "Unassigned" : (g.First().AssigneeName ?? "Unknown"),
-                    WeightedValue = weighted,
-                    OpenValue = open,
-                    Covered = covered,
-                    Missing = missing,
-                    SavedAtUtc = now,
-                };
-            })
-            .ToList();
-
-        var previous = await ScopedSnapshots(userId, organizationId)
-            .Where(s => s.MonthUtc == month)
-            .ToListAsync(ct);
-        _db.ForecastSnapshots.RemoveRange(previous);
-        _db.ForecastSnapshots.AddRange(rows);
-        await _db.SaveChangesAsync(ct);
-        return rows.Select(ToDto).ToList();
+        var ids = userIds.OfType<Guid>().Distinct().ToList();
+        if (ids.Count == 0) return new Dictionary<Guid, string>();
+        return await _db.Users.AsNoTracking()
+            .Where(u => ids.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => u.Name, ct);
     }
 
-    public async Task<IReadOnlyList<ForecastSnapshotDto>> ListForecastSnapshotsAsync(Guid userId, Guid? organizationId, int year, int month, CancellationToken ct = default)
-    {
-        var start = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc);
-        var rows = await ScopedSnapshots(userId, organizationId).AsNoTracking()
-            .Where(s => s.MonthUtc == start)
-            .OrderBy(s => s.AssigneeName)
-            .ToListAsync(ct);
-        return rows.Select(ToDto).ToList();
-    }
-
-    /// <summary>
-    /// An organization's saved forecast, or with none the caller's own. "OrganizationId
-    /// IS NULL" alone was every personal user's, so saving one replaced the others'.
-    /// </summary>
-    private IQueryable<ForecastSnapshot> ScopedSnapshots(Guid userId, Guid? organizationId) =>
-        organizationId == null
-            ? _db.ForecastSnapshots.Where(s => s.OrganizationId == null && s.SavedByUserId == userId)
-            : _db.ForecastSnapshots.Where(s => s.OrganizationId == organizationId);
-
-    private static ForecastSnapshotDto ToDto(ForecastSnapshot row) =>
-        new(row.Id, row.MonthUtc.ToString("yyyy-MM"), row.Currency, row.AssigneeName, row.WeightedValue, row.OpenValue, row.Covered, row.Missing, row.SavedAtUtc);
 }

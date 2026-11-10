@@ -8,21 +8,28 @@
 // it: log "no answer" on a lead and the panel above kept saying "make the first
 // call", telling you to do what you had just done.
 //
-// So the lists live here, outside any component:
+// So the lists live in the app's query cache (hooks/queries), keyed by workspace:
 //
-//   · loaded once per workspace, and reused across navigations;
-//   · re-read quietly behind what is already shown when anything is saved
-//     (see api/dataChanged), when the tab comes back into view, or when the copy
-//     is older than FRESH_FOR_MS — never with a skeleton once there is data;
-//   · discarded the moment the workspace changes, so one organisation's work can
-//     never be shown under another's.
+//   · loaded once per workspace, reused across navigations, and shared with the
+//     pages that read the same lists (Tasks, the board and Contacts read some);
+//   · after a save, only the lists of the kinds it changed are re-read, quietly
+//     behind what is shown (api/dataChanged). Every save used to re-read all eight,
+//     so logging one call downloaded every lead, contact and deal again; a task
+//     saved now re-reads tasks. Also re-read when the tab comes back into view or
+//     the copy is older than FRESH_FOR_MS — never with a skeleton once there is data;
+//   · a list nobody is looking at is only marked stale, and read when next shown;
+//   · never shown under another workspace: its keys are that workspace's.
 
-import { useEffect, useSyncExternalStore } from 'react';
+import { useCallback, useMemo } from 'react';
+import { useQueries, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import { getCompanies, getContacts, getDeals, getLeads, getTasks } from '@/app/api';
+import { servesDemoData, type RequestOptions } from '@/app/api/apiClient';
+import { getNotSamePairs } from '@/app/api/dedupe';
 import { getAutomations } from '@/app/api/automations';
 import { getEnrollments, getSequences } from '@/app/api/sequences';
-import { onDataChanged } from '@/app/api/dataChanged';
-import { getAuthToken } from '@/app/lib/auth';
+import { getAuthToken, getCurrentUser } from '@/app/lib/auth';
+import { queryKeys, type WorkspaceScope } from '@/app/hooks/queries/queryKeys';
+import { timed } from '@/app/hooks/queries/queryClient';
 import type { SuggestableLead } from './nextAction';
 import type {
   SuggestableAutomation,
@@ -34,6 +41,8 @@ import type {
   SuggestableTask,
 } from './workspace';
 
+export { SETTLE_MS } from '@/app/hooks/queries/invalidation';
+
 export interface AgentLists {
   leads: SuggestableLead[];
   deals: SuggestableDeal[];
@@ -43,6 +52,8 @@ export interface AgentLists {
   contacts: SuggestableContact[];
   companies: SuggestableCompany[];
   automations: SuggestableAutomation[];
+  /** Contact and company pairs the team said are not the same, so they are not offered for merging. */
+  notSame?: string[];
 }
 
 export interface AgentSnapshot {
@@ -61,146 +72,43 @@ export interface AgentSnapshot {
    * never loaded, or still shows an earlier copy. An answer built on them has to say so.
    */
   gaps: string[];
+  /** Re-read every list now, behind whatever is shown: the panel's retry. */
+  reload: () => void;
 }
 
 /** How long a loaded copy is trusted before a navigation re-reads it. */
 export const FRESH_FOR_MS = 60_000;
-/** A save usually arrives as a burst (the record, then its activity log). */
-export const SETTLE_MS = 400;
 
-const LIST_NAMES = ['leads', 'deals', 'tasks', 'enrollments', 'sequences', 'contacts', 'companies', 'automations'] as const;
-const LIST_LABELS: Record<(typeof LIST_NAMES)[number], string> = {
-  leads: 'Leads',
-  deals: 'Deals',
-  tasks: 'Tasks',
-  enrollments: 'Sequence enrollments',
-  sequences: 'Sequences',
-  contacts: 'Contacts',
-  companies: 'Companies',
-  automations: 'Automations',
-};
+type ListName = keyof Omit<AgentLists, 'notSame'>;
 
-function fetchAll(): Promise<PromiseSettledResult<unknown>[]> {
-  return Promise.allSettled([
-    getLeads(), getDeals(), getTasks(), getEnrollments(), getSequences(),
-    getContacts(), getCompanies(), getAutomations(),
-  ]);
+interface ListSource {
+  name: ListName;
+  label: string;
+  key: (scope: WorkspaceScope) => readonly unknown[];
+  read: (req: RequestOptions) => Promise<unknown>;
+}
+
+// The same reads, under the same keys, as the pages that show these lists.
+const LISTS: readonly ListSource[] = [
+  { name: 'leads', label: 'Leads', key: queryKeys.leads.all, read: (req) => getLeads(req) },
+  { name: 'deals', label: 'Deals', key: queryKeys.deals.all, read: (req) => getDeals(req) },
+  { name: 'tasks', label: 'Tasks', key: (s) => queryKeys.tasks.list(s), read: (req) => getTasks(undefined, req) },
+  { name: 'enrollments', label: 'Sequence enrollments', key: queryKeys.sequences.enrollments, read: (req) => getEnrollments(undefined, req) },
+  { name: 'sequences', label: 'Sequences', key: queryKeys.sequences.all, read: (req) => getSequences(req) },
+  { name: 'contacts', label: 'Contacts', key: queryKeys.contacts.all, read: (req) => getContacts(false, req) },
+  { name: 'companies', label: 'Companies', key: queryKeys.companies.all, read: (req) => getCompanies(req) },
+  { name: 'automations', label: 'Automations', key: queryKeys.automations.all, read: (req) => getAutomations(req) },
+];
+
+/** The team's "not the same" decisions on contacts and companies (kept on the server; none in demo mode). */
+async function getNotSame(req: RequestOptions): Promise<string[]> {
+  if (servesDemoData()) return [];
+  const [contacts, companies] = await Promise.all([getNotSamePairs('contacts', req), getNotSamePairs('companies', req)]);
+  return [...contacts, ...companies];
 }
 
 function rows<T>(value: unknown): T[] {
   return Array.isArray(value) ? value.filter((item): item is T => !!item && typeof item === 'object') : [];
-}
-
-// ── store state ──────────────────────────────────────────────────────────────
-
-let key: string | null = null;
-let lists: AgentLists | null = null;
-let loadedAt = 0;
-/** The read in flight, and which workspace it is for. */
-let inflight: { key: string; promise: Promise<void> } | null = null;
-let reloadAfter = false;
-let failed = false;
-let gaps: string[] = [];
-let settleTimer: ReturnType<typeof setTimeout> | null = null;
-let installed: (() => void) | null = null;
-
-const EMPTY: AgentSnapshot = { key: null, lists: null, loading: true, refreshing: false, failed: false, gaps: [] };
-let snapshot: AgentSnapshot = EMPTY;
-const listeners = new Set<() => void>();
-
-function emit(): void {
-  snapshot = {
-    key,
-    lists,
-    loading: lists === null && inflight !== null,
-    refreshing: lists !== null && inflight !== null,
-    failed,
-    gaps,
-  };
-  for (const listener of listeners) listener();
-}
-
-function load(forKey: string): Promise<void> {
-  if (inflight && inflight.key === forKey) {
-    // A save landed mid-read: what is being read may already be stale.
-    reloadAfter = true;
-    return inflight.promise;
-  }
-  // A read for ANOTHER workspace may still be running. It is not reused: its
-  // results will be dropped on arrival, and merging into it would mean this
-  // workspace never loads at all.
-  const mine = { key: forKey } as { key: string; promise: Promise<void> };
-  mine.promise = (async () => {
-    const results = await fetchAll();
-    // The workspace changed while this was in flight. These lists belong to
-    // the old one and must not be shown under the new.
-    if (key !== forKey) return;
-    if (results.every((result) => result.status === 'rejected')) {
-      failed = true;
-      if (lists) gaps = LIST_NAMES.map((name) => `${LIST_LABELS[name]} could not be refreshed, so an earlier copy is used.`);
-      return;
-    }
-    const previous = lists;
-    const next = {} as Record<(typeof LIST_NAMES)[number], unknown[]>;
-    const missing: string[] = [];
-    LIST_NAMES.forEach((name, index) => {
-      const result = results[index]!;
-      // One list failing must not erase it: an outage on deals would otherwise
-      // read as "no deals need anything", which is a quiet lie. The gap is kept,
-      // so the agent can say the list is old or missing instead of counting it.
-      if (result.status === 'fulfilled') {
-        next[name] = rows(result.value);
-        return;
-      }
-      next[name] = previous?.[name] ?? [];
-      missing.push(previous
-        ? `${LIST_LABELS[name]} could not be refreshed, so an earlier copy is used.`
-        : `${LIST_LABELS[name]} could not be loaded.`);
-    });
-    lists = next as unknown as AgentLists;
-    gaps = missing;
-    loadedAt = Date.now();
-    failed = false;
-  })().finally(() => {
-    // A newer read has taken over; it owns the state now.
-    if (inflight !== mine) return;
-    inflight = null;
-    const again = reloadAfter && key === forKey;
-    reloadAfter = false;
-    emit();
-    if (again) void load(forKey);
-  });
-  inflight = mine;
-  emit();
-  return mine.promise;
-}
-
-function install(): void {
-  if (installed || typeof window === 'undefined') return;
-  const offChange = onDataChanged(() => {
-    if (!key) return;
-    // Nobody is looking (the panel is on no page right now — the till, say, where
-    // every item rung up is a write). Note that the copy is stale and let the
-    // next panel to appear re-read it, instead of re-reading eight lists per sale.
-    if (listeners.size === 0) {
-      loadedAt = 0;
-      return;
-    }
-    if (settleTimer) clearTimeout(settleTimer);
-    const target = key;
-    settleTimer = setTimeout(() => {
-      settleTimer = null;
-      if (key === target) void load(target);
-    }, SETTLE_MS);
-  });
-  const onVisible = () => {
-    if (document.visibilityState === 'visible' && key) ensureFresh(key);
-  };
-  document.addEventListener('visibilitychange', onVisible);
-  installed = () => {
-    offChange();
-    document.removeEventListener('visibilitychange', onVisible);
-  };
 }
 
 /** The identity the lists belong to: this organisation, for this signed-in session. */
@@ -208,69 +116,79 @@ export function workspaceKey(orgId: string | null | undefined): string {
   return `${orgId ?? 'no-org'}|${getAuthToken() ?? 'no-session'}`;
 }
 
-/** Make sure the lists for `forKey` are loaded and not older than FRESH_FOR_MS. */
-export function ensureFresh(forKey: string): void {
-  install();
-  if (forKey !== key) {
-    key = forKey;
-    lists = null;
-    loadedAt = 0;
-    failed = false;
-    gaps = [];
-    reloadAfter = false;
-    emit();
-    void load(forKey);
-    return;
+function snapshotOf(key: string, results: UseQueryResult<unknown>[], reload: () => void): AgentSnapshot {
+  const lists = results.slice(0, LISTS.length);
+  const decided = results[LISTS.length];
+  const settled = lists.every((result) => result.status !== 'pending');
+  const fetching = results.some((result) => result.isFetching);
+  // A list failing keeps its last good copy: an outage on deals must not read as
+  // "no deals need anything", which would be a quiet lie. The gap is said instead,
+  // so the agent can say the list is old or missing instead of counting it.
+  const gaps = LISTS.flatMap((list, index) => {
+    const result = lists[index]!;
+    if (result.status !== 'error') return [];
+    return [result.data === undefined
+      ? `${list.label} could not be loaded.`
+      : `${list.label} could not be refreshed, so an earlier copy is used.`];
+  });
+  const nothing = lists.every((result) => result.data === undefined);
+  const allFailed = lists.every((result) => result.status === 'error');
+  if (!settled || nothing) {
+    return { key, lists: null, loading: fetching || !settled, refreshing: false, failed: settled && allFailed, gaps: [], reload };
   }
-  if (inflight) return;
-  if (lists === null || Date.now() - loadedAt > FRESH_FOR_MS) void load(forKey);
-}
-
-/** Re-read now, behind whatever is shown. Used by the panel's retry. */
-export function reloadAgentData(): void {
-  if (key) void load(key);
-}
-
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-function getSnapshot(): AgentSnapshot {
-  return snapshot;
+  const read = {} as Record<ListName, unknown[]>;
+  LISTS.forEach((list, index) => { read[list.name] = rows(lists[index]!.data); });
+  return {
+    key,
+    lists: {
+      ...(read as unknown as AgentLists),
+      // The decisions only keep pairs out of the merge suggestions: without them,
+      // nothing is hidden, and no list is reported missing for them.
+      notSame: Array.isArray(decided?.data) ? (decided.data as string[]) : [],
+    },
+    loading: false,
+    refreshing: fetching,
+    failed: allFailed,
+    gaps,
+    reload,
+  };
 }
 
 /**
- * The agent's lists for this organisation. Loads on first use, re-reads behind
- * the scenes after any save, and never returns another workspace's lists.
+ * The agent's lists for this organisation. Loads on first use, re-reads behind the
+ * scenes after a save that changed them, and never returns another workspace's
+ * lists. `enabled` false (the panel is hidden) reads nothing and watches nothing.
  */
-const noSubscription = () => () => {};
-
 export function useAgentData(orgId: string | null | undefined, enabled = true): AgentSnapshot {
-  // Disabled where the panel is hidden: no subscription, so the store does not
-  // count this page as watching, and no load.
-  const current = useSyncExternalStore(enabled ? subscribe : noSubscription, getSnapshot, getSnapshot);
-  const wanted = workspaceKey(orgId);
-  useEffect(() => {
-    if (enabled) ensureFresh(wanted);
-  }, [wanted, enabled]);
-  // Until the store has switched to this workspace, show nothing from the last one.
-  return current.key === wanted ? current : EMPTY;
-}
-
-/** Test hook: forget everything, including installed listeners. */
-export function resetAgentDataForTests(): void {
-  installed?.();
-  installed = null;
-  if (settleTimer) clearTimeout(settleTimer);
-  settleTimer = null;
-  key = null;
-  lists = null;
-  loadedAt = 0;
-  inflight = null;
-  reloadAfter = false;
-  failed = false;
-  gaps = [];
-  snapshot = EMPTY;
-  listeners.clear();
+  const userId = getCurrentUser()?.id ?? null;
+  const scope = useMemo<WorkspaceScope>(() => ({ orgId: orgId ?? null, userId }), [orgId, userId]);
+  const results = useQueries({
+    queries: [
+      ...LISTS.map((list) => ({
+        queryKey: list.key(scope),
+        queryFn: ({ signal }: { signal: AbortSignal }) => timed(signal, (s) => list.read({ signal: s })),
+        enabled,
+        staleTime: FRESH_FOR_MS,
+        // The panel offers its own retry and says which lists are missing.
+        retry: false,
+      })),
+      {
+        queryKey: queryKeys.duplicates.notSame(scope),
+        queryFn: ({ signal }: { signal: AbortSignal }) => timed(signal, (s) => getNotSame({ signal: s })),
+        enabled,
+        staleTime: FRESH_FOR_MS,
+        retry: false,
+      },
+    ],
+  });
+  const client = useQueryClient();
+  const reload = useCallback(() => {
+    for (const list of LISTS) void client.refetchQueries({ queryKey: list.key(scope), exact: true });
+    void client.refetchQueries({ queryKey: queryKeys.duplicates.notSame(scope), exact: true });
+  }, [client, scope]);
+  const key = workspaceKey(orgId);
+  // Recomputed only when a list's state moves, not on every render of every page.
+  const signature = results.map((r) => `${r.status}|${r.fetchStatus}|${r.dataUpdatedAt}|${r.errorUpdatedAt}`).join(',');
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `signature` stands for `results`
+  return useMemo(() => snapshotOf(key, results, reload), [key, signature, reload]);
 }

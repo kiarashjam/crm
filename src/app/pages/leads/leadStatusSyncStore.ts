@@ -16,13 +16,11 @@ const META_KEY = 'crm.leadStatusSync.meta.v1';
 const CHANGED_EVENT = 'crm.leadStatusSync.changed';
 
 export interface StatusSyncPrefs {
-  /** Master switch for the current user. */
-  enabled: boolean;
   /** Org vocabulary pins: canonical stage → exact status name. */
   overrides: Partial<Record<CanonicalStage, string>>;
 }
 
-const DEFAULT_PREFS: StatusSyncPrefs = { enabled: true, overrides: {} };
+const DEFAULT_PREFS: StatusSyncPrefs = { overrides: {} };
 
 export interface LeadSyncMeta {
   /** The status auto-sync last wrote. Divergence ⇒ someone changed it by hand,
@@ -87,19 +85,15 @@ function writeJson(key: string, value: unknown): void {
 
 // ── Prefs ────────────────────────────────────────────────────────────────────
 
+// An `enabled: false` left in storage by the old per-user switch is ignored: the
+// server sets the status for every writer now, so a browser setting cannot stop it.
 export function loadStatusSyncPrefs(): StatusSyncPrefs {
   const stored = readJson<Partial<StatusSyncPrefs>>(PREFS_KEY, {});
   return {
-    // Absent means "never configured", which should read as on.
-    enabled: stored.enabled !== false,
     overrides: stored.overrides && typeof stored.overrides === 'object'
       ? stored.overrides
       : DEFAULT_PREFS.overrides,
   };
-}
-
-export function setStatusSyncEnabled(enabled: boolean): void {
-  writeJson(PREFS_KEY, { ...loadStatusSyncPrefs(), enabled });
 }
 
 export function setStageOverride(stage: CanonicalStage, statusName: string | null): void {

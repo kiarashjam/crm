@@ -1,3 +1,7 @@
+using ACI.Application.Common;
+using ACI.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+
 namespace ACI.WebApi;
 
 /// <summary>
@@ -108,6 +112,118 @@ public static class DataFixes
             BEGIN
 " + ACI.Domain.Common.LeadStatusVocabulary.AlignmentSql() + @"
                 INSERT INTO [AppliedDataFixes] ([Name], [AppliedAtUtc]) VALUES (N'" + AlignLeadStatusVocabularyName + @"', SYSUTCDATETIME());
+            END;
+            COMMIT TRANSACTION;
+        END TRY
+        BEGIN CATCH
+            IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+            THROW;
+        END CATCH;";
+
+    public const string FillDealAmountsName = "2026-10 fill deal amounts";
+
+    /// <summary>Records <see cref="FillDealAmountsName"/> as applied, once however many instances get here.</summary>
+    public const string RecordDealAmountsFilledSql = @"
+        BEGIN TRY
+            BEGIN TRANSACTION;
+            IF NOT EXISTS (SELECT 1 FROM [AppliedDataFixes] WITH (UPDLOCK, HOLDLOCK) WHERE [Name] = N'" + FillDealAmountsName + @"')
+                INSERT INTO [AppliedDataFixes] ([Name], [AppliedAtUtc]) VALUES (N'" + FillDealAmountsName + @"', SYSUTCDATETIME());
+            COMMIT TRANSACTION;
+        END TRY
+        BEGIN CATCH
+            IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+            THROW;
+        END CATCH;";
+
+    /// <summary>
+    /// Give every existing deal the number its Value holds (see Deal.Amount).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// New and edited deals get it as they are saved (AppDbContext). Rows from before
+    /// the column existed are read here, with the parser the rest of the app uses,
+    /// MoneyText, which T-SQL cannot run: TRY_CAST reads "1.234" as one point two
+    /// where the app reads twelve hundred, and "CHF 85,500" not at all.
+    /// </para>
+    /// <para>
+    /// Only rows whose Amount is still empty are touched, so a second instance starting
+    /// at the same moment writes the same numbers, and the ledger line stops later starts
+    /// from re-reading the values that hold no number. It writes with ExecuteUpdate, past
+    /// the audit trail, because nobody changed the deals' values.
+    /// </para>
+    /// </remarks>
+    /// <returns>How many deals were given an amount.</returns>
+    public static async Task<int> FillDealAmountsAsync(AppDbContext db, CancellationToken ct = default)
+    {
+        var applied = await db.Database
+            .SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM [AppliedDataFixes] WHERE [Name] = N'" + FillDealAmountsName + "'")
+            .SingleAsync(ct);
+        if (applied > 0) return 0;
+
+        // Every row at once: a Guid and at most 64 characters each, read once ever. Every
+        // workspace's: start-up acts for none, and the fix is recorded as done for all.
+        var rows = await db.Deals.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(d => d.Amount == null)
+            .Select(d => new { d.Id, d.Value })
+            .ToListAsync(ct);
+
+        var filled = 0;
+        // One UPDATE per distinct amount, so a thousand deals worth 0 or 5000 are a
+        // handful of statements rather than a thousand.
+        foreach (var byAmount in rows
+            .Select(r => (r.Id, Amount: MoneyText.StoredAmount(r.Value)))
+            .Where(r => r.Amount != null)
+            .GroupBy(r => r.Amount!.Value))
+        {
+            decimal? amount = byAmount.Key;
+            foreach (var chunk in byAmount.Select(r => r.Id).Chunk(500))
+            {
+                filled += await db.Deals
+                    .IgnoreQueryFilters()
+                    .Where(d => chunk.Contains(d.Id) && d.Amount == null)
+                    .ExecuteUpdateAsync(set => set.SetProperty(d => d.Amount, amount), ct);
+            }
+        }
+
+        await db.Database.ExecuteSqlRawAsync(RecordDealAmountsFilledSql, ct);
+        return filled;
+    }
+
+    public const string FillDealCurrenciesName = "2026-10 fill deal currencies";
+
+    /// <summary>
+    /// Give every existing deal a currency code, written the way new deals have it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The New Deal dialog opened with no currency picked and lead conversion never set
+    /// one, so many deals have none, and everything counted those as USD for a club that
+    /// bills in francs. New deals now take their workspace's currency
+    /// (Organization.Currency), and these get the same: their workspace's, which is the
+    /// default, CHF, everywhere when this first runs, and the default for a personal
+    /// workspace's deals.
+    /// </para>
+    /// <para>
+    /// A code written in another case or with spaces ("chf ") becomes the code ("CHF"),
+    /// so it is no longer totalled as a currency of its own. Anything else, a symbol or a
+    /// word, is left as it was: what "Fr." meant is not for a data fix to guess, and the
+    /// reports show it under its own name. The audit trail is not written, as nobody
+    /// priced the deals.
+    /// </para>
+    /// </remarks>
+    public const string FillDealCurrenciesSql = @"
+        BEGIN TRY
+            BEGIN TRANSACTION;
+            IF NOT EXISTS (SELECT 1 FROM [AppliedDataFixes] WITH (UPDLOCK, HOLDLOCK) WHERE [Name] = N'" + FillDealCurrenciesName + @"')
+            BEGIN
+                UPDATE [Deals] SET [Currency] = UPPER(LTRIM(RTRIM([Currency])))
+                WHERE LTRIM(RTRIM([Currency])) COLLATE Latin1_General_BIN2 LIKE N'[A-Za-z][A-Za-z][A-Za-z]'
+                  AND [Currency] COLLATE Latin1_General_BIN2 <> UPPER(LTRIM(RTRIM([Currency]))) COLLATE Latin1_General_BIN2;
+                UPDATE d SET [Currency] = ISNULL(o.[Currency], N'CHF')
+                FROM [Deals] d LEFT JOIN [Organizations] o ON o.[Id] = d.[OrganizationId]
+                WHERE d.[Currency] IS NULL OR LTRIM(RTRIM(d.[Currency])) = N'';
+                INSERT INTO [AppliedDataFixes] ([Name], [AppliedAtUtc]) VALUES (N'" + FillDealCurrenciesName + @"', SYSUTCDATETIME());
             END;
             COMMIT TRANSACTION;
         END TRY

@@ -1,5 +1,5 @@
 import type { LeadStatus } from './types';
-import { servesDemoData, authFetchJson } from './apiClient';
+import { servesDemoData, authFetchJson, type RequestOptions } from './apiClient';
 
 /**
  * Get all lead statuses for the current org (requires X-Organization-Id).
@@ -16,9 +16,9 @@ import { servesDemoData, authFetchJson } from './apiClient';
  * ever wrong again, it is one line in the console away from being obvious instead
  * of a fortnight of "the status doesn't update".
  */
-export async function getLeadStatuses(): Promise<LeadStatus[]> {
+export async function getLeadStatuses(req?: RequestOptions): Promise<LeadStatus[]> {
   if (!servesDemoData()) {
-    const list = await authFetchJson<LeadStatus[]>('/api/leadstatuses');
+    const list = await authFetchJson<LeadStatus[]>('/api/leadstatuses', req);
     if (Array.isArray(list)) return list;
     console.error(
       '/api/leadstatuses did not return an array. The lead status list will be empty, '

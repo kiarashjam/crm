@@ -1,4 +1,4 @@
-import { tryParseAmount } from '@/app/lib/money';
+import { amountOf, currencyOf, formatMoney } from '@/app/lib/money';
 import { calendarKey, daysBetween, todayKey } from '../calendarDay';
 import type { SuggestableLead } from '../nextAction';
 import type { WorkSuggestion, SuggestableDeal } from '../workspace';
@@ -29,9 +29,9 @@ const RECORD_HREF = /^\/(leads|deals)\/([^/]+)$/;
 /** A same-day retry waits until afternoon. The rule already keeps it under work that is due. */
 const SECOND_CALL_HOUR = 15;
 
-/** A positive amount, read the way the rest of the app reads it ("1.234,56" is not 1.23). */
-function money(value: string | null | undefined): number | null {
-  const amount = tryParseAmount(value);
+/** A positive saved amount; the text was read again here, and could disagree with the board. */
+function money(deal: SuggestableDeal | undefined): number | null {
+  const amount = deal ? amountOf(deal) : null;
   return amount !== null && amount > 0 ? amount : null;
 }
 
@@ -94,19 +94,20 @@ function weighIndexed(
 
   const dealId = recordId(item.href, 'deals');
   const deal = dealId ? dealById.get(dealId) : undefined;
-  const amount = money(deal?.value);
+  const amount = money(deal);
   if (amount !== null && amount >= 10000) {
     let points = amount >= 40000 ? 22 : 12;
     const probability = deal?.probability;
+    const shown = formatMoney(amount, currencyOf({ currency: deal?.currency }));
     if (typeof probability === 'number' && probability < 40) {
       points = Math.max(6, points - 8);
       weights.push({
         name: 'Larger deal',
         points,
-        because: `The deal amount is ${deal?.value}, and saved probability is ${probability}%, so the amount counts for less.`,
+        because: `The deal amount is ${shown}, and saved probability is ${probability}%, so the amount counts for less.`,
       });
     } else {
-      weights.push({ name: 'Larger deal', points, because: `The deal amount is ${deal?.value}.` });
+      weights.push({ name: 'Larger deal', points, because: `The deal amount is ${shown}.` });
     }
   }
   if (typeof deal?.probability === 'number' && deal.probability >= 70) {

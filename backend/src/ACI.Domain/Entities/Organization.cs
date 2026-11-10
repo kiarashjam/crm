@@ -28,6 +28,31 @@ public class Organization : Common.BaseEntity
     /// <summary>Where Cadence posts lead and deal events. Empty means it posts nowhere.</summary>
     public string? OutboundWebhookUrl { get; set; }
     public string? OutboundWebhookSecret { get; set; }
+    /// <summary>
+    /// The workspace's own sender address, e.g. hello@acme.ch. Its email goes out from
+    /// it only while its domain is one the mail service has verified for this workspace
+    /// (Email:VerifiedSendingDomains); until then it goes out from the configured shared
+    /// address, as before.
+    /// </summary>
+    public string? SendingAddress { get; set; }
+    /// <summary>
+    /// ISO 4217 code new deals are priced in unless they say otherwise. A label only:
+    /// changing it converts nothing. Club pages keep their own currency in the hospitality
+    /// settings.
+    /// </summary>
+    public string Currency { get; set; } = "CHF";
+    /// <summary>
+    /// How amounts are written for this workspace (its number format), as a BCP 47 name
+    /// ("de-CH"). Month and day names stay in each viewer's language, as the app is in English.
+    /// </summary>
+    public string Locale { get; set; } = "de-CH";
+    /// <summary>IANA time zone the workspace's days and months begin in, for reports and forecasts.</summary>
+    public string TimeZone { get; set; } = "Europe/Zurich";
+    /// <summary>
+    /// Days without activity after which an open deal is flagged as stale on the board,
+    /// unless its pipeline sets its own (<see cref="Pipeline.StaleDealDays"/>). 0: never.
+    /// </summary>
+    public int StaleDealDays { get; set; } = 30;
 
     public User OwnerUser { get; set; } = null!;
     public ICollection<OrganizationMember> Members { get; set; } = new List<OrganizationMember>();

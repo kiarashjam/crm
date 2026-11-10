@@ -115,6 +115,55 @@ describe('countersigning tells the truth about delivery', () => {
   });
 });
 
+describe('the lead page hears when a contract moved the lead', () => {
+  // Sending and countersigning move the lead's pipeline on the server, and its
+  // status with it. Without telling the page, the tracker and the status badge
+  // kept showing the lead from before until a reload.
+  it('after a countersign', async () => {
+    api.contracts = [contract({})];
+    api.countersign.mockResolvedValue(contract({ status: 'countersigned', counterSignatureName: 'Kia' }));
+    const onLeadChanged = vi.fn();
+    render(<ContractPanel leadId="l1" leadName="Jean Dupont" onLeadChanged={onLeadChanged} />);
+
+    const user = userEvent.setup();
+    await screen.findByText(/Jean Dupont signed on/);
+    await user.type(screen.getByPlaceholderText('Type your full name'), 'Kia Jam');
+    await user.click(screen.getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: /sign and send/i }));
+
+    await waitFor(() => expect(onLeadChanged).toHaveBeenCalledTimes(1));
+  });
+
+  it('after a send', async () => {
+    const draft = contract({ status: 'draft', allowedActions: ['edit', 'send', 'void'] });
+    api.contracts = [draft];
+    api.send.mockResolvedValue({ contract: { ...draft, status: 'sent' }, emailSent: true, signingUrl: 'https://crm.example.com/sign/t' });
+    const onLeadChanged = vi.fn();
+    render(<ContractPanel leadId="l1" leadName="Jean Dupont" onLeadChanged={onLeadChanged} />);
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /send for signature/i }));
+
+    await waitFor(() => expect(onLeadChanged).toHaveBeenCalledTimes(1));
+  });
+
+  it('not when the countersign was refused', async () => {
+    api.contracts = [contract({})];
+    api.countersign.mockRejectedValue(new ApiError('That is not possible at this stage of the contract', 400));
+    const onLeadChanged = vi.fn();
+    render(<ContractPanel leadId="l1" leadName="Jean Dupont" onLeadChanged={onLeadChanged} />);
+
+    const user = userEvent.setup();
+    await screen.findByText(/Jean Dupont signed on/);
+    await user.type(screen.getByPlaceholderText('Type your full name'), 'Kia Jam');
+    await user.click(screen.getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: /sign and send/i }));
+
+    await waitFor(() => expect(toasts.some((t) => t.kind === 'error')).toBe(true));
+    expect(onLeadChanged).not.toHaveBeenCalled();
+  });
+});
+
 describe('two contracts on one lead do not share a signature', () => {
   it('typing into one form leaves the other empty', async () => {
     // signName/signAgreed were single values for the whole list, while `editing`

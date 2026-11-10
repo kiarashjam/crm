@@ -14,6 +14,7 @@ internal sealed class ForecastSnapshotConfiguration : IEntityTypeConfiguration<F
         builder.Property(e => e.AssigneeName).HasMaxLength(200).IsRequired();
         builder.Property(e => e.WeightedValue).HasPrecision(18, 2);
         builder.Property(e => e.OpenValue).HasPrecision(18, 2);
+        builder.Property(e => e.OverdueValue).HasPrecision(18, 2);
         builder.HasIndex(e => new { e.OrganizationId, e.MonthUtc });
     }
 }

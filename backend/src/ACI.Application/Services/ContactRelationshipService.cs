@@ -94,15 +94,17 @@ public class ContactRelationshipService : IContactRelationshipService
     }
 
     /// <inheritdoc />
-    public async Task<Result<Guid?>> LeadContactIdAsync(Guid leadId, Guid userId, Guid? organizationId, CancellationToken ct = default)
+    public async Task<Result<LeadContact>> LeadContactAsync(Guid leadId, Guid userId, Guid? organizationId, bool ensure, CancellationToken ct = default)
     {
         var lead = await _leads.GetByIdAsync(leadId, userId, organizationId, ct);
-        if (lead == null) return Result.Failure<Guid?>(DomainErrors.Lead.NotFound);
-        // Every lead with a name and an email has a person contact; make sure this one does.
-        await _contacts.EnsurePersonContactAsync(lead, ct);
-        if (lead.ConvertedToContactId is Guid id && await _contacts.GetByIdAsync(id, userId, organizationId, ct) != null)
-            return Result.Success<Guid?>(id);
-        return Result.Success<Guid?>(null);
+        if (lead == null) return Result.Failure<LeadContact>(DomainErrors.Lead.NotFound);
+        // Every lead with a name and an email has a person contact; a write makes sure this
+        // one does. Opening the lead page used to do it too, so a Viewer's visit created
+        // contacts, and a contact someone had deleted came back as a new, empty one.
+        if (ensure)
+            await _contacts.EnsurePersonContactAsync(lead, ct);
+        var contact = await _contacts.GetPersonContactAsync(lead, userId, organizationId, ct);
+        return Result.Success(new LeadContact(contact?.Id, contact == null && lead.PersonContactRemovedAtUtc != null));
     }
 
     private async Task<ContactRelationshipListDto> ListOfAsync(Guid contactId, CancellationToken ct)

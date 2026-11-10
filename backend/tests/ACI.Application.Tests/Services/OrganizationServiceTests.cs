@@ -36,6 +36,18 @@ public class OrganizationServiceTests
             _loggerMock.Object);
     }
 
+    // A member of the organization as the service reads them: their role, and their
+    // membership, which says what they may do (MemberPermissions).
+    private void AsMember(Guid organizationId, Guid userId, OrgMemberRole role, string? preset = null, string? permissions = null)
+    {
+        _organizationRepositoryMock
+            .Setup(r => r.GetMemberRoleAsync(userId, organizationId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(role);
+        _organizationRepositoryMock
+            .Setup(r => r.GetMemberAsync(organizationId, userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OrganizationMember { OrganizationId = organizationId, UserId = userId, Role = role, PermissionPreset = preset, Permissions = permissions });
+    }
+
     #region ListMyOrganizationsAsync Tests
 
     [Fact]
@@ -52,6 +64,8 @@ public class OrganizationServiceTests
         _organizationRepositoryMock
             .Setup(r => r.GetByUserIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(orgs);
+        AsMember(orgs[0].Id, userId, OrgMemberRole.Owner);
+        AsMember(orgs[1].Id, userId, OrgMemberRole.Member);
 
         // Act
         var result = await _sut.ListMyOrganizationsAsync(userId);
@@ -96,6 +110,7 @@ public class OrganizationServiceTests
         _organizationRepositoryMock
             .Setup(r => r.IsMemberAsync(userId, orgId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
+        AsMember(orgId, userId, OrgMemberRole.Owner);
 
         _organizationRepositoryMock
             .Setup(r => r.GetByIdAsync(orgId, It.IsAny<CancellationToken>()))
@@ -345,9 +360,7 @@ public class OrganizationServiceTests
         var orgId = Guid.NewGuid();
         var member = new OrganizationMember { UserId = memberId, Role = OrgMemberRole.Member };
 
-        _organizationRepositoryMock
-            .Setup(r => r.GetMemberRoleAsync(ownerId, orgId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(OrgMemberRole.Owner);
+        AsMember(orgId, ownerId, OrgMemberRole.Owner);
 
         _organizationRepositoryMock
             .Setup(r => r.GetMemberAsync(orgId, memberId, It.IsAny<CancellationToken>()))
@@ -365,23 +378,21 @@ public class OrganizationServiceTests
     }
 
     [Fact]
-    public async Task UpdateMemberRoleAsync_ReturnsNotOwnerError_WhenNonOwnerTriesToUpdate()
+    public async Task UpdateMemberRoleAsync_IsRefused_WhenTheRequesterCannotManageTheTeam()
     {
         // Arrange
         var requesterId = Guid.NewGuid();
         var memberId = Guid.NewGuid();
         var orgId = Guid.NewGuid();
 
-        _organizationRepositoryMock
-            .Setup(r => r.GetMemberRoleAsync(requesterId, orgId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(OrgMemberRole.Member);
+        AsMember(orgId, requesterId, OrgMemberRole.Member);
 
         // Act
         var result = await _sut.UpdateMemberRoleAsync(orgId, requesterId, memberId, OrgMemberRole.Manager);
 
         // Assert
         result.IsSuccess.Should().BeFalse();
-        result.Error.Code.Should().Be("Organization.NotOwnerOrManager");
+        result.Error.Code.Should().Be("Permission.members.manage");
     }
 
     [Fact]
@@ -392,9 +403,7 @@ public class OrganizationServiceTests
         var memberId = Guid.NewGuid();
         var orgId = Guid.NewGuid();
 
-        _organizationRepositoryMock
-            .Setup(r => r.GetMemberRoleAsync(ownerId, orgId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(OrgMemberRole.Owner);
+        AsMember(orgId, ownerId, OrgMemberRole.Owner);
 
         // Act
         var result = await _sut.UpdateMemberRoleAsync(orgId, ownerId, memberId, OrgMemberRole.Owner);
@@ -412,9 +421,7 @@ public class OrganizationServiceTests
         var orgId = Guid.NewGuid();
         var ownerMember = new OrganizationMember { UserId = ownerId, Role = OrgMemberRole.Owner };
 
-        _organizationRepositoryMock
-            .Setup(r => r.GetMemberRoleAsync(ownerId, orgId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(OrgMemberRole.Owner);
+        AsMember(orgId, ownerId, OrgMemberRole.Owner);
 
         _organizationRepositoryMock
             .Setup(r => r.GetMemberAsync(orgId, ownerId, It.IsAny<CancellationToken>()))
@@ -440,44 +447,73 @@ public class OrganizationServiceTests
         var memberId = Guid.NewGuid();
         var orgId = Guid.NewGuid();
         var member = new OrganizationMember { UserId = memberId, Role = OrgMemberRole.Member };
+        var owner = new OrganizationMember { UserId = ownerId, Role = OrgMemberRole.Owner, User = new User { Id = ownerId, Name = "Owner" } };
 
-        _organizationRepositoryMock
-            .Setup(r => r.GetMemberRoleAsync(ownerId, orgId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(OrgMemberRole.Owner);
+        AsMember(orgId, ownerId, OrgMemberRole.Owner);
 
         _organizationRepositoryMock
             .Setup(r => r.GetMemberAsync(orgId, memberId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(member);
 
         _organizationRepositoryMock
-            .Setup(r => r.RemoveMemberAsync(orgId, memberId, It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+            .Setup(r => r.GetByIdAsync(orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Organization { Id = orgId, OwnerUserId = ownerId });
+
+        _organizationRepositoryMock
+            .Setup(r => r.GetMemberAsync(orgId, ownerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(owner);
+
+        _organizationRepositoryMock
+            .Setup(r => r.RemoveMemberAsync(orgId, memberId, ownerId, ownerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MemberHandOver.Nothing);
 
         // Act
         var result = await _sut.RemoveMemberAsync(orgId, ownerId, memberId);
 
         // Assert
         result.IsSuccess.Should().BeTrue();
+        result.Value.HandedOverToUserId.Should().Be(ownerId, "with nobody chosen, the owner takes over");
+        _organizationRepositoryMock.Verify(r => r.RemoveMemberAsync(orgId, memberId, ownerId, ownerId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task RemoveMemberAsync_ReturnsNotOwnerError_WhenNonOwnerTriesToRemove()
+    public async Task RemoveMemberAsync_RefusesToHandTheWorkToSomeoneWhoCannotDoIt()
+    {
+        var ownerId = Guid.NewGuid();
+        var memberId = Guid.NewGuid();
+        var viewerId = Guid.NewGuid();
+        var orgId = Guid.NewGuid();
+        AsMember(orgId, ownerId, OrgMemberRole.Owner);
+        _organizationRepositoryMock.Setup(r => r.GetMemberAsync(orgId, memberId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OrganizationMember { UserId = memberId, Role = OrgMemberRole.Member });
+        _organizationRepositoryMock.Setup(r => r.GetByIdAsync(orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Organization { Id = orgId, OwnerUserId = ownerId });
+        _organizationRepositoryMock.Setup(r => r.GetMemberAsync(orgId, viewerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OrganizationMember { UserId = viewerId, Role = OrgMemberRole.Viewer });
+
+        (await _sut.RemoveMemberAsync(orgId, ownerId, memberId, viewerId)).Error.Code.Should().Be("Organization.HandOverReadOnly");
+        (await _sut.RemoveMemberAsync(orgId, ownerId, memberId, memberId)).Error.Code.Should().Be("Organization.HandOverToLeaver");
+        (await _sut.RemoveMemberAsync(orgId, ownerId, memberId, Guid.NewGuid())).Error.Code.Should().Be("Organization.HandOverOutsider");
+        _organizationRepositoryMock.Verify(r => r.RemoveMemberAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never,
+            "nobody is removed when their work has nowhere to go");
+    }
+
+    [Fact]
+    public async Task RemoveMemberAsync_IsRefused_WhenTheRequesterCannotManageTheTeam()
     {
         // Arrange
         var requesterId = Guid.NewGuid();
         var memberId = Guid.NewGuid();
         var orgId = Guid.NewGuid();
 
-        _organizationRepositoryMock
-            .Setup(r => r.GetMemberRoleAsync(requesterId, orgId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(OrgMemberRole.Member);
+        AsMember(orgId, requesterId, OrgMemberRole.Member);
 
         // Act
         var result = await _sut.RemoveMemberAsync(orgId, requesterId, memberId);
 
         // Assert
         result.IsSuccess.Should().BeFalse();
-        result.Error.Code.Should().Be("Organization.NotOwnerOrManager");
+        result.Error.Code.Should().Be("Permission.members.manage");
     }
 
     [Fact]
@@ -488,9 +524,7 @@ public class OrganizationServiceTests
         var orgId = Guid.NewGuid();
         var ownerMember = new OrganizationMember { UserId = ownerId, Role = OrgMemberRole.Owner };
 
-        _organizationRepositoryMock
-            .Setup(r => r.GetMemberRoleAsync(ownerId, orgId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(OrgMemberRole.Owner);
+        AsMember(orgId, ownerId, OrgMemberRole.Owner);
 
         _organizationRepositoryMock
             .Setup(r => r.GetMemberAsync(orgId, ownerId, It.IsAny<CancellationToken>()))
@@ -522,9 +556,7 @@ public class OrganizationServiceTests
             WebhookApiKeyCreatedAtUtc = DateTime.UtcNow
         };
 
-        _organizationRepositoryMock
-            .Setup(r => r.GetMemberRoleAsync(userId, orgId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(OrgMemberRole.Owner);
+        AsMember(orgId, userId, OrgMemberRole.Owner);
 
         _organizationRepositoryMock
             .Setup(r => r.GetByIdAsync(orgId, It.IsAny<CancellationToken>()))
@@ -595,9 +627,7 @@ public class OrganizationServiceTests
         var orgId = Guid.NewGuid();
         var org = new Organization { Id = orgId, Name = "Test Org" };
 
-        _organizationRepositoryMock
-            .Setup(r => r.GetMemberRoleAsync(userId, orgId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(OrgMemberRole.Owner);
+        AsMember(orgId, userId, OrgMemberRole.Owner);
 
         _organizationRepositoryMock
             .Setup(r => r.GetByIdAsync(orgId, It.IsAny<CancellationToken>()))
@@ -620,9 +650,7 @@ public class OrganizationServiceTests
         var orgId = Guid.NewGuid();
         var org = new Organization { Id = orgId, Name = "Test Org", WebhookPassword = "old" };
 
-        _organizationRepositoryMock
-            .Setup(r => r.GetMemberRoleAsync(userId, orgId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(OrgMemberRole.Manager);
+        AsMember(orgId, userId, OrgMemberRole.Manager);
 
         _organizationRepositoryMock
             .Setup(r => r.GetByIdAsync(orgId, It.IsAny<CancellationToken>()))
@@ -639,19 +667,17 @@ public class OrganizationServiceTests
     }
 
     [Fact]
-    public async Task UpdateWebhookPasswordAsync_ReturnsNotOwnerOrManager_WhenMember()
+    public async Task UpdateWebhookPasswordAsync_IsRefused_WhenTheMemberCannotManageSettings()
     {
         var userId = Guid.NewGuid();
         var orgId = Guid.NewGuid();
 
-        _organizationRepositoryMock
-            .Setup(r => r.GetMemberRoleAsync(userId, orgId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(OrgMemberRole.Member);
+        AsMember(orgId, userId, OrgMemberRole.Member);
 
         var result = await _sut.UpdateWebhookPasswordAsync(orgId, userId, "x");
 
         result.IsSuccess.Should().BeFalse();
-        result.Error.Code.Should().Be("Organization.NotOwnerOrManager");
+        result.Error.Code.Should().Be("Permission.settings.manage");
     }
 
     #endregion
@@ -666,9 +692,7 @@ public class OrganizationServiceTests
         var orgId = Guid.NewGuid();
         var org = new Organization { Id = orgId, Name = "Test Org" };
 
-        _organizationRepositoryMock
-            .Setup(r => r.GetMemberRoleAsync(userId, orgId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(OrgMemberRole.Owner);
+        AsMember(orgId, userId, OrgMemberRole.Owner);
 
         _organizationRepositoryMock
             .Setup(r => r.GetByIdAsync(orgId, It.IsAny<CancellationToken>()))
@@ -688,22 +712,20 @@ public class OrganizationServiceTests
     }
 
     [Fact]
-    public async Task GenerateWebhookApiKeyAsync_ReturnsNotOwnerOrManagerError_WhenUserIsMember()
+    public async Task GenerateWebhookApiKeyAsync_IsRefused_WhenTheMemberCannotManageSettings()
     {
         // Arrange
         var userId = Guid.NewGuid();
         var orgId = Guid.NewGuid();
 
-        _organizationRepositoryMock
-            .Setup(r => r.GetMemberRoleAsync(userId, orgId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(OrgMemberRole.Member);
+        AsMember(orgId, userId, OrgMemberRole.Member);
 
         // Act
         var result = await _sut.GenerateWebhookApiKeyAsync(orgId, userId);
 
         // Assert
         result.IsSuccess.Should().BeFalse();
-        result.Error.Code.Should().Be("Organization.NotOwnerOrManager");
+        result.Error.Code.Should().Be("Permission.settings.manage");
     }
 
     #endregion

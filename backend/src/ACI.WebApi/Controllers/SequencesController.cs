@@ -4,6 +4,8 @@ using ACI.Application.Services;
 using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ACI.Domain.Common;
+using ACI.WebApi.Filters;
 
 namespace ACI.WebApi.Controllers;
 
@@ -20,6 +22,7 @@ namespace ACI.WebApi.Controllers;
 [ApiController]
 [Authorize]
 [Route("api/sequences")]
+[Requires(MemberPermissions.EditRecords, WritesOnly = true)]
 public class SequencesController : ControllerBase
 {
     private readonly ISequenceService _sequences;
@@ -103,6 +106,7 @@ public class SequencesController : ControllerBase
         return row == null ? NotFound() : Ok(row);
     }
 
+    [Requires(MemberPermissions.DeleteRecords)]
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {

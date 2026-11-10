@@ -28,7 +28,7 @@ import {
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import { servesDemoData } from '@/app/api/apiClient';
-import { getOrgMembers, isOrgAdmin, type OrgMemberDto } from '@/app/api/organizations';
+import { getOrgMembers, orgCan, PERMISSION, type OrgMemberDto } from '@/app/api/organizations';
 import { getSequences, type Sequence } from '@/app/api/sequences';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
 import {
@@ -53,9 +53,10 @@ export default function Automations() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<AutomationRule | null>(null);
   const org = useOrgOptional()?.currentOrg ?? null;
-  // A rule acts for the whole workspace, so the server lets the owner or a manager
-  // change one. Everyone else sees the rules but isn't offered what would be refused.
-  const canChange = servesDemoData() || isOrgAdmin(org);
+  // A rule acts for the whole workspace, so the server lets whoever manages its settings
+  // (the owner and managers by default) change one. Everyone else sees the rules but
+  // isn't offered what would be refused.
+  const canChange = servesDemoData() || (Boolean(org) && orgCan(org, PERMISSION.ManageSettings));
 
   const load = () => {
     setLoading(true);
@@ -114,7 +115,7 @@ export default function Automations() {
 
   /** On, edit and delete: the same on a card, a row and a table line. */
   const ruleControls = (r: AutomationRule) => canChange && (
-    <WriteOnly>
+    <WriteOnly permission={PERMISSION.ManageSettings}>
       <div className="flex shrink-0 items-center gap-2">
         <Switch checked={r.enabled} onCheckedChange={() => toggle(r)} aria-label="Enabled" />
         <button type="button" onClick={() => { setEditing(r); setEditorOpen(true); }} aria-label={`Edit ${r.name}`} className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700"><Pencil className="h-4 w-4" /></button>
@@ -160,7 +161,7 @@ export default function Automations() {
             title="Automations"
             subtitle="Run actions automatically when something happens in your CRM."
             actions={canChange && (
-              <WriteOnly>
+              <WriteOnly permission={PERMISSION.ManageSettings}>
                 <Button onClick={() => { setEditing(null); setEditorOpen(true); }} className={heroPrimary('amber')}>
                   <Plus className="h-4 w-4" /> New automation
                 </Button>

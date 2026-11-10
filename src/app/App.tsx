@@ -3,10 +3,11 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'rea
 import { Toaster } from 'sonner';
 import SkipLink from '@/app/components/SkipLink';
 import RequireAuth from '@/app/components/RequireAuth';
+import { WorkspaceOutlet } from '@/app/components/WorkspaceOutlet';
 import { ErrorBoundary } from '@/app/components/ErrorBoundary';
 import { PageLoader } from '@/app/components/PageLoader';
 import PageHelp from '@/app/components/PageHelp';
-import { QueryProvider } from '@/app/providers';
+import { QueryProvider, WorkspaceCacheGuard } from '@/app/providers';
 import { OrgProvider, useOrgOptional } from '@/app/contexts/OrgContext';
 import { ThemeProvider } from '@/app/contexts/ThemeContext';
 import { servesDemoData } from '@/app/api/apiClient';
@@ -36,6 +37,8 @@ const Leads = lazy(() => import('@/app/pages/Leads'));
 const LeadDetailPage = lazy(() => import('@/app/pages/LeadDetailPage'));
 const LeadWebhook = lazy(() => import('@/app/pages/LeadWebhook'));
 const LeadImport = lazy(() => import('@/app/pages/LeadImport'));
+const ContactImport = lazy(() => import('@/app/pages/ContactImport'));
+const CompanyImport = lazy(() => import('@/app/pages/CompanyImport'));
 const LeadRouting = lazy(() => import('@/app/pages/LeadRouting'));
 const PublicCapture = lazy(() => import('@/app/pages/PublicCapture'));
 const Unsubscribe = lazy(() => import('@/app/pages/Unsubscribe'));
@@ -94,12 +97,12 @@ function RequireOrgLayout() {
   const location = useLocation();
   const org = useOrgOptional();
   const isOrgPage = location.pathname === '/organizations';
-  if (servesDemoData()) return <Outlet />;
-  if (!org) return <Outlet />;
+  if (servesDemoData()) return <WorkspaceOutlet />;
+  if (!org) return <WorkspaceOutlet />;
   if (org.hasFetched && !org.currentOrgId && !isOrgPage) {
     return <Navigate to="/organizations" replace state={{ from: location.pathname }} />;
   }
-  return <Outlet />;
+  return <WorkspaceOutlet />;
 }
 
 export default function App() {
@@ -111,6 +114,7 @@ export default function App() {
             <PageLoadingProvider>
               <RouteProgress />
             <OrgProvider>
+              <WorkspaceCacheGuard />
               <SkipLink />
               <Toaster position="top-center" richColors closeButton />
               <Routes>
@@ -190,8 +194,10 @@ export default function App() {
                     <Route path="/duplicates" element={<Duplicates />} />
                     <Route path="/audit" element={<AuditLog />} />
                     <Route path="/contacts" element={<Contacts />} />
+                    <Route path="/contacts/import" element={<ContactImport />} />
                     <Route path="/contacts/:id" element={<ContactDetail />} />
                     <Route path="/companies" element={<Companies />} />
+                    <Route path="/companies/import" element={<CompanyImport />} />
                     <Route path="/companies/:id" element={<CompanyDetail />} />
                     <Route path="/team" element={<Team />} />
                     <Route path="/members" element={<Members />} />

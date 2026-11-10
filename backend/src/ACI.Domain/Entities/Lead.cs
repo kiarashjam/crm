@@ -3,7 +3,7 @@ namespace ACI.Domain.Entities;
 /// <summary>
 /// Lead (prospect) owned by a user; optional company link. Status: New, Contacted, Qualified, Lost.
 /// </summary>
-public class Lead : Common.BaseEntity
+public class Lead : Common.BaseEntity, Common.IVersioned
 {
     public Guid UserId { get; set; }
     public Guid? OrganizationId { get; set; }
@@ -56,6 +56,21 @@ public class Lead : Common.BaseEntity
     public Guid? ConvertedToContactId { get; set; }
     public Guid? ConvertedToDealId { get; set; }
     public Guid? ConvertedToCompanyId { get; set; }
+
+    /// <summary>
+    /// When someone deleted the contact this lead was given. Every lead with a name and
+    /// an email gets a person contact automatically; once a person deleted that contact,
+    /// none is made for the lead again, or the delete would be undone the next time
+    /// anyone saved the lead. Converting the lead into a contact clears it, and so does
+    /// linking the lead to a contact someone added again under its email.
+    /// </summary>
+    public DateTime? PersonContactRemovedAtUtc { get; set; }
+
+    /// <summary>The import that created this lead (see <see cref="ImportBatch"/>); null for one made any other way.</summary>
+    public Guid? ImportBatchId { get; set; }
+
+    /// <summary>A new value on every save; an edit made from an older one is refused (see <see cref="Deal.Version"/>).</summary>
+    public Guid Version { get; set; }
 
     public User User { get; set; } = null!;
     public User? UpdatedByUser { get; set; }

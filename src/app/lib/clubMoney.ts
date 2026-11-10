@@ -27,17 +27,19 @@ export function normaliseCurrency(code?: string | null): string {
 }
 
 /**
- * An amount in the club currency, with the currency's own decimals (two for CHF).
+ * An amount in the club currency, with the currency's own decimals (two for CHF),
+ * written for `locale`: the workspace's number format (see useClubMoney), or this
+ * browser's when none is given.
  *
  * A value that rounds to zero shows as zero rather than "-CHF 0.00", and a code Intl
  * does not know falls back to "XYZ 12.50" instead of throwing, so one bad setting
  * cannot blank a page.
  */
-export function formatClubMoney(amount: number, currency: string = DEFAULT_CLUB_CURRENCY): string {
+export function formatClubMoney(amount: number, currency: string = DEFAULT_CLUB_CURRENCY, locale?: string): string {
   const value = Number.isFinite(amount) ? amount : 0;
   const shown = Math.abs(value) < 0.005 ? 0 : value;
   try {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(shown);
+    return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(shown);
   } catch {
     return `${currency} ${shown.toFixed(2)}`;
   }

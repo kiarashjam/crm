@@ -7,7 +7,13 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { getAuthToken, getCurrentUser, isLoggedIn, setSession } from '@/app/lib/auth';
 import type { UserSettings } from '@/app/api/types';
-import { AccountSection } from './AccountSection';
+
+const workspace = vi.hoisted(() => ({ current: null as null | { id: string; name: string; currency?: string } }));
+vi.mock('@/app/contexts/OrgContext', () => ({
+  useOrgOptional: () => (workspace.current ? { currentOrg: workspace.current } : null),
+}));
+
+const { AccountSection } = await import('./AccountSection');
 
 function Landed() {
   return <div data-testid="landed">{useLocation().pathname}</div>;
@@ -23,7 +29,6 @@ function renderSection() {
             <AccountSection
               settings={{ defaultCurrency: 'CHF', defaultFollowUpDays: 3, showActivityStatus: true, allowAnalytics: true } as UserSettings}
               updateSettings={vi.fn()}
-              currencies={[]}
               handleReset={vi.fn()}
             />
           )}
@@ -34,7 +39,10 @@ function renderSection() {
   );
 }
 
-beforeEach(() => localStorage.clear());
+beforeEach(() => {
+  localStorage.clear();
+  workspace.current = null;
+});
 
 describe('Settings > Account > Logout', () => {
   it('ends the session in this browser, then shows the sign-in page', async () => {
@@ -64,5 +72,20 @@ describe('Settings > Account > deleting and exporting', () => {
     expect(screen.queryByText(/permanently deleted/i)).toBeNull();
     expect(screen.getByText(/cannot delete an account from this page yet/i)).toBeInTheDocument();
     expect(screen.getByText(/Export CSV on the Leads, Contacts/)).toBeInTheDocument();
+  });
+});
+
+describe('Settings > Account > the currency of new deals', () => {
+  // A personal "Default Currency" was offered and saved here, and nothing read it: new
+  // deals are priced in the workspace's currency, which the owner or a manager sets.
+  it("shows the workspace's currency and where it is set, instead of a choice that did nothing", () => {
+    workspace.current = { id: 'org-1', name: 'Pavillon 46', currency: 'EUR' };
+    renderSection();
+
+    expect(screen.queryByLabelText(/default currency/i)).toBeNull();
+    expect(screen.queryByRole('combobox')).toBeNull();
+    expect(screen.getByText('Currency of new deals')).toBeInTheDocument();
+    expect(screen.getByText('EUR')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Team' })).toHaveAttribute('href', '/settings?tab=organization');
   });
 });

@@ -27,6 +27,12 @@ public interface ILeadService
     Task<IReadOnlyList<LeadDto>> GetLeadsAsync(Guid userId, Guid? organizationId, CancellationToken ct = default);
 
     /// <summary>
+    /// Leads not converted yet, the caller's own (see WorkScope) or the team's: at most
+    /// <paramref name="take"/>, and whether there were more.
+    /// </summary>
+    Task<(IReadOnlyList<LeadDto> Items, bool More)> GetOpenWorkAsync(Guid userId, Guid? organizationId, bool mineOnly, int take, CancellationToken ct = default);
+
+    /// <summary>
     /// Searches leads by name, email, or company.
     /// </summary>
     Task<IReadOnlyList<LeadDto>> SearchAsync(Guid userId, Guid? organizationId, string query, CancellationToken ct = default, int? take = null);

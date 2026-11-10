@@ -14,6 +14,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { withQueries } from '@/test/queryWrapper';
 import type { Organization } from '@/app/api/organizations';
 
 /* ----------------------------------------------------------------- test doubles */
@@ -94,14 +95,15 @@ function Probe() {
 }
 
 async function renderPage(state?: Record<string, unknown>) {
-  const result = render(
+  // The page carries the assistant's panel, which reads through the app's query cache.
+  const result = render(withQueries(
     <MemoryRouter initialEntries={[{ pathname: '/organizations', state }]}>
       <Routes>
         <Route path="/organizations" element={<Organizations />} />
         <Route path="*" element={<Probe />} />
       </Routes>
     </MemoryRouter>,
-  );
+  ));
   // The counts/join-requests effect settles a tick after mount. Flushing it here
   // rather than letting it land mid-assertion keeps React's act() warning
   // meaningful instead of turning it into background noise in every test.

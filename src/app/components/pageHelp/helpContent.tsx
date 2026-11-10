@@ -205,7 +205,7 @@ const HELP: Record<string, HelpEntry> = {
     emoji: '🤖', gradient: 'from-orange-500 to-amber-500',
     title: 'Ask Claude', tagline: 'Connect one organization, then ask about its records.',
     features: [
-      { emoji: '1️⃣', title: 'Create the key', body: 'An owner or manager generates the organization key on this page.' },
+      { emoji: '1️⃣', title: 'Create the key', body: 'Someone who manages the workspace\'s settings (the owner and managers by default) generates the organization key on this page.' },
       { emoji: '2️⃣', title: 'Paste the connector', body: 'In Claude, add a connector with the name, address, and Authorization header from this page.' },
       { emoji: '👀', title: 'Read only', body: 'Claude can look up leads, contacts, deals, and tasks. It cannot change them.' },
     ],
@@ -222,8 +222,28 @@ const HELP: Record<string, HelpEntry> = {
     emoji: '📥', gradient: 'from-orange-500 to-amber-500',
     title: 'Import leads', tagline: 'Bring in lots of leads from a spreadsheet.',
     features: [
-      { emoji: '📄', title: 'Upload a CSV', body: 'Drop in your file to get started.' },
-      { emoji: '🔀', title: 'Match columns', body: 'Line up your columns with lead fields.' },
+      { emoji: '📄', title: 'Upload a CSV', body: 'Semicolons, commas or tabs, as Excel saves it.' },
+      { emoji: '🔀', title: 'Match columns', body: 'Line up your columns with lead fields, company and custom fields included.' },
+      { emoji: '🔍', title: 'Check first', body: 'See what every row will do before anything is written.' },
+      { emoji: '↩️', title: 'Undo', body: 'Remove what an import added, as long as nobody has worked on it since.' },
+    ],
+  },
+  contactImport: {
+    emoji: '📥', gradient: 'from-emerald-500 to-teal-500',
+    title: 'Import contacts', tagline: 'Bring in a spreadsheet of people.',
+    features: [
+      { emoji: '🔀', title: 'Match columns', body: 'Line up your columns with contact fields, company and custom fields included.' },
+      { emoji: '👥', title: 'No duplicates', body: 'Someone already here, by email or by name and phone, is skipped or updated.' },
+      { emoji: '↩️', title: 'Undo', body: 'Remove what an import added, as long as nobody has worked on it since.' },
+    ],
+  },
+  companyImport: {
+    emoji: '📥', gradient: 'from-violet-500 to-purple-500',
+    title: 'Import companies', tagline: 'Bring in a spreadsheet of companies.',
+    features: [
+      { emoji: '🔀', title: 'Match columns', body: 'Line up your columns with company fields and custom fields.' },
+      { emoji: '🏢', title: 'No duplicates', body: 'A company already here, by name or domain, is skipped or updated.' },
+      { emoji: '↩️', title: 'Undo', body: 'Remove what an import added, as long as nobody has worked on it since.' },
     ],
   },
 };
@@ -241,6 +261,8 @@ const DEFAULT_HELP: HelpEntry = {
 export function resolvePageHelp(pathname: string): HelpEntry {
   if (pathname === '/leads/webhook') return HELP.leadWebhook ?? DEFAULT_HELP;
   if (pathname === '/leads/import') return HELP.leadImport ?? DEFAULT_HELP;
+  if (pathname === '/contacts/import') return HELP.contactImport ?? DEFAULT_HELP;
+  if (pathname === '/companies/import') return HELP.companyImport ?? DEFAULT_HELP;
   if (/^\/leads\/[^/]+$/.test(pathname)) return HELP.leadDetail ?? DEFAULT_HELP;
   if (/^\/deals\/[^/]+$/.test(pathname)) return HELP.dealDetail ?? DEFAULT_HELP;
   if (/^\/contacts\/[^/]+$/.test(pathname)) return HELP.contacts ?? DEFAULT_HELP;

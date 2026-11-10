@@ -1,61 +1,35 @@
 using System.Reflection;
 using ACI.Domain.Common;
+using ACI.Infrastructure.Migrations;
 using ACI.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations.Operations;
 
 namespace ACI.WebApi.Tests;
 
 /// <summary>
-/// Whether the schema this application ACTUALLY applies covers the model it maps.
+/// Whether the migrations, the schema's only source since the baseline, say what the model says.
 /// </summary>
 /// <remarks>
 /// <para>
-/// This application applies its schema two different ways, and a table only exists
-/// in production if one of them creates it: EF's <c>MigrateAsync</c>, and the block
-/// of hand-written idempotent DDL in <c>Program.cs</c>.
+/// Until the baseline migration, a database got its schema from whichever migrations EF
+/// found and from hand-written DDL in Program.cs. EF finds a migration by the
+/// <c>[Migration]</c> attribute in its <c>.Designer.cs</c>, so two migrations that had
+/// none (AddNotifications and AlignLeadStatusVocabulary) compiled, sat in the folder and
+/// never ran; and a column added to the model with DDL but no migration existed only
+/// where that DDL had run. Now the migrations make the whole schema (SchemaMigrationTests
+/// proves it on SQL Server), so what is checked here is that they cannot fall behind:
+/// none is left undiscovered, and the model has no change that no migration makes.
 /// </para>
 /// <para>
-/// The trap is that EF discovers migrations by looking for the <c>[Migration]</c>
-/// attribute, which lives in the generated <c>.Designer.cs</c> file — not in the
-/// migration class itself. A migration added without its designer compiles, reads
-/// correctly, sits in the Migrations folder, and is never run. Nothing anywhere
-/// says so. Two migrations in this repository were in exactly that state:
-/// </para>
-/// <list type="bullet">
-/// <item><description>
-/// <c>AddNotifications</c> — so the Notifications table did not exist at all, while
-/// <c>AppDbContext</c> had always exposed <c>DbSet&lt;Notification&gt;</c>. Every
-/// read of it failed on "Invalid object name".
-/// </description></item>
-/// <item><description>
-/// <c>AlignLeadStatusVocabulary</c> — so established organisations kept the retired
-/// status labels, the pipeline could not resolve a status against them, and leads
-/// stayed on "New" however much work was logged against them.
-/// </description></item>
-/// </list>
-/// <para>
-/// Both are now applied from <c>Program.cs</c>. These tests are the tripwire for
-/// the next one, and they are written against what EF's own discovery returns
-/// rather than against a list of file names, so they cannot be satisfied by a
-/// migration that merely exists.
+/// Everything here is worked out offline from EF's own services; no database is contacted.
 /// </para>
 /// </remarks>
 public class SchemaCoverageTests
 {
-    /// <summary>
-    /// Migrations that EF does NOT discover, whose effect is applied by the raw DDL
-    /// in Program.cs instead. Deliberate, and listed here so that a migration
-    /// becoming undiscovered by accident goes red rather than going silent.
-    /// </summary>
-    private static readonly string[] AppliedByProgramInstead =
-    {
-        "AddNotifications",
-        "AlignLeadStatusVocabulary",
-    };
-
     private static AppDbContext NewContext()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
@@ -64,7 +38,7 @@ public class SchemaCoverageTests
         return new AppDbContext(options);
     }
 
-    private static string ProgramDdl()
+    private static string ProgramSource()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null && !Directory.Exists(Path.Combine(dir.FullName, "backend")))
@@ -77,108 +51,102 @@ public class SchemaCoverageTests
         return File.ReadAllText(path);
     }
 
-    /// <summary>
-    /// The SQL MigrateAsync would run, from EF's own discovery — so an undiscovered
-    /// migration is absent here exactly as it is absent in production. Generated
-    /// offline; no database is contacted.
-    /// </summary>
-    /// <remarks>
-    /// Deliberately NOT <c>Database.GenerateCreateScript()</c>. That builds DDL from
-    /// the current model, so it contains a CREATE TABLE for every mapped entity
-    /// whether or not anything creates it — which made the first version of this
-    /// guard pass unconditionally, including for the very table whose absence
-    /// prompted it. <see cref="IMigrator"/> goes through the migrations assembly,
-    /// which is the same path MigrateAsync takes.
-    /// </remarks>
-    private static string DiscoveredMigrationSql()
-    {
-        using var db = NewContext();
-        return db.GetService<IMigrator>().GenerateScript(
-            fromMigration: Migration.InitialDatabase,
-            toMigration: null,
-            options: MigrationsSqlGenerationOptions.Default);
-    }
-
     [Fact]
-    public void EveryMigrationIsEitherDiscoveredByEfOrKnownToBeAppliedElsewhere()
+    public void EveryMigrationIsDiscoveredByEf()
     {
         using var db = NewContext();
-        var discovered = db.GetService<IMigrationsAssembly>().Migrations.Keys
-            .Select(id => id.Length > 15 ? id[15..] : id) // strip the timestamp prefix
-            .ToHashSet(StringComparer.Ordinal);
+        var discovered = db.GetService<IMigrationsAssembly>().Migrations.Values
+            .Select(type => type.AsType())
+            .ToHashSet();
 
         var declared = typeof(AppDbContext).Assembly.GetTypes()
             .Where(t => t.IsSubclassOf(typeof(Migration)) && !t.IsAbstract)
-            .Select(t => t.Name)
             .ToArray();
 
-        declared.Should().NotBeEmpty("the Infrastructure assembly should contain migrations");
-
-        var undiscovered = declared.Where(name => !discovered.Contains(name)).ToArray();
-
-        undiscovered.Should().BeEquivalentTo(AppliedByProgramInstead,
-            "a migration EF cannot see never runs, and nothing reports that. If a name has "
-            + "appeared here, it is missing its .Designer.cs and is dead code: either generate "
-            + "the designer, or apply its effect from the DDL in Program.cs and list it in "
-            + "AppliedByProgramInstead.");
+        declared.Should().NotBeEmpty("the Infrastructure assembly holds the migrations");
+        declared.Where(t => !discovered.Contains(t)).Select(t => t.Name).Should().BeEmpty(
+            "a migration EF cannot see never runs, and nothing reports it. One listed here is missing its "
+            + ".Designer.cs (the [Migration] and [DbContext] attributes): add it with `dotnet ef migrations add`, "
+            + "not by hand");
     }
 
     [Fact]
-    public void EveryTableTheModelMapsIsCreatedBySomethingThatActuallyRuns()
+    public void TheBaselineIsTheFirstMigration()
     {
+        // A database made before the baseline is recorded at it (SchemaBaseline), so anything
+        // ordered before it would never run there.
         using var db = NewContext();
+        db.GetService<IMigrationsAssembly>().Migrations.Keys.First().Should().Be(SchemaBaseline.MigrationId);
+        SchemaBaseline.MigrationId.Should().EndWith("_Baseline");
+    }
+
+    [Fact]
+    public void TheModelHasNoChangeThatNoMigrationMakes()
+    {
+        // What `dotnet ef migrations add` would put in a new migration right now: the
+        // difference between the model and the snapshot the last migration left. Anything
+        // here is a change that reaches no database, because the start-up DDL no longer
+        // adds to the schema.
+        using var db = NewContext();
+        var snapshot = db.GetService<IMigrationsAssembly>().ModelSnapshot?.Model;
+        snapshot.Should().NotBeNull("the migrations folder holds the model snapshot");
+        if (snapshot is IMutableModel mutable) snapshot = mutable.FinalizeModel();
+        snapshot = db.GetService<IModelRuntimeInitializer>().Initialize(snapshot!, designTime: true, validationLogger: null);
+
+        var differences = db.GetService<IMigrationsModelDiffer>().GetDifferences(
+            snapshot.GetRelationalModel(), db.GetService<IDesignTimeModel>().Model.GetRelationalModel());
+
+        differences.Select(Describe).Should().BeEmpty(
+            "every change to the model needs a migration: from backend/, run "
+            + "dotnet ef migrations add <Name> -p src/ACI.Infrastructure -s src/ACI.Infrastructure -o Migrations");
+    }
+
+    private static string Describe(MigrationOperation operation) => operation switch
+    {
+        AddColumnOperation c => $"add column {c.Table}.{c.Name}",
+        DropColumnOperation c => $"drop column {c.Table}.{c.Name}",
+        AlterColumnOperation c => $"alter column {c.Table}.{c.Name}",
+        CreateTableOperation t => $"create table {t.Name}",
+        DropTableOperation t => $"drop table {t.Name}",
+        CreateIndexOperation i => $"create index {i.Name} on {i.Table}",
+        DropIndexOperation i => $"drop index {i.Name} on {i.Table}",
+        AddForeignKeyOperation f => $"add foreign key {f.Name} on {f.Table}",
+        DropForeignKeyOperation f => $"drop foreign key {f.Name} on {f.Table}",
+        _ => operation.GetType().Name,
+    };
+
+    [Fact]
+    public void EveryTableTheModelMapsIsCreatedByTheMigrations()
+    {
+        // The SQL MigrateAsync would run on an empty database, from EF's own discovery: an
+        // undiscovered migration is missing here exactly as it would be in production.
+        // Deliberately not Database.GenerateCreateScript(), which builds DDL from the
+        // current model and so contains every table whether or not a migration makes it.
+        using var db = NewContext();
+        var migrationSql = db.GetService<IMigrator>().GenerateScript(
+            fromMigration: Migration.InitialDatabase,
+            toMigration: null,
+            options: MigrationsSqlGenerationOptions.Default);
+
         var tables = db.Model.GetEntityTypes()
             .Select(e => e.GetTableName())
             .Where(name => !string.IsNullOrEmpty(name))
             .Select(name => name!)
             .Distinct(StringComparer.Ordinal)
-            .OrderBy(name => name, StringComparer.Ordinal)
             .ToArray();
-
         tables.Should().Contain("Notifications", "the model maps it, so it is in scope for this test");
 
-        var migrationSql = DiscoveredMigrationSql();
-        var ddl = ProgramDdl();
-
-        var missing = tables.Where(table =>
-                !migrationSql.Contains($"CREATE TABLE [{table}]", StringComparison.Ordinal)
-                && !ddl.Contains($"CREATE TABLE [{table}]", StringComparison.Ordinal))
-            .ToArray();
-
-        missing.Should().BeEmpty(
-            "a table the model maps but nothing creates fails every query against it at runtime, "
-            + "with no sign of trouble at build or boot time");
+        tables.Where(table => !migrationSql.Contains($"CREATE TABLE [{table}]", StringComparison.Ordinal))
+            .Should().BeEmpty("a table the model maps but no migration creates fails every query against it");
     }
 
     [Fact]
-    public void EveryIndexOnATableTheDdlCreatesIsCreatedByTheDdlToo()
+    public void TheBaselineRefusesToBeRolledBack()
     {
-        // The same gap one level down. #57's tables were created by hand-written DDL
-        // without the indexes their EF configuration declares, so the follow-up
-        // runner scanned OutreachEnrollments whole every minute on every instance,
-        // and each public form submission scanned for its token. A table the DDL
-        // creates gets its indexes from the DDL or not at all.
-        using var db = NewContext();
-        var migrationSql = DiscoveredMigrationSql();
-        var ddl = ProgramDdl();
-
-        var missing = new List<string>();
-        foreach (var entity in db.Model.GetEntityTypes())
-        {
-            var table = entity.GetTableName();
-            if (string.IsNullOrEmpty(table)) continue;
-            // Only tables this application creates itself; a migration-created table
-            // gets its indexes from the migration.
-            if (!ddl.Contains($"CREATE TABLE [{table}]", StringComparison.Ordinal)) continue;
-            if (migrationSql.Contains($"CREATE TABLE [{table}]", StringComparison.Ordinal)) continue;
-            foreach (var index in entity.GetIndexes())
-            {
-                var name = index.GetDatabaseName();
-                if (name != null && !ddl.Contains(name, StringComparison.Ordinal)) missing.Add($"{table}: {name}");
-            }
-        }
-
-        missing.Should().BeEmpty("an index the model declares but nothing creates does not exist in production");
+        // Its generated Down dropped every table. On a database recorded at the baseline
+        // rather than made by it, those are the tables people's records are in.
+        var rollBack = () => new Baseline().DownOperations;
+        rollBack.Should().Throw<NotSupportedException>();
     }
 
     [Fact]
@@ -186,7 +154,7 @@ public class SchemaCoverageTests
     {
         // Not a string search for the SQL — the point is that Program.cs runs the one
         // generator (once, through DataFixes), so it cannot hold a stale copy of the vocabulary.
-        ProgramDdl().Should().Contain("DataFixes.AlignLeadStatusVocabularySql",
+        ProgramSource().Should().Contain("DataFixes.AlignLeadStatusVocabularySql",
             "the alignment is what moves established organisations onto the agreed stages");
         DataFixes.AlignLeadStatusVocabularySql.Should().Contain(LeadStatusVocabulary.AlignmentSql());
     }

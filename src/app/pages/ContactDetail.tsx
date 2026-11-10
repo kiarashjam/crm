@@ -19,6 +19,8 @@ import ReferredLeadsCard from '@/app/components/ReferredLeadsCard';
 import RelationshipsCard from '@/app/components/RelationshipsCard';
 import { useOrg } from '@/app/contexts/OrgContext';
 import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
+import { servesDemoData } from '@/app/api/apiClient';
+import { markNotSame } from '@/app/api/dedupe';
 import {
   getActivitiesByContact, getTasksByContact,
   getDealsPaged, updateContact, deleteContact, archiveContact,
@@ -44,20 +46,19 @@ import {
   SelectValue,
 } from '@/app/components/ui/select';
 import { cn } from '@/app/components/ui/utils';
-import { currencyOf, formatDealSum, formatMoney, parseAmount } from '@/app/lib/money';
+import { useMoney } from '@/app/hooks/useMoney';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroSecondary } from '@/app/components/PageHero';
 import { RecordAvatar, RecordCard } from '@/app/components/RecordCard';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
-import { ActivityLogForm, ActivityRow } from '@/app/components/RecordActivity';
-
-/** A deal's amount in its own currency, however the value was typed. */
-function dealAmount(deal: Deal): string {
-  return formatMoney(parseAmount(deal.value), currencyOf(deal));
-}
+import { ActivityLogForm, ActivityRow, withActivity, type ActivityDraft } from '@/app/components/RecordActivity';
+import { factsPayload } from '@/app/lib/activityFacts';
+import { showEditConflict } from '@/app/lib/editConflict';
+import { orgCan, PERMISSION } from '@/app/api/organizations';
 
 export default function ContactDetail() {
+  const money = useMoney();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [contact, setContact] = useState<Contact | null>(null);
@@ -66,7 +67,7 @@ export default function ContactDetail() {
   usePageLoading(loading);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
-  const [activityForm, setActivityForm] = useState({ type: 'note', subject: '', body: '' });
+  const [activityForm, setActivityForm] = useState<ActivityDraft>({ type: 'note', subject: '', body: '' });
   const [savingActivity, setSavingActivity] = useState(false);
   const [contactTasks, setContactTasks] = useState<TaskItem[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
@@ -85,8 +86,11 @@ export default function ContactDetail() {
   const [lookalike, setLookalike] = useState<ContactLookalike | null>(null);
   const [merging, setMerging] = useState(false);
   const [dismissedLookalike, setDismissedLookalike] = useState(false);
+  const [keepingApart, setKeepingApart] = useState(false);
   const [recordRevision, setRecordRevision] = useState(0);
-  const { isReadOnly } = useOrg();
+  const { currentOrg, isReadOnly: viewOnly } = useOrg();
+  // Working a contact takes records.edit: finance, the front desk and read-only members see it.
+  const isReadOnly = viewOnly || !orgCan(currentOrg, PERMISSION.EditRecords);
 
   useEffect(() => {
     if (!id) return;
@@ -144,17 +148,19 @@ export default function ContactDetail() {
       .finally(() => setDealsLoading(false));
   }, [id, recordRevision]);
 
+  const seedEditForm = (c: Contact) => setEditForm({
+    name: c.name,
+    email: c.email,
+    phone: c.phone ?? '',
+    jobTitle: c.jobTitle ?? '',
+    description: c.description ?? '',
+    doNotContact: c.doNotContact ?? false,
+    preferredContactMethod: c.preferredContactMethod ?? '',
+  });
+
   const openEdit = () => {
     if (!contact) return;
-    setEditForm({
-      name: contact.name,
-      email: contact.email,
-      phone: contact.phone ?? '',
-      jobTitle: contact.jobTitle ?? '',
-      description: contact.description ?? '',
-      doNotContact: contact.doNotContact ?? false,
-      preferredContactMethod: contact.preferredContactMethod ?? '',
-    });
+    seedEditForm(contact);
     setEditOpen(true);
   };
 
@@ -166,19 +172,33 @@ export default function ContactDetail() {
     }
     setSaving(true);
     try {
-      const { contact: updated, error } = await updateContact(contact.id, {
+      // An emptied field is sent as null, which takes it off; the version makes the save
+      // refused, rather than written over, when someone saved the contact since.
+      const { contact: updated, error, conflict } = await updateContact(contact.id, {
         name: editForm.name.trim(),
         email: editForm.email.trim(),
-        phone: editForm.phone.trim() || undefined,
-        jobTitle: editForm.jobTitle.trim() || undefined,
-        description: editForm.description.trim() || undefined,
+        phone: editForm.phone.trim() || null,
+        jobTitle: editForm.jobTitle.trim() || null,
+        description: editForm.description.trim() || null,
         doNotContact: editForm.doNotContact,
-        preferredContactMethod: editForm.preferredContactMethod.trim() || undefined,
+        preferredContactMethod: editForm.preferredContactMethod.trim() || null,
+        version: contact.version,
       });
       if (updated) {
         setContact(updated);
         setEditOpen(false);
         toast.success('Contact updated');
+      } else if (conflict) {
+        const contactId = contact.id;
+        showEditConflict(error, () => {
+          void getContactById(contactId)
+            .then((fresh) => {
+              if (!fresh) return;
+              setContact(fresh);
+              seedEditForm(fresh);
+            })
+            .catch(() => toast.error('Failed to load the contact'));
+        });
       } else if (error) {
         toast.error(error);
       }
@@ -202,14 +222,16 @@ export default function ContactDetail() {
         subject: activityForm.subject.trim(),
         body: activityForm.body.trim() || undefined,
         contactId: id,
+        ...factsPayload(activityForm.type, activityForm.facts),
       });
       if (activity) {
-        setActivities((prev) => [activity, ...prev]);
+        setActivities((prev) => withActivity(prev, activity));
         setActivityForm({ type: 'note', subject: '', body: '' });
         toast.success('Activity logged');
       }
-    } catch {
-      toast.error('Failed to log activity');
+    } catch (err) {
+      // The server says what it refused, a time in the future say, rather than only that it failed.
+      toast.error(err instanceof Error && err.message ? err.message : 'Failed to log activity');
     } finally {
       setSavingActivity(false);
     }
@@ -243,8 +265,9 @@ export default function ContactDetail() {
         const refreshed = await getContactById(contact.id);
         if (refreshed) setContact(refreshed);
       }
-    } catch {
-      toast.error('Failed to update archive status');
+    } catch (err) {
+      // The server says why, e.g. that an active contact already uses this email.
+      toast.error(err instanceof Error && err.message ? err.message : 'Failed to update archive status');
     }
   };
 
@@ -279,7 +302,7 @@ export default function ContactDetail() {
   const createdLabel = contact.createdAtUtc
     ? new Date(contact.createdAtUtc).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
     : null;
-  const dealsHint = deals.length > 0 ? `${formatDealSum(deals)} in all` : 'none yet';
+  const dealsHint = deals.length > 0 ? `${money.formatDeals(deals)} in all` : 'none yet';
   const lastActivityHint = activities[0]
     ? `last ${new Date(activities[0].createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
     : 'none yet';
@@ -345,7 +368,7 @@ export default function ContactDetail() {
                     {contact.isArchived ? 'Unarchive' : 'Archive'}
                   </Button>
                 </WriteOnly>
-                <WriteOnly>
+                <WriteOnly permission={[PERMISSION.EditRecords, PERMISSION.DeleteRecords]} all>
                   <Button
                     variant="outline"
                     onClick={() => setDeleteOpen(true)}
@@ -418,8 +441,32 @@ export default function ContactDetail() {
                     {merging ? 'Merging…' : 'Yes, merge into this contact'}
                   </Button>
                 </WriteOnly>
-                <Button type="button" variant="outline" className="h-11" onClick={() => setDismissedLookalike(true)}>
-                  No, keep them separate
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11"
+                  disabled={keepingApart}
+                  onClick={async () => {
+                    if (!contact || isReadOnly || servesDemoData()) {
+                      // Only this visit: a Viewer cannot decide for the team, and demo data stays here.
+                      setDismissedLookalike(true);
+                      return;
+                    }
+                    // Decided for the whole team, so nobody is asked about this pair again,
+                    // and the next lookalike, if there is one, is asked about instead.
+                    setKeepingApart(true);
+                    try {
+                      await markNotSame('contacts', [contact.id, lookalike.id]);
+                      const next = await getContactLookalikes(contact.id).catch(() => []);
+                      setLookalike(next.find((l) => l.id !== lookalike.id) ?? null);
+                    } catch (err) {
+                      toast.error(err instanceof Error && err.message ? err.message : 'That could not be saved.');
+                    } finally {
+                      setKeepingApart(false);
+                    }
+                  }}
+                >
+                  {keepingApart ? 'Saving…' : 'No, keep them separate'}
                 </Button>
               </div>
             </section>
@@ -574,7 +621,7 @@ export default function ContactDetail() {
                             </p>
                             <p className="text-xs text-slate-500">{deal.dealStageName || deal.stage || 'No stage'}</p>
                           </div>
-                          <p className="text-sm font-bold text-emerald-700">{dealAmount(deal)}</p>
+                          <p className="text-sm font-bold text-emerald-700">{money.formatDeal(deal)}</p>
                         </Link>
                       </StaggerItem>
                     ))}

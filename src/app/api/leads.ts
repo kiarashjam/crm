@@ -1,10 +1,11 @@
 import type { Lead, PagedResult, PaginationParams } from './types';
 import type { ContactRelationship } from './relationships';
 import { mockLeads } from './mockData';
-import { servesDemoData, authFetchJson, authFetch } from './apiClient';
-import { createMockStore, mockId } from './mockStore';
+import { servesDemoData, authFetchJson, authFetch, type RequestOptions } from './apiClient';
+import { createMockStore, demoPatch, mockId } from './mockStore';
 import { ensureDemoPersonContacts, getContacts } from './contacts';
 import { QUALIFIED_OR_BEYOND, statusIn } from '@/app/pages/leads/leadStatusSync';
+import { applyPipelinePatch } from '@/app/pages/leads/leadPipeline';
 
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -16,7 +17,7 @@ const leadStore = createMockStore<Lead>({
   idOf: (l) => l.id,
 });
 
-type LeadRaw = {
+export type LeadRaw = {
   id: string;
   name: string;
   email: string;
@@ -52,9 +53,10 @@ type LeadRaw = {
   referredByContactId?: string | null;
   referredByContactName?: string | null;
   relationships?: ContactRelationship[] | null;
+  version?: string | null;
 };
 
-function mapLead(d: LeadRaw): Lead {
+export function mapLead(d: LeadRaw): Lead {
   return {
     id: d.id,
     name: d.name,
@@ -91,6 +93,7 @@ function mapLead(d: LeadRaw): Lead {
     referredByContactId: d.referredByContactId ?? undefined,
     referredByContactName: d.referredByContactName ?? undefined,
     relationships: d.relationships?.length ? d.relationships : undefined,
+    version: d.version ?? undefined,
   };
 }
 
@@ -178,7 +181,7 @@ function applyMockLeadFilters(leads: Lead[], params: LeadListParams): Lead[] {
 }
 
 /** Get leads with pagination, search, filters, and sorting. */
-export async function getLeadsPaged(params: LeadListParams = {}): Promise<PagedResult<Lead>> {
+export async function getLeadsPaged(params: LeadListParams = {}, req?: RequestOptions): Promise<PagedResult<Lead>> {
   const {
     page = 1,
     pageSize = 20,
@@ -202,7 +205,7 @@ export async function getLeadsPaged(params: LeadListParams = {}): Promise<PagedR
     if (source && source !== 'all') queryParams.set('source', source);
     if (converted && converted !== 'all') queryParams.set('converted', converted);
 
-    const result = await authFetchJson<ApiPagedResult<LeadRaw>>(`/api/leads?${queryParams}`);
+    const result = await authFetchJson<ApiPagedResult<LeadRaw>>(`/api/leads?${queryParams}`, req);
     return {
       items: Array.isArray(result?.items) ? result.items.map(mapLead) : [],
       totalCount: result?.totalCount ?? 0,
@@ -234,7 +237,7 @@ export async function getLeadsPaged(params: LeadListParams = {}): Promise<PagedR
 }
 
 /** Aggregate lead statistics for the current organization. */
-export async function getLeadStats(): Promise<LeadStats> {
+export async function getLeadStats(req?: RequestOptions): Promise<LeadStats> {
   if (!servesDemoData()) {
     const s = await authFetchJson<{
       total: number;
@@ -246,7 +249,7 @@ export async function getLeadStats(): Promise<LeadStats> {
       conversionRate: number;
       thisWeek: number;
       hotLeads: number;
-    }>('/api/leads/stats');
+    }>('/api/leads/stats', req);
     return {
       total: s?.total ?? 0,
       converted: s?.converted ?? 0,
@@ -298,9 +301,9 @@ export async function getLeadById(id: string): Promise<Lead | null> {
 }
 
 /** Get all leads (real API or mock) - non-paginated for export and legacy callers. */
-export async function getLeads(): Promise<Lead[]> {
+export async function getLeads(req?: RequestOptions): Promise<Lead[]> {
   if (!servesDemoData()) {
-    const list = await authFetchJson<LeadRaw[]>('/api/leads/all');
+    const list = await authFetchJson<LeadRaw[]>('/api/leads/all', req);
     return Array.isArray(list) ? list.map(mapLead) : [];
   }
   await delay(300);
@@ -381,22 +384,30 @@ export async function createLead(params: {
   return saved;
 }
 
-/** Update a lead. */
+/**
+ * Update a lead. A field left out is kept; the phone, company, description and lifecycle
+ * stage are taken off when sent as null. `version` is the lead as the edit read it: with
+ * it, a save made after someone else saved the lead is refused (409, see
+ * lib/editConflict.ts). The edit dialogs send it; a change to one field, or a pipeline
+ * step, does not.
+ */
 export async function updateLead(
   id: string,
   params: Partial<{
     name: string;
     email: string;
-    phone: string;
-    companyId: string;
+    phone: string | null;
+    companyId: string | null;
     source: string;
     status: string;
     leadSourceId: string;
     leadStatusId: string;
     leadScore: number;
     lastContactedAt: string;
-    description: string;
-    lifecycleStage: string;
+    description: string | null;
+    lifecycleStage: string | null;
+    version: string;
+    /** The steps to change, which the server merges into the stored pipeline (a step sent as null is taken off). See pipelinePatch. */
     pipelineState: string;
   }>,
 ): Promise<Lead | null> {
@@ -408,7 +419,14 @@ export async function updateLead(
     return lead ? mapLead(lead) : null;
   }
   await delay(200);
-  const updated = leadStore.update(id, params as Partial<Lead>);
+  // Merged as the server merges it: what is sent is the change, not the pipeline.
+  const changes = params.pipelineState === undefined ? params : {
+    ...params,
+    pipelineState: params.pipelineState
+      ? applyPipelinePatch(leadStore.byId(id)?.pipelineState, params.pipelineState)
+      : undefined,
+  };
+  const updated = leadStore.update(id, demoPatch<Lead>(changes));
   ensureDemoPersonContacts();
   return updated;
 }
@@ -481,7 +499,12 @@ export interface ConvertLeadRequest {
   createContact: boolean;
   createDeal: boolean;
   dealName?: string;
+  /** The new deal's amount, to the cent. */
+  dealAmount?: number;
+  /** As text, for servers from before amounts were numbers: plain digits only. */
   dealValue?: string;
+  /** ISO code; left out, the deal is priced in the workspace's currency. */
+  dealCurrency?: string;
   dealStage?: string;
   pipelineId?: string;
   dealStageId?: string;

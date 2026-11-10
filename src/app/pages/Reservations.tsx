@@ -60,6 +60,8 @@ import {
   InitialsAvatar, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
   type RecordColumn,
 } from '@/app/components/views';
+import { WriteOnly } from '@/app/components/WriteOnly';
+import { PERMISSION } from '@/app/api/organizations';
 
 const KIND_ICON: Record<ResourceKind, React.ElementType> = {
   Dining: Coffee,
@@ -282,39 +284,46 @@ export default function Reservations() {
   /** Status, edit and delete: the same on a row, a card and a table line. */
   const reservationActions = (r: Reservation) => (
     <div className="flex items-center gap-2">
-      <Select value={r.status} onValueChange={(v) => setStatus(r, v as ReservationStatus)}>
-        <SelectTrigger className="h-9 w-36 text-xs" aria-label={`Status of ${r.memberName}'s booking`}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {RESERVATION_STATUSES.map((s) => (
-            <SelectItem key={s} value={s}>
-              {s}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <button
-        type="button"
-        onClick={() => openEdit(r)}
-        className="rounded p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-        aria-label="Edit reservation"
-      >
-        <Pencil className="h-4 w-4" />
-      </button>
-      <button
-        type="button"
-        onClick={() => remove(r)}
-        disabled={deletingId === r.id}
-        className="rounded p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
-        aria-label="Delete reservation"
-      >
-        {deletingId === r.id ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <Trash2 className="h-4 w-4" />
-        )}
-      </button>
+      {/* Changing a booking's status is the front desk's; everyone else reads it on the badge. */}
+      <WriteOnly permission={PERMISSION.FrontDesk}>
+        <Select value={r.status} onValueChange={(v) => setStatus(r, v as ReservationStatus)}>
+          <SelectTrigger className="h-9 w-36 text-xs" aria-label={`Status of ${r.memberName}'s booking`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {RESERVATION_STATUSES.map((s) => (
+              <SelectItem key={s} value={s}>
+                {s}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </WriteOnly>
+      <WriteOnly permission={PERMISSION.FrontDesk}>
+        <button
+          type="button"
+          onClick={() => openEdit(r)}
+          className="rounded p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+          aria-label="Edit reservation"
+        >
+          <Pencil className="h-4 w-4" />
+        </button>
+      </WriteOnly>
+      <WriteOnly permission={[PERMISSION.FrontDesk, PERMISSION.DeleteRecords]} all>
+        <button
+          type="button"
+          onClick={() => remove(r)}
+          disabled={deletingId === r.id}
+          className="rounded p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+          aria-label="Delete reservation"
+        >
+          {deletingId === r.id ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Trash2 className="h-4 w-4" />
+          )}
+        </button>
+      </WriteOnly>
     </div>
   );
 
@@ -360,10 +369,12 @@ export default function Reservations() {
             title="Reservations"
             subtitle="Book dining rooms, spa, courts, and meeting spaces."
             actions={
-              <Button onClick={openCreate} className={heroPrimary('emerald')}>
-                <Plus className="h-4 w-4" />
-                New booking
-              </Button>
+              <WriteOnly permission={PERMISSION.FrontDesk}>
+                <Button onClick={openCreate} className={heroPrimary('emerald')}>
+                  <Plus className="h-4 w-4" />
+                  New booking
+                </Button>
+              </WriteOnly>
             }
             stats={[
               { label: 'Today', value: stats.today, icon: CalendarClock, tone: 'emerald', hint: `${stats.totalGuestsToday} guests` },

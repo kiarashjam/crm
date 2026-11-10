@@ -23,6 +23,12 @@ describe('BulkActionsBar', () => {
     expect(screen.getByRole('toolbar', { name: 'Actions for 3 selected leads' })).toBeInTheDocument();
   });
 
+  it('offers no delete to someone whose role does not let them delete', () => {
+    render(<BulkActionsBar count={2} members={[]} onClear={vi.fn()} onBulkApply={vi.fn().mockResolvedValue(undefined)} />);
+    expect(screen.queryByRole('button', { name: /delete/i })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Apply' })).toBeInTheDocument();
+  });
+
   it('Apply waits until something is chosen, then sends only that', async () => {
     const apply = show();
     const user = userEvent.setup();

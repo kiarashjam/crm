@@ -1,7 +1,48 @@
+import { useState } from 'react';
 import { Kanban, Plus, Pencil, Trash2, ChevronRight } from 'lucide-react';
 import type { Pipeline, DealStage } from '@/app/api/types';
 import { servesDemoData } from '@/app/api/apiClient';
-import { isOrgAdmin } from '@/app/api/organizations';
+import { orgCan, PERMISSION } from '@/app/api/organizations';
+import { StaleDaysSetting, parseStaleDays } from './StaleDaysSetting';
+
+/** What a stage does to the deals in it: keeps them open, or closes them as won or lost. */
+export type StageOutcome = 'open' | 'won' | 'lost';
+
+/** A stage's settings beyond its name. A probability of null takes the stage's default away. */
+export interface StageSettings {
+  probability: number | null;
+  outcome: StageOutcome;
+}
+
+/**
+ * What saving a new outcome does to the deals already in the stage: the server gives the
+ * ones that had the stage's old outcome its new one, as moving them there would, so the
+ * board and the reports keep agreeing. A deal closed the other way keeps its outcome.
+ */
+function outcomeChangeNote(from: StageOutcome, to: StageOutcome): string | null {
+  if (from === to) return null;
+  const deals = from === 'open' ? 'The open deals in this stage' : `The ${from} deals in this stage`;
+  return to === 'open' ? `${deals} are reopened.` : `${deals} are marked ${to}.`;
+}
+
+function OutcomeChangeNote({ from, to }: { from: StageOutcome; to: StageOutcome }) {
+  const note = outcomeChangeNote(from, to);
+  return note ? <p className="basis-full text-xs text-amber-700">{note}</p> : null;
+}
+
+/** A pipeline's own stale days; null follows the workspace's. */
+export interface PipelineSettings {
+  staleDealDays: number | null;
+}
+
+/** Text typed as a probability: a whole number 0–100, blank for none, or undefined when it is neither. */
+export function parseProbability(text: string): number | null | undefined {
+  const trimmed = text.trim();
+  if (trimmed === '') return null;
+  if (!/^\d{1,3}$/.test(trimmed)) return undefined;
+  const n = Number(trimmed);
+  return n <= 100 ? n : undefined;
+}
 
 export interface PipelinesSectionProps {
   pipelines: Pipeline[];
@@ -16,7 +57,7 @@ export interface PipelinesSectionProps {
   setEditingPipelineId: (id: string | null) => void;
   editingPipelineName: string;
   setEditingPipelineName: (val: string) => void;
-  handleUpdatePipeline: (id: string) => void;
+  handleUpdatePipeline: (id: string, settings?: PipelineSettings) => void;
   handleDeletePipeline: (id: string) => void;
   deletingPipelineId: string | null;
   newStagePipelineId: string | null;
@@ -29,7 +70,7 @@ export interface PipelinesSectionProps {
   setEditingStageId: (id: string | null) => void;
   editingStageName: string;
   setEditingStageName: (val: string) => void;
-  handleUpdateStage: (stageId: string, pipelineId: string) => void;
+  handleUpdateStage: (stageId: string, pipelineId: string, settings?: StageSettings) => void;
   handleDeleteStage: (stageId: string, pipelineId: string) => void;
   deletingStageId: string | null;
   currentOrg: { id: string; isOwner: boolean; role?: number } | null;
@@ -66,7 +107,12 @@ export function PipelinesSection({
   deletingStageId,
   currentOrg,
 }: PipelinesSectionProps) {
-  if (servesDemoData() || !isOrgAdmin(currentOrg)) {
+  // What the open edit rows say beyond the names, which the page keeps.
+  const [editingStaleDays, setEditingStaleDays] = useState('');
+  const [editingProbability, setEditingProbability] = useState('');
+  const [editingOutcome, setEditingOutcome] = useState<StageOutcome>('open');
+
+  if (servesDemoData() || !currentOrg || !orgCan(currentOrg, PERMISSION.ManageSettings)) {
     return (
       <div className="p-6">
         <div>
@@ -92,6 +138,8 @@ export function PipelinesSection({
         </h2>
         <p className="text-slate-600 text-sm mt-1">Configure your sales pipeline stages for deals</p>
       </div>
+
+      <StaleDaysSetting />
 
       <form onSubmit={handleCreatePipeline} className="flex gap-2">
         <input
@@ -122,17 +170,36 @@ export function PipelinesSection({
             <div key={p.id} className="border border-slate-200 rounded-xl overflow-hidden">
               <div className="flex items-center justify-between gap-2 p-4 bg-slate-50">
                 {editingPipelineId === p.id ? (
-                  <div className="flex-1 flex gap-2 items-center">
+                  <div className="flex-1 flex flex-wrap gap-2 items-center">
                     <input
                       type="text"
+                      aria-label="Pipeline name"
                       value={editingPipelineName}
                       onChange={(e) => setEditingPipelineName(e.target.value)}
                       className="flex-1 min-w-0 h-10 px-3 border border-slate-300 rounded-lg text-slate-900"
                     />
+                    <label className="flex items-center gap-1.5 text-xs text-slate-600">
+                      Stale after
+                      <input
+                        type="number"
+                        min={0}
+                        max={365}
+                        aria-label={`Stale days for ${p.name}`}
+                        placeholder="workspace's"
+                        value={editingStaleDays}
+                        onChange={(e) => setEditingStaleDays(e.target.value)}
+                        className="h-10 w-24 px-2 border border-slate-300 rounded-lg text-slate-900"
+                      />
+                      days
+                    </label>
                     <button
                       type="button"
-                      onClick={() => handleUpdatePipeline(p.id)}
-                      className="h-10 px-4 bg-emerald-600 text-white rounded-lg font-medium"
+                      disabled={editingStaleDays.trim() !== '' && parseStaleDays(editingStaleDays) === null}
+                      onClick={() => handleUpdatePipeline(p.id, {
+                        staleDealDays: editingStaleDays.trim() === '' ? null : parseStaleDays(editingStaleDays),
+                      })}
+                      aria-label={`Save pipeline ${p.name}`}
+                      className="h-10 px-4 bg-emerald-600 text-white rounded-lg font-medium disabled:opacity-50"
                     >
                       Save
                     </button>
@@ -154,13 +221,21 @@ export function PipelinesSection({
                       <ChevronRight className={`w-4 h-4 transition-transform ${expandedPipelineId === p.id ? 'rotate-90' : ''}`} />
                       {p.name}
                       <span className="text-xs text-slate-500 font-normal">
-                        ({(pipelineStages[p.id] ?? p.dealStages ?? []).length} stages)
+                        ({(pipelineStages[p.id] ?? p.dealStages ?? []).length} stages
+                        {p.staleDealDays === undefined
+                          ? ''
+                          : p.staleDealDays === 0 ? ' · never stale' : ` · stale after ${p.staleDealDays} days`})
                       </span>
                     </button>
                     <div className="flex gap-1">
                       <button
                         type="button"
-                        onClick={() => { setEditingPipelineId(p.id); setEditingPipelineName(p.name); }}
+                        onClick={() => {
+                          setEditingPipelineId(p.id);
+                          setEditingPipelineName(p.name);
+                          setEditingStaleDays(p.staleDealDays === undefined ? '' : String(p.staleDealDays));
+                        }}
+                        aria-label={`Edit pipeline ${p.name}`}
                         className="p-2 text-slate-500 hover:bg-slate-200 rounded-lg"
                         title="Edit"
                       >
@@ -193,17 +268,46 @@ export function PipelinesSection({
                         .map((s, idx) => (
                           <li key={s.id} className="flex items-center justify-between gap-2 py-2 px-3 rounded-lg bg-slate-50">
                             {editingStageId === s.id ? (
-                              <div className="flex-1 flex gap-2 items-center">
+                              <div className="flex-1 flex flex-wrap gap-2 items-center">
                                 <input
                                   type="text"
+                                  aria-label="Stage name"
                                   value={editingStageName}
                                   onChange={(e) => setEditingStageName(e.target.value)}
                                   className="flex-1 min-w-0 h-8 px-2 border border-slate-300 rounded text-slate-900 text-sm"
                                 />
+                                <label className="flex items-center gap-1 text-xs text-slate-600">
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    max={100}
+                                    aria-label={`Probability for ${s.name}`}
+                                    placeholder="none"
+                                    value={editingProbability}
+                                    onChange={(e) => setEditingProbability(e.target.value)}
+                                    className="h-8 w-16 px-2 border border-slate-300 rounded text-slate-900 text-sm"
+                                  />
+                                  %
+                                </label>
+                                <select
+                                  aria-label={`Outcome for ${s.name}`}
+                                  value={editingOutcome}
+                                  onChange={(e) => setEditingOutcome(e.target.value as StageOutcome)}
+                                  className="h-8 px-2 border border-slate-300 rounded text-slate-900 text-sm bg-white"
+                                >
+                                  <option value="open">Open</option>
+                                  <option value="won">Won</option>
+                                  <option value="lost">Lost</option>
+                                </select>
                                 <button
                                   type="button"
-                                  onClick={() => handleUpdateStage(s.id, p.id)}
-                                  className="h-8 px-3 bg-emerald-600 text-white rounded text-sm"
+                                  disabled={parseProbability(editingProbability) === undefined}
+                                  onClick={() => handleUpdateStage(s.id, p.id, {
+                                    probability: parseProbability(editingProbability) ?? null,
+                                    outcome: editingOutcome,
+                                  })}
+                                  aria-label={`Save stage ${s.name}`}
+                                  className="h-8 px-3 bg-emerald-600 text-white rounded text-sm disabled:opacity-50"
                                 >
                                   Save
                                 </button>
@@ -214,6 +318,7 @@ export function PipelinesSection({
                                 >
                                   Cancel
                                 </button>
+                                <OutcomeChangeNote from={s.isWon ? 'won' : s.isLost ? 'lost' : 'open'} to={editingOutcome} />
                               </div>
                             ) : (
                               <>
@@ -225,12 +330,23 @@ export function PipelinesSection({
                                     {s.name}
                                     {s.isWon && <span className="text-emerald-700 text-xs ml-1">(Won)</span>}
                                     {s.isLost && <span className="text-red-600 text-xs ml-1">(Lost)</span>}
+                                    {s.probability !== undefined && (
+                                      <span className="text-slate-500 text-xs ml-1" title="The chance a deal here is won, for deals with no probability of their own">
+                                        {s.probability}%
+                                      </span>
+                                    )}
                                   </span>
                                 </div>
                                 <div className="flex gap-1">
                                   <button
                                     type="button"
-                                    onClick={() => { setEditingStageId(s.id); setEditingStageName(s.name); }}
+                                    aria-label={`Edit ${s.name}`}
+                                    onClick={() => {
+                                      setEditingStageId(s.id);
+                                      setEditingStageName(s.name);
+                                      setEditingProbability(s.probability === undefined ? '' : String(s.probability));
+                                      setEditingOutcome(s.isWon ? 'won' : s.isLost ? 'lost' : 'open');
+                                    }}
                                     className="p-1.5 text-slate-500 hover:bg-slate-200 rounded"
                                     title="Edit"
                                   >

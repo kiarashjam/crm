@@ -1,6 +1,8 @@
 import type { Activity, PagedResult } from './types';
+import { factsProblem, type ActivityDirection, type ActivityFactsPayload } from '@/app/lib/activityFacts';
+import { toLocalInputValue } from '@/app/lib/dateInputs';
 import { mockActivities } from './mockData';
-import { servesDemoData, authFetchJson, authFetch } from './apiClient';
+import { servesDemoData, authFetchJson, authFetch, type RequestOptions } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 
 const activityStore = createMockStore<Activity>({
@@ -31,9 +33,14 @@ interface ActivityRaw {
   createdByUserId?: string | null;
   createdByName?: string | null;
   createdByEmail?: string | null;
+  occurredAtUtc?: string | null;
+  outcome?: string | null;
+  durationMinutes?: number | null;
+  direction?: string | null;
 }
 
 function mapActivity(d: ActivityRaw): Activity {
+  const createdAt = d.createdAt || d.createdAtUtc || new Date().toISOString();
   return {
     id: d.id,
     type: d.type,
@@ -43,7 +50,11 @@ function mapActivity(d: ActivityRaw): Activity {
     dealId: d.dealId ?? undefined,
     leadId: d.leadId ?? undefined,
     participants: d.participants ?? undefined,
-    createdAt: d.createdAt || d.createdAtUtc || new Date().toISOString(),
+    createdAt,
+    occurredAt: d.occurredAtUtc || createdAt,
+    outcome: d.outcome ?? undefined,
+    durationMinutes: typeof d.durationMinutes === 'number' ? d.durationMinutes : undefined,
+    direction: d.direction === 'inbound' || d.direction === 'outbound' ? d.direction : undefined,
     updatedAt: d.updatedAtUtc ?? undefined,
     contactName: d.contactName ?? undefined,
     dealName: d.dealName ?? undefined,
@@ -62,7 +73,7 @@ export interface GetActivitiesPagedOptions {
 }
 
 /** Get paginated activities with optional search. */
-export async function getActivitiesPaged(options?: GetActivitiesPagedOptions): Promise<PagedResult<Activity>> {
+export async function getActivitiesPaged(options?: GetActivitiesPagedOptions, req?: RequestOptions): Promise<PagedResult<Activity>> {
   if (!servesDemoData()) {
     const params = new URLSearchParams();
     if (options?.page) params.set('page', options.page.toString());
@@ -70,7 +81,7 @@ export async function getActivitiesPaged(options?: GetActivitiesPagedOptions): P
     if (options?.search) params.set('search', options.search);
     if (options?.type) params.set('type', options.type);
     const q = params.toString() ? `?${params.toString()}` : '';
-    const result = await authFetchJson<PagedResult<ActivityRaw>>(`/api/activities${q}`);
+    const result = await authFetchJson<PagedResult<ActivityRaw>>(`/api/activities${q}`, req);
     return {
       items: (result?.items ?? []).map(mapActivity),
       totalCount: result?.totalCount ?? 0,
@@ -123,9 +134,9 @@ export async function getActivities(): Promise<Activity[]> {
 }
 
 /** Get activities by contact. */
-export async function getActivitiesByContact(contactId: string): Promise<Activity[]> {
+export async function getActivitiesByContact(contactId: string, req?: RequestOptions): Promise<Activity[]> {
   if (!servesDemoData()) {
-    const list = await authFetchJson<ActivityRaw[]>(`/api/activities/contact/${contactId}`);
+    const list = await authFetchJson<ActivityRaw[]>(`/api/activities/contact/${contactId}`, req);
     return Array.isArray(list) ? list.map(mapActivity) : [];
   }
   await delay(200);
@@ -133,9 +144,9 @@ export async function getActivitiesByContact(contactId: string): Promise<Activit
 }
 
 /** Get activities by deal. */
-export async function getActivitiesByDeal(dealId: string): Promise<Activity[]> {
+export async function getActivitiesByDeal(dealId: string, req?: RequestOptions): Promise<Activity[]> {
   if (!servesDemoData()) {
-    const list = await authFetchJson<ActivityRaw[]>(`/api/activities/deal/${dealId}`);
+    const list = await authFetchJson<ActivityRaw[]>(`/api/activities/deal/${dealId}`, req);
     return Array.isArray(list) ? list.map(mapActivity) : [];
   }
   await delay(200);
@@ -143,9 +154,9 @@ export async function getActivitiesByDeal(dealId: string): Promise<Activity[]> {
 }
 
 /** Get activities by lead. */
-export async function getActivitiesByLead(leadId: string): Promise<Activity[]> {
+export async function getActivitiesByLead(leadId: string, req?: RequestOptions): Promise<Activity[]> {
   if (!servesDemoData()) {
-    const list = await authFetchJson<ActivityRaw[]>(`/api/activities/lead/${leadId}`);
+    const list = await authFetchJson<ActivityRaw[]>(`/api/activities/lead/${leadId}`, req);
     return Array.isArray(list) ? list.map(mapActivity) : [];
   }
   await delay(200);
@@ -153,7 +164,7 @@ export async function getActivitiesByLead(leadId: string): Promise<Activity[]> {
 }
 
 /** Activities for many leads in one request. Falls back to per-lead calls if the batch route is missing. */
-export async function getActivitiesByLeadIds(leadIds: string[]): Promise<Activity[]> {
+export async function getActivitiesByLeadIds(leadIds: string[], req?: RequestOptions): Promise<Activity[]> {
   const ids = [...new Set(leadIds.filter(Boolean))];
   if (!ids.length) return [];
   if (!servesDemoData()) {
@@ -164,11 +175,11 @@ export async function getActivitiesByLeadIds(leadIds: string[]): Promise<Activit
         const params = new URLSearchParams();
         params.set('ids', chunk.join(','));
         try {
-          const list = await authFetchJson<ActivityRaw[]>(`/api/activities/by-leads?${params.toString()}`);
+          const list = await authFetchJson<ActivityRaw[]>(`/api/activities/by-leads?${params.toString()}`, req);
           return Array.isArray(list) ? list.map(mapActivity) : [];
         } catch {
           const perLead = await Promise.all(
-            chunk.map((id) => getActivitiesByLead(id).catch((): Activity[] => [])),
+            chunk.map((id) => getActivitiesByLead(id, req).catch((): Activity[] => [])),
           );
           return perLead.flat();
         }
@@ -190,8 +201,39 @@ export async function getOrgMemberActivityCounts(): Promise<Record<string, numbe
   return {};
 }
 
+export interface CreateActivityParams extends ActivityFactsPayload {
+  type: string;
+  subject?: string;
+  body?: string;
+  contactId?: string;
+  dealId?: string;
+  leadId?: string;
+  participants?: string;
+}
+
+export interface UpdateActivityParams extends ActivityFactsPayload {
+  type?: string;
+  subject?: string;
+  body?: string;
+  participants?: string;
+  clearOutcome?: boolean;
+  clearDuration?: boolean;
+  clearDirection?: boolean;
+}
+
+/** Demo mode refuses what the server would, so a form that works here works there too. */
+function refuseLikeTheServer(type: string, facts: ActivityFactsPayload): void {
+  const problem = factsProblem(type, {
+    when: facts.occurredAtUtc ? toLocalInputValue(facts.occurredAtUtc) : '',
+    outcome: facts.outcome ?? '',
+    direction: facts.direction ?? '',
+    duration: facts.durationMinutes === undefined ? '' : String(facts.durationMinutes),
+  });
+  if (problem) throw new Error(problem);
+}
+
 /** Create an activity. */
-export async function createActivity(params: { type: string; subject?: string; body?: string; contactId?: string; dealId?: string; leadId?: string; participants?: string }): Promise<Activity | null> {
+export async function createActivity(params: CreateActivityParams): Promise<Activity | null> {
   if (!servesDemoData()) {
     const activity = await authFetchJson<ActivityRaw>('/api/activities', {
       method: 'POST',
@@ -200,6 +242,8 @@ export async function createActivity(params: { type: string; subject?: string; b
     return activity ? mapActivity(activity) : null;
   }
   await delay(200);
+  refuseLikeTheServer(params.type, params);
+  const now = new Date().toISOString();
   const created: Activity = {
     id: mockId('act'),
     type: params.type,
@@ -209,7 +253,11 @@ export async function createActivity(params: { type: string; subject?: string; b
     dealId: params.dealId,
     leadId: params.leadId,
     participants: params.participants,
-    createdAt: new Date().toISOString(),
+    createdAt: now,
+    occurredAt: params.occurredAtUtc ?? now,
+    outcome: params.outcome,
+    durationMinutes: params.durationMinutes,
+    direction: params.direction as ActivityDirection | undefined,
     updatedAt: undefined,
     contactName: undefined,
     dealName: undefined,
@@ -219,7 +267,7 @@ export async function createActivity(params: { type: string; subject?: string; b
 }
 
 /** Update an activity. */
-export async function updateActivity(id: string, params: { type?: string; subject?: string; body?: string; participants?: string }): Promise<Activity | null> {
+export async function updateActivity(id: string, params: UpdateActivityParams): Promise<Activity | null> {
   if (!servesDemoData()) {
     const activity = await authFetchJson<ActivityRaw>(`/api/activities/${id}`, {
       method: 'PUT',
@@ -228,11 +276,17 @@ export async function updateActivity(id: string, params: { type?: string; subjec
     return activity ? mapActivity(activity) : null;
   }
   await delay(200);
+  const current = activityStore.byId(id);
+  refuseLikeTheServer(params.type ?? current?.type ?? 'note', params);
   return activityStore.update(id, {
     ...(params.type !== undefined ? { type: params.type } : {}),
     ...(params.subject !== undefined ? { subject: params.subject } : {}),
     ...(params.body !== undefined ? { body: params.body } : {}),
     ...(params.participants !== undefined ? { participants: params.participants } : {}),
+    ...(params.occurredAtUtc !== undefined ? { occurredAt: params.occurredAtUtc } : {}),
+    ...(params.outcome !== undefined ? { outcome: params.outcome } : params.clearOutcome ? { outcome: undefined } : {}),
+    ...(params.durationMinutes !== undefined ? { durationMinutes: params.durationMinutes } : params.clearDuration ? { durationMinutes: undefined } : {}),
+    ...(params.direction !== undefined ? { direction: params.direction } : params.clearDirection ? { direction: undefined } : {}),
     updatedAt: new Date().toISOString(),
   });
 }

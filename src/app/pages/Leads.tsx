@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ApiError } from '@/app/api/apiClient';
+import { isEditConflict, showEditConflict } from '@/app/lib/editConflict';
 import { createLeadOrOfferDuplicate } from './leads/createLeadOrOfferDuplicate';
 import AppHeader from '@/app/components/AppHeader';
 import PageHero, { heroPrimary, heroSecondary, type PageStat } from '@/app/components/PageHero';
@@ -24,8 +25,6 @@ import DataPagination from '@/app/components/DataPagination';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import {
   getLeads,
-  getLeadsPaged,
-  getLeadStats,
   getLeadById,
   updateLead,
   assignLead,
@@ -34,8 +33,6 @@ import {
   getContacts,
   getDeals,
   getPipelines,
-  getLeadStatuses,
-  getLeadSources,
   convertLead,
   getActivitiesByLead,
   getActivitiesByLeadIds,
@@ -43,11 +40,14 @@ import {
   setLeadReferral,
   messages,
   type ConvertLeadRequest,
-  type LeadStats,
 } from '@/app/api';
+import {
+  useAllLeads, useLeadSources, useLeadStatuses, useLeadStats, useLeadsPage, useOrgMembers,
+} from '@/app/hooks/queries';
+import { LoadFailed } from '@/app/components/LoadFailed';
 import type { Lead, Company, Contact, Deal, LeadStatus, LeadSource, Pipeline, Activity } from '@/app/api/types';
 import { recordHref } from '@/app/hooks/useDocumentTitle';
-import { getOrgMembers, type OrgMemberDto } from '@/app/api/organizations';
+import { orgCan, PERMISSION, type OrgMemberDto } from '@/app/api/organizations';
 import { relationshipLabel } from '@/app/api/relationships';
 import { bulkUpdateLeads } from '@/app/api/leadOps';
 import { getCurrentUser, type AuthUser } from '@/app/lib/auth';
@@ -74,6 +74,8 @@ import { AddLeadDialog } from './leads/AddLeadDialog';
 import { StatusFilterMultiSelect } from './leads/components/StatusFilterMultiSelect';
 import { BulkActionsBar } from './leads/components/BulkActionsBar';
 import { QuickAddLeadDialog } from './leads/components/QuickAddLeadDialog';
+import type { QuickLogPayload } from './leads/components/QuickLogPopover';
+import { activityTime } from '@/app/lib/activityFacts';
 import { LeadGalleryCard } from './leads/LeadGalleryCard';
 import { useLeadStatusSync } from './leads/useLeadStatusSync';
 import {
@@ -93,6 +95,7 @@ import {
 import { LeadAssignmentMigrationDialog } from './leads/components/LeadAssignmentMigrationDialog';
 import { LeadReferralMigrationDialog } from './leads/components/LeadReferralMigrationDialog';
 import { FALLBACK_STATUSES, FALLBACK_SOURCES, EMPTY_LEAD_FORM, STATUS_BADGE_COLORS } from './leads/config';
+import { leadEditForm, useFreshLeadOnOpen } from './leads/useFreshLeadOnOpen';
 import { QUALIFIED_OR_BEYOND, statusIn } from './leads/leadStatusSync';
 import { findStatusFixes } from './leads/bulkStatusReconcile';
 import StatusReconcileDialog from './leads/components/StatusReconcileDialog';
@@ -101,6 +104,8 @@ import { loadLeadAssignments, saveLeadAssignments } from './leads/leadAssignment
 import { matchesLeadSearch } from './leads/leadText';
 import type { LeadForm } from './leads/types';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { useMoney } from '@/app/hooks/useMoney';
+import { AMOUNT_HINT, currencyOptions, parseMoneyInput } from '@/app/lib/money';
 
 const LEAD_CREATED_AT_STORAGE_KEY = 'crm.leadCreatedAt.v1';
 /** Session-scoped scroll position so returning from a lead detail restores it. */
@@ -137,10 +142,19 @@ function saveLeadCreatedAtMap(createdAtByLeadId: Record<string, string>) {
   }
 }
 
+const NO_STATUSES: LeadStatus[] = [];
+const NO_SOURCES: LeadSource[] = [];
+const NO_MEMBERS: OrgMemberDto[] = [];
+
 export default function Leads() {
+  const money = useMoney();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { currentOrgId, isReadOnly } = useOrg();
+  const { currentOrg, isReadOnly: viewOnly } = useOrg();
+  // What the member's role lets them do here: work leads, delete them, export them.
+  const isReadOnly = viewOnly || !orgCan(currentOrg, PERMISSION.EditRecords);
+  const canDelete = !viewOnly && orgCan(currentOrg, PERMISSION.DeleteRecords);
+  const canExport = orgCan(currentOrg, PERMISSION.ExportRecords);
 
   const searchFromUrl = searchParams.get('search') || '';
   const currentPage = Number(searchParams.get('page')) || 1;
@@ -149,29 +163,28 @@ export default function Leads() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
-  const [leadStats, setLeadStats] = useState<LeadStats | null>(null);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
-  const [leadStatuses, setLeadStatuses] = useState<LeadStatus[]>([]);
+  // The org's statuses and sources, read once per workspace through the shared cache.
+  const statusesQuery = useLeadStatuses();
+  const leadStatuses: LeadStatus[] = statusesQuery.data ?? NO_STATUSES;
   // Gate auto status sync until the org's real status list has arrived —
-  // FALLBACK_STATUSES is handed out synchronously and may not match this org.
-  const [statusesLoaded, setStatusesLoaded] = useState(false);
+  // FALLBACK_STATUSES is handed out synchronously and may not match this org. An
+  // empty list means FALLBACK_STATUSES are on screen, so it does not open the gate.
+  const statusesLoaded = leadStatuses.length > 0;
   // "Not loaded" has two causes and only one of them ever resolves. An org with
   // no statuses configured (or a failing request) leaves the gate shut forever,
   // and every pipeline edit then skipped the status write in total silence —
-  // which reads as the whole feature being broken. Tracked separately so the UI
-  // can say which of the two it is.
-  const [statusesUnavailable, setStatusesUnavailable] = useState(false);
-  const [leadSources, setLeadSources] = useState<LeadSource[]>([]);
-  // `loading` is only the first load of a workspace: it blanks the list for the
-  // skeleton and holds the full-page overlay. Every later fetch (each debounced
-  // search keystroke, a page change, a save) used to do the same — the page
-  // dimmed and the list vanished while typing. Those now keep the list on screen
-  // and set `refreshing` instead.
+  // which reads as the whole feature being broken. Told apart so the UI can say
+  // which of the two it is.
+  const statusesUnavailable = !statusesQuery.isPending && leadStatuses.length === 0;
+  const leadSources: LeadSource[] = useLeadSources().data ?? NO_SOURCES;
+  // `loading` is only the first load: it blanks the list for the skeleton and holds
+  // the full-page overlay. Every later read (each debounced search keystroke, a
+  // page change, a save) used to do the same — the page dimmed and the list
+  // vanished while typing. Those keep the list on screen and show `refreshing`
+  // instead. A workspace switch mounts the page afresh (WorkspaceOutlet).
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const loadedForOrgRef = useRef<string | null | undefined>(undefined);
-  usePageLoading(loading);
   const [searchQuery, setSearchQuery] = useState(searchFromUrl);
   const [debouncedSearch, setDebouncedSearch] = useState(searchFromUrl);
   
@@ -199,7 +212,7 @@ export default function Leads() {
   const [converting, setConverting] = useState(false);
 
   // Detail modal state
-  const [orgMembers, setOrgMembers] = useState<OrgMemberDto[]>([]);
+  const orgMembers: OrgMemberDto[] = useOrgMembers().data ?? NO_MEMBERS;
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
 
   // Multi-select for bulk actions
@@ -552,7 +565,7 @@ export default function Leads() {
         if (bucket) bucket.push(activity);
       }
       for (const bucket of map.values()) {
-        bucket.sort((x, y) => Date.parse(y.createdAt) - Date.parse(x.createdAt));
+        bucket.sort((x, y) => Date.parse(activityTime(y)) - Date.parse(activityTime(x)));
       }
       setPageActivities(map);
     } catch {
@@ -571,147 +584,103 @@ export default function Leads() {
     }
   }, [companies.length, contacts.length]);
 
-  const lookupCacheRef = useRef<{ orgId: string | null; statuses: LeadStatus[]; sources: LeadSource[] } | null>(null);
-
+  // The list and the figures above it, through the shared cache: keyed by workspace
+  // and by what is asked, so an older search's answer can never land over a newer
+  // one's (its request is cancelled instead), and read again after a save that
+  // changes leads. The paged API takes a single status. When the user picks more
+  // than one status, filters by assignment, or applies a sales-tracker axis (all
+  // client-side data), every lead is read and filtered here instead.
+  const useClientMode =
+    filterAssignment !== 'all'
+    || filterStatuses.length > 1
+    || activeSalesFilterCount > 0;
+  const pageParams = useMemo(() => ({
+    page: currentPage,
+    pageSize,
+    search: debouncedSearch || undefined,
+    status: filterStatuses.length === 1 ? filterStatuses[0] : undefined,
+    source: filterSource !== 'all' ? filterSource : undefined,
+    converted: filterConverted,
+    sortBy: sortField,
+    sortDir: sortDirection,
+  }), [currentPage, pageSize, debouncedSearch, filterStatuses, filterSource, filterConverted, sortField, sortDirection]);
+  const pageQuery = useLeadsPage(pageParams, !useClientMode);
+  const allLeadsQuery = useAllLeads(useClientMode);
+  const listQuery = useClientMode ? allLeadsQuery : pageQuery;
+  const statsQuery = useLeadStats();
+  const leadStats = statsQuery.data ?? null;
+  // Rows have been on screen at least once (set by the effect that lays them out below).
+  const rowsShownOnce = useRef(false);
+  // Nothing read yet for this view, no failure to say, and no earlier rows to keep on
+  // screen: the list is on its way. Worked out here, in the render, and not only by that
+  // effect, which runs after the render it follows. In between, a search typed after a
+  // failed first read showed the empty list, which reads as the first-day screen.
+  const awaitingFirstRows = listQuery.data === undefined && !listQuery.isError && !rowsShownOnce.current;
+  const listLoading = loading || awaitingFirstRows;
+  usePageLoading(listLoading);
+  const refreshing = !listLoading && listQuery.isFetching;
+  /** Read the list and its figures again now, where nothing announced a save (a reload asked for). */
   const fetchLeads = useCallback(async () => {
-    const first = loadedForOrgRef.current !== currentOrgId;
-    if (first) setLoading(true);
-    else setRefreshing(true);
-    try {
-      // Statuses and sources rarely change, so keep them for this org and load
-      // them in parallel with the lead page instead of blocking the list on them.
-      // An empty status list means we are rendering FALLBACK_STATUSES, so do not
-      // cache that result — auto-sync must not act on it.
-      const lookupsPromise = (async () => {
-        const cached = lookupCacheRef.current;
-        if (cached && cached.orgId === currentOrgId) return cached;
-        const [statuses, sources] = await Promise.all([
-          getLeadStatuses().catch(() => [] as LeadStatus[]),
-          getLeadSources().catch(() => [] as LeadSource[]),
-        ]);
-        const next = {
-          orgId: currentOrgId,
-          statuses: statuses ?? [],
-          sources: sources ?? [],
-        };
-        if (next.statuses.length > 0) lookupCacheRef.current = next;
-        return next;
-      })();
+    await Promise.all([listQuery.refetch(), statsQuery.refetch()]);
+  }, [listQuery, statsQuery]);
 
-      const applyLookups = (lookups: { statuses: LeadStatus[]; sources: LeadSource[] }) => {
-        setLeadStatuses(lookups.statuses);
-        const statusesReady = lookups.statuses.length > 0;
-        setStatusesLoaded(statusesReady);
-        setStatusesUnavailable(!statusesReady);
-        setLeadSources(lookups.sources);
-      };
-
-      const contactsById = new Map(contactsRef.current.map((c) => [c.id, c]));
-      // The paged API takes a single status. When the user picks more than one
-      // status, filters by assignment, or applies a sales-tracker axis (all
-      // client-side data), filter client-side instead.
-      const useClientMode =
-        filterAssignment !== 'all'
-        || filterStatuses.length > 1
-        || activeSalesFilterCount > 0;
-
-      const statsPromise = getLeadStats().catch(() => null);
-      let pageItems: Lead[] = [];
-
-      if (useClientMode) {
-        const [lookups, stats, allLeadsRaw] = await Promise.all([
-          lookupsPromise,
-          statsPromise,
-          getLeads(),
-        ]);
-        applyLookups(lookups);
-        if (stats) setLeadStats(stats);
-
-        let merged = mergeLeadsWithLocalData(Array.isArray(allLeadsRaw) ? allLeadsRaw : [], contactsById);
-        merged = applyClientLeadFilters(merged);
-        merged = applyAssignmentFilter(merged);
-        merged = applySalesTrackerFilter(merged);
-        const count = merged.length;
-        const pages = Math.ceil(count / pageSize) || 0;
-        const start = (currentPage - 1) * pageSize;
-        pageItems = merged.slice(start, start + pageSize);
-        setLeads(pageItems);
-        setTotalCount(count);
-        setTotalPages(pages);
-        if (pages > 0 && currentPage > pages) {
-          setSearchParams((prev) => {
-            const params = new URLSearchParams(prev);
-            params.set('page', String(pages));
-            return params;
-          }, { replace: true });
-        }
-      } else {
-        const [lookups, stats, paged] = await Promise.all([
-          lookupsPromise,
-          statsPromise,
-          getLeadsPaged({
-            page: currentPage,
-            pageSize,
-            search: debouncedSearch || undefined,
-            status: filterStatuses.length === 1 ? filterStatuses[0] : undefined,
-            source: filterSource !== 'all' ? filterSource : undefined,
-            converted: filterConverted,
-            sortBy: sortField,
-            sortDir: sortDirection,
-          }),
-        ]);
-        applyLookups(lookups);
-        if (stats) setLeadStats(stats);
-
-        const merged = mergeLeadsWithLocalData(paged.items, contactsById);
-        pageItems = merged;
-        setLeads(merged);
-        setTotalCount(paged.totalCount);
-        setTotalPages(paged.totalPages);
-
-        // If URL page is past the end (e.g. after deletes), jump to last page
-        const pages = paged.totalPages;
-        if (pages > 0 && currentPage > pages) {
-          setSearchParams((prev) => {
-            const params = new URLSearchParams(prev);
-            params.set('page', String(pages));
-            return params;
-          }, { replace: true });
-        }
-      }
-
-      // Interactions fill in after the cards are visible.
-      void loadPageActivities(pageItems.map((l) => l.id));
-      loadedForOrgRef.current = currentOrgId;
-    } catch {
-      toast.error(messages.errors.loadFailed);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+  // The rows on screen, from what was read: the legacy browser maps merged in, and in
+  // client mode the filters, order and page applied here.
+  useEffect(() => {
+    const data = listQuery.data;
+    if (data === undefined) {
+      // Nothing read yet for this view. A failure is said in place of the list. Until a
+      // first list has been shown there are no rows to keep on screen, so a read on its
+      // way (a search typed after a failure) shows the skeleton: the empty list there
+      // read as the first-day screen, telling a team with leads it had none.
+      if (!rowsShownOnce.current) setLoading(!listQuery.isError);
+      return;
     }
+    rowsShownOnce.current = true;
+    const contactsById = new Map(contactsRef.current.map((c) => [c.id, c]));
+    let pageItems: Lead[];
+    let count: number;
+    let pages: number;
+    if (Array.isArray(data)) {
+      let merged = mergeLeadsWithLocalData(data, contactsById);
+      merged = applyClientLeadFilters(merged);
+      merged = applyAssignmentFilter(merged);
+      merged = applySalesTrackerFilter(merged);
+      count = merged.length;
+      pages = Math.ceil(count / pageSize) || 0;
+      const start = (currentPage - 1) * pageSize;
+      pageItems = merged.slice(start, start + pageSize);
+    } else {
+      pageItems = mergeLeadsWithLocalData(data.items, contactsById);
+      count = data.totalCount;
+      pages = data.totalPages;
+    }
+    setLeads(pageItems);
+    setTotalCount(count);
+    setTotalPages(pages);
+    // If URL page is past the end (e.g. after deletes), jump to last page
+    if (pages > 0 && currentPage > pages) {
+      setSearchParams((prev) => {
+        const params = new URLSearchParams(prev);
+        params.set('page', String(pages));
+        return params;
+      }, { replace: true });
+    }
+    // Interactions fill in after the cards are visible.
+    void loadPageActivities(pageItems.map((l) => l.id));
+    setLoading(false);
   }, [
-    currentOrgId,
+    listQuery.data,
+    listQuery.isError,
     currentPage,
     pageSize,
-    debouncedSearch,
-    filterStatuses,
-    filterSource,
-    filterConverted,
-    filterAssignment,
-    sortField,
-    sortDirection,
     setSearchParams,
     mergeLeadsWithLocalData,
     applyClientLeadFilters,
     applyAssignmentFilter,
     applySalesTrackerFilter,
-    activeSalesFilterCount,
     loadPageActivities,
   ]);
-
-  useEffect(() => {
-    fetchLeads();
-  }, [fetchLeads]);
 
   // Restore a stored list scroll position once the rows have rendered.
   // One-shot per mount; clears the stored value.
@@ -747,17 +716,6 @@ export default function Leads() {
   useEffect(() => {
     setCurrentUser(getCurrentUser());
   }, []);
-
-  // Reload org members whenever the active organization changes.
-  useEffect(() => {
-    if (!currentOrgId) {
-      setOrgMembers([]);
-      return;
-    }
-    getOrgMembers(currentOrgId)
-      .then(setOrgMembers)
-      .catch((err) => console.error('Failed to load org members:', err));
-  }, [currentOrgId]);
 
   /** Leads for the current page (search/filter/sort applied server-side, except assignment filter). */
   const filteredLeads = leads;
@@ -913,7 +871,6 @@ export default function Leads() {
   }) => {
     const onAdded = async () => {
       toast.success('Lead added');
-      await fetchLeads();
     };
     try {
       const created = await createLeadOrOfferDuplicate({
@@ -948,6 +905,8 @@ export default function Leads() {
       createDeal: false,
       dealName: lead.name,
       dealValue: '',
+      // Priced in the workspace's currency unless someone picks another, as a new deal is.
+      dealCurrency: money.currency,
       dealStage: 'Qualification',
       pipelineId: undefined,
       dealStageId: undefined,
@@ -978,9 +937,19 @@ export default function Leads() {
       toast.error(messages.validation.selectContactOrDeal);
       return;
     }
+    // The amount as a number, read here: the server took plain digits only, so
+    // "10'000" or "CHF 10,000" made the whole conversion fail with "Something went wrong".
+    const { dealValue, ...request } = convertForm;
+    const dealAmount = dealValue?.trim() ? parseMoneyInput(dealValue) : 0;
+    if (convertForm.createDeal && dealAmount === null) {
+      toast.error(AMOUNT_HINT);
+      return;
+    }
     setConverting(true);
     try {
-      const result = await convertLead(convertDialogLead.id, convertForm);
+      const result = await convertLead(convertDialogLead.id, convertForm.createDeal
+        ? { ...request, dealAmount: dealAmount ?? 0, dealCurrency: convertForm.dealCurrency || money.currency }
+        : { ...request, dealCurrency: undefined });
       if (result) {
         const parts: string[] = [];
         if (result.companyId) parts.push('company created');
@@ -988,12 +957,13 @@ export default function Leads() {
         if (result.dealId) parts.push('deal created');
         toast.success(parts.length ? `Lead converted: ${parts.join(', ')}` : messages.success.leadConverted);
         setConvertDialogLead(null);
-        fetchLeads();
       } else {
         toast.error(messages.errors.generic);
       }
-    } catch {
-      toast.error(messages.errors.generic);
+    } catch (err) {
+      // The server says why ("A currency is a three-letter ISO code"); "Something went
+      // wrong" left people guessing which field it was.
+      toast.error(err instanceof Error && err.message ? err.message : messages.errors.generic);
     } finally {
       setConverting(false);
     }
@@ -1002,24 +972,30 @@ export default function Leads() {
   const openEdit = (lead: Lead) => {
     void ensureCompaniesAndContacts();
     setEditingLead(lead);
-    const sourceOpt = sourceOptions.find((s) => s.id === lead.leadSourceId || s.name === lead.source);
-    const statusOpt = statusOptions.find((s) => s.id === lead.leadStatusId || s.name === lead.status);
-    setForm({
-      name: lead.name,
-      email: lead.email,
-      phone: lead.phone ?? '',
-        referredByContactId: lead.referredByContactId ?? '',
-      companyId: lead.companyId ?? '',
-      source: lead.source ?? (sourceOpt?.name ?? 'Manual'),
-      status: lead.status,
-      leadSourceId: lead.leadSourceId ?? (sourceOpt?.id ?? ''),
-      leadStatusId: lead.leadStatusId ?? (statusOpt?.id ?? ''),
-      leadScore: lead.leadScore?.toString() ?? '',
-      description: lead.description ?? '',
-      lifecycleStage: lead.lifecycleStage ?? '',
-    });
+    setForm(leadEditForm(lead, sourceOptions, statusOptions));
     setDialogOpen(true);
   };
+
+  // The dialog's save is checked against the version it opened with, and the row may be
+  // hours old or behind this page's own inline assignment or referrer. So the dialog
+  // starts from the lead as it is now (see useFreshLeadOnOpen). The row itself is left
+  // to the save: a change to the list re-runs the ?edit hand-over below, which opens
+  // the dialog again on the row while its param lingers, over what is being typed.
+  useFreshLeadOnOpen(
+    dialogOpen ? editingLead?.id : undefined,
+    () => !!editingLead && JSON.stringify(form) === JSON.stringify(leadEditForm(editingLead, sourceOptions, statusOptions)),
+    (fresh) => {
+      if (!editingLead) return;
+      const merged: Lead = {
+        ...editingLead,
+        ...fresh,
+        assignedToId: fresh.assignedToId ?? editingLead.assignedToId,
+        relationships: fresh.relationships ?? editingLead.relationships,
+      };
+      setEditingLead(merged);
+      setForm(leadEditForm(merged, sourceOptions, statusOptions));
+    },
+  );
 
   // Lead detail lives on its own page (/leads/:id). A click opens that page
   // in a new browser tab so the list (filters, sort, scroll) stays put.
@@ -1029,7 +1005,11 @@ export default function Leads() {
 
   // Migrate any legacy `?leadId=` deep-links to the new page, then handle
   // hand-offs from the detail page: `?convertLeadId=<id>` opens the convert
-  // dialog; `?edit=<id>` opens the edit wizard. Each cleans up its own param.
+  // dialog; `?edit=<id>` opens the edit wizard. Each cleans up its own param, and
+  // each is handled once: the list arriving while the param still lingers used to
+  // open the dialog a second time, on the list's older copy of the lead, over the
+  // fresh one the hand-over had just read.
+  const handedOver = useRef<string | null>(null);
   useEffect(() => {
     const legacyLeadId = searchParams.get('leadId');
     if (legacyLeadId) {
@@ -1038,6 +1018,8 @@ export default function Leads() {
     }
     const convertLeadId = searchParams.get('convertLeadId');
     if (convertLeadId) {
+      if (handedOver.current === `convert:${convertLeadId}`) return;
+      handedOver.current = `convert:${convertLeadId}`;
       const target = leads.find((l) => l.id === convertLeadId);
       const consumeParam = () => {
         setSearchParams(
@@ -1064,6 +1046,8 @@ export default function Leads() {
     }
     const editLeadId = searchParams.get('edit');
     if (editLeadId) {
+      if (handedOver.current === `edit:${editLeadId}`) return;
+      handedOver.current = `edit:${editLeadId}`;
       const target = leads.find((l) => l.id === editLeadId);
       const consumeParam = () => {
         setSearchParams(
@@ -1132,20 +1116,16 @@ export default function Leads() {
   // Inline quick-log activity from the card.
   const handleQuickLogActivity = async (
     lead: Lead,
-    payload: { type: string; body: string },
+    payload: QuickLogPayload,
   ) => {
-    await createActivity({
-      type: payload.type,
-      body: payload.body,
-      leadId: lead.id,
-    });
+    await createActivity({ ...payload, leadId: lead.id });
     try {
       const list = await getActivitiesByLead(lead.id);
       setPageActivities((prev) => {
         const next = new Map(prev);
         next.set(
           lead.id,
-          [...list].sort((x, y) => Date.parse(y.createdAt) - Date.parse(x.createdAt)),
+          [...list].sort((x, y) => Date.parse(activityTime(y)) - Date.parse(activityTime(x))),
         );
         return next;
       });
@@ -1204,9 +1184,6 @@ export default function Leads() {
       } else {
         toast.error(`${failed} of ${ids.length} deletes failed`);
       }
-      if (successIds.size > 0) {
-        await fetchLeads();
-      }
       clearSelection();
     } finally {
       setBulkBusy(false);
@@ -1223,7 +1200,6 @@ export default function Leads() {
       if (result.updated > 0) toast.success(`Updated ${result.updated} lead${result.updated === 1 ? '' : 's'}.${skipped}`);
       else toast.warning(`Nothing was updated.${skipped}`);
       clearSelection();
-      await fetchLeads();
     } catch (err) {
       // There was no catch at all: a failure was an unhandled rejection and the
       // user saw nothing happen.
@@ -1284,15 +1260,19 @@ export default function Leads() {
         const updated = await updateLead(editingLead.id, {
           name: form.name.trim(),
           email: form.email.trim(),
-          phone: form.phone.trim() || undefined,
-          companyId: form.companyId || undefined,
+          // An emptied field is sent as null, which takes it off; left out, it was kept.
+          phone: form.phone.trim() || null,
+          companyId: form.companyId || null,
           source: form.source || undefined,
           status: form.status,
           leadSourceId: validLeadSourceId,
           leadStatusId: validLeadStatusId,
           leadScore: validLeadScore,
-          description: form.description.trim() || undefined,
-          lifecycleStage: form.lifecycleStage || undefined,
+          description: form.description.trim() || null,
+          lifecycleStage: form.lifecycleStage || null,
+          // The dialog sends back every field it shows, so the save is refused, rather
+          // than written over, when someone saved the lead after the list was read.
+          version: editingLead.version,
         });
         if (updated) {
           // The referrer has its own endpoint, saved for the whole team.
@@ -1310,7 +1290,6 @@ export default function Leads() {
         const onCreated = async () => {
           toast.success(messages.success.leadCreated);
           setDialogOpen(false);
-          await fetchLeads();
         };
         const created = await createLeadOrOfferDuplicate({
           name: form.name.trim(),
@@ -1332,8 +1311,22 @@ export default function Leads() {
         else toast.error(messages.errors.generic);
       }
     } catch (err) {
-      // The server's reason when it gave one (e.g. "An open lead with this email already exists").
-      toast.error(err instanceof ApiError && err.message ? err.message : messages.errors.generic);
+      if (isEditConflict(err) && editingLead) {
+        // The latest copy in the list and in the dialog, for the change to be made again.
+        const leadId = editingLead.id;
+        showEditConflict(err.message, () => {
+          void getLeadById(leadId)
+            .then((fresh) => {
+              if (!fresh) return;
+              handleLeadUpdate(fresh);
+              openEdit(fresh);
+            })
+            .catch(() => toast.error(messages.errors.generic));
+        });
+      } else {
+        // The server's reason when it gave one (e.g. "An open lead with this email already exists").
+        toast.error(err instanceof ApiError && err.message ? err.message : messages.errors.generic);
+      }
     } finally {
       setSaving(false);
     }
@@ -1482,7 +1475,7 @@ export default function Leads() {
           setLeads((prev) => prev.map((l) => updated.find((u) => u.id === l.id) ?? l));
         }}
       />
-      <PageEnter ready={!loading}>
+      <PageEnter ready={!listLoading}>
         <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
           {/* Discovery for a problem nobody would otherwise go looking for: a lead
               can carry advanced steps while its status still reads New, and until
@@ -1515,8 +1508,8 @@ export default function Leads() {
             icon={Users}
             tone="orange"
             title="Leads"
-            subtitle={loading ? 'Loading…' : refreshing ? 'Updating…' : 'Manage and qualify your sales leads'}
-            badges={!loading && totalCount > 0 && (
+            subtitle={listLoading ? 'Loading…' : refreshing ? 'Updating…' : 'Manage and qualify your sales leads'}
+            badges={!listLoading && totalCount > 0 && (
               <>
                 {stats.hotLeads > 0 && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-orange-500 to-rose-500 px-2 py-0.5 text-[11px] font-bold text-white shadow-sm">
@@ -1550,11 +1543,13 @@ export default function Leads() {
                     </Button>
                   </>
                 )}
-                {/* Export is read-only, so viewers keep it. */}
-                <Button onClick={handleExportLeads} disabled={exporting} variant="outline" className={`${heroSecondary} disabled:opacity-60`} aria-label={exporting ? 'Exporting...' : 'Export CSV'}>
-                  <Download className={`h-4 w-4 ${exporting ? 'animate-pulse' : ''}`} />
-                  <span className="hidden sm:inline">{exporting ? 'Exporting...' : 'Export CSV'}</span>
-                </Button>
+                {/* Export is read-only, so viewers keep it, where their role lets them export. */}
+                {canExport && (
+                  <Button onClick={handleExportLeads} disabled={exporting} variant="outline" className={`${heroSecondary} disabled:opacity-60`} aria-label={exporting ? 'Exporting...' : 'Export CSV'}>
+                    <Download className={`h-4 w-4 ${exporting ? 'animate-pulse' : ''}`} />
+                    <span className="hidden sm:inline">{exporting ? 'Exporting...' : 'Export CSV'}</span>
+                  </Button>
+                )}
                 {!isReadOnly && (
                   <Button onClick={openCreate} className={heroPrimary('orange')}>
                     <Plus className="h-4 w-4" />
@@ -1563,7 +1558,7 @@ export default function Leads() {
                 )}
               </>
             }
-            stats={!loading && totalCount > 0 ? leadHeroStats : undefined}
+            stats={!listLoading && totalCount > 0 ? leadHeroStats : undefined}
           />
 
         <DuplicateMerge spec={LEAD_DUPLICATES} onMerged={() => { void fetchLeads(); }} />
@@ -1937,7 +1932,7 @@ export default function Leads() {
           )}
 
           {/* No results message */}
-          {filteredLeads.length === 0 && !loading && totalCount > 0 && (
+          {filteredLeads.length === 0 && !listLoading && totalCount > 0 && (
             <div className="mt-4 flex items-center gap-3 p-4 rounded-xl bg-slate-50 border border-slate-200">
               <div className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center">
                 <Search className="w-5 h-5 text-slate-500" />
@@ -1953,8 +1948,13 @@ export default function Leads() {
           )}
         </div>
 
-        {loading ? (
+        {!listLoading && listQuery.isError && listQuery.data !== undefined && (
+          <LoadFailed stale what="Leads" error={listQuery.error} onRetry={() => { void fetchLeads(); }} retrying={listQuery.isFetching} className="mb-4" />
+        )}
+        {listLoading ? (
           <LeadsListSkeleton />
+        ) : listQuery.isError && listQuery.data === undefined ? (
+          <LoadFailed what="Leads" error={listQuery.error} onRetry={() => { void fetchLeads(); }} retrying={listQuery.isFetching} />
         ) : totalCount === 0 ? (
           <div className="w-full">
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -2021,7 +2021,7 @@ export default function Leads() {
               count={selectedIds.size}
               members={orgMembers}
               onClear={clearSelection}
-              onBulkDelete={runBulkDelete}
+              onBulkDelete={canDelete ? runBulkDelete : undefined}
               onBulkApply={runBulkApply}
             />
           )}
@@ -2420,13 +2420,30 @@ export default function Leads() {
                     </div>
                     <div>
                       <Label htmlFor="convert-deal-value" className="text-sm text-slate-600">Deal value</Label>
-                      <Input
-                        id="convert-deal-value"
-                        value={convertForm.dealValue}
-                        onChange={(e) => setConvertForm((f) => ({ ...f, dealValue: e.target.value }))}
-                        placeholder="e.g. $10,000"
-                        className="mt-1.5 h-10 bg-white"
-                      />
+                      <div className="mt-1.5 flex gap-2">
+                        <Input
+                          id="convert-deal-value"
+                          value={convertForm.dealValue}
+                          onChange={(e) => setConvertForm((f) => ({ ...f, dealValue: e.target.value }))}
+                          inputMode="decimal"
+                          placeholder="e.g. 10'000"
+                          className="h-10 flex-1 bg-white"
+                        />
+                        {/* The currency the new deal is priced in: the workspace's unless another is picked. */}
+                        <Select
+                          value={convertForm.dealCurrency || money.currency}
+                          onValueChange={(v) => setConvertForm((f) => ({ ...f, dealCurrency: v }))}
+                        >
+                          <SelectTrigger aria-label="Deal currency" className="h-10 w-28 bg-white">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {currencyOptions(convertForm.dealCurrency || money.currency).map((c) => (
+                              <SelectItem key={c.code} value={c.code}>{c.code}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
                     {convertOptions.pipelines.length > 0 && (
                       <div>
@@ -2509,7 +2526,7 @@ export default function Leads() {
                           <SelectItem key={d.id} value={d.id}>
                             <span className="flex items-center gap-2">
                               <Handshake className="w-3.5 h-3.5 text-slate-500" />
-                              {d.name} ({d.value})
+                              {d.name} ({money.formatDeal(d)})
                             </span>
                           </SelectItem>
                         ))}

@@ -28,6 +28,8 @@ import {
   type MemberStatus,
 } from '@/app/api/members';
 import PageHero from '@/app/components/PageHero';
+import { WriteOnly } from '@/app/components/WriteOnly';
+import { PERMISSION } from '@/app/api/organizations';
 import { StaggerItem } from '@/app/components/motion/Stagger';
 
 interface ParsedRow {
@@ -315,22 +317,25 @@ export default function MemberImport() {
                   </>
                 )}
               </dl>
-              <Button
-                onClick={importRows}
-                disabled={importing || validRows.length === 0}
-                className="w-full"
-              >
-                {importing ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Importing
-                  </>
-                ) : (
-                  <>
-                    <Crown className="w-4 h-4 mr-2" /> Import {validRows.length || ''} member
-                    {validRows.length === 1 ? '' : 's'}
-                  </>
-                )}
-              </Button>
+              {/* Each row is a new club member: club.members, which the server asks for on every one. */}
+              <WriteOnly permission={PERMISSION.ClubMembers}>
+                <Button
+                  onClick={importRows}
+                  disabled={importing || validRows.length === 0}
+                  className="w-full"
+                >
+                  {importing ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Importing
+                    </>
+                  ) : (
+                    <>
+                      <Crown className="w-4 h-4 mr-2" /> Import {validRows.length || ''} member
+                      {validRows.length === 1 ? '' : 's'}
+                    </>
+                  )}
+                </Button>
+              </WriteOnly>
               <p className="text-xs text-slate-500 mt-3">
                 Members start at Pending unless you set status. Dues match the tier defaults; tune
                 per-member afterwards.

@@ -341,7 +341,7 @@ public sealed class CrmMcpTools
     private async Task<string> SnapshotAsync(Organization organization, CancellationToken ct)
     {
         var leads = await _leads.GetStatsAsync(organization.OwnerUserId, organization.Id, ct);
-        var tasks = await _tasks.GetStatsAsync(organization.OwnerUserId, organization.Id, ct);
+        var tasks = await _tasks.GetStatsAsync(organization.OwnerUserId, organization.Id, ct: ct);
         return string.Join('\n',
         [
             $"Calculated counts for {organization.Name}. These are not suggestions.",
@@ -499,10 +499,14 @@ public sealed class CrmMcpTools
     private static string FormatDeal(DealDto deal)
     {
         var stage = deal.DealStageName ?? deal.Stage ?? "no stage";
+        // The stored amount, written the one way every reader agrees on. A deal from before
+        // amounts were numbers kept its text as typed ("CHF 85,500"), which read as
+        // "CHF 85,500 CHF" here; that text is shown only when it holds no number at all.
+        var amount = deal.Amount is decimal stored ? MoneyText.ValueText(stored) : deal.Value;
         var parts = new List<string>
         {
             deal.Name,
-            $"{deal.Value} {deal.Currency ?? ""}".Trim(),
+            $"{amount} {deal.Currency ?? ""}".Trim(),
             stage,
             deal.CompanyName ?? "no company",
             deal.ContactName ?? "no contact",
@@ -517,10 +521,18 @@ public sealed class CrmMcpTools
     private static string FormatActivity(ActivityDto activity)
     {
         var who = activity.LeadName ?? activity.DealName ?? activity.ContactName ?? "unlinked";
-        var when = activity.CreatedAtUtc.ToString("yyyy-MM-dd");
+        // When it happened, which a call logged late is not the day it was written down.
+        var when = (activity.OccurredAtUtc ?? activity.CreatedAtUtc).ToString("yyyy-MM-dd");
         var subject = string.IsNullOrWhiteSpace(activity.Subject) ? activity.Type : activity.Subject;
+        var facts = new[]
+        {
+            activity.Direction,
+            activity.Outcome?.Replace('_', ' '),
+            activity.DurationMinutes is int minutes ? $"{minutes} min" : null,
+        }.Where(f => !string.IsNullOrWhiteSpace(f)).ToList();
+        var how = facts.Count == 0 ? "" : $" · {string.Join(", ", facts)}";
         var text = string.IsNullOrWhiteSpace(activity.Body) ? "" : " recorded text: " + Clip(activity.Body);
-        return $"{when} · {activity.Type} · {subject} · {who} · id {activity.Id}{text}";
+        return $"{when} · {activity.Type}{how} · {subject} · {who} · id {activity.Id}{text}";
     }
 
     private static string Clip(string value)

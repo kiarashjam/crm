@@ -10,7 +10,7 @@ namespace ACI.WebApi.Controllers;
 /// Manages organization join requests.
 /// </summary>
 /// <remarks>
-/// Users can request to join an organization. Organization owners and managers
+/// Users can request to join an organization. Members who manage the team (owners and managers by default)
 /// can then accept or reject these requests. This provides an alternative to
 /// the invite flow where users initiate the request.
 /// </remarks>
@@ -63,7 +63,7 @@ public class JoinRequestsController : ControllerBase
     /// Lists pending join requests for an organization.
     /// </summary>
     /// <remarks>
-    /// Only organization owners and managers can view pending requests.
+    /// Only members who manage the team (owners and managers by default) can view pending requests.
     /// </remarks>
     /// <param name="organizationId">The organization ID.</param>
     /// <param name="ct">Cancellation token.</param>
@@ -88,7 +88,7 @@ public class JoinRequestsController : ControllerBase
     /// </summary>
     /// <remarks>
     /// The requesting user will be added as a member of the organization.
-    /// Only organization owners and managers can accept requests.
+    /// Only members who manage the team (owners and managers by default) can accept requests.
     /// </remarks>
     /// <param name="joinRequestId">The join request ID.</param>
     /// <param name="ct">Cancellation token.</param>
@@ -117,7 +117,7 @@ public class JoinRequestsController : ControllerBase
     /// </summary>
     /// <remarks>
     /// The requesting user will not be added to the organization.
-    /// Only organization owners and managers can reject requests.
+    /// Only members who manage the team (owners and managers by default) can reject requests.
     /// </remarks>
     /// <param name="joinRequestId">The join request ID.</param>
     /// <param name="ct">Cancellation token.</param>

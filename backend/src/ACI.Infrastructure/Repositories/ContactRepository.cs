@@ -1,3 +1,5 @@
+using ACI.Application.Common;
+using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
 using ACI.Infrastructure.Persistence;
@@ -16,6 +18,11 @@ public sealed class ContactRepository : IContactRepository
             ? q.Where(c => c.UserId == userId && c.OrganizationId == null)
             : q.Where(c => c.OrganizationId == organizationId);
 
+    private static IQueryable<Lead> LeadsIn(IQueryable<Lead> q, Guid userId, Guid? organizationId) =>
+        organizationId == null
+            ? q.Where(l => l.UserId == userId && l.OrganizationId == null)
+            : q.Where(l => l.OrganizationId == organizationId);
+
     private static IQueryable<Contact> ApplySearch(IQueryable<Contact> query, string? search)
     {
         if (string.IsNullOrWhiteSpace(search)) return query;
@@ -28,30 +35,143 @@ public sealed class ContactRepository : IContactRepository
             (c.Company != null && c.Company.Name.ToLower().Contains(q)));
     }
 
+    /// <summary>
+    /// The activities the caller can see, which is what a contact's "last activity" counts:
+    /// one on a private deal they cannot open is left out, as in ActivityRepository.
+    /// </summary>
+    private IQueryable<Activity> ActivitiesSeenBy(Guid userId, Guid? organizationId)
+    {
+        var visibleDeals = _db.Deals.VisibleTo(_db, userId, organizationId);
+        var inWorkspace = organizationId == null
+            ? _db.Activities.Where(a => a.UserId == userId && a.OrganizationId == null)
+            : _db.Activities.Where(a => a.OrganizationId == organizationId);
+        return inWorkspace.Where(a => a.DealId == null || visibleDeals.Any(d => d.Id == a.DealId));
+    }
+
+    /// <summary>
+    /// The contacts list's filters and order, applied to the whole workspace in the database.
+    /// The page used to filter and sort the twenty contacts it had been sent, so a company
+    /// filter missed everyone on later pages and "recently active" reordered only the
+    /// alphabetically first twenty.
+    /// </summary>
+    private IQueryable<Contact> Query(Guid userId, Guid? organizationId, ContactQueryOptions options)
+    {
+        var query = FilterByUserAndOrg(_db.Contacts.AsNoTracking(), userId, organizationId);
+        query = options.NormalizedStatus switch
+        {
+            ContactQueryOptions.Archived => query.Where(c => c.IsArchived),
+            ContactQueryOptions.All => query,
+            _ => query.Where(c => !c.IsArchived),
+        };
+        if (options.CompanyId is Guid companyId) query = query.Where(c => c.CompanyId == companyId);
+        else if (options.HasCompany == true) query = query.Where(c => c.CompanyId != null);
+        else if (options.HasCompany == false) query = query.Where(c => c.CompanyId == null);
+        query = ApplySearch(query, options.Search);
+
+        var activities = ActivitiesSeenBy(userId, organizationId);
+        var now = DateTime.UtcNow;
+        switch (options.Activity?.Trim().ToLowerInvariant())
+        {
+            case ContactQueryOptions.Recent:
+                var recentSince = now.AddDays(-ContactQueryOptions.RecentDays);
+                query = query.Where(c => activities.Any(a => a.ContactId == c.Id && a.OccurredAtUtc >= recentSince));
+                break;
+            case ContactQueryOptions.Quiet:
+                var quietSince = now.AddDays(-ContactQueryOptions.QuietDays);
+                query = query.Where(c => !activities.Any(a => a.ContactId == c.Id && a.OccurredAtUtc >= quietSince));
+                break;
+        }
+
+        // Every order ends on the id, so a page boundary falls in the same place each time
+        // and nobody is shown twice or skipped between pages.
+        var desc = string.Equals(options.SortDir?.Trim(), "desc", StringComparison.OrdinalIgnoreCase);
+        return (options.SortBy?.Trim().ToLowerInvariant()) switch
+        {
+            "email" => desc
+                ? query.OrderByDescending(c => c.Email).ThenBy(c => c.Id)
+                : query.OrderBy(c => c.Email).ThenBy(c => c.Id),
+            "createdat" => desc
+                ? query.OrderByDescending(c => c.CreatedAtUtc).ThenBy(c => c.Name).ThenBy(c => c.Id)
+                : query.OrderBy(c => c.CreatedAtUtc).ThenBy(c => c.Name).ThenBy(c => c.Id),
+            // Never contacted counts as longest ago: last when the most recent come first.
+            "lastactivity" => desc
+                ? query.OrderByDescending(c => activities.Where(a => a.ContactId == c.Id).Max(a => (DateTime?)a.OccurredAtUtc))
+                    .ThenBy(c => c.Name).ThenBy(c => c.Id)
+                : query.OrderBy(c => activities.Where(a => a.ContactId == c.Id).Max(a => (DateTime?)a.OccurredAtUtc))
+                    .ThenBy(c => c.Name).ThenBy(c => c.Id),
+            _ => desc
+                ? query.OrderByDescending(c => c.Name).ThenBy(c => c.Id)
+                : query.OrderBy(c => c.Name).ThenBy(c => c.Id),
+        };
+    }
+
     public async Task<(IReadOnlyList<Contact> Items, int TotalCount)> GetPagedAsync(
-        Guid userId, 
-        Guid? organizationId, 
-        int skip, 
-        int take, 
-        string? search = null,
-        bool includeArchived = false,
-        Guid? companyId = null, 
+        Guid userId,
+        Guid? organizationId,
+        int skip,
+        int take,
+        ContactQueryOptions options,
         CancellationToken ct = default)
     {
-        var query = FilterByUserAndOrg(_db.Contacts, userId, organizationId);
-        if (!includeArchived) query = query.Where(c => !c.IsArchived);
-        if (companyId.HasValue) query = query.Where(c => c.CompanyId == companyId.Value);
-        query = ApplySearch(query, search);
-        
+        var query = Query(userId, organizationId, options);
         var totalCount = await query.CountAsync(ct);
         var items = await query
             .Include(c => c.Company)
-            .OrderBy(c => c.Name)
             .Skip(skip)
             .Take(take)
             .ToListAsync(ct);
-        
         return (items, totalCount);
+    }
+
+    public async Task<ContactStatsDto> GetStatsAsync(Guid userId, Guid? organizationId, CancellationToken ct = default)
+    {
+        var now = DateTime.UtcNow;
+        var weekAgo = now.AddDays(-7);
+        var recentSince = now.AddDays(-ContactQueryOptions.RecentDays);
+        var quietSince = now.AddDays(-ContactQueryOptions.QuietDays);
+        var all = FilterByUserAndOrg(_db.Contacts.AsNoTracking(), userId, organizationId);
+        var active = all.Where(c => !c.IsArchived);
+        var activities = ActivitiesSeenBy(userId, organizationId);
+
+        // One grouped query for the plain counts; the two that read activities are their own.
+        var row = await active
+            .GroupBy(_ => 1)
+            .Select(g => new
+            {
+                Total = g.Count(),
+                WithCompany = g.Count(c => c.CompanyId != null),
+                WithPhone = g.Count(c => c.Phone != null && c.Phone.Trim() != ""),
+                AddedLast7Days = g.Count(c => c.CreatedAtUtc >= weekAgo),
+            })
+            .FirstOrDefaultAsync(ct);
+        var recentlyActive = await active.CountAsync(c => activities.Any(a => a.ContactId == c.Id && a.OccurredAtUtc >= recentSince), ct);
+        var quiet = await active.CountAsync(c => !activities.Any(a => a.ContactId == c.Id && a.OccurredAtUtc >= quietSince), ct);
+        var archived = await all.CountAsync(c => c.IsArchived, ct);
+
+        return new ContactStatsDto(
+            row?.Total ?? 0, row?.WithCompany ?? 0, row?.WithPhone ?? 0, recentlyActive, quiet, row?.AddedLast7Days ?? 0, archived);
+    }
+
+    public async Task<(IReadOnlyList<ContactExportRow> Rows, int Total)> GetExportRowsAsync(
+        Guid userId, Guid? organizationId, ContactQueryOptions options, int max, CancellationToken ct = default)
+    {
+        var query = Query(userId, organizationId, options);
+        var total = await query.CountAsync(ct);
+        var activities = ActivitiesSeenBy(userId, organizationId);
+        var rows = await query
+            .Take(max)
+            .Select(c => new ContactExportRow(
+                c.Name,
+                c.Email,
+                c.Phone,
+                c.JobTitle,
+                c.Company != null ? c.Company.Name : null,
+                c.DoNotContact,
+                c.IsArchived,
+                activities.Where(a => a.ContactId == c.Id).Max(a => (DateTime?)a.OccurredAtUtc),
+                c.CreatedAtUtc))
+            .ToListAsync(ct);
+        return (rows, total);
     }
 
     public async Task<int> CountAsync(Guid userId, Guid? organizationId, string? search = null, bool includeArchived = false, CancellationToken ct = default)
@@ -133,6 +253,7 @@ public sealed class ContactRepository : IContactRepository
     {
         var existing = await FilterByUserAndOrg(_db.Contacts, userId, organizationId).FirstOrDefaultAsync(c => c.Id == contact.Id, ct);
         if (existing == null) return null;
+        _db.ExpectVersionOf(existing, contact);
         existing.Name = contact.Name;
         existing.Email = contact.Email;
         existing.Phone = contact.Phone;
@@ -143,7 +264,7 @@ public sealed class ContactRepository : IContactRepository
         existing.Description = contact.Description;
         existing.UpdatedAtUtc = DateTime.UtcNow;
         existing.UpdatedByUserId = userId;
-        await _db.SaveChangesAsync(ct);
+        await _db.SaveRefusingStaleAsync(ct);
         return existing;
     }
 
@@ -157,6 +278,21 @@ public sealed class ContactRepository : IContactRepository
         await _db.TaskItems.Where(t => t.ContactId == id).ExecuteUpdateAsync(s => s.SetProperty(t => t.ContactId, (Guid?)null), ct);
         await _db.Leads.Where(l => l.ReferredByContactId == id).ExecuteUpdateAsync(s => s.SetProperty(l => l.ReferredByContactId, (Guid?)null), ct);
         await _db.ContactRelationships.Where(r => r.ContactId == id || r.RelatedContactId == id).ExecuteDeleteAsync(ct);
+
+        // Every lead with a name and an email is given a person contact automatically, so
+        // a lead whose contact this was would get a new, empty one the next time anyone
+        // saved it, and the delete would quietly not stick. The lead keeps a note that a
+        // person deleted its contact instead, and no other is made for it.
+        var leadId = entity.ConvertedFromLeadId;
+        var now = DateTime.UtcNow;
+        foreach (var lead in await LeadsIn(_db.Leads, userId, organizationId)
+                     .Where(l => l.ConvertedToContactId == id || l.Id == leadId)
+                     .ToListAsync(ct))
+        {
+            if (lead.ConvertedToContactId == id) lead.ConvertedToContactId = null;
+            lead.PersonContactRemovedAtUtc ??= now;
+        }
+
         _db.Contacts.Remove(entity);
         await _db.SaveChangesAsync(ct);
         return true;
@@ -194,7 +330,9 @@ public sealed class ContactRepository : IContactRepository
         // contact of the same email, and showed that contact's spouse and family.
         var workspace = FilterByUserAndOrg(_db.Contacts, lead.UserId, lead.OrganizationId);
 
-        var linked = await _db.Contacts.FirstOrDefaultAsync(c => c.ConvertedFromLeadId == lead.Id, ct);
+        // In any workspace, on purpose (IgnoreQueryFilters): the old match left leads claimed
+        // by other users' contacts, and this is where such a claim is found and let go.
+        var linked = await _db.Contacts.IgnoreQueryFilters().FirstOrDefaultAsync(c => c.ConvertedFromLeadId == lead.Id, ct);
         if (linked != null)
         {
             var sameWorkspace = linked.OrganizationId == lead.OrganizationId
@@ -212,9 +350,27 @@ public sealed class ContactRepository : IContactRepository
 
         if (lead.ConvertedToContactId is Guid existingId)
         {
-            var existing = await workspace.FirstOrDefaultAsync(c => c.Id == existingId && !c.IsArchived, ct);
-            if (existing != null)
+            // An archived contact is still this lead's: making a new one would bring back
+            // a person someone put away.
+            if (await workspace.AnyAsync(c => c.Id == existingId, ct))
                 return;
+            // Gone altogether, so deleted before a delete left its note on the lead. The
+            // note is written now, rather than the contact made again. Asked of every
+            // workspace: one in another user's is not gone, and the lead gets its own below.
+            if (!await _db.Contacts.IgnoreQueryFilters().AnyAsync(c => c.Id == existingId, ct))
+            {
+                var tracked = await _db.Leads.FirstOrDefaultAsync(l => l.Id == lead.Id, ct);
+                var removedAt = tracked?.PersonContactRemovedAtUtc ?? DateTime.UtcNow;
+                if (tracked != null)
+                {
+                    tracked.ConvertedToContactId = null;
+                    tracked.PersonContactRemovedAtUtc = removedAt;
+                    await _db.SaveChangesAsync(ct);
+                }
+                lead.ConvertedToContactId = null;
+                lead.PersonContactRemovedAtUtc = removedAt;
+                return;
+            }
         }
 
         var email = lead.Email.Trim();
@@ -227,6 +383,12 @@ public sealed class ContactRepository : IContactRepository
             await _db.SaveChangesAsync(ct);
             return;
         }
+
+        // Someone deleted this lead's contact (see DeleteAsync); making another undoes that.
+        // Only making one: a contact someone added since under the lead's email is the
+        // person, and the lead is linked to it above, as any lead is.
+        if (lead.PersonContactRemovedAtUtc != null)
+            return;
 
         var contact = new Contact
         {
@@ -246,43 +408,118 @@ public sealed class ContactRepository : IContactRepository
         await _db.SaveChangesAsync(ct);
     }
 
-    public async Task EnsureMissingPersonContactsAsync(Guid userId, Guid? organizationId, CancellationToken ct = default)
+    public async Task<int> BackfillPersonContactsAsync(int maxLeads, CancellationToken ct = default)
     {
+        // A background job for every workspace: it looks across them for leads without
+        // their contact, and gives each one its contact acting for the lead's workspace.
         var linkedLeadIds = _db.Contacts
+            .IgnoreQueryFilters()
             .Where(c => c.ConvertedFromLeadId != null)
             .Select(c => c.ConvertedFromLeadId!.Value);
-
-        var leads = organizationId == null
-            ? _db.Leads.Where(l => l.UserId == userId && l.OrganizationId == null)
-            : _db.Leads.Where(l => l.OrganizationId == organizationId);
-
-        for (var pass = 0; pass < 20; pass++)
+        // Looked at once per run, linked or not: a lead that cannot be given a contact
+        // must not be picked first again and again while the others wait.
+        var seen = new List<Guid>();
+        var linked = 0;
+        while (seen.Count < maxLeads)
         {
-            var missing = await leads
-                .Where(l => l.Name != "" && l.Email != "" && l.ConvertedToContactId == null && !linkedLeadIds.Contains(l.Id))
+            var missing = await _db.Leads
+                .IgnoreQueryFilters()
+                .Where(l => l.Name.Trim() != "" && l.Email.Trim() != "" && l.ConvertedToContactId == null
+                    && l.PersonContactRemovedAtUtc == null && !linkedLeadIds.Contains(l.Id) && !seen.Contains(l.Id))
                 .OrderBy(l => l.CreatedAtUtc)
-                .Take(50)
+                .Take(Math.Min(50, maxLeads - seen.Count))
                 .ToListAsync(ct);
+            if (missing.Count == 0) break;
 
-            if (missing.Count == 0) return;
             foreach (var lead in missing)
-                await EnsurePersonContactAsync(lead, ct);
+            {
+                seen.Add(lead.Id);
+                using var acting = _db.ActFor(lead.OrganizationId, lead.UserId);
+                try
+                {
+                    await EnsurePersonContactAsync(lead, ct);
+                    if (lead.ConvertedToContactId != null) linked++;
+                }
+                catch (DbUpdateException)
+                {
+                    // One lead whose contact cannot be saved (a clash with a row someone
+                    // wrote meanwhile, say) is tried again on the next run; the rest go on.
+                    _db.ChangeTracker.Clear();
+                }
+            }
         }
+        return linked;
+    }
+
+    public async Task<Contact?> GetPersonContactAsync(Lead lead, Guid userId, Guid? organizationId, CancellationToken ct = default)
+    {
+        var workspace = FilterByUserAndOrg(_db.Contacts.AsNoTracking(), userId, organizationId);
+        if (lead.ConvertedToContactId is Guid id && await workspace.FirstOrDefaultAsync(c => c.Id == id, ct) is { } pointed)
+            return pointed;
+        if (await workspace.FirstOrDefaultAsync(c => c.ConvertedFromLeadId == lead.Id, ct) is { } linked)
+            return linked;
+        // Not linked yet: the contact the next save links the lead to (see
+        // EnsurePersonContactAsync), so the lead page shows the person someone added again
+        // after deleting the lead's contact, instead of saying it was deleted.
+        if (string.IsNullOrWhiteSpace(lead.Name) || string.IsNullOrWhiteSpace(lead.Email)) return null;
+        var email = lead.Email.Trim();
+        return await workspace.FirstOrDefaultAsync(c => !c.IsArchived && c.Email == email, ct);
     }
 
     public async Task<IReadOnlyList<Contact>> FindLookalikesAsync(Contact contact, CancellationToken ct = default)
     {
-        var name = NormalizeName(contact.Name);
-        var email = contact.Email.Trim().ToLowerInvariant();
-        var phone = Digits(contact.Phone);
-
-        var others = await FilterByUserAndOrg(_db.Contacts.AsNoTracking(), contact.UserId, contact.OrganizationId)
-            .Where(c => c.Id != contact.Id && !c.IsArchived)
+        // The same rules as the Duplicates page (DuplicateRules), on the indexed keys: this
+        // runs on every contact page, and it used to read the whole workspace each time.
+        // It also compared every digit of the phones, so "+41 79 123 45 67" and
+        // "079 123 45 67" never matched.
+        var self = DuplicateRules.PersonOf(contact.Id, contact.Email, contact.Phone, contact.Name, contact.CompanyId);
+        var email = self.Email;
+        var phone = self.Phone;
+        var name = self.Name;
+        var active = FilterByUserAndOrg(_db.Contacts.AsNoTracking(), contact.UserId, contact.OrganizationId).Where(c => !c.IsArchived);
+        // A phone or a name more people share than DuplicateRules.MaxShared (an office
+        // switchboard, a very common name) says nothing about any two of them, and the
+        // Duplicates page leaves it out. Asked here anyway, the page asked about each
+        // colleague on the switchboard in turn, one "keep them separate" after another.
+        // The value still counts when it disagrees, as it does on the Duplicates page.
+        var tooCommon = new HashSet<string>();
+        if (phone != null && await active.CountAsync(c => c.PhoneKey == phone, ct) > DuplicateRules.MaxShared)
+        {
+            phone = null;
+            tooCommon.Add(DuplicateRules.SamePhone);
+        }
+        if (name != null && await active.CountAsync(c => c.NameKey == name, ct) > DuplicateRules.MaxShared)
+        {
+            name = null;
+            tooCommon.Add(DuplicateRules.SameName);
+        }
+        var others = await active
+            .Where(c => c.Id != contact.Id
+                && ((email != null && c.Email.Trim().ToLower() == email)
+                    || (phone != null && c.PhoneKey == phone)
+                    || (name != null && c.NameKey == name)))
+            .OrderBy(c => c.Name).ThenBy(c => c.Id)
+            .Take(DuplicateRules.MaxShared)
             .ToListAsync(ct);
+        if (others.Count == 0) return others;
+
+        // Not offered again once someone in the workspace said they are not the same.
+        var decisions = _db.DuplicateDecisions.AsNoTracking().Where(d => d.Kind == DuplicateKinds.Contacts
+            && (d.RecordIdA == contact.Id || d.RecordIdB == contact.Id));
+        decisions = contact.OrganizationId == null
+            ? decisions.Where(d => d.UserId == contact.UserId && d.OrganizationId == null)
+            : decisions.Where(d => d.OrganizationId == contact.OrganizationId);
+        var notSame = (await decisions.Select(d => d.RecordIdA == contact.Id ? d.RecordIdB : d.RecordIdA).ToListAsync(ct)).ToHashSet();
 
         return others
-            .Where(other => IsLookalike(name, email, phone, other))
+            .Where(o => !notSame.Contains(o.Id))
+            .Select(o => (Other: o, Reasons: DuplicateRules.Matches(self, DuplicateRules.PersonOf(o.Id, o.Email, o.Phone, o.Name, o.CompanyId))
+                .Where(reason => !tooCommon.Contains(reason)).ToList()))
+            .Where(x => x.Reasons.Count > 0)
+            .OrderByDescending(x => x.Reasons.Count)
+            .ThenBy(x => x.Reasons.Contains(DuplicateRules.SameEmail) ? 0 : 1)
             .Take(5)
+            .Select(x => x.Other)
             .ToList();
     }
 
@@ -301,6 +538,8 @@ public sealed class ContactRepository : IContactRepository
             foreach (var activity in await _db.Activities.Where(a => a.ContactId == dropId).ToListAsync(ct))
                 activity.ContactId = keepId;
             foreach (var message in await _db.SentMessages.Where(m => m.ContactId == dropId).ToListAsync(ct))
+                message.ContactId = keepId;
+            foreach (var message in await _db.OutboundMessages.Where(m => m.ContactId == dropId).ToListAsync(ct))
                 message.ContactId = keepId;
             foreach (var lead in await _db.Leads.Where(l => l.ConvertedToContactId == dropId).ToListAsync(ct))
                 lead.ConvertedToContactId = keepId;
@@ -456,21 +695,9 @@ public sealed class ContactRepository : IContactRepository
         if (tracked == null) return;
         tracked.ConvertedToContactId = contactId;
         lead.ConvertedToContactId = contactId;
+        // The lead has a contact again, so the note that its last one was deleted is
+        // history: deleting this one writes it anew.
+        tracked.PersonContactRemovedAtUtc = null;
+        lead.PersonContactRemovedAtUtc = null;
     }
-
-    private static bool IsLookalike(string name, string email, string phone, Contact other)
-    {
-        var sameName = name.Length > 1 && NormalizeName(other.Name) == name;
-        var sameEmail = email.Length > 0 && other.Email.Trim().ToLowerInvariant() == email;
-        var otherPhone = Digits(other.Phone);
-        var samePhone = phone.Length >= 7 && otherPhone == phone;
-        var score = (sameEmail ? 2 : 0) + (sameName ? 1 : 0) + (samePhone ? 1 : 0);
-        return score >= 2;
-    }
-
-    private static string NormalizeName(string? value) =>
-        string.Join(' ', (value ?? "").Trim().ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries));
-
-    private static string Digits(string? value) =>
-        new string((value ?? "").Where(char.IsDigit).ToArray());
 }

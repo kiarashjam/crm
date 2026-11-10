@@ -16,4 +16,10 @@ public record ActivityDto(
     string? LeadName = null,
     Guid? CreatedByUserId = null,
     string? CreatedByName = null,
-    string? CreatedByEmail = null);
+    string? CreatedByEmail = null,
+    // When it happened, which can be before it was logged (CreatedAtUtc).
+    DateTime? OccurredAtUtc = null,
+    // How a call or meeting went, how long it took, and who reached out (see ActivityFacts).
+    string? Outcome = null,
+    int? DurationMinutes = null,
+    string? Direction = null);

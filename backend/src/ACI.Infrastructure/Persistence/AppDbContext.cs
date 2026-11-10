@@ -1,20 +1,28 @@
+using ACI.Application.Common;
 using ACI.Application.Interfaces;
+using ACI.Domain.Common;
 using ACI.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace ACI.Infrastructure.Persistence;
 
-public class AppDbContext : DbContext
+public partial class AppDbContext : DbContext
 {
     private readonly ICurrentUserService? _currentUser;
+    private readonly ITenantContext _tenant;
 
     /// <param name="options">EF options.</param>
     /// <param name="currentUser">Who is making the change, for the audit trail. Supplied by DI;
     /// absent at design time, when changes are attributed to the system.</param>
-    public AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUserService? currentUser = null) : base(options)
+    /// <param name="tenant">The workspace reads are filtered to (see <see cref="TenantOrganizationId"/>).
+    /// Supplied by DI. A context made without one, as a tool or a test makes it, starts in no
+    /// workspace and reads no workspace's records until it acts for one (<see cref="ActFor"/>),
+    /// except where a query ignores the filters.</param>
+    public AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUserService? currentUser = null, ITenantContext? tenant = null) : base(options)
     {
         _currentUser = currentUser;
+        _tenant = tenant ?? new ActingWorkspace();
     }
 
     public DbSet<User> Users => Set<User>();
@@ -60,6 +68,9 @@ public class AppDbContext : DbContext
     public DbSet<Product> Products => Set<Product>();
     public DbSet<ForecastSnapshot> ForecastSnapshots => Set<ForecastSnapshot>();
     public DbSet<SentMessage> SentMessages => Set<SentMessage>();
+    public DbSet<OutboundMessage> OutboundMessages => Set<OutboundMessage>();
+    public DbSet<EmailSuppression> EmailSuppressions => Set<EmailSuppression>();
+    public DbSet<InboundEmail> InboundEmails => Set<InboundEmail>();
     public DbSet<AutomationRule> AutomationRules => Set<AutomationRule>();
     public DbSet<AutomationFire> AutomationFires => Set<AutomationFire>();
     public DbSet<ClubMember> ClubMembers => Set<ClubMember>();
@@ -68,6 +79,8 @@ public class AppDbContext : DbContext
     public DbSet<ClubDocument> ClubDocuments => Set<ClubDocument>();
     public DbSet<SalesTeam> SalesTeams => Set<SalesTeam>();
     public DbSet<SalesTeamMember> SalesTeamMembers => Set<SalesTeamMember>();
+    public DbSet<ImportBatch> ImportBatches => Set<ImportBatch>();
+    public DbSet<DuplicateDecision> DuplicateDecisions => Set<DuplicateDecision>();
 
     /// <summary>
     /// Whether saving writes audit lines. Off only while an organization is copied: its
@@ -75,6 +88,14 @@ public class AppDbContext : DbContext
     /// "created" line of its own.
     /// </summary>
     public bool RecordsAuditTrail { get; set; } = true;
+
+    /// <summary>
+    /// The import running in this request, if one is. Every lead, contact and company
+    /// added while it is set carries its id, whoever adds it: the importer, the contact
+    /// a new lead is given, or the company its email domain names. That is what lets
+    /// the import be undone without leaving those behind.
+    /// </summary>
+    public Guid? ImportBatchId { get; set; }
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -91,6 +112,7 @@ public class AppDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
+        ScopeToWorkspace(modelBuilder);
     }
 
     /// <summary>
@@ -99,7 +121,11 @@ public class AppDbContext : DbContext
     /// </summary>
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
-        StampClubDocumentVersions();
+        StampVersions();
+        StampDealAmounts();
+        StampImportBatch();
+        StampContactKeys();
+        StampActivityTimes();
         await RecordDependents.RemoveAsync(this, cancellationToken);
         var events = RecordsAuditTrail ? await AuditTrail.CaptureAsync(this, _currentUser, cancellationToken) : Array.Empty<AuditEvent>();
         AuditEvents.AddRange(events);
@@ -117,7 +143,11 @@ public class AppDbContext : DbContext
     /// <inheritdoc cref="SaveChangesAsync(bool, CancellationToken)"/>
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
-        StampClubDocumentVersions();
+        StampVersions();
+        StampDealAmounts();
+        StampImportBatch();
+        StampContactKeys();
+        StampActivityTimes();
         RecordDependents.Remove(this);
         var events = RecordsAuditTrail ? AuditTrail.Capture(this, _currentUser) : Array.Empty<AuditEvent>();
         AuditEvents.AddRange(events);
@@ -132,13 +162,80 @@ public class AppDbContext : DbContext
         }
     }
 
-    // Whoever writes a club record (a service, a member merge, the cloner), its version
-    // moves, so a save made from an older read of it is refused. See ClubDocument.Version.
-    private void StampClubDocumentVersions()
+    // Whoever writes a club record, a lead, a deal, a contact or a company (a service, a
+    // job, a merge, the cloner), its version moves, so a save made from an older read of
+    // it is refused. See IVersioned.
+    private void StampVersions()
     {
-        foreach (var entry in ChangeTracker.Entries<ClubDocument>())
+        foreach (var entry in ChangeTracker.Entries<IVersioned>())
             if (entry.State is EntityState.Added or EntityState.Modified)
                 entry.Entity.Version = Guid.NewGuid();
+    }
+
+    // Amount is a deal's money and Value the same number as text, kept for older clients
+    // and integrations. Every writer saves through here, so the two cannot disagree: a
+    // writer that set the number (the API, lead conversion, a merge, the cloner) gets the
+    // text written from it, and one that set only the text (a tool, a test) gets the
+    // number read from it. A save that touches neither re-reads the text, so a row from
+    // before Amount existed is put right when anyone edits it.
+    //
+    // Text that already reads as the number is kept as it is. The cloner and a merge
+    // carry an older deal's number together with its text ("CHF 12,000 + VAT"), and
+    // rewriting that to "12000" lost the words in the copy that the original still has.
+    private void StampDealAmounts()
+    {
+        foreach (var entry in ChangeTracker.Entries<Deal>())
+        {
+            if (entry.State is not (EntityState.Added or EntityState.Modified)) continue;
+            var deal = entry.Entity;
+            var numberSet = entry.State == EntityState.Added
+                ? deal.Amount != null
+                : entry.Property(d => d.Amount).IsModified;
+            if (numberSet && deal.Amount is decimal amount)
+            {
+                if (MoneyText.StoredAmount(deal.Value) != amount) deal.Value = MoneyText.ValueText(amount);
+            }
+            else
+                deal.Amount = MoneyText.StoredAmount(deal.Value);
+        }
+    }
+
+    // The keys duplicates are matched on (Contact.PhoneKey, NameKey), written from the phone
+    // and the name on every save, whoever saves: the API, an import, a merge, the cloner.
+    private void StampContactKeys()
+    {
+        foreach (var entry in ChangeTracker.Entries<Contact>())
+        {
+            if (entry.State is not (EntityState.Added or EntityState.Modified)) continue;
+            var contact = entry.Entity;
+            contact.PhoneKey = MatchKeys.Phone(contact.Phone);
+            contact.NameKey = MatchKeys.Name(contact.Name) ?? "";
+        }
+    }
+
+    // An activity saved without the time it happened (the lead status sync's own lines, a
+    // merge, a test, anything written before the field existed) happened when it was
+    // logged: that is all anyone recorded about it.
+    private void StampActivityTimes()
+    {
+        foreach (var entry in ChangeTracker.Entries<Activity>())
+        {
+            if (entry.State != EntityState.Added || entry.Entity.OccurredAtUtc != default) continue;
+            entry.Entity.OccurredAtUtc = entry.Entity.CreatedAtUtc != default ? entry.Entity.CreatedAtUtc : DateTime.UtcNow;
+        }
+    }
+
+    // See ImportBatchId. Only records being added: one the import updates was already there,
+    // and undoing the import must not remove it.
+    private void StampImportBatch()
+    {
+        if (ImportBatchId is not { } batchId) return;
+        foreach (var entry in ChangeTracker.Entries<Lead>())
+            if (entry.State == EntityState.Added) entry.Entity.ImportBatchId ??= batchId;
+        foreach (var entry in ChangeTracker.Entries<Contact>())
+            if (entry.State == EntityState.Added) entry.Entity.ImportBatchId ??= batchId;
+        foreach (var entry in ChangeTracker.Entries<Company>())
+            if (entry.State == EntityState.Added) entry.Entity.ImportBatchId ??= batchId;
     }
 
     // A failed save must not leave its audit lines queued, or a retry would record them twice.

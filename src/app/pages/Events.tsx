@@ -60,6 +60,8 @@ import {
   type RecordColumn,
 } from '@/app/components/views';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
+import { WriteOnly } from '@/app/components/WriteOnly';
+import { PERMISSION } from '@/app/api/organizations';
 
 const STATUS_BADGE: Record<EventStatus, string> = {
   Draft: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
@@ -268,42 +270,49 @@ export default function Events() {
     const atCapacity = e.registeredCount >= e.capacity;
     return (
       <div className={`flex items-center ${inCard ? 'gap-2' : 'gap-1'}`}>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => rsvp(e)}
-          disabled={rsvpId === e.id || e.status !== 'Published'}
-          className={inCard ? 'flex-1' : 'h-8'}
-        >
-          {rsvpId === e.id ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          ) : atCapacity ? (
-            'Join waitlist'
-          ) : (
-            'RSVP'
-          )}
-        </Button>
-        <button
-          type="button"
-          onClick={() => openEdit(e)}
-          className="rounded p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-          aria-label={`Edit ${e.name}`}
-        >
-          <Pencil className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          onClick={() => remove(e)}
-          disabled={deletingId === e.id}
-          className="rounded p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
-          aria-label={`Delete ${e.name}`}
-        >
-          {deletingId === e.id ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Trash2 className="h-4 w-4" />
-          )}
-        </button>
+        {/* Whoever runs the club's members or the front desk takes bookings. */}
+        <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.FrontDesk]}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => rsvp(e)}
+            disabled={rsvpId === e.id || e.status !== 'Published'}
+            className={inCard ? 'flex-1' : 'h-8'}
+          >
+            {rsvpId === e.id ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : atCapacity ? (
+              'Join waitlist'
+            ) : (
+              'RSVP'
+            )}
+          </Button>
+        </WriteOnly>
+        <WriteOnly permission={PERMISSION.ClubMembers}>
+          <button
+            type="button"
+            onClick={() => openEdit(e)}
+            className="rounded p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+            aria-label={`Edit ${e.name}`}
+          >
+            <Pencil className="h-4 w-4" />
+          </button>
+        </WriteOnly>
+        <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.DeleteRecords]} all>
+          <button
+            type="button"
+            onClick={() => remove(e)}
+            disabled={deletingId === e.id}
+            className="rounded p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+            aria-label={`Delete ${e.name}`}
+          >
+            {deletingId === e.id ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Trash2 className="h-4 w-4" />
+            )}
+          </button>
+        </WriteOnly>
       </div>
     );
   };
@@ -347,10 +356,12 @@ export default function Events() {
             title="Events"
             subtitle="Ticketing, capacity, waitlists, and member pricing."
             actions={
-              <Button onClick={openCreate} className={heroPrimary('pink')}>
-                <Plus className="h-4 w-4" />
-                New event
-              </Button>
+              <WriteOnly permission={PERMISSION.ClubMembers}>
+                <Button onClick={openCreate} className={heroPrimary('pink')}>
+                  <Plus className="h-4 w-4" />
+                  New event
+                </Button>
+              </WriteOnly>
             }
             stats={[
               { label: 'Upcoming', value: stats.upcoming, icon: CalendarHeart, tone: 'pink', hint: `${stats.draftCount} in draft` },

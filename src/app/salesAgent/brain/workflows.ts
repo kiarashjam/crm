@@ -1,5 +1,5 @@
 import { failurePointFor, isPipelineComplete, parsePipeline } from '@/app/pages/leads/leadPipeline';
-import { currencyOf, formatMoney, tryParseAmount } from '@/app/lib/money';
+import { amountOf, currencyOf, formatMoney, parseMoneyInput } from '@/app/lib/money';
 import { calendarKey, daysBetween, todayKey } from '../calendarDay';
 import type { SuggestableLead } from '../nextAction';
 import { dealOutcome, type SuggestableDeal, type SuggestableTask } from '../workspace';
@@ -20,7 +20,7 @@ export function dayOf(iso: string): string {
 
 /** An amount as the deal's own currency writes it, or the saved text when it is not a number. */
 export function amountText(deal: SuggestableDeal): string {
-  const amount = tryParseAmount(deal.value);
+  const amount = amountOf(deal);
   if (amount === null) return deal.value?.trim() || 'no amount saved';
   return formatMoney(amount, currencyOf({ currency: deal.currency ?? undefined }));
 }
@@ -246,7 +246,7 @@ export function pipelineTotals(deals: SuggestableDeal[]): string {
   const unreadable: SuggestableDeal[] = [];
   const negative: SuggestableDeal[] = [];
   for (const deal of open) {
-    const amount = tryParseAmount(deal.value);
+    const amount = amountOf(deal);
     if (amount === null) {
       unreadable.push(deal);
       continue;
@@ -343,7 +343,7 @@ export function amountIn(question: string): ParsedAmount | null {
     if (score === 0) continue;
     // A bare year after "for" or "of" names a period, not an amount.
     if (score === 1 && /^(19|20)\d\d$/.test(digits)) continue;
-    const amount = tryParseAmount(digits.replace(/[\s'’]/g, ''));
+    const amount = parseMoneyInput(digits.replace(/[\s'’]/g, ''));
     if (amount === null) continue;
     const scale = multiplier?.trim().toLowerCase() === 'k' ? 1_000 : multiplier?.trim().toLowerCase() === 'm' ? 1_000_000 : 1;
     const value = String(Math.round(amount * scale * 100) / 100);
@@ -456,7 +456,7 @@ export function groundedDraft(world: AgentWorld, item: { key: string; href: stri
     const deal = world.deals.find((row) => row.id === id);
     if (deal?.companyName) lines.push(`Company: ${deal.companyName}`);
     if (deal?.contactName) lines.push(`Contact: ${deal.contactName}`);
-    if (deal?.value) lines.push(`Recorded amount: ${amountText(deal)}`);
+    if (deal && (deal.amount != null || deal.value)) lines.push(`Recorded amount: ${amountText(deal)}`);
     if (deal?.dealStageName || deal?.stage) lines.push(`Stage: ${deal.dealStageName || deal.stage}`);
     if (deal?.expectedCloseDateUtc) lines.push(`Expected close: ${dayOf(deal.expectedCloseDateUtc)}`);
   }

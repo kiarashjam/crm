@@ -58,6 +58,8 @@ import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
+import { WriteOnly } from '@/app/components/WriteOnly';
+import { PERMISSION } from '@/app/api/organizations';
 
 /** Why the gift card and points tiles are switched off. */
 const NOT_A_PAYMENT_YET = 'Not available yet: it would use up the value without paying any bill.';
@@ -324,36 +326,42 @@ export default function PosTerminal() {
 
                   {/* Action grid */}
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    <ActionTile
-                      icon={<ScanLine className="w-5 h-5" />}
-                      title="Check in"
-                      desc="Log a visit + award tier-multiplied points"
-                      onClick={() => {
-                        setVisitForm({ venue: 'Dining', guests: '0' });
-                        setActionDialog('visit');
-                      }}
-                      color="cyan"
-                    />
-                    <ActionTile
-                      icon={<Wine className="w-5 h-5" />}
-                      title="Open tab"
-                      desc="Start a running check at a venue"
-                      onClick={() => {
-                        setTabForm({ venue: 'Bar' });
-                        setActionDialog('tab');
-                      }}
-                      color="amber"
-                    />
-                    <ActionTile
-                      icon={<Receipt className="w-5 h-5" />}
-                      title="Post charge"
-                      desc="One-time charge to house account"
-                      onClick={() => {
-                        setChargeForm({ kind: 'Dining', description: '', amount: '' });
-                        setActionDialog('charge');
-                      }}
-                      color="emerald"
-                    />
+                    <WriteOnly permission={PERMISSION.FrontDesk}>
+                      <ActionTile
+                        icon={<ScanLine className="w-5 h-5" />}
+                        title="Check in"
+                        desc="Log a visit + award tier-multiplied points"
+                        onClick={() => {
+                          setVisitForm({ venue: 'Dining', guests: '0' });
+                          setActionDialog('visit');
+                        }}
+                        color="cyan"
+                      />
+                    </WriteOnly>
+                    <WriteOnly permission={PERMISSION.FrontDesk}>
+                      <ActionTile
+                        icon={<Wine className="w-5 h-5" />}
+                        title="Open tab"
+                        desc="Start a running check at a venue"
+                        onClick={() => {
+                          setTabForm({ venue: 'Bar' });
+                          setActionDialog('tab');
+                        }}
+                        color="amber"
+                      />
+                    </WriteOnly>
+                    <WriteOnly permission={PERMISSION.ManageMoney}>
+                      <ActionTile
+                        icon={<Receipt className="w-5 h-5" />}
+                        title="Post charge"
+                        desc="One-time charge to house account"
+                        onClick={() => {
+                          setChargeForm({ kind: 'Dining', description: '', amount: '' });
+                          setActionDialog('charge');
+                        }}
+                        color="emerald"
+                      />
+                    </WriteOnly>
                     <ActionTile
                       icon={<Gift className="w-5 h-5" />}
                       title="Redeem gift card"
@@ -426,9 +434,11 @@ export default function PosTerminal() {
             <Button variant="outline" onClick={() => setActionDialog(null)} disabled={busy}>
               Cancel
             </Button>
-            <Button onClick={recordVisit} disabled={busy}>
-              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Check in'}
-            </Button>
+            <WriteOnly permission={PERMISSION.FrontDesk}>
+              <Button onClick={recordVisit} disabled={busy}>
+                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Check in'}
+              </Button>
+            </WriteOnly>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -464,9 +474,11 @@ export default function PosTerminal() {
             <Button variant="outline" onClick={() => setActionDialog(null)} disabled={busy}>
               Cancel
             </Button>
-            <Button onClick={startTab} disabled={busy}>
-              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Open tab'}
-            </Button>
+            <WriteOnly permission={PERMISSION.FrontDesk}>
+              <Button onClick={startTab} disabled={busy}>
+                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Open tab'}
+              </Button>
+            </WriteOnly>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -519,9 +531,11 @@ export default function PosTerminal() {
             <Button variant="outline" onClick={() => setActionDialog(null)} disabled={busy}>
               Cancel
             </Button>
-            <Button onClick={postCharge} disabled={busy}>
-              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Post charge'}
-            </Button>
+            <WriteOnly permission={PERMISSION.ManageMoney}>
+              <Button onClick={postCharge} disabled={busy}>
+                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Post charge'}
+              </Button>
+            </WriteOnly>
           </DialogFooter>
         </DialogContent>
       </Dialog>

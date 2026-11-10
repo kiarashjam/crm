@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ApiError } from '@/app/api/apiClient';
+import { isEditConflict, showEditConflict } from '@/app/lib/editConflict';
+import { whenChosen } from '@/app/lib/whenChosen';
 import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 import AppHeader from '@/app/components/AppHeader';
 import { RecordSkeleton } from '@/app/components/PageSkeleton';
@@ -23,7 +25,7 @@ import {
   messages,
 } from '@/app/api';
 import type { Lead, Company, Contact, LeadStatus, LeadSource, Activity, TaskItem } from '@/app/api/types';
-import { getOrgMembers, type OrgMemberDto } from '@/app/api/organizations';
+import { getOrgMembers, orgCan, PERMISSION, type OrgMemberDto } from '@/app/api/organizations';
 import { LeadStatusTimeline } from './leads/components/LeadStatusTimeline';
 import { useOrg } from '@/app/contexts/OrgContext';
 import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
@@ -47,12 +49,16 @@ import { useLeadStatusSync } from './leads/useLeadStatusSync';
 import type { StatusDrift, SuggestReason } from './leads/leadStatusSync';
 import { StatusSyncStrip } from './leads/components/StatusSyncStrip';
 import { AddLeadDialog } from './leads/AddLeadDialog';
+import { leadEditForm, useFreshLeadOnOpen } from './leads/useFreshLeadOnOpen';
 import { FALLBACK_STATUSES, FALLBACK_SOURCES, LIFECYCLE_STAGES, EMPTY_LEAD_FORM } from './leads/config';
 import { isValidGuid } from './leads/utils';
 import { loadLeadAssignments, setLeadAssignment } from './leads/leadAssignmentStore';
 import type { LeadForm } from './leads/types';
 import { InlineField } from './leads/detail/InlineField';
 import { ActivityTimeline } from './leads/detail/ActivityTimeline';
+import { withActivity } from '@/app/components/RecordActivity';
+import { MentionTextarea, useWorkspacePeople } from '@/app/components/MentionTextarea';
+import { activityTime, isOurResponse, type ActivityFactsPayload } from '@/app/lib/activityFacts';
 import { ScoreGauge } from './leads/detail/ScoreGauge';
 import { SalesTrackerCard } from './leads/detail/SalesTrackerCard';
 import { ReferralCard } from './leads/detail/ReferralCard';
@@ -64,6 +70,7 @@ import AttachmentsCard from '@/app/components/AttachmentsCard';
 import { Confetti } from '@/app/components/Confetti';
 import EmailComposerDialog from '@/app/components/EmailComposerDialog';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { WriteOnly } from '@/app/components/WriteOnly';
 
 type Tab = 'activity' | 'tasks' | 'notes';
 
@@ -122,7 +129,9 @@ export default function LeadDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const { currentOrgId, isReadOnly } = useOrg();
+  const { currentOrgId, currentOrg, isReadOnly: viewOnly } = useOrg();
+  // Working a lead takes records.edit: finance, the front desk and read-only members see it.
+  const isReadOnly = viewOnly || !orgCan(currentOrg, PERMISSION.EditRecords);
   // Less motion when the OS or Settings asks for it: things appear instead of moving.
   const reduce = useMotionPreference();
   const rise = (delay = 0) => (reduce
@@ -179,6 +188,7 @@ export default function LeadDetailPage() {
 
   // Quick-log + email composer + task input
   const [noteDraft, setNoteDraft] = useState('');
+  const people = useWorkspacePeople();
   const [savingNote, setSavingNote] = useState(false);
   const [emailSubject, setEmailSubject] = useState('');
   const [emailBody, setEmailBody] = useState('');
@@ -417,6 +427,27 @@ export default function LeadDetailPage() {
   );
 
   /**
+   * Re-reads the lead after something on the server moved it, so the tracker and
+   * the status badge show what the server now holds, and the timeline gets the
+   * entry the server wrote explaining the move.
+   */
+  const refreshLead = useCallback(() => {
+    if (!lead) return;
+    const leadId = lead.id;
+    void getLeadById(leadId)
+      .then((fresh) => {
+        if (!fresh) return;
+        setLead((prev) => (prev && prev.id === leadId ? {
+          ...prev,
+          ...fresh,
+          assignedToId: fresh.assignedToId ?? prev.assignedToId,
+        } : prev));
+      })
+      .catch(() => { /* the page keeps what it has */ });
+    getActivitiesByLead(leadId).then(setActivities).catch(() => { /* non-fatal */ });
+  }, [lead]);
+
+  /**
    * Writes a status the PIPELINE derived — never one a person typed.
    *
    * The only caller is the drift strip's "bring it in line" action, which accepts
@@ -466,7 +497,9 @@ export default function LeadDetailPage() {
   };
 
   const setCompanyId = (companyId: string | '') => {
-    const next = companyId ? companyId : undefined;
+    // Null takes the company off. Left out, as it was, the timeline said "Company
+    // cleared" while the company, and its score points, stayed.
+    const next = companyId ? companyId : null;
     const c = companies.find((x) => x.id === companyId);
     return patchLead({ companyId: next }, { subject: c ? `Linked to ${c.name}` : 'Company cleared' });
   };
@@ -474,8 +507,10 @@ export default function LeadDetailPage() {
   // Inline-edit savers for text fields — return boolean for InlineField.
   const saveName = (v: string) => patchLead({ name: v }, { subject: 'Name updated' });
   const saveEmail = (v: string) => patchLead({ email: v }, { subject: 'Email updated' });
-  const savePhone = (v: string) => patchLead({ phone: v }, { subject: 'Phone updated' });
-  const saveDescription = (v: string) => patchLead({ description: v }, { subject: 'Description updated' });
+  // Emptied, the phone and description are sent as null, which takes them off: an empty
+  // phone was refused as not a phone number.
+  const savePhone = (v: string) => patchLead({ phone: v.trim() || null }, { subject: 'Phone updated' });
+  const saveDescription = (v: string) => patchLead({ description: v.trim() || null }, { subject: 'Description updated' });
   const saveScore = async (v: string): Promise<boolean> => {
     const n = parseInt(v, 10);
     if (Number.isNaN(n) || n < 0 || n > 100) {
@@ -487,10 +522,15 @@ export default function LeadDetailPage() {
 
   // Logging an outreach touch (call/email/meeting) advances "Last contacted"
   // so the hero metric reflects reality. Optimistic locally; the PUT is
-  // best-effort (kept for the session even if it fails).
-  const bumpLastContacted = async () => {
+  // best-effort (kept for the session even if it fails). It moves to when the
+  // touch happened, never back: a call logged late for this morning does not
+  // undo the one made since, as on the server.
+  const bumpLastContacted = async (happenedAt?: string) => {
     if (!lead) return;
-    const when = new Date().toISOString();
+    const at = happenedAt ? Date.parse(happenedAt) : Date.now();
+    const last = lead.lastContactedAt ? Date.parse(lead.lastContactedAt) : NaN;
+    if (!Number.isNaN(last) && last >= at) return;
+    const when = new Date(Math.min(at, Date.now())).toISOString();
     setLead((prev) => (prev ? { ...prev, lastContactedAt: when } : prev));
     try {
       await updateLead(lead.id, { lastContactedAt: when });
@@ -511,11 +551,14 @@ export default function LeadDetailPage() {
   };
 
   // Quick-log via popover (from card) — also used by the inline note + email flows.
-  const logActivity = async (params: { type: string; subject?: string; body: string }) => {
+  const logActivity = async (params: { type: string; subject?: string; body: string } & ActivityFactsPayload) => {
     if (!lead) return;
     const a = await createActivity({ ...params, leadId: lead.id });
-    if (a) setActivities((prev) => [a, ...prev]);
-    if (OUTREACH_ACTIVITY_TYPES.has(params.type)) void bumpLastContacted();
+    if (a) setActivities((prev) => withActivity(prev, a));
+    // An email they sent, or their call nobody picked up, is not us getting back to them.
+    if (OUTREACH_ACTIVITY_TYPES.has(params.type) && isOurResponse(params.type, params.direction, params.outcome)) {
+      void bumpLastContacted(a ? activityTime(a) : params.occurredAtUtc);
+    }
   };
 
   const handleAddNote = async () => {
@@ -665,24 +708,23 @@ export default function LeadDetailPage() {
   // the leads list's openEdit so the two stay behaviourally identical.
   const openEdit = useCallback(() => {
     if (!lead) return;
-    const sourceOpt = sourceOptions.find((s) => s.id === lead.leadSourceId || s.name === lead.source);
-    const statusOpt = statusOptions.find((s) => s.id === lead.leadStatusId || s.name === lead.status);
-    setEditForm({
-      name: lead.name,
-      email: lead.email,
-      phone: lead.phone ?? '',
-      referredByContactId: lead.referredByContactId ?? '',
-      companyId: lead.companyId ?? '',
-      source: lead.source ?? (sourceOpt?.name ?? 'Manual'),
-      status: lead.status,
-      leadSourceId: lead.leadSourceId ?? (sourceOpt?.id ?? ''),
-      leadStatusId: lead.leadStatusId ?? (statusOpt?.id ?? ''),
-      leadScore: lead.leadScore?.toString() ?? '',
-      description: lead.description ?? '',
-      lifecycleStage: lead.lifecycleStage ?? '',
-    });
+    setEditForm(leadEditForm(lead, sourceOptions, statusOptions));
     setEditOpen(true);
   }, [lead, sourceOptions, statusOptions]);
+
+  // The editor's save is checked against the version it opened with, and this page's
+  // own assignments, referrers and logged calls give the lead new versions it does not
+  // read back. So the editor starts from the lead as it is now (see useFreshLeadOnOpen).
+  useFreshLeadOnOpen(
+    editOpen ? lead?.id : undefined,
+    () => !!lead && JSON.stringify(editForm) === JSON.stringify(leadEditForm(lead, sourceOptions, statusOptions)),
+    (fresh) => {
+      if (!lead) return;
+      const merged = { ...lead, ...fresh, assignedToId: fresh.assignedToId ?? lead.assignedToId };
+      setLead(merged);
+      setEditForm(leadEditForm(merged, sourceOptions, statusOptions));
+    },
+  );
 
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -703,15 +745,19 @@ export default function LeadDetailPage() {
       const updated = await updateLead(lead.id, {
         name: editForm.name.trim(),
         email: editForm.email.trim(),
-        phone: editForm.phone.trim() || undefined,
-        companyId: editForm.companyId || undefined,
+        // An emptied field is sent as null, which takes it off; left out, it was kept.
+        phone: editForm.phone.trim() || null,
+        companyId: editForm.companyId || null,
         source: editForm.source || undefined,
         status: editForm.status,
         leadSourceId: validLeadSourceId,
         leadStatusId: validLeadStatusId,
         leadScore: validLeadScore,
-        description: editForm.description.trim() || undefined,
-        lifecycleStage: editForm.lifecycleStage || undefined,
+        description: editForm.description.trim() || null,
+        lifecycleStage: editForm.lifecycleStage || null,
+        // The editor sends back every field it shows, so the save is refused, rather
+        // than written over, when someone saved the lead after this page read it.
+        version: lead.version,
       });
       if (!updated) {
         toast.error(messages.errors.generic);
@@ -729,8 +775,16 @@ export default function LeadDetailPage() {
       toast.success(messages.success.leadUpdated);
       setEditOpen(false);
     } catch (err) {
-      // The server's reason when it gave one — e.g. another open lead already has this email.
-      toast.error(err instanceof ApiError && err.message ? err.message : messages.errors.generic);
+      if (isEditConflict(err)) {
+        // Reload closes the editor and brings the latest copy in; editing again starts from it.
+        showEditConflict(err.message, () => {
+          setEditOpen(false);
+          refreshLead();
+        });
+      } else {
+        // The server's reason when it gave one — e.g. another open lead already has this email.
+        toast.error(err instanceof ApiError && err.message ? err.message : messages.errors.generic);
+      }
     } finally {
       setSavingEdit(false);
     }
@@ -907,15 +961,17 @@ export default function LeadDetailPage() {
                         Convert
                       </Button>
                     )}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setDeleteOpen(true)}
-                      aria-label="Delete"
-                      className={`${heroSecondary} text-red-600 hover:border-red-200 hover:bg-red-50 hover:text-red-700`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <WriteOnly permission={[PERMISSION.EditRecords, PERMISSION.DeleteRecords]} all>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setDeleteOpen(true)}
+                        aria-label="Delete"
+                        className={`${heroSecondary} text-red-600 hover:border-red-200 hover:bg-red-50 hover:text-red-700`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </WriteOnly>
                   </>
                 )}
               </>
@@ -988,8 +1044,6 @@ export default function LeadDetailPage() {
                   className="mb-3"
                   drift={statusSyncView.drift}
                   reasons={statusSyncView.reasons}
-                  enabled={statusSync.enabled}
-                  onToggleEnabled={statusSync.setEnabled}
                   disabled={lead.isConverted || isReadOnly}
                   onApply={(name) => applyDerivedStatus(name)}
                 />
@@ -1006,9 +1060,9 @@ export default function LeadDetailPage() {
 
               {/* Sits directly under the tracker because it drives it: sending
                   satisfies the Contract phase and full execution satisfies the
-                  Signature phase, which the status auto-sync then carries through. */}
+                  Signature phase, and the server moves the status with them. */}
               <motion.div {...rise(0.2)}>
-                <ContractPanel leadId={lead.id} leadName={lead.name} readOnly={isReadOnly} />
+                <ContractPanel leadId={lead.id} leadName={lead.name} readOnly={isReadOnly} onLeadChanged={refreshLead} />
               </motion.div>
 
               {/* Tab bar: a pill that slides to the tab you pick. */}
@@ -1044,15 +1098,16 @@ export default function LeadDetailPage() {
                       </span>
                       Add a note
                     </label>
-                    <textarea
+                    <MentionTextarea
                       id="lead-note-draft"
                       value={noteDraft}
-                      onChange={(e) => setNoteDraft(e.target.value)}
+                      onChange={setNoteDraft}
+                      people={people}
                       onKeyDown={(e) => {
                         if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); handleAddNote(); }
                       }}
                       rows={2}
-                      placeholder="Capture a quick thought — Cmd/Ctrl+Enter to save."
+                      placeholder="Capture a quick thought — @mention a teammate to tell them. Cmd/Ctrl+Enter to save."
                       className="mt-2 w-full resize-none rounded-lg border border-slate-200 bg-amber-50/30 px-3 py-2 text-sm placeholder:text-slate-400 focus:border-amber-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-300/40"
                     />
                     <div className="mt-2 flex items-center justify-end">
@@ -1228,14 +1283,16 @@ export default function LeadDetailPage() {
                                     ? 'bg-amber-100 text-amber-700'
                                     : 'bg-sky-50 text-sky-600',
                               )}>{t.priority}</span>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteTask(t)}
-                                aria-label="Delete task"
-                                className="flex h-7 w-7 items-center justify-center rounded-md text-slate-300 opacity-0 transition-all hover:bg-red-50 hover:text-red-600 focus-visible:opacity-100 group-hover:opacity-100"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                              <WriteOnly permission={[PERMISSION.EditRecords, PERMISSION.DeleteRecords]} all>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteTask(t)}
+                                  aria-label="Delete task"
+                                  className="flex h-7 w-7 items-center justify-center rounded-md text-slate-300 opacity-0 transition-all hover:bg-red-50 hover:text-red-600 focus-visible:opacity-100 group-hover:opacity-100"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </WriteOnly>
                             </div>
                           </motion.li>
                         );
@@ -1377,7 +1434,7 @@ export default function LeadDetailPage() {
                 <SideCard title="Details" tone="violet" icon={<Sparkles className="w-3.5 h-3.5" />}>
                   <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
                     <SidebarSelectField label="Company" htmlFor="lead-company" icon={<Building2 className="w-3 h-3 text-indigo-400" />}>
-                      <Select value={lead.companyId ?? ''} disabled={isReadOnly} onValueChange={(v) => setCompanyId(v === '__none__' ? '' : v)}>
+                      <Select value={lead.companyId ?? ''} disabled={isReadOnly} onValueChange={whenChosen((v) => setCompanyId(v === '__none__' ? '' : v))}>
                         <SelectTrigger id="lead-company" className="h-9 text-sm">
                           <SelectValue placeholder="No company" />
                         </SelectTrigger>

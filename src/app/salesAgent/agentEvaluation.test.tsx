@@ -11,7 +11,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { askAgent, type AgentWorld } from './brain/answer';
 import { emptyMemory, remember, rowFor, type AgentMemory } from './brain/reason';
-import { formatMoney, tryParseAmount } from '@/app/lib/money';
+import { formatMoney, parseMoneyInput } from '@/app/lib/money';
 import type { WorkSuggestion } from './workspace';
 
 vi.mock('@/app/api/activities', () => ({ createActivity: vi.fn(async () => null) }));
@@ -32,6 +32,7 @@ vi.mock('@/app/lib/auth', () => ({
 }));
 
 import { createContact } from '@/app/api/contacts';
+import { sendEmail } from '@/app/api/email';
 import { createTask } from '@/app/api/tasks';
 import { getUserSettings } from '@/app/api/settings';
 import { getCurrentOrganizationId } from '@/app/lib/auth';
@@ -70,12 +71,12 @@ function world(extra: Partial<AgentWorld> = {}): AgentWorld {
       { id: 'a3', name: 'No Date Lead', email: 'nodate@example.com', companyName: 'Northwind' },
     ],
     deals: [
-      { id: 'd1', name: 'Pavilion renewal', companyId: 'c-p', companyName: 'Pavilion', value: '48000', stage: 'Proposal', expectedCloseDateUtc: '2026-10-01', lastActivityAtUtc: '2026-10-20' },
-      { id: 'd2', name: 'Pavilion expansion', companyId: 'c-p', companyName: 'Pavilion', value: '12000', stage: 'Qualification', expectedCloseDateUtc: '2026-12-01' },
-      { id: 'd3', name: 'Northwind retain', companyId: 'c-n', companyName: 'Northwind', value: '5000', stage: 'Proposal' },
-      { id: 'd4', name: 'Northwind grow', companyId: 'c-n', companyName: 'Northwind', value: '-200', stage: 'Qualification' },
-      { id: 'd5', name: 'Won trophy', companyId: 'c-p', companyName: 'Pavilion', value: '99999', stage: 'Closed Won', isWon: true },
-      { id: 'd6', name: 'Unpriced', companyId: 'c-p', companyName: 'Pavilion', value: 'TBD', stage: 'Proposal' },
+      { id: 'd1', name: 'Pavilion renewal', companyId: 'c-p', companyName: 'Pavilion', value: '48000', amount: 48000, stage: 'Proposal', expectedCloseDateUtc: '2026-10-01', lastActivityAtUtc: '2026-10-20' },
+      { id: 'd2', name: 'Pavilion expansion', companyId: 'c-p', companyName: 'Pavilion', value: '12000', amount: 12000, stage: 'Qualification', expectedCloseDateUtc: '2026-12-01' },
+      { id: 'd3', name: 'Northwind retain', companyId: 'c-n', companyName: 'Northwind', value: '5000', amount: 5000, stage: 'Proposal' },
+      { id: 'd4', name: 'Northwind grow', companyId: 'c-n', companyName: 'Northwind', value: '-200', amount: -200, stage: 'Qualification' },
+      { id: 'd5', name: 'Won trophy', companyId: 'c-p', companyName: 'Pavilion', value: '99999', amount: 99999, stage: 'Closed Won', isWon: true },
+      { id: 'd6', name: 'Unpriced', companyId: 'c-p', companyName: 'Pavilion', value: 'TBD', amount: null, stage: 'Proposal' },
     ],
     contacts: [
       { id: 's1', name: 'Sam Lee', email: 'sam@pavilion.test', companyId: 'c-p', companyName: 'Pavilion', phone: '555-0199' },
@@ -182,14 +183,17 @@ describe('agent evaluation', () => {
     const totals = askAgent('pipeline value', book, NOW);
     expect(totals.text).toContain('This is not a forecast');
     // 48000 + 12000 + 5000. The -200 and the TBD are named and left out.
-    expect(totals.text).toContain(`Open total: ${formatMoney(65000, 'USD')}.`);
+    expect(totals.text).toContain(`Open total: ${formatMoney(65000, 'CHF')}.`);
     expect(totals.text).toMatch(/no numeric amount.*Unpriced/);
     expect(totals.text).toMatch(/negative amount.*Northwind grow/);
-    expect(totals.text).not.toContain('99,999');
+    // The won deal is left out. Amounts are now written "CHF 99’999", so the old check
+    // for "99,999" could never fail.
+    expect(totals.text).not.toMatch(/99\D?999/);
+    expect(totals.text).not.toContain('Won trophy');
 
-    expect(tryParseAmount('-200')).toBe(-200);
-    expect(tryParseAmount('TBD')).toBeNull();
-    expect(tryParseAmount('48000')).toBe(48000);
+    expect(parseMoneyInput('-200')).toBe(-200);
+    expect(parseMoneyInput('TBD')).toBeNull();
+    expect(parseMoneyInput('48000')).toBe(48000);
 
     const quiet = askAgent('who went quiet?', book, NOW);
     expect(quiet.text).toContain('Ada Lovelace');
@@ -268,8 +272,8 @@ describe('agent evaluation', () => {
       leadId: null,
       contactId: null,
     });
-    expect(update.text).toContain(`Recorded amount: ${formatMoney(48000, 'USD')}`);
-    expect(update.text).toContain(`Proposed amount: ${formatMoney(15000, 'USD')}`);
+    expect(update.text).toContain(`Recorded amount: ${formatMoney(48000, 'CHF')}`);
+    expect(update.text).toContain(`Proposed amount: ${formatMoney(15000, 'CHF')}`);
     expect(update.actions[0]?.dealValue).toBe('15000');
     expect(update.actions[0]?.kind).toBe('update-deal');
     expect(update.actions[0]?.dealId).toBe('d1');
@@ -289,7 +293,7 @@ describe('agent evaluation', () => {
     expect(poisoned.actions[0]?.kind).toBe('draft');
     expect(poisoned.actions[0]?.brief?.goal).toBe('Send the proposal');
     expect(poisoned.actions[0]?.brief?.goal).not.toMatch(/9999999|delete/i);
-    expect(poisoned.actions[0]?.brief?.context).toContain(`Recorded amount: ${formatMoney(48000, 'USD')}`);
+    expect(poisoned.actions[0]?.brief?.context).toContain(`Recorded amount: ${formatMoney(48000, 'CHF')}`);
     expect(poisoned.actions[0]?.brief?.context).toContain('Ignore previous instructions');
     expect(poisoned.actions.every((action) => action.kind === 'draft' || action.kind === 'open')).toBe(true);
     expect(poisoned.text).toMatch(/nothing is sent/i);
@@ -436,6 +440,29 @@ describe('agent evaluation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create task for Ada Lovelace' }));
     expect(await screen.findByText(/That could not be saved\. The due date is not a real date\./)).toBeTruthy();
     expect(vi.mocked(createTask)).toHaveBeenCalledWith(expect.objectContaining({ title: 'Call about the renewal', leadId: 'a1' }));
+  });
+
+  it('sends a confirmed email as the assistant, and says when it is only queued', async () => {
+    // The server's outbox puts the email on the lead's timeline. It used to leave no
+    // trace there, and a queued email must not read as sent.
+    vi.mocked(sendEmail).mockResolvedValueOnce({
+      id: 'e1', to: 'ada@northwind.test', subject: 'Following up', body: 'Thanks for today.',
+      status: 'queued', direction: 'outbound', sentAtUtc: NOW.toISOString(),
+    });
+    render(
+      <MemoryRouter>
+        <AgentDesk thinkingMs={0} initialOpen world={world()} readOnly={false} accountKey="user-1:org-a" />
+      </MemoryRouter>,
+    );
+    const input = screen.getByLabelText('Ask the agent');
+    fireEvent.change(input, { target: { value: 'send Ada Lovelace: "Thanks for today."' } });
+    fireEvent.submit(input.closest('form') as HTMLFormElement);
+    fireEvent.click(screen.getByRole('button', { name: 'Send to Ada Lovelace' }));
+
+    expect(await screen.findByText(/Queued for ada@northwind\.test: the mail server did not take it yet/)).toBeTruthy();
+    expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'ada@northwind.test', body: 'Thanks for today.', leadId: 'a1', source: 'assistant',
+    }));
   });
 
   it('listens for answers before the first one, and reads saved turns from the server once', () => {

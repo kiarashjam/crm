@@ -6,9 +6,10 @@
 // /api/events/{id}/attendees, which also keeps the event's registered and waitlist
 // counts and decides reserved or waitlisted against the capacity.
 //
-// The browser store stays for the demo, and for a server too old to have the route
-// (`apiWithFallback` then saves here and the page says so). Lists a browser kept
-// before the move can be uploaded once from the event page (`uploadLocalAttendees`).
+// The browser store stays for the demo. A server too old to have the route answers
+// with an error, as any call does: the list is never kept in this browser instead.
+// Lists a browser kept before the move can be uploaded once from the event page
+// (`uploadLocalAttendees`).
 
 import { apiWithFallback, authFetch, authFetchJson, ensureOk, servesDemoData } from './apiClient';
 import { isLocalOnly } from './localOnly';

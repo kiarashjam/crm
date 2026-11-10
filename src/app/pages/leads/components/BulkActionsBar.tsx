@@ -6,7 +6,8 @@ interface BulkActionsBarProps {
   count: number;
   members: { userId: string; name: string }[];
   onClear: () => void;
-  onBulkDelete: () => Promise<void>;
+  /** Left out for someone whose role does not let them delete: the button is not offered. */
+  onBulkDelete?: () => Promise<void>;
   onBulkApply: (patch: { source?: string; assignedToUserId?: string }) => Promise<void>;
 }
 
@@ -33,6 +34,7 @@ export function BulkActionsBar({
   const chosen = source.trim() !== '' || owner !== '';
 
   const runDelete = async () => {
+    if (!onBulkDelete) return;
     setBusy('delete');
     try {
       await onBulkDelete();
@@ -92,10 +94,12 @@ export function BulkActionsBar({
         >
           {busy === 'apply' ? <Loader2 className="w-4 h-4 animate-spin" aria-label="Applying" /> : 'Apply'}
         </Button>
-        <Button variant="outline" size="sm" disabled={busy !== null} onClick={runDelete} className="gap-1.5 text-red-600 border-red-200">
-          {busy === 'delete' ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Trash2 className="w-4 h-4" aria-hidden="true" />}
-          Delete
-        </Button>
+        {onBulkDelete && (
+          <Button variant="outline" size="sm" disabled={busy !== null} onClick={runDelete} className="gap-1.5 text-red-600 border-red-200">
+            {busy === 'delete' ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Trash2 className="w-4 h-4" aria-hidden="true" />}
+            Delete
+          </Button>
+        )}
         <Button variant="ghost" size="sm" onClick={onClear} aria-label="Clear selection" className="h-8 w-8 p-0">
           <X className="w-4 h-4" aria-hidden="true" />
         </Button>

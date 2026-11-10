@@ -60,7 +60,7 @@ public sealed class ActivityRepository : IActivityRepository
 
         var totalCount = await query.CountAsync(ct);
         var items = await IncludeRelated(query)
-            .OrderByDescending(a => a.CreatedAtUtc)
+            .OrderByDescending(a => a.OccurredAtUtc).ThenByDescending(a => a.CreatedAtUtc)
             .Skip(skip)
             .Take(take)
             .ToListAsync(ct);
@@ -69,18 +69,18 @@ public sealed class ActivityRepository : IActivityRepository
     }
 
     public async Task<IReadOnlyList<Activity>> GetByUserIdAsync(Guid userId, Guid? organizationId, CancellationToken ct = default) =>
-        await IncludeRelated(FilterByUserAndOrg(_db.Activities.AsNoTracking(), userId, organizationId)).OrderByDescending(a => a.CreatedAtUtc).ToListAsync(ct);
+        await IncludeRelated(FilterByUserAndOrg(_db.Activities.AsNoTracking(), userId, organizationId)).OrderByDescending(a => a.OccurredAtUtc).ThenByDescending(a => a.CreatedAtUtc).ToListAsync(ct);
 
     public async Task<IReadOnlyList<Activity>> GetByContactIdAsync(Guid contactId, Guid userId, Guid? organizationId, CancellationToken ct = default) =>
         await IncludeRelated(FilterByUserAndOrg(_db.Activities.AsNoTracking(), userId, organizationId))
             .Where(a => a.ContactId == contactId)
-            .OrderByDescending(a => a.CreatedAtUtc)
+            .OrderByDescending(a => a.OccurredAtUtc).ThenByDescending(a => a.CreatedAtUtc)
             .ToListAsync(ct);
 
     public async Task<IReadOnlyList<Activity>> GetByDealIdAsync(Guid dealId, Guid userId, Guid? organizationId, CancellationToken ct = default) =>
         await IncludeRelated(FilterByUserAndOrg(_db.Activities.AsNoTracking(), userId, organizationId))
             .Where(a => a.DealId == dealId)
-            .OrderByDescending(a => a.CreatedAtUtc)
+            .OrderByDescending(a => a.OccurredAtUtc).ThenByDescending(a => a.CreatedAtUtc)
             .ToListAsync(ct);
 
     // A lead's activities are the whole organization's, not only the caller's, so the
@@ -89,7 +89,7 @@ public sealed class ActivityRepository : IActivityRepository
     public async Task<IReadOnlyList<Activity>> GetByLeadIdAsync(Guid leadId, Guid userId, Guid? organizationId, CancellationToken ct = default) =>
         await IncludeRelated(FilterByUserAndOrg(_db.Activities.AsNoTracking(), userId, organizationId))
             .Where(a => a.LeadId == leadId)
-            .OrderByDescending(a => a.CreatedAtUtc)
+            .OrderByDescending(a => a.OccurredAtUtc).ThenByDescending(a => a.CreatedAtUtc)
             .ToListAsync(ct);
 
     public async Task<IReadOnlyList<Activity>> GetByLeadIdsAsync(IReadOnlyCollection<Guid> leadIds, Guid userId, Guid? organizationId, CancellationToken ct = default)
@@ -102,8 +102,18 @@ public sealed class ActivityRepository : IActivityRepository
         // so joining contact, deal, lead, and user would multiply the payload for no benefit.
         return await FilterByUserAndOrg(_db.Activities.AsNoTracking(), userId, organizationId)
             .Where(a => a.LeadId != null && ids.Contains(a.LeadId.Value))
-            .OrderByDescending(a => a.CreatedAtUtc)
+            .OrderByDescending(a => a.OccurredAtUtc).ThenByDescending(a => a.CreatedAtUtc)
             .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<Activity>> GetMeetingsBetweenAsync(Guid userId, Guid? organizationId, DateTime fromUtc, DateTime toUtc, bool mineOnly, int take, CancellationToken ct = default)
+    {
+        var query = FilterByUserAndOrg(_db.Activities.AsNoTracking(), userId, organizationId)
+            .Where(a => a.OccurredAtUtc >= fromUtc && a.OccurredAtUtc < toUtc
+                && (a.Type == "meeting" || a.Type == "video" || a.Type == "demo"));
+        // A meeting of mine is one I logged: I was there.
+        if (mineOnly) query = query.Where(a => a.UserId == userId);
+        return await IncludeRelated(query).OrderBy(a => a.OccurredAtUtc).ThenBy(a => a.Id).Take(take).ToListAsync(ct);
     }
 
     public async Task<Activity?> GetByIdAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default) =>
@@ -141,7 +151,7 @@ public sealed class ActivityRepository : IActivityRepository
         var list = await FilterByUserAndOrg(_db.Activities, userId, organizationId)
             .Where(a => a.ContactId != null && ids.Contains(a.ContactId.Value))
             .GroupBy(a => a.ContactId!.Value)
-            .Select(g => new { ContactId = g.Key, Last = g.Max(a => a.CreatedAtUtc) })
+            .Select(g => new { ContactId = g.Key, Last = g.Max(a => a.OccurredAtUtc) })
             .ToListAsync(ct);
         return list.ToDictionary(x => x.ContactId, x => x.Last);
     }
@@ -153,7 +163,7 @@ public sealed class ActivityRepository : IActivityRepository
         var list = await FilterByUserAndOrg(_db.Activities, userId, organizationId)
             .Where(a => a.DealId != null && ids.Contains(a.DealId.Value))
             .GroupBy(a => a.DealId!.Value)
-            .Select(g => new { DealId = g.Key, Last = g.Max(a => a.CreatedAtUtc) })
+            .Select(g => new { DealId = g.Key, Last = g.Max(a => a.OccurredAtUtc) })
             .ToListAsync(ct);
         return list.ToDictionary(x => x.DealId, x => x.Last);
     }

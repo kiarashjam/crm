@@ -7,12 +7,14 @@ import {
   XCircle,
   Send,
   FileSignature,
+  Clock,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/app/components/ui/utils';
 import type { Deal, Contact } from './types';
+import type { MoneyRow, WeightedRow } from '@/app/api/reporting';
 import { DealCard } from './DealCard';
-import { formatDealSum } from '@/app/lib/money';
+import { useMoney } from '@/app/hooks/useMoney';
 
 // Drag type constant for deal cards
 export const DEAL_CARD_TYPE = 'DEAL_CARD';
@@ -39,14 +41,32 @@ const STAGE_ICONS: Record<string, typeof Briefcase> = {
   'Closed Lost': XCircle,
 };
 
-// Column totals come from the shared money helper: a stage can hold deals in
-// more than one currency, and the old local copy hardcoded USD and added them
-// together regardless.
+// Column totals are per currency: a stage can hold deals in more than one, and the
+// old local copy hardcoded USD and added them together regardless. On the board they
+// come from the server, over every deal in the stage, as the cards arrive a page at a
+// time.
 
 export interface DroppableStageColumnProps {
   stageId: string;
   stageName: string;
+  /** The cards shown: on the board, the pages loaded so far. */
   deals: Deal[];
+  /** Every deal in the stage, from the server. Without it, the cards are counted. */
+  count?: number;
+  /** The stage's money per currency, from the server. Without it, the cards are added up. */
+  totals?: MoneyRow[];
+  /** The open deals weighted by their probability, or the stage's, per currency. */
+  weighted?: WeightedRow[];
+  /** The stage's default probability. */
+  probability?: number;
+  /** Open deals in the stage nobody has touched for the stale days. */
+  stale?: number;
+  /** More cards than are shown. */
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
+  /** False for a column cards cannot be moved into. */
+  acceptsDrops?: boolean;
   contacts: Contact[];
   stageList: { id: string; name: string }[];
   onMoveStage: (dealId: string, stageId: string, stageName: string) => void;
@@ -63,6 +83,15 @@ export function DroppableStageColumn({
   stageId,
   stageName,
   deals,
+  count,
+  totals,
+  weighted,
+  probability,
+  stale = 0,
+  hasMore = false,
+  loadingMore = false,
+  onLoadMore,
+  acceptsDrops = true,
   contacts,
   stageList,
   onMoveStage,
@@ -75,21 +104,29 @@ export function DroppableStageColumn({
 }: DroppableStageColumnProps) {
   const config = STAGE_COLORS[stageName] ?? STAGE_COLORS.Qualification;
   const StageIcon = STAGE_ICONS[stageName] ?? Briefcase;
-  const totalValue = formatDealSum(deals);
+  const money = useMoney();
+  // Each currency's total on its own: a column of francs and euros is two figures.
+  const totalValue = totals
+    ? money.formatTotals(totals.filter((t) => t.count > t.unreadable))
+    : money.formatDeals(deals);
+  const dealCount = count ?? deals.length;
+  const weighedRows = (weighted ?? []).filter((w) => w.covered > 0);
+  const missing = (weighted ?? []).reduce((n, w) => n + w.missing, 0);
+  const canDropHere = !readOnly && acceptsDrops;
 
   const [{ isOver: dropIsOver }, dropRef] = useDrop(
     () => ({
       accept: DEAL_CARD_TYPE,
-      canDrop: () => !readOnly,
+      canDrop: () => canDropHere,
       drop: (item: { dealId: string; fromStageId: string }) => {
-        if (readOnly) return;
+        if (!canDropHere) return;
         if (item.fromStageId !== stageId) {
           onMoveStage(item.dealId, stageId, stageName);
         }
       },
-      collect: (monitor) => ({ isOver: monitor.isOver() }),
+      collect: (monitor) => ({ isOver: monitor.isOver() && monitor.canDrop() }),
     }),
-    [stageId, stageName, onMoveStage, readOnly]
+    [stageId, stageName, onMoveStage, canDropHere]
   );
 
   const showDropZone = dropIsOver;
@@ -130,7 +167,10 @@ export function DroppableStageColumn({
             </div>
             <div>
               <h2 className="font-bold text-sm text-slate-800">{stageName}</h2>
-              <p className="text-xs text-slate-500">{deals.length} deal{deals.length !== 1 ? 's' : ''}</p>
+              <p className="text-xs text-slate-500">
+                {dealCount} deal{dealCount !== 1 ? 's' : ''}
+                {probability !== undefined && <span title="The chance a deal here is won, for deals with no probability of their own"> · {probability}%</span>}
+              </p>
             </div>
           </div>
           <div className={cn(
@@ -143,8 +183,29 @@ export function DroppableStageColumn({
           </div>
         </div>
         
+        {(weighedRows.length > 0 || stale > 0) && (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+            {weighedRows.length > 0 && (
+              <span
+                className="rounded-lg bg-white/70 px-2 py-0.5 font-semibold text-slate-600"
+                title={missing > 0
+                  ? `Weighted by each deal's probability, or the stage's. ${missing} deal${missing === 1 ? ' has' : 's have'} neither and ${missing === 1 ? 'is' : 'are'} left out.`
+                  : "Weighted by each deal's probability, or the stage's."}
+              >
+                Weighted {money.formatTotals(weighedRows, 'never')}
+              </span>
+            )}
+            {stale > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-lg bg-amber-100 px-2 py-0.5 font-semibold text-amber-800">
+                <Clock className="h-3 w-3" aria-hidden />
+                {stale} stale
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Progress indicator */}
-        {deals.length > 0 && (
+        {dealCount > 0 && (
           <div className="mt-3 flex items-center gap-2">
             <div className="flex-1 h-1.5 bg-slate-200/70 rounded-full overflow-hidden">
               <motion.div 
@@ -197,6 +258,17 @@ export function DroppableStageColumn({
           ))}
         </AnimatePresence>
         
+        {hasMore && onLoadMore && (
+          <button
+            type="button"
+            onClick={onLoadMore}
+            disabled={loadingMore}
+            className="w-full rounded-xl border border-dashed border-slate-300 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+          >
+            {loadingMore ? 'Loading…' : `Show more (${dealCount - deals.length} more)`}
+          </button>
+        )}
+
         {deals.length === 0 && !showDropZone && (
           <div className="h-32 flex flex-col items-center justify-center text-center p-4">
             <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center mb-2">

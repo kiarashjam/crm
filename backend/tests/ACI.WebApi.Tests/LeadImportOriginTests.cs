@@ -32,7 +32,7 @@ public class LeadImportOriginTests
             builder.ConfigureTestServices(services =>
             {
                 var webhooks = new Mock<IOutboundWebhookPublisher>();
-                webhooks.Setup(w => w.PublishAsync(It.IsAny<Guid?>(), It.IsAny<string>(), It.IsAny<object>(), It.IsAny<CancellationToken>()))
+                webhooks.Setup(w => w.QueueAsync(It.IsAny<Guid?>(), It.IsAny<string>(), It.IsAny<object>(), It.IsAny<CancellationToken>()))
                     .Callback((Guid? _, string name, object _, CancellationToken _) => Published.Add(name))
                     .Returns(Task.CompletedTask);
                 services.AddScoped(_ => webhooks.Object);
@@ -126,6 +126,31 @@ public class LeadImportOriginTests
         var leadId = lead.GetProperty("id").GetGuid();
 
         (await factory.Services.Read(db => db.Leads.Single(l => l.Id == leadId).FirstResponseAtUtc)).Should().NotBeNull();
+    }
+
+    [Theory]
+    [InlineData(false, 0)]
+    [InlineData(true, 1)]
+    public async Task AnImportsChangeOfStatusSetsOffTheStatusAutomationsOnlyWhenAsked(bool runAutomations, int tasks)
+    {
+        // A file that updates people records where they already are; it is not each of them
+        // moving on today, so the "status changed" welcome pack is not sent unless asked for.
+        await using var factory = new WithWebhooks();
+        var (client, userId) = await SignInAsync(factory, "owner@example.ch");
+        client.In(await CreateAsync(factory, userId, "Pavillon46"));
+        await Json(await client.PostAsync("/api/automations", Body(new
+        {
+            name = "Moved on", trigger = "lead.status_changed", enabled = true,
+            actions = new[] { new { type = "create_task", config = new { title = "Send the welcome pack", dueInDays = "1" } } },
+        })), "add rule");
+        var lead = await Json(await client.PostAsync("/api/leads", Body(new { name = "Jean Dupont", email = "jean@example.ch", status = "New" })), "create");
+        var leadId = lead.GetProperty("id").GetGuid();
+
+        await Json(await client.PutAsync($"/api/leads/{leadId}", Body(new { status = "Contacted", origin = "import", runAutomations })), "update from an import");
+
+        (await TaskCountAsync(client, leadId)).Should().Be(tasks);
+        (await factory.Services.Read(db => db.LeadStatusEvents.Count(e => e.LeadId == leadId && e.ToStatus == "Contacted")))
+            .Should().Be(1, "the history still records the move");
     }
 
     [Fact]

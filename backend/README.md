@@ -110,6 +110,32 @@ For org-scoped data, include:
 X-Organization-Id: your-org-guid
 ```
 
+### Editing a lead, deal, contact or company
+
+Every read of one of these returns its `version`, and `GET /api/{records}/{id}` and the
+`PUT` answer carry it as the `ETag` too. Every save gives the record a new version.
+
+- **An edit made from an older read is refused.** Send the version the edit was made from,
+  as `version` in the body or as `If-Match: "<version>"`. When anyone has saved the record
+  since, the `PUT` answers `409` with `errorCode` `Lead.Changed.Conflict` (or `Deal.`,
+  `Contact.`, `Company.`) and a sentence telling the person to reload, and nothing is
+  written. The edit forms send it. Leave it out for a change to a field that reads nothing
+  else, such as moving a deal to another stage: that change is applied to the record as it
+  is now. Two saves made from the same read never both win; the second is refused even
+  without a version. A save that loses that race where no service words it answers `409`
+  with `errorCode` `Record.Changed.Conflict`.
+- **A field sent as `null` is cleared; a field left out is kept** (JSON merge-patch
+  semantics): a contact's `companyId`, `phone`, `jobTitle`, `preferredContactMethod` and
+  `description`; a deal's `companyId`, `contactId`, `assigneeId`, `expectedCloseDateUtc`,
+  `probability` and `description`; a company's fields other than `name` (an empty string
+  clears them too); a lead's `companyId`, `phone`, `description`, `lifecycleStage`,
+  `jobTitle`, `country`, `industry` and `companySize`; and a club member's `phone` and
+  `notes` (`PUT /api/members/{id}`). A `null` for a required field is ignored.
+- **`pipelineState` on `PUT /api/leads/{id}` is a change, not the whole pipeline.** It is a
+  JSON object merged into the stored pipeline: the steps sent replace the stored ones, a
+  step sent as `null` is removed, and the rest are kept. An empty string clears the whole
+  pipeline; anything but a JSON object is refused with 400.
+
 ---
 
 ## API Endpoints Reference
@@ -118,21 +144,36 @@ X-Organization-Id: your-org-guid
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/api/contacts` | List all contacts |
+| `GET` | `/api/contacts` | One page of contacts: `status` (active, archived, all), `companyId`, `hasCompany`, `activity` (recent, quiet), `sortBy`, `sortDir`, `search`, applied to the whole workspace |
+| `GET` | `/api/contacts/stats` | The figures above the list, over the whole workspace |
+| `GET` | `/api/contacts/export` | Every contact the list shows with the same parameters, as CSV (up to 50,000) |
 | `GET` | `/api/contacts/search?q=john` | Search contacts |
 | `GET` | `/api/contacts/{id}` | Get single contact |
+| `GET` | `/api/contacts/{id}/lookalikes` | Contacts that look like this one (the duplicate rules), less those marked not the same |
 | `POST` | `/api/contacts` | Create contact |
-| `PUT` | `/api/contacts/{id}` | Update contact |
-| `DELETE` | `/api/contacts/{id}` | Delete contact |
+| `PUT` | `/api/contacts/{id}` | Update contact (see [Editing](#editing-a-lead-deal-contact-or-company)) |
+| `DELETE` | `/api/contacts/{id}` | Delete contact (a lead it was made for does not get another) |
 
 ### Companies
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/api/companies` | List companies |
+| `GET` | `/api/companies` | One page of companies with their counts: `industry`, `hasIndustry`, `size`, `sortBy` (name, createdAt, contacts, deals), `sortDir`, `search` |
+| `GET` | `/api/companies/summary` | The figures above the list, and the industries in use |
+| `GET` | `/api/companies/export` | Every company the list shows, as CSV |
 | `GET` | `/api/companies/{id}` | Get company |
 | `POST` | `/api/companies` | Create company |
-| `PUT` | `/api/companies/{id}` | Update company |
+| `PUT` | `/api/companies/{id}` | Update company (see [Editing](#editing-a-lead-deal-contact-or-company)) |
+
+### Duplicates
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/duplicates/contacts` | Duplicate contacts: same email, same phone however written, or same name when phone and company do not disagree |
+| `GET` | `/api/duplicates/companies` | Duplicate companies: same web domain, or same name when the domains do not disagree |
+| `GET` | `/api/duplicates/{kind}/not-same` | Pairs the team said are not the same (contacts, companies, leads, deals, members, households) |
+| `POST` | `/api/duplicates/{kind}/not-same` | `{ recordIds }`: keep every pair among them apart, for the whole workspace |
+| `POST` | `/api/duplicates/{kind}/not-same/clear` | `{ recordIds }`: offer them again |
 
 ### Deals
 
@@ -140,9 +181,12 @@ X-Organization-Id: your-org-guid
 |--------|----------|-------------|
 | `GET` | `/api/deals` | List deals |
 | `GET` | `/api/deals/search?q=` | Search deals |
-| `GET` | `/api/deals/{id}` | Get deal |
+| `GET` | `/api/deals/{id}` | Get deal (with time in stage and whether it is stale) |
+| `GET` | `/api/deals/board?pipelineId=&take=&sort=&search=&mine=&assigneeId=&unassigned=&minAmount=&maxAmount=&closeFrom=&closeTo=&staleOnly=` | The board: a pipeline's stages with the first cards of each, per-stage counts, money per currency, weighted value and stale deals, and the pipeline's figures |
+| `GET` | `/api/deals/board/column?column=&skip=` (+ the board's filters) | The next cards of one board column |
+| `GET` | `/api/deals/{id}/stage-history` | The stages a deal has been in, newest first |
 | `POST` | `/api/deals` | Create deal |
-| `PUT` | `/api/deals/{id}` | Update deal |
+| `PUT` | `/api/deals/{id}` | Update deal (see [Editing](#editing-a-lead-deal-contact-or-company)) |
 | `DELETE` | `/api/deals/{id}` | Delete deal |
 
 ### Leads
@@ -152,9 +196,23 @@ X-Organization-Id: your-org-guid
 | `GET` | `/api/leads` | List leads |
 | `GET` | `/api/leads/search?q=` | Search leads |
 | `POST` | `/api/leads` | Create lead |
-| `PUT` | `/api/leads/{id}` | Update lead |
+| `PUT` | `/api/leads/{id}` | Update lead; `pipelineState` is merged (see [Editing](#editing-a-lead-deal-contact-or-company)) |
 | `DELETE` | `/api/leads/{id}` | Delete lead |
 | `POST` | `/api/leads/{id}/convert` | Convert to Contact/Company/Deal |
+
+### Imports (leads, contacts, companies)
+
+The file travels with each request, base64-encoded, up to 5 MB and 2,000 rows.
+An import still running cannot be undone: both undo calls answer 409 until it has finished.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/imports/analyze` | Read a file: separator, columns, a suggested field for each |
+| `POST` | `/api/imports/preview` | Dry run: what each row would do; nothing is written |
+| `POST` | `/api/imports` | Import the file as one batch |
+| `GET` | `/api/imports?kind=lead` | The workspace's latest imports |
+| `GET` | `/api/imports/{id}/undo` | What undoing would remove, and what it keeps and why |
+| `POST` | `/api/imports/{id}/undo` | Remove what the import created that nobody has touched since |
 
 ### Tasks
 
@@ -175,6 +233,32 @@ X-Organization-Id: your-org-guid
 | `GET` | `/api/activities/deal/{id}` | Activities for a deal |
 | `POST` | `/api/activities` | Log an activity |
 
+### Email and the outbox
+
+Every email and webhook event a workspace sends goes through one outbox
+(`OutboundMessages`, `OutboxService`): the composer, the sales assistant, sequence steps,
+automation emails and outbound webhooks. A background dispatcher sends it, retrying what
+did not go after 1, 5 and 15 minutes, then 1, 3, 6, 12 and 24 hours. Each email is checked
+against the suppression list (do not contact, unsubscribes, and addresses the mail service
+reported as bounced or complaining) when it is queued and again when it goes, has its
+placeholders filled (`{{firstName}}`, `{{lastName}}`, `{{name}}`, `{{email}}`, `{{company}}`,
+`{{senderName}}`, `{{workspace}}`, each with an optional `{{name|fallback}}`), carries its
+own Message-ID, and is written once on the record's timeline when it has gone. The lead,
+contact or deal an email is about must be one of the workspace's that the sender can open;
+an email whose lead or contact is deleted while it waits is cancelled, not sent.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/email/send` | Send from the composer (or `source: "assistant"`): 200 `sent` when the relay took it, 202 `queued` when it did not yet and the outbox keeps trying |
+| `POST` | `/api/email/{id}/cancel` | Take back a queued email before it goes (whoever sent it, or a manager); 409 once it has gone |
+| `GET` | `/api/organizations/{id}/email` | Who the workspace's email goes out from: its own address, whether its domain is verified, the shared address, whether replies come back |
+| `PUT` | `/api/organizations/{id}/email` | `{ sendingAddress }`: set or clear the workspace's own sending address (owner or manager) |
+| `GET` | `/api/organizations/{id}/email/suppressions` | Addresses the workspace does not email because the mail service reported them (bounced, invalid, spam report, unsubscribed) |
+| `DELETE` | `/api/organizations/{id}/email/suppressions/{suppressionId}` | Take an address off that list so the workspace may email it again (owner or manager) |
+| `GET` | `/api/webhook/organizations/{id}/deliveries` | The latest outbound webhook deliveries and what the receiver answered (owner or manager) |
+| `POST` | `/api/public/email/inbound/{secret}` | SendGrid Inbound Parse: a reply, matched to its message by reply+token address or In-Reply-To/References, written on the timeline; the person's sequences stop (not for an automatic reply such as an out-of-office). 404 without `Email:InboundParseSecret` |
+| `POST` | `/api/public/email/events/{secret}` | SendGrid Event Webhook (or `/events` with a signature checked against `Email:EventWebhookVerificationKey`): bounces, drops, spam reports and unsubscribes suppress the address and stop sequences; deliveries and opens are recorded |
+
 ### Organizations & Team
 
 | Method | Endpoint | Description |
@@ -190,8 +274,8 @@ X-Organization-Id: your-org-guid
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET/POST/PUT/DELETE` | `/api/pipelines` | Manage pipelines |
-| `GET/POST/PUT/DELETE` | `/api/dealstages` | Manage deal stages |
+| `GET/POST/PUT/DELETE` | `/api/pipelines` | Manage pipelines (with their own stale-deal days) |
+| `GET/POST/PUT/DELETE` | `/api/dealstages` | Manage deal stages (won or lost, and a default probability). Making a stage won, lost or open again gives the deals that had its old outcome the new one |
 | `GET/POST/PUT/DELETE` | `/api/leadsources` | Manage lead sources |
 | `GET/POST/PUT/DELETE` | `/api/leadstatuses` | Manage lead statuses |
 

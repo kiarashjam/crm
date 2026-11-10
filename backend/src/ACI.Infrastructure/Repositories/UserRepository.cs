@@ -82,6 +82,9 @@ public sealed class UserRepository : IUserRepository
             existing.InAppNotificationsEnabled = settings.InAppNotificationsEnabled;
             existing.InAppSoundEnabled = settings.InAppSoundEnabled;
             existing.BrowserNotificationsEnabled = settings.BrowserNotificationsEnabled;
+            // Not WeeklyDigestSentAtUtc: the digest job keeps that, and a settings save
+            // carrying an old copy would make it send the week again.
+            existing.WeeklyDigestEnabled = settings.WeeklyDigestEnabled;
 
             // Defaults
             existing.DefaultPipelineId = settings.DefaultPipelineId;

@@ -1,3 +1,5 @@
+import type { MoneyRow, WeightedRow } from './reporting';
+
 /** Shared types for the CRM API (frontend mock; replace with real API later). */
 
 import type { ContactRelationship } from './relationships';
@@ -61,6 +63,11 @@ export interface Contact {
   description?: string;
   createdAtUtc?: string;
   updatedAtUtc?: string;
+  /**
+   * The record as of this read. An edit dialog sends it back, and the server refuses the
+   * save (409) when someone has saved the record since. See lib/editConflict.ts.
+   */
+  version?: string;
 }
 
 export interface Company {
@@ -74,6 +81,11 @@ export interface Company {
   location?: string;
   createdAtUtc?: string;
   updatedAtUtc?: string;
+  /**
+   * The record as of this read. An edit dialog sends it back, and the server refuses the
+   * save (409) when someone has saved the record since. See lib/editConflict.ts.
+   */
+  version?: string;
 }
 
 export interface Lead {
@@ -116,12 +128,23 @@ export interface Lead {
   emailOpenCount?: number;
   enrichedDomain?: string;
   scoreIsManual?: boolean;
+  /**
+   * The record as of this read. An edit dialog sends it back, and the server refuses the
+   * save (409) when someone has saved the record since. See lib/editConflict.ts.
+   */
+  version?: string;
 }
 
 export interface Deal {
   id: string;
   name: string;
+  /** The amount as text, kept for older servers and integrations. Read `amount`. */
   value: string;
+  /**
+   * The amount, to the cent, in `currency`. Null only for a deal saved before amounts
+   * were numbers whose text held none ("to be agreed").
+   */
+  amount?: number | null;
   currency?: string;
   stage?: string;
   pipelineId?: string;
@@ -149,6 +172,104 @@ export interface Deal {
   closedAtUtc?: string;
   /** Seen only by its creator, its owner and managers. */
   isPrivate?: boolean;
+  /**
+   * When the deal came into the stage it is in. Absent when no history says so (a deal
+   * from before the history was kept), or where the server does not work it out.
+   */
+  stageEnteredAtUtc?: string;
+  /** The last time anything happened to the deal: made, worked on, or moved. */
+  idleSinceUtc?: string;
+  /** Open, and nothing logged on it nor moved for `staleAfterDays`. */
+  isStale?: boolean;
+  /** Days without activity after which this deal goes stale; 0 never. */
+  staleAfterDays?: number;
+  /**
+   * The record as of this read. An edit dialog sends it back, and the server refuses the
+   * save (409) when someone has saved the record since. See lib/editConflict.ts.
+   */
+  version?: string;
+}
+
+/** A deal coming into a stage, as its history shows it. Names are as the stages were called then. */
+export interface DealStageChange {
+  id: string;
+  fromStageId?: string;
+  fromStageName?: string;
+  toStageId?: string;
+  toStageName?: string;
+  changedByUserId: string;
+  changedByName?: string;
+  changedAtUtc: string;
+  /** When it moved on from that stage; absent while it is still there. */
+  leftAtUtc?: string;
+  /** The stage it was created in, rather than moved to. */
+  isCreation: boolean;
+}
+
+/** One stage on the board, with the cards the filters leave in it, a page at a time. */
+export interface DealBoardColumn {
+  /** What to ask for more of it by: the stage id, a default stage's name, or "unset". */
+  key: string;
+  dealStageId?: string;
+  name: string;
+  displayOrder: number;
+  isWon: boolean;
+  isLost: boolean;
+  /** The stage's default probability, for its deals with none of their own. */
+  probability?: number;
+  count: number;
+  totals: MoneyRow[];
+  weighted: WeightedRow[];
+  stale: number;
+  deals: Deal[];
+  hasMore: boolean;
+}
+
+/** The pipeline's figures, all of its deals, whatever the filters. */
+export interface DealBoardSummary {
+  total: number;
+  open: number;
+  won: number;
+  lost: number;
+  openTotals: MoneyRow[];
+  wonTotals: MoneyRow[];
+  weighted: WeightedRow[];
+  /** Won out of all closed, 0–1; absent before anything has closed. */
+  winRate?: number;
+  overdue: number;
+  closingThisWeek: number;
+  stale: number;
+}
+
+/** A pipeline as the board draws it. */
+export interface DealBoard {
+  /** Absent for a workspace without pipelines, which has the default stages. */
+  pipelineId?: string;
+  pipelineName?: string;
+  /** 0 when deals are never flagged as stale. */
+  staleAfterDays: number;
+  columns: DealBoardColumn[];
+  summary: DealBoardSummary;
+  /** The deals the filters leave, across the columns. */
+  count: number;
+}
+
+/** What the board shows: everything left out narrows nothing. */
+export interface DealBoardQuery {
+  pipelineId?: string;
+  take?: number;
+  search?: string;
+  assigneeId?: string;
+  unassigned?: boolean;
+  mine?: boolean;
+  minAmount?: number;
+  maxAmount?: number;
+  /** yyyy-MM-dd */
+  closeFrom?: string;
+  /** yyyy-MM-dd */
+  closeTo?: string;
+  staleOnly?: boolean;
+  sort?: 'close' | 'value' | 'created' | 'name';
 }
 
 export type TaskStatusType = 'todo' | 'in_progress' | 'completed' | 'cancelled';
@@ -202,6 +323,13 @@ export interface Activity {
   leadId?: string;
   participants?: string;
   createdAt: string;
+  /** When it happened, which can be before it was logged (createdAt). See lib/activityFacts. */
+  occurredAt?: string;
+  /** How a call or meeting went, e.g. "no_answer". */
+  outcome?: string;
+  durationMinutes?: number;
+  /** Who reached out, for a call or an email. */
+  direction?: 'inbound' | 'outbound';
   updatedAt?: string;
   contactName?: string;
   dealName?: string;
@@ -217,6 +345,8 @@ export interface Pipeline {
   name: string;
   displayOrder: number;
   dealStages?: DealStage[];
+  /** Its own stale-deal days (0 never); absent when it follows the workspace's. */
+  staleDealDays?: number;
 }
 
 export interface DealStage {
@@ -226,6 +356,8 @@ export interface DealStage {
   displayOrder: number;
   isWon: boolean;
   isLost: boolean;
+  /** The chance, 0–100, a deal here is won, for its deals with no probability of their own. */
+  probability?: number;
 }
 
 export interface LeadStatus {
@@ -334,6 +466,8 @@ export interface UserSettings {
   inAppNotificationsEnabled: boolean;
   inAppSoundEnabled: boolean;
   browserNotificationsEnabled: boolean;
+  /** A weekly email of the figures for each workspace this person owns or manages. Off by default. */
+  weeklyDigestEnabled?: boolean;
 
   // Defaults
   defaultPipelineId?: string;
@@ -386,6 +520,7 @@ export interface UpdateUserSettingsRequest {
   inAppNotificationsEnabled?: boolean;
   inAppSoundEnabled?: boolean;
   browserNotificationsEnabled?: boolean;
+  weeklyDigestEnabled?: boolean;
 
   // Defaults
   defaultPipelineId?: string;

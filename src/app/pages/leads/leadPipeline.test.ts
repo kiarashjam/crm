@@ -16,6 +16,8 @@ import {
   dropoutReasonBreakdown,
   reasonTables,
   parsePipeline,
+  pipelinePatch,
+  applyPipelinePatch,
   DROPOUT_REASONS,
   DROPOUT_REASON_LABELS,
   REJECTION_REASONS,
@@ -574,5 +576,48 @@ describe('reasonTables — one table per vocabulary', () => {
     expect(none.rejection.total).toBe(0);
     // Its columns are still defined, so the shape never depends on the data.
     expect(none.rejection.columns.length).toBe(REJECTION_REASONS.length);
+  });
+});
+
+describe('pipelinePatch — only what the edit changed', () => {
+  it('sends the steps whose value changed and leaves out the ones that did not', () => {
+    expect(pipelinePatch(
+      { outreachStatus: 'contacted', contactOutcome: 'follow_up' },
+      { outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled', meetingDate: '2026-11-20' },
+    )).toEqual({ contactOutcome: 'meeting_scheduled', meetingDate: '2026-11-20' });
+  });
+
+  it('sends a step taken off as null, so the server removes it too', () => {
+    expect(pipelinePatch({ meetingDate: '2026-11-20', meetingAttended: true }, { meetingAttended: true }))
+      .toEqual({ meetingDate: null });
+  });
+
+  it('sends nothing when nothing changed', () => {
+    expect(pipelinePatch(COMPLETE, { ...COMPLETE })).toEqual({});
+  });
+
+  it('counts false as a value, not as taken off', () => {
+    expect(pipelinePatch({ meetingAttended: true }, { meetingAttended: false })).toEqual({ meetingAttended: false });
+  });
+});
+
+describe('applyPipelinePatch — demo mode merges as the server does', () => {
+  it('replaces the steps sent, removes the nulls and keeps the rest', () => {
+    const stored = JSON.stringify({ outreachStatus: 'contacted', contractStatus: 'yes', meetingDate: '2026-11-20' });
+
+    expect(JSON.parse(applyPipelinePatch(stored, JSON.stringify({ meetingDate: null, meetingAttended: true }))))
+      .toEqual({ outreachStatus: 'contacted', contractStatus: 'yes', meetingAttended: true });
+  });
+
+  it('starts from empty when nothing readable is stored', () => {
+    expect(JSON.parse(applyPipelinePatch(undefined, '{"outreachStatus":"contacted"}'))).toEqual({ outreachStatus: 'contacted' });
+    expect(JSON.parse(applyPipelinePatch('{broken', '{"outreachStatus":"contacted"}'))).toEqual({ outreachStatus: 'contacted' });
+  });
+
+  it('round-trips with pipelinePatch: base plus the change is the next pipeline', () => {
+    const base: LeadPipeline = { outreachStatus: 'contacted', contactOutcome: 'follow_up', meetingDate: '2026-11-20' };
+    const next: LeadPipeline = { outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled', meetingAttended: true };
+
+    expect(parsePipeline(applyPipelinePatch(JSON.stringify(base), JSON.stringify(pipelinePatch(base, next))))).toEqual(next);
   });
 });

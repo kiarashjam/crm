@@ -1,7 +1,7 @@
 import type { DealStage } from './types';
 import { servesDemoData, authFetchJson, authFetch } from './apiClient';
 
-type DealStageRaw = { id: string; pipelineId: string; name: string; displayOrder: number; isWon: boolean; isLost: boolean };
+type DealStageRaw = { id: string; pipelineId: string; name: string; displayOrder: number; isWon: boolean; isLost: boolean; probability?: number | null };
 
 function mapStage(s: DealStageRaw): DealStage {
   return {
@@ -11,6 +11,7 @@ function mapStage(s: DealStageRaw): DealStage {
     displayOrder: s.displayOrder,
     isWon: s.isWon,
     isLost: s.isLost,
+    probability: s.probability ?? undefined,
   };
 }
 
@@ -28,6 +29,7 @@ export async function createDealStage(params: {
   displayOrder?: number;
   isWon?: boolean;
   isLost?: boolean;
+  probability?: number;
 }): Promise<DealStage | null> {
   if (servesDemoData()) return null;
   const s = await authFetchJson<DealStageRaw>('/api/dealstages', {
@@ -38,15 +40,16 @@ export async function createDealStage(params: {
       displayOrder: params.displayOrder ?? 0,
       isWon: params.isWon ?? false,
       isLost: params.isLost ?? false,
+      probability: params.probability,
     }),
   });
   return s ? mapStage(s) : null;
 }
 
-/** Update a deal stage (Owner/Manager only). */
+/** Update a deal stage (Owner/Manager only). `clearProbability` takes its default probability away. */
 export async function updateDealStage(
   id: string,
-  params: { name?: string; displayOrder?: number; isWon?: boolean; isLost?: boolean }
+  params: { name?: string; displayOrder?: number; isWon?: boolean; isLost?: boolean; probability?: number; clearProbability?: boolean }
 ): Promise<DealStage | null> {
   if (servesDemoData()) return null;
   const s = await authFetchJson<DealStageRaw>(`/api/dealstages/${id}`, {

@@ -315,7 +315,7 @@ public class ClubMoneyTests
         (await Refused(await staff.DeleteAsync($"/api/charges/{charge}"), HttpStatusCode.BadRequest, "deleting a charge"))
             .Should().Contain("can't be deleted");
         (await Refused(await staff.PostAsync($"/api/charges/{charge}/void", Body(new { reason = "Comp" })), HttpStatusCode.Forbidden, "a bartender voiding a charge"))
-            .Should().Contain("Only the owner or a manager can void a charge.");
+            .Should().Contain("Your role here does not let you void a charge.");
         await Refused(await owner.PostAsync($"/api/charges/{charge}/void", Body(new { reason = "  " })), HttpStatusCode.BadRequest, "a void with no reason");
         (await BalanceAsync(owner, memberId)).Should().Be(-500, "nothing has been taken off yet");
 
@@ -586,7 +586,7 @@ public class ClubMoneyTests
         // Time passes: the card's expiry is now behind it, and nothing has saved that.
         using (var scope = factory.Services.CreateScope())
         {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            using var db = scope.ServiceProvider.EveryWorkspace();
             var row = db.ClubDocuments.Single(d => d.Id == Guid.Parse(card));
             var payload = JsonNode.Parse(row.Payload)!.AsObject();
             payload["expiresAtUtc"] = DateTime.UtcNow.AddDays(-1).ToString("o");

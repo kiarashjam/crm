@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { announceDataChanged, changesRecords, onDataChanged } from './dataChanged';
+import { announceDataChanged, changesRecords, onDataChanged, resourcesChangedBy, touches } from './dataChanged';
 
 describe('which writes count as a record change', () => {
   it('writes to records do', () => {
@@ -32,6 +32,82 @@ describe('which writes count as a record change', () => {
     expect(changesRecords('PUT', '/api/lead-ops/scoring')).toBe(false);
     expect(changesRecords('DELETE', '/api/lead-ops/assignment/1')).toBe(false);
     expect(changesRecords('POST', '/api/lead-ops/bulk')).toBe(true);
+  });
+
+  it("an import's reading of its file and its dry run do not, but the import and its undo do", () => {
+    // Both carry the file, so they are POSTs, and they write nothing.
+    expect(changesRecords('POST', '/api/imports/analyze')).toBe(false);
+    expect(changesRecords('POST', '/api/imports/preview')).toBe(false);
+    expect(changesRecords('POST', '/api/imports')).toBe(true);
+    expect(changesRecords('POST', '/api/imports/0b1c/undo')).toBe(true);
+  });
+});
+
+describe('what a write changes', () => {
+  it('a task changes tasks and the figures that count them, not the other lists', () => {
+    const changed = resourcesChangedBy('PUT', '/api/tasks/t-1');
+    expect(changed).toContain('tasks');
+    for (const other of ['leads', 'contacts', 'companies', 'deals', 'sequences', 'automations']) {
+      expect(changed).not.toContain(other);
+    }
+  });
+
+  it('a call logged on a lead changes leads, not every deal and contact', () => {
+    const changed = resourcesChangedBy('POST', '/api/activities', JSON.stringify({ type: 'call', leadId: 'l-1' }));
+    expect(changed).toEqual(expect.arrayContaining(['activities', 'leads']));
+    expect(changed).not.toContain('deals');
+    expect(changed).not.toContain('contacts');
+  });
+
+  it('an activity whose records are not known changes every kind it can touch', () => {
+    // An edit or a delete does not say which record the activity was on.
+    expect(resourcesChangedBy('DELETE', '/api/activities/a-1')).toEqual(expect.arrayContaining(['leads', 'contacts', 'deals']));
+  });
+
+  it("a lead's save changes its person's contact and what automations add", () => {
+    expect(resourcesChangedBy('POST', '/api/leads')).toEqual(expect.arrayContaining(['leads', 'contacts', 'tasks', 'sequences']));
+  });
+
+  it("a deal's save and a countersigned contract change tasks: the automations they start add some", () => {
+    // A deal moved to a stage, won or lost runs the workspace's automations, which
+    // can make a task; so can the lead status a signature moves on.
+    expect(resourcesChangedBy('PUT', '/api/deals/d-1')).toContain('tasks');
+    expect(resourcesChangedBy('POST', '/api/contracts/c-1/countersign')).toContain('tasks');
+  });
+
+  it("removing a member changes the leads, deals and tasks handed to whoever takes them over", () => {
+    expect(resourcesChangedBy('DELETE', '/api/organizations/o-1/members/u-2?handOverTo=u-3'))
+      .toEqual(expect.arrayContaining(['team', 'leads', 'deals', 'tasks', 'work-queue', 'reports']));
+  });
+
+  it('a merge or a conversion changes everything linked', () => {
+    for (const path of ['/api/contacts/c-1/merge', '/api/leads/l-1/convert']) {
+      expect(resourcesChangedBy('POST', path)).toEqual(expect.arrayContaining(['leads', 'contacts', 'companies', 'deals', 'tasks', 'activities']));
+    }
+  });
+
+  it('a club write changes only its own records, whatever the query string', () => {
+    expect(resourcesChangedBy('POST', 'https://api.example.com/api/visits?memberId=m-1')).toEqual(['visits']);
+  });
+});
+
+describe('what the signal carries', () => {
+  it('names the kinds a write changed', () => {
+    const heard = vi.fn();
+    const off = onDataChanged(heard);
+    announceDataChanged({ resources: ['tasks'] });
+    off();
+    expect(heard).toHaveBeenCalledWith({ resources: ['tasks'] });
+    expect(touches(heard.mock.calls[0]![0], ['tasks'])).toBe(true);
+    expect(touches(heard.mock.calls[0]![0], ['leads'])).toBe(false);
+  });
+
+  it('says "anything" when the write did not say', () => {
+    const heard = vi.fn();
+    const off = onDataChanged(heard);
+    announceDataChanged();
+    off();
+    expect(touches(heard.mock.calls[0]![0], ['leads'])).toBe(true);
   });
 });
 

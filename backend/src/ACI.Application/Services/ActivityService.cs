@@ -17,6 +17,7 @@ public class ActivityService : IActivityService
     private readonly IDealRepository _dealRepository;
     private readonly ILeadAutomation _automation;
     private readonly ISequenceRepository _sequences;
+    private readonly ICollaborationNotifier _notifier;
     private readonly ILogger<ActivityService> _logger;
 
     private static readonly HashSet<string> ReplyTypes = new(StringComparer.OrdinalIgnoreCase)
@@ -36,6 +37,7 @@ public class ActivityService : IActivityService
         IDealRepository dealRepository,
         ILeadAutomation automation,
         ISequenceRepository sequences,
+        ICollaborationNotifier notifier,
         ILogger<ActivityService> logger)
     {
         _repository = repository;
@@ -44,6 +46,7 @@ public class ActivityService : IActivityService
         _dealRepository = dealRepository;
         _automation = automation;
         _sequences = sequences;
+        _notifier = notifier;
         _logger = logger;
     }
 
@@ -158,6 +161,13 @@ public class ActivityService : IActivityService
             return DomainErrors.Activity.InvalidType;
         }
         
+        var now = DateTime.UtcNow;
+        var occurredAt = request.OccurredAtUtc is DateTime at ? ActivityFacts.Utc(at) : now;
+        var outcome = ActivityFacts.Word(request.Outcome);
+        var direction = ActivityFacts.Word(request.Direction);
+        var facts = ActivityFacts.Check(activityType, occurredAt, outcome, request.DurationMinutes, direction, now);
+        if (facts.IsFailure) return facts.Error;
+
         // Validate that at least one related entity is specified
         if (!request.LeadId.HasValue && !request.ContactId.HasValue && !request.DealId.HasValue)
         {
@@ -215,18 +225,27 @@ public class ActivityService : IActivityService
                 DealId = request.DealId,
                 LeadId = request.LeadId,
                 Participants = request.Participants,
-                CreatedAtUtc = DateTime.UtcNow,
+                OccurredAtUtc = occurredAt,
+                Outcome = outcome,
+                DurationMinutes = request.DurationMinutes,
+                Direction = direction,
+                CreatedAtUtc = now,
             };
             
             entity = await _repository.AddAsync(entity, ct);
-            if (entity.LeadId.HasValue && !request.IsAutomated)
-                await _automation.MarkFirstResponseAsync(entity.LeadId.Value, userId, organizationId, entity.Type, ct);
+            // An email they sent us, or a call of theirs nobody answered, is not the team
+            // answering them: the first-response clock keeps running.
+            if (entity.LeadId.HasValue && !request.IsAutomated && ActivityFacts.IsOurResponse(entity.Type, entity.Direction, entity.Outcome))
+                await _automation.MarkFirstResponseAsync(entity.LeadId.Value, userId, organizationId, entity.Type, entity.OccurredAtUtc, ct);
             if (!request.IsAutomated && ReplyTypes.Contains(entity.Type))
                 await StopSequencesAfterReplyAsync(organizationId, entity, ct);
 
             _logger.LogInformation("Successfully created activity {ActivityId} of type '{Type}'", entity.Id, entity.Type);
             // Re-fetch so the DTO can include the related entity and creator-user names.
             var fetched = await _repository.GetByIdAsync(entity.Id, userId, organizationId, ct);
+            // "@Anna, can you call them?" in a note tells Anna. A sequence's own lines mention nobody.
+            if (!request.IsAutomated)
+                await _notifier.ActivityMentionsAsync(fetched ?? entity, RecordName(fetched), null, userId, ct);
             return Map(fetched ?? entity);
         }
         catch (Exception ex)
@@ -282,15 +301,40 @@ public class ActivityService : IActivityService
             return DomainErrors.Activity.NotFound;
         }
 
+        // What it said before the edit: only someone the edit newly mentions is told.
+        var textBefore = Mentions.TextOf(existing.Subject, existing.Body);
+        var recordName = RecordName(existing);
+
         try
         {
-            if (request.Type != null)
+            var activityType = (request.Type ?? existing.Type).ToLowerInvariant();
+            if (request.Type != null && !ValidActivityTypes.Contains(activityType))
+                return DomainErrors.Activity.InvalidType;
+
+            var occurredAt = request.OccurredAtUtc is DateTime at ? ActivityFacts.Utc(at) : existing.OccurredAtUtc;
+            var outcome = request.ClearOutcome == true ? null : ActivityFacts.Word(request.Outcome) ?? existing.Outcome;
+            var duration = request.ClearDuration == true ? null : request.DurationMinutes ?? existing.DurationMinutes;
+            var direction = request.ClearDirection == true ? null : ActivityFacts.Word(request.Direction) ?? existing.Direction;
+            // A call changed into a note keeps no outcome, duration or direction: the note
+            // has none of them. Only what this edit did not send is dropped this way; a
+            // value sent with the new kind that it cannot carry is refused below.
+            if (!string.Equals(activityType, existing.Type, StringComparison.OrdinalIgnoreCase))
             {
-                var activityType = request.Type.ToLowerInvariant();
-                if (!ValidActivityTypes.Contains(activityType))
-                    return DomainErrors.Activity.InvalidType;
-                existing.Type = activityType;
+                if (ActivityFacts.Word(request.Outcome) == null && outcome != null && !ActivityFacts.OutcomesFor(activityType).Contains(outcome)) outcome = null;
+                if (request.DurationMinutes == null && !ActivityFacts.HasDuration(activityType)) duration = null;
+                if (ActivityFacts.Word(request.Direction) == null && !ActivityFacts.HasDirection(activityType)) direction = null;
             }
+            // The time is checked when the edit changes it; one already saved stands.
+            var facts = request.OccurredAtUtc != null
+                ? ActivityFacts.Check(activityType, occurredAt, outcome, duration, direction, DateTime.UtcNow)
+                : ActivityFacts.CheckFacts(activityType, outcome, duration, direction);
+            if (facts.IsFailure) return facts.Error;
+
+            existing.Type = activityType;
+            existing.OccurredAtUtc = occurredAt;
+            existing.Outcome = outcome;
+            existing.DurationMinutes = duration;
+            existing.Direction = direction;
             if (request.Subject != null) existing.Subject = request.Subject;
             if (request.Body != null) existing.Body = request.Body;
             if (request.Participants != null) existing.Participants = request.Participants;
@@ -303,6 +347,8 @@ public class ActivityService : IActivityService
                 _logger.LogWarning("Activity {ActivityId} update returned null", id);
                 return DomainErrors.General.ServerError;
             }
+
+            await _notifier.ActivityMentionsAsync(existing, recordName, textBefore, userId, ct);
 
             _logger.LogInformation("Successfully updated activity {ActivityId}", id);
             return Map(existing);
@@ -343,6 +389,10 @@ public class ActivityService : IActivityService
         }
     }
 
+    /// <summary>The lead, deal or contact the activity is on, by name, when it was read with them.</summary>
+    private static string? RecordName(Activity? activity) =>
+        activity?.Lead?.Name ?? activity?.Deal?.Name ?? activity?.Contact?.Name;
+
     private static ActivityDto Map(Activity e) =>
         new ActivityDto(
             e.Id,
@@ -360,6 +410,10 @@ public class ActivityService : IActivityService
             e.Lead?.Name,
             e.UserId,
             e.User?.Name,
-            e.User?.Email
+            e.User?.Email,
+            e.OccurredAtUtc,
+            e.Outcome,
+            e.DurationMinutes,
+            e.Direction
         );
 }

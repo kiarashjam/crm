@@ -15,6 +15,10 @@ internal sealed class ContactConfiguration : IEntityTypeConfiguration<Contact>
         builder.Property(e => e.Phone).HasMaxLength(64);
         builder.Property(e => e.JobTitle).HasMaxLength(256);
         builder.Property(e => e.PreferredContactMethod).HasMaxLength(32);
+        builder.Property(e => e.PhoneKey).HasMaxLength(16);
+        builder.Property(e => e.NameKey).HasMaxLength(256);
+        // An edit made from an older read of the contact is refused, not written over the newer one. See IVersioned.
+        builder.Property(e => e.Version).IsConcurrencyToken();
 
         // Relationships
         builder.HasOne(e => e.User).WithMany(u => u.Contacts).HasForeignKey(e => e.UserId);
@@ -28,6 +32,11 @@ internal sealed class ContactConfiguration : IEntityTypeConfiguration<Contact>
         builder.HasIndex(e => e.OrganizationId);
         builder.HasIndex(e => e.IsArchived);
         builder.HasIndex(e => e.DoNotContact);
+        // Undoing an import finds the records it created by this.
+        builder.HasIndex(e => e.ImportBatchId);
+        // Duplicates are found by these: the people in a workspace who share a phone or a name.
+        builder.HasIndex(e => new { e.OrganizationId, e.PhoneKey }).HasDatabaseName("IX_Contacts_OrganizationId_PhoneKey");
+        builder.HasIndex(e => new { e.OrganizationId, e.NameKey }).HasDatabaseName("IX_Contacts_OrganizationId_NameKey");
         // Unique email per workspace: per organization, and with none, per user. One
         // index over (Email, OrganizationId) counted every personal user's NULL as the
         // same workspace, so a second user could not have a contact the first one had.

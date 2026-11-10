@@ -5,6 +5,7 @@ import {
   LEAD_MERGE_FIELDS, DEAL_MERGE_FIELDS, MEMBER_MERGE_FIELDS,
 } from './dedupe';
 import type { Deal, Lead } from './types';
+import { formatMoney } from '@/app/lib/money';
 import type { Member } from './members';
 
 const lead = (id: string, over: Partial<Lead> = {}): Lead => ({ id, name: 'Ada Lovelace', email: '', status: 'New', ...over });
@@ -26,6 +27,55 @@ describe('finding duplicates', () => {
     expect(groups).toHaveLength(1);
     expect(groups[0]?.records.map((r) => r.id)).toEqual(['a', 'b']);
     expect(groups[0]?.reason).toBe('Same email');
+  });
+
+  it('finds one contact entered twice under two emails, as server data always has them', () => {
+    // A contact's email is unique in its workspace, so the rule that ruled out any two
+    // with different emails never found a duplicate on a real server.
+    const groups = duplicateContactGroups([
+      { id: 'a', name: 'Marc Dubois', email: 'marc@gmail.com', phone: '+41 79 123 45 67' },
+      { id: 'b', name: 'Marc  Dubois', email: 'm.dubois@firm.ch', phone: '079 123 45 67' },
+      { id: 'c', name: 'Marc Dubois', email: 'marc@bank.ch', phone: '+41 78 555 55 55' },
+      { id: 'd', name: 'Lea Meier', email: 'lea@one.ch', phone: '+41 44 111 22 33' },
+      { id: 'e', name: 'L. Meier', email: 'lea@two.ch', phone: '044 111 22 33' },
+    ]);
+    expect(groups.map((g) => [g.records.map((r) => r.id), g.reason])).toEqual([
+      [['a', 'b'], 'Same phone · Same name'],
+      [['d', 'e'], 'Same phone'],
+    ]);
+  });
+
+  it('leaves out a phone, a name or a domain more than fifty share, as the server does', () => {
+    // A hotel's switchboard on fifty-one contacts says nothing about any two of them; two
+    // of them on it with one name are still one person.
+    const switchboard = '+41 33 123 45 67';
+    const colleagues = Array.from({ length: 49 }, (_, i) => ({ id: `c${i}`, name: `Colleague ${i}`, email: `c${i}@bellevue.ch`, phone: switchboard }));
+    const groups = duplicateContactGroups([
+      ...colleagues,
+      { id: 'anna1', name: 'Anna Keller', email: 'anna@bellevue.ch', phone: switchboard },
+      { id: 'anna2', name: 'Anna Keller', email: 'a.keller@bellevue.ch', phone: '033 123 45 67' },
+    ]);
+    expect(groups.map((g) => [g.records.map((r) => r.id), g.reason])).toEqual([[['anna1', 'anna2'], 'Same name']]);
+    expect(duplicateContactGroups(colleagues.slice(0, 2)).map((g) => g.reason)).toEqual(['Same phone']);
+
+    const branches = Array.from({ length: 51 }, (_, i) => ({ id: `b${i}`, name: `Branch ${i}`, domain: 'bank.ch' }));
+    expect(duplicateCompanyGroups(branches)).toEqual([]);
+    // One letter is no name to match on, as on the server.
+    expect(duplicateContactGroups([
+      { id: 'x', name: 'A', email: 'x@one.ch' },
+      { id: 'y', name: 'a', email: 'y@two.ch' },
+    ])).toEqual([]);
+  });
+
+  it('does not offer two contacts who share a name but have different phones or companies', () => {
+    expect(duplicateContactGroups([
+      { id: 'a', name: 'Alex Meier', email: 'alex@one.ch', phone: '079 111 22 33' },
+      { id: 'b', name: 'Alex Meier', email: 'alex@two.ch', phone: '079 999 88 77' },
+    ])).toEqual([]);
+    expect(duplicateContactGroups([
+      { id: 'a', name: 'Alex Meier', email: 'alex@acme.ch', companyId: 'acme' },
+      { id: 'b', name: 'Alex Meier', email: 'alex@globex.ch', companyId: 'globex' },
+    ])).toEqual([]);
   });
 
   it('does not offer two different people who only share a name', () => {
@@ -116,14 +166,21 @@ describe('what the merged record looks like', () => {
     expect(merged.createdAtUtc).toBe('2025-01-01T00:00:00Z');
   });
 
-  it('fills a deal value of zero with its currency, and a private duplicate keeps it private', () => {
+  it('fills a deal amount of zero with its currency, and a private duplicate keeps it private', () => {
     const { merged, rows } = mergeRecords(DEAL_MERGE_FIELDS,
-      { id: 'k', name: 'Renewal', value: '0' },
-      [{ id: 'd', name: 'Renewal', value: '12000', currency: 'CHF', isPrivate: true }]);
+      { id: 'k', name: 'Renewal', value: '0', amount: 0 },
+      [{ id: 'd', name: 'Renewal', value: '12000', amount: 12000, currency: 'CHF', isPrivate: true }]);
+    expect(merged.amount).toBe(12000);
     expect(merged.value).toBe('12000');
     expect(merged.currency).toBe('CHF');
     expect(merged.isPrivate).toBe(true);
-    expect(rows.find((r) => r.label === 'Value')?.result).toBe(`CHF ${(12000).toLocaleString()}`);
+    expect(rows.find((r) => r.label === 'Value')?.result).toBe(formatMoney(12000, 'CHF'));
+  });
+
+  it('reads the stored amount, not the text, which Number() could not read', () => {
+    const { rows } = mergeRecords(DEAL_MERGE_FIELDS,
+      { id: 'k', name: 'Renewal', value: 'CHF 85,500', amount: 85500, currency: 'CHF' }, []);
+    expect(rows.find((r) => r.label === 'Value')?.result).toBe(formatMoney(85500, 'CHF'));
   });
 
   it('adds up house accounts and keeps both members’ notes', () => {

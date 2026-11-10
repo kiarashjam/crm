@@ -1,14 +1,19 @@
 // Shared glue between the pipeline editors and the pure sync logic.
 //
 // Owns the parts that must not be reimplemented per editor: the request
-// sequence guard, the toast + Undo, and reading prefs / per-lead memory. The
-// decision itself lives in `leadStatusSync.ts` and the write in
-// `saveLeadPipeline.ts`.
+// sequence guard, the toast, and reading prefs / per-lead memory. The server
+// decides the status when the pipeline is saved; `leadStatusSync.ts` previews
+// and explains that decision, and the write lives in `saveLeadPipeline.ts`.
+//
+// There is no longer a per-user switch for automatic status updates. It was a
+// setting in this browser's storage, and the status is now set by the server
+// for every writer, including ones with no browser at all (an e-signed
+// contract), so a switch here could only have hidden what was happening.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { Lead } from '@/app/api/types';
-import type { LeadPipeline } from './leadPipeline';
+import { parsePipeline, type LeadPipeline } from './leadPipeline';
 import {
   planStatusSync,
   statusDrift,
@@ -22,7 +27,6 @@ import {
   loadAllSyncMeta,
   recordAutoStatus,
   onStatusSyncChange,
-  setStatusSyncEnabled,
 } from './leadStatusSyncStore';
 import { saveLeadPipeline } from './saveLeadPipeline';
 
@@ -55,8 +59,7 @@ export function useLeadStatusSync({
     // invalidate this hook's whole API (and every consumer's memo) needlessly.
     setPrefs((prev) => {
       const next = loadStatusSyncPrefs();
-      const same = prev.enabled === next.enabled
-        && JSON.stringify(prev.overrides) === JSON.stringify(next.overrides);
+      const same = JSON.stringify(prev.overrides) === JSON.stringify(next.overrides);
       return same ? prev : next;
     });
   }), []);
@@ -66,7 +69,6 @@ export function useLeadStatusSync({
   // the UI with stale values mid-typing.
   const seqRef = useRef<Map<string, number>>(new Map());
 
-  const enabled = prefs.enabled;
   const overrides = prefs.overrides;
 
   // LeadPipelineTracker calls `preview` once per chip during render (17 call
@@ -90,11 +92,10 @@ export function useLeadStatusSync({
         statusesLoaded,
         statusesUnavailable,
         isConverted: lead.isConverted,
-        enabled,
         lastAutoStatus: lastAutoFor(lead.id),
         overrides,
       }),
-    [statusOptions, statusesLoaded, statusesUnavailable, enabled, overrides, lastAutoFor],
+    [statusOptions, statusesLoaded, statusesUnavailable, overrides, lastAutoFor],
   );
 
   /** Standing disagreement between status and pipeline, computed from state. */
@@ -106,8 +107,6 @@ export function useLeadStatusSync({
         statusOptions,
         statusesLoaded,
         isConverted: lead.isConverted,
-        // No `enabled`: drift describes the data, so it stays visible when
-        // auto-sync is off — that is when the strip is the only way to fix it.
         overrides,
       }),
     [statusOptions, statusesLoaded, overrides],
@@ -126,29 +125,30 @@ export function useLeadStatusSync({
         statusesLoaded,
         statusesUnavailable,
         isConverted: lead.isConverted,
-        enabled,
         lastAutoStatus: lastAutoFor(lead.id),
         overrides,
       })?.name ?? null,
-    [statusOptions, statusesLoaded, statusesUnavailable, enabled, overrides, lastAutoFor],
+    [statusOptions, statusesLoaded, statusesUnavailable, overrides, lastAutoFor],
   );
 
   /**
-   * Persist a pipeline edit and any implied status change, then announce it.
+   * Persist a pipeline edit, then announce the status the server settled on.
    *
    * The toast fires only after the PUT resolves truthy — announcing a change the
    * server refused is worse than staying quiet. `onApplied` lets the caller
-   * merge the server's lead into its own state.
+   * merge the server's lead, status included, into its own state.
    */
   const save = useCallback(
     async (
-      lead: Pick<Lead, 'id' | 'status' | 'isConverted' | 'name'>,
+      lead: Pick<Lead, 'id' | 'status' | 'isConverted' | 'name' | 'pipelineState' | 'version'>,
       pipeline: LeadPipeline,
       opts?: {
         log?: { subject: string; body?: string };
         onApplied?: (updated: Lead) => void;
         /** Suppress the toast (e.g. when the caller renders its own feedback). */
         quiet?: boolean;
+        /** The pipeline the edit was made on; only what differs from it is sent. The lead's, by default. */
+        base?: LeadPipeline;
       },
     ): Promise<SavePipelineOutcome> => {
       const seq = (seqRef.current.get(lead.id) ?? 0) + 1;
@@ -157,10 +157,10 @@ export function useLeadStatusSync({
       const result = await saveLeadPipeline({
         lead,
         pipeline,
+        base: opts?.base ?? parsePipeline(lead.pipelineState),
         statusOptions,
         statusesLoaded,
         statusesUnavailable,
-        enabled,
         lastAutoStatus: lastAutoFor(lead.id),
         overrides,
         log: opts?.log,
@@ -206,11 +206,11 @@ export function useLeadStatusSync({
 
       return { ok: true, lead: result.lead, plan: result.plan, stale: false };
     },
-    [statusOptions, statusesLoaded, statusesUnavailable, enabled, overrides, lastAutoFor],
+    [statusOptions, statusesLoaded, statusesUnavailable, overrides, lastAutoFor],
   );
 
   return useMemo(
-    () => ({ enabled, setEnabled: setStatusSyncEnabled, plan, drift, preview, save }),
-    [enabled, plan, drift, preview, save],
+    () => ({ plan, drift, preview, save }),
+    [plan, drift, preview, save],
   );
 }

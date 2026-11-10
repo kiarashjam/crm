@@ -90,7 +90,7 @@ export function saveAssignmentRule(rule: Partial<AssignmentRule> & { name: strin
 /** DELETE that rejects on a refusal — `authFetch` alone resolves even on a 403. */
 async function deleteOrThrow(path: string): Promise<void> {
   const res = await authFetch(path, { method: 'DELETE' });
-  if (!res.ok) throw new ApiError(res.status === 403 ? 'Only owners and managers can change lead routing.' : 'Could not delete', res.status);
+  if (!res.ok) throw new ApiError(res.status === 403 ? 'Your role here does not let you change lead routing.' : 'Could not delete', res.status);
 }
 
 export function deleteAssignmentRule(id: string) {

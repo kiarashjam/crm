@@ -47,6 +47,8 @@ public sealed class LeadOpsService : ILeadOpsService
     private readonly ILeadAutomation _automation;
     private readonly IActivityService _activities;
     private readonly IOrganizationRepository? _organizations;
+    private readonly ICollaborationNotifier? _collaboration;
+    private readonly ITenantContext? _tenant;
 
     public LeadOpsService(
         ILeadOpsRepository ops,
@@ -55,7 +57,9 @@ public sealed class LeadOpsService : ILeadOpsService
         INotificationService notifications,
         ILeadAutomation automation,
         IActivityService activities,
-        IOrganizationRepository? organizations = null)
+        IOrganizationRepository? organizations = null,
+        ICollaborationNotifier? collaboration = null,
+        ITenantContext? tenant = null)
     {
         _ops = ops;
         _leads = leads;
@@ -64,6 +68,8 @@ public sealed class LeadOpsService : ILeadOpsService
         _automation = automation;
         _activities = activities;
         _organizations = organizations;
+        _collaboration = collaboration;
+        _tenant = tenant;
     }
 
     public async Task<IReadOnlyList<ScoringRuleDto>> GetScoringRulesAsync(Guid? organizationId, CancellationToken ct = default)
@@ -227,6 +233,9 @@ public sealed class LeadOpsService : ILeadOpsService
     {
         var form = await _ops.GetFormByTokenAsync(token, ct);
         if (form == null) return DomainErrors.Lead.NotFound;
+        // Nobody signs in on a public form: its token names the workspace the lead goes
+        // to, and everything below reads and writes as that workspace.
+        using var acting = _tenant?.ActFor(form.OrganizationId, form.CreatedByUserId);
         var receipt = new PublicCaptureReceipt(string.IsNullOrWhiteSpace(form.SuccessMessage) ? "Thanks. We'll be in touch." : form.SuccessMessage);
 
         // The hidden honeypot field: a person never sees it, a bot fills it.
@@ -330,6 +339,7 @@ public sealed class LeadOpsService : ILeadOpsService
 
         var updated = 0;
         var missing = 0;
+        var handedOver = new List<(Guid Id, string Name)>();
         foreach (var id in request.Ids.Distinct())
         {
             var lead = await _leadRepository.GetByIdAsync(id, userId, organizationId, ct);
@@ -338,6 +348,7 @@ public sealed class LeadOpsService : ILeadOpsService
                 missing++;
                 continue;
             }
+            var ownerBefore = lead.AssignedToUserId;
             if (!string.IsNullOrWhiteSpace(source)) lead.Source = source;
             if (request.ClearQueue) lead.QueueId = null;
             else if (request.QueueId != null) lead.QueueId = request.QueueId;
@@ -346,12 +357,28 @@ public sealed class LeadOpsService : ILeadOpsService
             await _automation.RescoreAsync(lead, ct);
             // The general update does not take the owner (a stale copy would undo a
             // concurrent assignment), so the owner goes through AssignAsync.
-            var saved = await _leadRepository.UpdateAsync(lead, userId, organizationId, ct) != null;
+            bool saved;
+            try
+            {
+                saved = await _leadRepository.UpdateAsync(lead, userId, organizationId, ct) != null;
+            }
+            catch (ConcurrencyConflictException)
+            {
+                // Saved by someone else in the moment between this read and this write
+                // (see IVersioned): counted as not updated, and the rest still are.
+                saved = false;
+            }
             if (saved && request.AssignedToUserId is Guid newOwner)
+            {
                 saved = await _leadRepository.AssignAsync(id, userId, organizationId, newOwner, ct) != null;
+                if (saved && newOwner != ownerBefore) handedOver.Add((lead.Id, lead.Name));
+            }
             if (saved) updated++;
             else missing++;
         }
+        // One line for every lead handed to the new owner, not one each.
+        if (_collaboration != null && request.AssignedToUserId is Guid givenTo && handedOver.Count > 0)
+            await _collaboration.RecordsAssignedAsync(RecordTypes.Lead, givenTo, organizationId, handedOver, userId, ct);
         return new BulkLeadUpdateResult(updated, missing);
     }
 
@@ -371,10 +398,22 @@ public sealed class LeadOpsService : ILeadOpsService
         var due = await _ops.OverdueFirstResponseAsync(DateTime.UtcNow, 100, ct);
         foreach (var lead in due)
         {
+            var recipient = lead.AssignedToUserId ?? lead.UserId;
+            // The job looks across workspaces; the notice is written in the lead's own.
+            using var acting = _tenant?.ActFor(lead.OrganizationId, recipient);
             lead.SlaBreached = true;
             lead.SlaNotifiedAtUtc = DateTime.UtcNow;
-            await _ops.SaveLeadAsync(lead, ct);
-            var recipient = lead.AssignedToUserId ?? lead.UserId;
+            try
+            {
+                await _ops.SaveLeadAsync(lead, ct);
+            }
+            catch (ConcurrencyConflictException)
+            {
+                // Saved by someone else since it was read, most likely the call that
+                // answered it: the next run sees whether it is still late. Thrown on, it
+                // stopped this run for every lead after it.
+                continue;
+            }
             await _notifications.CreateAsync(recipient, lead.OrganizationId, new CreateNotificationRequest(
                 "lead_sla",
                 "First response is late",

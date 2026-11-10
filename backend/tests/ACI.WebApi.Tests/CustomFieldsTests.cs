@@ -63,7 +63,7 @@ public class CustomFieldsTests
 
         var refused = await member.PostAsync("/api/custom-fields", Body(new { entityType = "lead", label = "Mine", type = "text" }));
         refused.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        (await refused.Content.ReadAsStringAsync()).Should().Contain("Only the owner or a manager can change custom fields");
+        (await refused.Content.ReadAsStringAsync()).Should().Contain("Your role here does not let you change custom fields");
 
         var second = await DefineAsync(manager, new { entityType = "lead", label = "Budget", type = "number" });
         second.GetProperty("key").GetString().Should().Be("budget_2", "keys never collide");

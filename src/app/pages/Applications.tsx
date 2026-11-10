@@ -58,6 +58,8 @@ import {
   type RecordColumn,
 } from '@/app/components/views';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
+import { WriteOnly } from '@/app/components/WriteOnly';
+import { PERMISSION } from '@/app/api/organizations';
 
 const STATUS_BADGE: Record<ApplicationStatus, string> = {
   Submitted: 'bg-blue-50 text-blue-700 ring-1 ring-blue-200',
@@ -257,8 +259,9 @@ export default function Applications() {
             : 'flex flex-wrap items-center justify-end gap-1.5'
       }
     >
+      {/* Reviewing applications is for whoever manages the club's members. */}
       {(a.status === 'Submitted' || a.status === 'UnderReview') && (
-        <>
+        <WriteOnly permission={PERMISSION.ClubMembers}>
           <Button
             size="sm"
             onClick={() => startReview(a, 'approve')}
@@ -287,26 +290,30 @@ export default function Applications() {
               <X className="w-3.5 h-3.5" />
             </Button>
           </div>
-        </>
+        </WriteOnly>
       )}
       {a.status === 'Submitted' && (
-        <button
-          type="button"
-          onClick={() => setStatus(a, 'UnderReview')}
-          className="text-xs text-blue-600 hover:underline inline-flex items-center gap-0.5"
-        >
-          Move to review <ChevronRight className="w-3 h-3" />
-        </button>
+        <WriteOnly permission={PERMISSION.ClubMembers}>
+          <button
+            type="button"
+            onClick={() => setStatus(a, 'UnderReview')}
+            className="text-xs text-blue-600 hover:underline inline-flex items-center gap-0.5"
+          >
+            Move to review <ChevronRight className="w-3 h-3" />
+          </button>
+        </WriteOnly>
       )}
       {(a.status === 'Rejected' || a.status === 'Approved' || a.status === 'Waitlisted') && (
-        <button
-          type="button"
-          onClick={() => remove(a)}
-          disabled={busyId === a.id}
-          className="text-xs text-slate-500 hover:text-rose-600 disabled:opacity-50"
-        >
-          Delete record
-        </button>
+        <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.DeleteRecords]} all>
+          <button
+            type="button"
+            onClick={() => remove(a)}
+            disabled={busyId === a.id}
+            className="text-xs text-slate-500 hover:text-rose-600 disabled:opacity-50"
+          >
+            Delete record
+          </button>
+        </WriteOnly>
       )}
     </div>
   );
@@ -347,10 +354,12 @@ export default function Applications() {
             title="Applications"
             subtitle="Review prospective members, approve to onboard, or waitlist."
             actions={
-              <Button onClick={openCreate} className={heroPrimary('blue')}>
-                <Plus className="h-4 w-4" />
-                New application
-              </Button>
+              <WriteOnly permission={PERMISSION.ClubMembers}>
+                <Button onClick={openCreate} className={heroPrimary('blue')}>
+                  <Plus className="h-4 w-4" />
+                  New application
+                </Button>
+              </WriteOnly>
             }
             stats={[
               { label: 'Awaiting decision', value: stats.submitted + stats.underReview, icon: Clock, tone: 'amber', hint: `${stats.submitted} submitted · ${stats.underReview} reviewing` },

@@ -139,9 +139,15 @@ interface Props {
   leadName: string;
   /** Viewers cannot draft or sign anything. */
   readOnly?: boolean;
+  /**
+   * Sending and countersigning move the lead's pipeline on the server, and with it
+   * the lead's status. Called after either, so the page can show the lead as the
+   * server now has it instead of the pipeline and status from before.
+   */
+  onLeadChanged?: () => void;
 }
 
-export function ContractPanel({ leadId, leadName, readOnly }: Props) {
+export function ContractPanel({ leadId, leadName, readOnly, onLeadChanged }: Props) {
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [loading, setLoading] = useState(true);
   usePageLoading(loading);
@@ -209,6 +215,7 @@ export function ContractPanel({ leadId, leadName, readOnly }: Props) {
   const send = (c: Contract, resend: boolean) => run(`send-${c.id}`, async () => {
     const result = await sendContract(c.id, resend);
     if (!result) throw new ContractError('The contract could not be sent.');
+    onLeadChanged?.();
     await reload();
     setLastLink({ id: c.id, url: result.signingUrl, emailed: result.emailSent });
     if (result.emailSent) {
@@ -232,6 +239,7 @@ export function ContractPanel({ leadId, leadName, readOnly }: Props) {
     setSignProblem((prev) => ({ ...prev, [c.id]: null }));
 
     const done = await countersignContract(c.id, name, agreed);
+    onLeadChanged?.();
     await reload();
     // Only this contract's form is cleared.
     setSignName((prev) => ({ ...prev, [c.id]: '' }));

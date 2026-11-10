@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import LoadingSpinner from '@/app/components/LoadingSpinner';
 import { getApiBaseUrl, servesDemoData } from '@/app/api/apiClient';
 import { generateMcpApiKey, getWebhookInfo, type WebhookInfo } from '@/app/api/webhook';
-import { isOrgAdmin } from '@/app/api/organizations';
+import { orgCan, PERMISSION } from '@/app/api/organizations';
 import { useOrg } from '@/app/contexts/OrgContext';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -92,7 +92,7 @@ export function ClaudeSection() {
   const configKey = apiKey || 'YOUR_API_KEY';
   const bearer = `Bearer ${configKey}`;
   const connectorName = `CadenceE — ${orgName}`;
-  const canGenerate = isOrgAdmin(currentOrg);
+  const canGenerate = Boolean(currentOrg) && orgCan(currentOrg, PERMISSION.ManageSettings);
   const claudeCanReach = isReachableByClaude(mcpUrl);
   const questions = exampleQuestions(orgName);
 
@@ -347,7 +347,7 @@ function KeyPanel({
             Make a new key
           </Button>
         ) : (
-          <p className="text-sm text-slate-600">Ask an owner or manager for the key.</p>
+          <p className="text-sm text-slate-600">Ask someone who manages the workspace&apos;s settings for the key.</p>
         )}
       </div>
     );
@@ -358,7 +358,7 @@ function KeyPanel({
         {generating ? 'Generating...' : 'Generate API key'}
       </Button>
     ) : (
-      <p className="text-sm text-slate-600">Ask an owner or manager to generate the key.</p>
+      <p className="text-sm text-slate-600">Ask someone who manages the workspace&apos;s settings to generate the key.</p>
     );
   }
   return (

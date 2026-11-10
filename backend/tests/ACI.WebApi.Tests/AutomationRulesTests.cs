@@ -21,20 +21,15 @@ public class AutomationRulesTests
     /// <summary>The app with a mail server that remembers what it was asked to send.</summary>
     private sealed class WithMailServer : CustomWebApplicationFactory
     {
-        public readonly List<string> SentTo = new();
-        public readonly List<OutreachEmail> Sent = new();
+        public readonly MailServer Mail = new();
+
+        public IReadOnlyList<string> SentTo => Mail.SentTo;
+        public IReadOnlyList<OutboxEmail> Sent => Mail.Sent;
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             base.ConfigureWebHost(builder);
-            builder.ConfigureTestServices(services =>
-            {
-                var sender = new Mock<IEmailSender>();
-                sender.Setup(s => s.SendOutreachAsync(It.IsAny<OutreachEmail>(), It.IsAny<CancellationToken>()))
-                    .Callback((OutreachEmail email, CancellationToken _) => { Sent.Add(email); SentTo.Add(email.To); })
-                    .ReturnsAsync(true);
-                services.AddSingleton(sender.Object);
-            });
+            builder.ConfigureTestServices(services => services.AddSingleton(Mail.Mock.Object));
         }
     }
 
@@ -67,7 +62,7 @@ public class AutomationRulesTests
 
         var refused = await member.PostAsync("/api/automations", Body(Rule("notify", new { message = "hi" })));
         refused.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        (await refused.Content.ReadAsStringAsync()).Should().Contain("Only the owner or a manager can change automations.");
+        (await refused.Content.ReadAsStringAsync()).Should().Contain("Your role here does not let you change automations.");
 
         var rule = await Json(await manager.PostAsync("/api/automations", Body(Rule("notify", new { message = "hi" }))), "manager adds");
         var id = rule.GetProperty("id").GetGuid();
@@ -126,10 +121,39 @@ public class AutomationRulesTests
         // them — not the owner who happened to create the lead.
         task.GetProperty("assigneeId").GetGuid().Should().Be(repId);
         (await factory.Services.Read(db => db.Leads.Single(l => l.Id == leadId).AssignedToUserId)).Should().Be(repId);
+        // The email waits in the outbox: the save that set the rule off does not wait on
+        // the mail server.
+        factory.Mail.Attempts.Should().BeEmpty();
+        await factory.DispatchOutboxAsync();
         factory.SentTo.Should().Equal("jean@example.ch");
         // Under the workspace's name, not "Cadence", and a reply reaches the rep who now works the lead.
         factory.Sent.Single().FromName.Should().Be("Pavillon46");
-        factory.Sent.Single().ReplyTo.Should().Be("rep@example.ch");
+        factory.Sent.Single().ReplyTo.Should().Equal("rep@example.ch");
+        // On the lead's timeline, which automation email never reached, as automated.
+        var activity = await factory.Services.Read(db => db.Activities.Single(a => a.LeadId == leadId && a.Type == "email"));
+        activity.Subject.Should().Be("Welcome");
+        activity.Body.Should().Be("Hi Jean");
+    }
+
+    [Fact]
+    public async Task AnAutomationEmailThatFailsIsRetried_NotLost()
+    {
+        // SendGrid briefly refuses connections as a website lead arrives. The "thanks for
+        // reaching out" email used to be gone for good, with the rule counted as run.
+        await using var factory = new WithMailServer();
+        var (owner, ownerId) = await SignInAsync(factory, "owner@example.ch");
+        owner.In(await CreateAsync(factory, ownerId, "Pavillon46"));
+        await Json(await owner.PostAsync("/api/automations", Body(Rule("send_email", new { subject = "Thanks, {{firstName}}", body = "We will be in touch." }))), "add rule");
+        await Json(await AddLeadAsync(owner), "add lead");
+        factory.Mail.Answer = MailServer.NotNow();
+
+        await factory.DispatchOutboxAsync();
+        factory.Mail.Sent.Should().BeEmpty();
+
+        factory.Mail.Answer = OutboxSendResult.Sent;
+        await factory.MakeQueuedDueAsync();
+        await factory.DispatchOutboxAsync();
+        factory.Mail.Sent.Single().Subject.Should().Be("Thanks, Jean", "the subject's placeholders are filled too");
     }
 
     [Fact]
@@ -189,6 +213,7 @@ public class AutomationRulesTests
         var (someoneElse, _) = await SignInAsync(factory, "someone@example.ch");
 
         (await AddLeadAsync(someoneElse, "their.contact@example.ch")).IsSuccessStatusCode.Should().BeTrue();
+        await factory.DispatchOutboxAsync();
 
         factory.SentTo.Should().BeEmpty();
     }

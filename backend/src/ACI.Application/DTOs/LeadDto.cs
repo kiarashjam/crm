@@ -37,7 +37,10 @@ public record LeadDto(
     bool ScoreIsManual = false,
     Guid? ReferredByContactId = null,
     string? ReferredByContactName = null,
-    IReadOnlyList<ContactRelationshipDto>? Relationships = null);
+    IReadOnlyList<ContactRelationshipDto>? Relationships = null,
+    // The lead as of this read. An edit that sends it back is refused once anyone has
+    // saved the lead since (see UpdateLeadRequest.Version).
+    Guid? Version = null);
 
 /// <summary>The lead to fold into the one named in the route.</summary>
 public record MergeLeadsRequest(Guid OtherLeadId);

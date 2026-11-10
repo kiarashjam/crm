@@ -4,8 +4,13 @@ import { toast } from 'sonner';
 import { Popover, PopoverContent, PopoverTrigger } from '@/app/components/ui/popover';
 import { Button } from '@/app/components/ui/button';
 import { cn } from '@/app/components/ui/utils';
+import { ActivityFactsFields } from '@/app/components/ActivityFactsFields';
+import { EMPTY_FACTS, factsPayload, factsProblem, type ActivityFactsPayload } from '@/app/lib/activityFacts';
 
 type QuickLogType = 'call' | 'email' | 'meeting' | 'note';
+
+/** What the popover logs: the kind, what happened, and when and how it went. */
+export type QuickLogPayload = { type: QuickLogType; body: string } & ActivityFactsPayload;
 
 const TYPES: { id: QuickLogType; label: string; icon: typeof Phone; tone: string }[] = [
   { id: 'call', label: 'Call', icon: Phone, tone: 'text-blue-600 bg-blue-50 border-blue-200' },
@@ -16,7 +21,7 @@ const TYPES: { id: QuickLogType; label: string; icon: typeof Phone; tone: string
 
 interface QuickLogPopoverProps {
   /** Called with the activity payload; should persist and resolve. */
-  onSubmit: (payload: { type: QuickLogType; body: string }) => Promise<void>;
+  onSubmit: (payload: QuickLogPayload) => Promise<void>;
   /** The trigger element. Click stops propagation so the card doesn't navigate. */
   trigger: React.ReactNode;
 }
@@ -29,25 +34,28 @@ export function QuickLogPopover({ onSubmit, trigger }: QuickLogPopoverProps) {
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<QuickLogType>('note');
   const [body, setBody] = useState('');
+  const [facts, setFacts] = useState(EMPTY_FACTS);
   const [saving, setSaving] = useState(false);
+  const problem = factsProblem(type, facts);
 
   const reset = () => {
     setType('note');
     setBody('');
+    setFacts(EMPTY_FACTS);
   };
 
   const handleSubmit = async () => {
     const trimmed = body.trim();
-    if (!trimmed || saving) return;
+    if (!trimmed || saving || problem) return;
     setSaving(true);
     try {
-      await onSubmit({ type, body: trimmed });
+      await onSubmit({ type, body: trimmed, ...factsPayload(type, facts) });
       toast.success(`Logged ${type}`);
       reset();
       setOpen(false);
     } catch (err) {
       console.error('Failed to log activity', err);
-      toast.error('Failed to log activity');
+      toast.error(err instanceof Error && err.message ? err.message : 'Failed to log activity');
     } finally {
       setSaving(false);
     }
@@ -98,6 +106,8 @@ export function QuickLogPopover({ onSubmit, trigger }: QuickLogPopoverProps) {
             );
           })}
         </div>
+        <ActivityFactsFields type={type} value={facts} onChange={setFacts} className="sm:grid-cols-2" />
+        {problem && <p role="alert" className="text-xs text-rose-600">{problem}</p>}
         <textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
@@ -122,7 +132,7 @@ export function QuickLogPopover({ onSubmit, trigger }: QuickLogPopoverProps) {
           <Button
             size="sm"
             onClick={handleSubmit}
-            disabled={!body.trim() || saving}
+            disabled={!body.trim() || saving || !!problem}
             className="gap-1.5"
           >
             {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}

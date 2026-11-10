@@ -1,7 +1,9 @@
 import type { Contact, PagedResult, PaginationParams } from './types';
 import { mockContacts, mockLeads } from './mockData';
-import { servesDemoData, authFetchJson, authFetch } from './apiClient';
-import { createMockStore, mockId } from './mockStore';
+import { servesDemoData, authFetchJson, authFetch, ensureOk, type RequestOptions } from './apiClient';
+import { downloadCsv, downloadFile } from '@/app/lib/exportCsv';
+import { createMockStore, demoPatch, mockId } from './mockStore';
+import { isEditConflictCode } from '@/app/lib/editConflict';
 
 const contactStore = createMockStore<Contact>({
   storageKey: 'crm.mock.contacts.v1',
@@ -112,7 +114,7 @@ function reassignStoredContact(key: string, fromId: string, toId: string): void 
   }
 }
 
-interface ApiContact {
+export interface ApiContact {
   id: string;
   name: string;
   email: string;
@@ -129,9 +131,10 @@ interface ApiContact {
   description?: string | null;
   createdAtUtc?: string | null;
   updatedAtUtc?: string | null;
+  version?: string | null;
 }
 
-function mapContact(d: ApiContact): Contact {
+export function mapContact(d: ApiContact): Contact {
   return {
     id: d.id,
     name: d.name,
@@ -149,6 +152,7 @@ function mapContact(d: ApiContact): Contact {
     description: d.description ?? undefined,
     createdAtUtc: d.createdAtUtc ?? undefined,
     updatedAtUtc: d.updatedAtUtc ?? undefined,
+    version: d.version ?? undefined,
   };
 }
 
@@ -162,25 +166,93 @@ interface ApiPagedResult<T> {
   hasPreviousPage: boolean;
 }
 
-/** Get contacts with pagination and optional search (real API or mock). */
+export type ContactStatus = 'active' | 'archived' | 'all';
+/** recent: activity in the last 30 days. quiet: none in the last 90 days, or none at all. */
+export type ContactActivity = 'recent' | 'quiet';
+export type ContactSortField = 'name' | 'email' | 'lastActivity' | 'createdAt';
+
+/**
+ * What the contacts list asks for. The server applies all of it to the whole workspace
+ * before it takes a page; the page used to filter and sort the twenty contacts it had.
+ */
+export interface ContactListFilters {
+  search?: string;
+  /** Active by default. */
+  status?: ContactStatus;
+  companyId?: string;
+  /** true: only contacts at a company; false: only those at none. */
+  hasCompany?: boolean;
+  activity?: ContactActivity;
+  sortBy?: ContactSortField;
+  sortDir?: 'asc' | 'desc';
+}
+
+/** The figures above the contacts list, over the whole workspace. All but `archived` count active contacts. */
+export interface ContactStats {
+  total: number;
+  withCompany: number;
+  withPhone: number;
+  activeLast30Days: number;
+  quietOver90Days: number;
+  addedLast7Days: number;
+  archived: number;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function contactListQuery(filters: ContactListFilters): URLSearchParams {
+  const query = new URLSearchParams();
+  if (filters.search?.trim()) query.set('search', filters.search.trim());
+  if (filters.status) query.set('status', filters.status);
+  if (filters.companyId) query.set('companyId', filters.companyId);
+  if (filters.hasCompany !== undefined) query.set('hasCompany', String(filters.hasCompany));
+  if (filters.activity) query.set('activity', filters.activity);
+  if (filters.sortBy) query.set('sortBy', filters.sortBy);
+  if (filters.sortDir) query.set('sortDir', filters.sortDir);
+  return query;
+}
+
+/** Demo mode: the same filters and order as the server, over this browser's contacts. */
+function demoContactList(filters: ContactListFilters): Contact[] {
+  ensureDemoPersonContacts();
+  const now = Date.now();
+  const last = (c: Contact) => (c.lastActivityAtUtc ? new Date(c.lastActivityAtUtc).getTime() : null);
+  const status = filters.status ?? 'active';
+  let rows = (getStored() ?? [...mockContacts]).filter((c) =>
+    status === 'all' ? true : status === 'archived' ? !!c.isArchived : !c.isArchived);
+  if (filters.companyId) rows = rows.filter((c) => c.companyId === filters.companyId);
+  else if (filters.hasCompany !== undefined) rows = rows.filter((c) => !!c.companyId === filters.hasCompany);
+  if (filters.search?.trim()) {
+    const q = filters.search.trim().toLowerCase();
+    rows = rows.filter((c) => c.name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q)
+      || (c.phone ?? '').includes(q) || (c.jobTitle ?? '').toLowerCase().includes(q));
+  }
+  if (filters.activity === 'recent') rows = rows.filter((c) => (last(c) ?? 0) >= now - 30 * DAY_MS);
+  if (filters.activity === 'quiet') rows = rows.filter((c) => (last(c) ?? 0) < now - 90 * DAY_MS);
+  const dir = filters.sortDir === 'desc' ? -1 : 1;
+  const time = (v?: string) => (v ? new Date(v).getTime() : 0);
+  const compare: Record<ContactSortField, (a: Contact, b: Contact) => number> = {
+    name: (a, b) => a.name.localeCompare(b.name),
+    email: (a, b) => a.email.localeCompare(b.email),
+    lastActivity: (a, b) => (last(a) ?? -1) - (last(b) ?? -1),
+    createdAt: (a, b) => time(a.createdAtUtc) - time(b.createdAtUtc),
+  };
+  return [...rows].sort((a, b) => dir * compare[filters.sortBy ?? 'name'](a, b) || a.name.localeCompare(b.name));
+}
+
+/** Get contacts with pagination, filters and order (real API or mock). */
 export async function getContactsPaged(
-  params: PaginationParams & { includeArchived?: boolean; companyId?: string } = {}
+  params: PaginationParams & ContactListFilters & { includeArchived?: boolean } = {},
+  req?: RequestOptions,
 ): Promise<PagedResult<Contact>> {
-  const { page = 1, pageSize = 20, search, includeArchived = false, companyId } = params;
-  
+  const { page = 1, pageSize = 20, includeArchived = false, ...filters } = params;
+  const status = filters.status ?? (includeArchived ? 'all' : undefined);
+
   if (!servesDemoData()) {
-    const queryParams = new URLSearchParams({
-      page: String(page),
-      pageSize: String(pageSize),
-      includeArchived: String(includeArchived),
-    });
-    if (search?.trim()) {
-      queryParams.set('search', search.trim());
-    }
-    if (companyId) {
-      queryParams.set('companyId', companyId);
-    }
-    const result = await authFetchJson<ApiPagedResult<ApiContact>>(`/api/contacts?${queryParams}`);
+    const queryParams = contactListQuery({ ...filters, status });
+    queryParams.set('page', String(page));
+    queryParams.set('pageSize', String(pageSize));
+    const result = await authFetchJson<ApiPagedResult<ApiContact>>(`/api/contacts?${queryParams}`, req);
     return {
       items: Array.isArray(result?.items) ? result.items.map(mapContact) : [],
       totalCount: result?.totalCount ?? 0,
@@ -191,28 +263,15 @@ export async function getContactsPaged(
       hasPreviousPage: result?.hasPreviousPage ?? false,
     };
   }
-  
+
   // Mock implementation with client-side pagination
   await delay(300);
-  ensureDemoPersonContacts();
-  let stored = (getStored() ?? [...mockContacts]).filter((contact) => includeArchived || !contact.isArchived);
-  
-  // Apply search filter
-  if (search?.trim()) {
-    const qLower = search.trim().toLowerCase();
-    stored = stored.filter(
-      (c) =>
-        c.name.toLowerCase().includes(qLower) ||
-        c.email.toLowerCase().includes(qLower)
-    );
-  }
-  
-  // Apply pagination
+  const stored = demoContactList({ ...filters, status });
   const totalCount = stored.length;
   const totalPages = Math.ceil(totalCount / pageSize);
   const startIndex = (page - 1) * pageSize;
   const items = stored.slice(startIndex, startIndex + pageSize);
-  
+
   return {
     items,
     totalCount,
@@ -224,10 +283,78 @@ export async function getContactsPaged(
   };
 }
 
-/** Get all contacts (real API or mock) - non-paginated for backward compatibility. */
-export async function getContacts(includeArchived = false): Promise<Contact[]> {
+/** The figures above the contacts list, counted over the whole workspace. */
+export async function getContactStats(req?: RequestOptions): Promise<ContactStats> {
   if (!servesDemoData()) {
-    const list = await authFetchJson<ApiContact[]>(`/api/contacts/all?includeArchived=${includeArchived}`);
+    const stats = await authFetchJson<ContactStats>('/api/contacts/stats', req);
+    return {
+      total: stats?.total ?? 0,
+      withCompany: stats?.withCompany ?? 0,
+      withPhone: stats?.withPhone ?? 0,
+      activeLast30Days: stats?.activeLast30Days ?? 0,
+      quietOver90Days: stats?.quietOver90Days ?? 0,
+      addedLast7Days: stats?.addedLast7Days ?? 0,
+      archived: stats?.archived ?? 0,
+    };
+  }
+  const all = demoContactList({ status: 'all' });
+  const active = all.filter((c) => !c.isArchived);
+  const now = Date.now();
+  const last = (c: Contact) => (c.lastActivityAtUtc ? new Date(c.lastActivityAtUtc).getTime() : 0);
+  return {
+    total: active.length,
+    withCompany: active.filter((c) => c.companyId).length,
+    withPhone: active.filter((c) => c.phone?.trim()).length,
+    activeLast30Days: active.filter((c) => last(c) >= now - 30 * DAY_MS).length,
+    quietOver90Days: active.filter((c) => last(c) < now - 90 * DAY_MS).length,
+    addedLast7Days: active.filter((c) => c.createdAtUtc && new Date(c.createdAtUtc).getTime() >= now - 7 * DAY_MS).length,
+    archived: all.length - active.length,
+  };
+}
+
+/** How many rows an export holds, and how many matched (the server writes at most 50,000). */
+export interface ExportResult {
+  exported: number;
+  total: number;
+}
+
+/** Read an export's counts from its headers; a server from before them sends none. */
+export function exportCounts(res: Response): ExportResult | null {
+  const exported = Number(res.headers.get('X-Exported-Count'));
+  const total = Number(res.headers.get('X-Total-Count'));
+  return res.headers.has('X-Exported-Count') && Number.isFinite(exported)
+    ? { exported, total: Number.isFinite(total) && res.headers.has('X-Total-Count') ? total : exported }
+    : null;
+}
+
+/** Every contact the list shows with these filters, as a CSV download: all of them, not one page. */
+export async function exportContacts(filters: ContactListFilters): Promise<ExportResult | null> {
+  const day = new Date().toISOString().slice(0, 10);
+  if (!servesDemoData()) {
+    const res = await authFetch(`/api/contacts/export?${contactListQuery(filters)}`);
+    await ensureOk(res);
+    downloadFile(await res.blob(), `contacts-${day}.csv`);
+    return exportCounts(res);
+  }
+  const rows = demoContactList(filters);
+  downloadCsv(`contacts-${day}`, rows, [
+    { header: 'Name', value: (c) => c.name },
+    { header: 'Email', value: (c) => c.email },
+    { header: 'Phone', value: (c) => c.phone },
+    { header: 'Job title', value: (c) => c.jobTitle },
+    { header: 'Company', value: (c) => c.companyName },
+    { header: 'Do not contact', value: (c) => (c.doNotContact ? 'Yes' : 'No') },
+    { header: 'Archived', value: (c) => (c.isArchived ? 'Yes' : 'No') },
+    { header: 'Last activity', value: (c) => c.lastActivityAtUtc },
+    { header: 'Added', value: (c) => c.createdAtUtc },
+  ]);
+  return { exported: rows.length, total: rows.length };
+}
+
+/** Get all contacts (real API or mock) - non-paginated for backward compatibility. */
+export async function getContacts(includeArchived = false, req?: RequestOptions): Promise<Contact[]> {
+  if (!servesDemoData()) {
+    const list = await authFetchJson<ApiContact[]>(`/api/contacts/all?includeArchived=${includeArchived}`, req);
     return Array.isArray(list) ? list.map(mapContact) : [];
   }
   await delay(300);
@@ -298,19 +425,26 @@ export async function createContact(params: {
 }
 
 /** Update a contact. Returns { contact, error } */
+/**
+ * Update a contact. A field left out is kept; the phone, job title, company, description
+ * and preferred contact method are taken off when sent as null. `version` is the contact
+ * as the edit read it: with it, a save made after someone else saved the contact comes
+ * back with `conflict` set (see lib/editConflict.ts).
+ */
 export async function updateContact(
   id: string,
   params: Partial<{
     name: string;
     email: string;
-    phone: string;
-    jobTitle: string;
-    companyId: string;
-    description: string;
+    phone: string | null;
+    jobTitle: string | null;
+    companyId: string | null;
+    description: string | null;
     doNotContact: boolean;
-    preferredContactMethod: string;
+    preferredContactMethod: string | null;
+    version: string;
   }>
-): Promise<{ contact: Contact | null; error: string | null }> {
+): Promise<{ contact: Contact | null; error: string | null; conflict?: boolean }> {
   if (!servesDemoData()) {
     const res = await authFetch(`/api/contacts/${id}`, {
       method: 'PUT',
@@ -320,15 +454,22 @@ export async function updateContact(
       const data = await res.json() as ApiContact;
       return { contact: mapContact(data), error: null };
     }
+    // The server answers with problem+json: its sentence is in `detail`, and its code
+    // says whether the contact changed under this edit. Reading `error` lost both, so a
+    // duplicate email or a stale save read "Failed to update contact".
     try {
-      const err = await res.json() as { error?: string };
-      return { contact: null, error: err.error ?? 'Failed to update contact' };
+      const problem = await res.json() as { detail?: string; title?: string; errorCode?: string };
+      return {
+        contact: null,
+        error: problem.detail || problem.title || 'Failed to update contact',
+        conflict: res.status === 409 && isEditConflictCode(problem.errorCode),
+      };
     } catch {
       return { contact: null, error: 'Failed to update contact' };
     }
   }
   await delay(200);
-  const updated = contactStore.update(id, params as Partial<Contact>);
+  const updated = contactStore.update(id, demoPatch<Contact>(params));
   return updated
     ? { contact: updated, error: null }
     : { contact: null, error: 'Contact not found' };
@@ -354,10 +495,14 @@ export async function archiveContact(id: string): Promise<boolean> {
   return contactStore.update(id, { isArchived: true } as Partial<Contact>) !== null;
 }
 
-/** Unarchive a contact. */
+/**
+ * Unarchive a contact. A refusal throws with the server's reason: another active contact
+ * may have been added under the same email since this one was archived.
+ */
 export async function unarchiveContact(id: string): Promise<boolean> {
   if (!servesDemoData()) {
     const res = await authFetch(`/api/contacts/${id}/unarchive`, { method: 'POST' });
+    await ensureOk(res);
     return res.status === 204;
   }
   await delay(200);

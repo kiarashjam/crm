@@ -1,31 +1,41 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ReactNode, useState } from 'react';
+import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
+import { ReactNode, useEffect, useState } from 'react';
+import { useOrgOptional } from '@/app/contexts/OrgContext';
+import { createAppQueryClient } from '@/app/hooks/queries/queryClient';
+import { clearOnSessionChange, keepOnlyWorkspace, refreshAfterWrites } from '@/app/hooks/queries/invalidation';
 
 interface QueryProviderProps {
   children: ReactNode;
+  /** A client of the caller's own (a test's). By default the app makes one. */
+  client?: QueryClient;
 }
 
-export function QueryProvider({ children }: QueryProviderProps) {
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: {
-          queries: {
-            staleTime: 5 * 60 * 1000, // 5 minutes
-            gcTime: 10 * 60 * 1000, // 10 minutes (formerly cacheTime)
-            retry: 1,
-            refetchOnWindowFocus: false,
-          },
-          mutations: {
-            retry: 0,
-          },
-        },
-      })
-  );
+/**
+ * The app's cache of reads. It refreshes what each save changed, and forgets
+ * everything when someone signs in or out.
+ */
+export function QueryProvider({ children, client }: QueryProviderProps) {
+  const [queryClient] = useState(() => client ?? createAppQueryClient());
+
+  useEffect(() => refreshAfterWrites(queryClient), [queryClient]);
+  useEffect(() => clearOnSessionChange(queryClient), [queryClient]);
 
   return (
     <QueryClientProvider client={queryClient}>
       {children}
     </QueryClientProvider>
   );
+}
+
+/**
+ * Placed inside the workspace provider: when this tab switches workspace, the reads
+ * cached for the others are dropped.
+ */
+export function WorkspaceCacheGuard() {
+  const client = useQueryClient();
+  const orgId = useOrgOptional()?.currentOrgId ?? null;
+  useEffect(() => {
+    keepOnlyWorkspace(client, orgId);
+  }, [client, orgId]);
+  return null;
 }

@@ -23,4 +23,11 @@ public record AddMemberRequest
     [Required(ErrorMessage = "Role is required")]
     [EnumDataType(typeof(OrgMemberRole), ErrorMessage = "Invalid role value")]
     public required OrgMemberRole Role { get; init; }
+
+    /// <summary>
+    /// The preset their permissions start from (MemberPermissions.Presets). It sets the
+    /// role too. Left out, they get what <see cref="Role"/> allowed before presets existed.
+    /// </summary>
+    [StringLength(40)]
+    public string? Preset { get; init; }
 }

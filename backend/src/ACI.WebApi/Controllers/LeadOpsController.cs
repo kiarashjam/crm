@@ -1,3 +1,5 @@
+using ACI.Domain.Common;
+using ACI.Application.Common;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using ACI.Application.Services;
@@ -5,6 +7,7 @@ using ACI.Domain.Enums;
 using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ACI.WebApi.Filters;
 
 namespace ACI.WebApi.Controllers;
 
@@ -20,7 +23,7 @@ namespace ACI.WebApi.Controllers;
 /// re-route their leads to themselves.
 /// </para>
 /// <para>
-/// Writes need an Owner or Manager, as every other workspace setting does
+/// Writes need the settings permission (MemberPermissions.ManageSettings), as every other workspace setting does
 /// (statuses, sources, pipelines, stages). Without that a salesperson could post a
 /// round-robin rule listing only themselves and receive every new lead.
 /// </para>
@@ -51,12 +54,9 @@ public class LeadOpsController : ControllerBase
         return null;
     }
 
-    /// <summary>An Owner or Manager of this workspace — or 403.</summary>
-    private async Task<ActionResult?> NotManagerAsync(Guid organizationId, CancellationToken ct)
-    {
-        var role = await _organizations.GetMemberRoleAsync(_currentUser.UserId!.Value, organizationId, ct);
-        return role is OrgMemberRole.Owner or OrgMemberRole.Manager ? null : Forbid();
-    }
+    /// <summary>Someone who manages this workspace's settings (the owner and managers by default) — or 403.</summary>
+    private async Task<ActionResult?> NotManagerAsync(Guid organizationId, CancellationToken ct) =>
+        await _organizations.HasPermissionAsync(_currentUser.UserId!.Value, organizationId, MemberPermissions.ManageSettings, ct) ? null : Forbid();
 
     [HttpGet("scoring")]
     public async Task<ActionResult<IReadOnlyList<ScoringRuleDto>>> Scoring(CancellationToken ct)
@@ -65,6 +65,7 @@ public class LeadOpsController : ControllerBase
         return Ok(await _ops.GetScoringRulesAsync(org, ct));
     }
 
+    [Requires(MemberPermissions.ManageSettings, What = "change lead routing")]
     [HttpPut("scoring")]
     public async Task<ActionResult<IReadOnlyList<ScoringRuleDto>>> SaveScoring([FromBody] SaveScoringRulesRequest request, CancellationToken ct)
     {
@@ -80,6 +81,7 @@ public class LeadOpsController : ControllerBase
         return Ok(await _ops.GetAssignmentRulesAsync(org, ct));
     }
 
+    [Requires(MemberPermissions.ManageSettings, What = "change lead routing")]
     [HttpPost("assignment")]
     public async Task<ActionResult<AssignmentRuleDto>> SaveAssignment([FromBody] AssignmentRuleDto rule, CancellationToken ct)
     {
@@ -88,6 +90,7 @@ public class LeadOpsController : ControllerBase
         return Ok(await _ops.SaveAssignmentRuleAsync(org, rule, ct));
     }
 
+    [Requires(MemberPermissions.ManageSettings, What = "change lead routing")]
     [HttpDelete("assignment/{id:guid}")]
     public async Task<IActionResult> DeleteAssignment(Guid id, CancellationToken ct)
     {
@@ -104,6 +107,7 @@ public class LeadOpsController : ControllerBase
         return Ok(await _ops.GetTerritoriesAsync(org, ct));
     }
 
+    [Requires(MemberPermissions.ManageSettings, What = "change lead routing")]
     [HttpPost("territories")]
     public async Task<ActionResult<TerritoryDto>> SaveTerritory([FromBody] TerritoryDto territory, CancellationToken ct)
     {
@@ -112,6 +116,7 @@ public class LeadOpsController : ControllerBase
         return Ok(await _ops.SaveTerritoryAsync(org, territory, ct));
     }
 
+    [Requires(MemberPermissions.ManageSettings, What = "change lead routing")]
     [HttpDelete("territories/{id:guid}")]
     public async Task<IActionResult> DeleteTerritory(Guid id, CancellationToken ct)
     {
@@ -128,6 +133,7 @@ public class LeadOpsController : ControllerBase
         return Ok(await _ops.GetQueuesAsync(org, ct));
     }
 
+    [Requires(MemberPermissions.ManageSettings, What = "change lead routing")]
     [HttpPost("queues")]
     public async Task<ActionResult<QueueDto>> SaveQueue([FromBody] QueueDto queue, CancellationToken ct)
     {
@@ -136,6 +142,7 @@ public class LeadOpsController : ControllerBase
         return Ok(await _ops.SaveQueueAsync(org, queue, ct));
     }
 
+    [Requires(MemberPermissions.ManageSettings, What = "change lead routing")]
     [HttpDelete("queues/{id:guid}")]
     public async Task<IActionResult> DeleteQueue(Guid id, CancellationToken ct)
     {
@@ -152,6 +159,7 @@ public class LeadOpsController : ControllerBase
         return Ok(await _ops.GetSlaAsync(org, ct));
     }
 
+    [Requires(MemberPermissions.ManageSettings, What = "change lead routing")]
     [HttpPut("sla")]
     public async Task<ActionResult<SlaSettingsDto>> SaveSla([FromBody] SlaSettingsDto body, CancellationToken ct)
     {
@@ -167,6 +175,7 @@ public class LeadOpsController : ControllerBase
         return Ok(await _ops.GetFormsAsync(org, ct));
     }
 
+    [Requires(MemberPermissions.ManageSettings, What = "create lead capture forms")]
     [HttpPost("forms")]
     public async Task<ActionResult<CaptureFormDto>> CreateForm([FromBody] CaptureFormDto body, CancellationToken ct)
     {
@@ -186,6 +195,7 @@ public class LeadOpsController : ControllerBase
     // Bulk update and history act on individual leads, and go through the lead
     // repository's own scoping (organisation, or the user's own leads without one).
 
+    [Requires(MemberPermissions.EditRecords)]
     [HttpPost("bulk")]
     public async Task<ActionResult<BulkLeadUpdateResult>> Bulk([FromBody] BulkLeadUpdateRequest request, CancellationToken ct)
     {

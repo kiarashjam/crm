@@ -54,6 +54,8 @@ import {
   type RecordColumn,
 } from '@/app/components/views';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
+import { WriteOnly } from '@/app/components/WriteOnly';
+import { PERMISSION } from '@/app/api/organizations';
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - Date.parse(iso);
@@ -231,14 +233,16 @@ export default function Tabs() {
             <span className="font-medium text-slate-900">
               {formatCurrency(i.quantity * i.unitPrice)}
             </span>
-            <button
-              type="button"
-              onClick={() => removeItem(t.id, i.id)}
-              className="-m-1 rounded p-1.5 text-slate-500 hover:text-rose-600"
-              aria-label={`Remove ${i.name}`}
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
+            <WriteOnly permission={PERMISSION.FrontDesk}>
+              <button
+                type="button"
+                onClick={() => removeItem(t.id, i.id)}
+                className="-m-1 rounded p-1.5 text-slate-500 hover:text-rose-600"
+                aria-label={`Remove ${i.name}`}
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </WriteOnly>
           </li>
         ))}
       </ul>
@@ -285,28 +289,31 @@ export default function Tabs() {
 
   /** Add an item, close and post, or void: the same on a card, a row and a table line. */
   const tabActions = (t: OpenTab, wrap = true) => (
-    <div className={wrap ? 'flex flex-wrap gap-2' : 'flex items-center gap-2'}>
-      <Button size="sm" variant={addingTo === t.id ? 'secondary' : 'outline'} onClick={() => setAddingTo(t.id)}>
-        <Plus className="w-3.5 h-3.5 mr-1" /> Item
-      </Button>
-      <Button
-        size="sm"
-        onClick={() => close(t)}
-        disabled={actingOn === t.id}
-        className="bg-emerald-600 hover:bg-emerald-700"
-      >
-        Close + post
-      </Button>
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={() => doVoid(t)}
-        disabled={actingOn === t.id}
-        className="text-rose-700 hover:bg-rose-50"
-      >
-        Void
-      </Button>
-    </div>
+    // Running a tab is the front desk's (club.frontdesk), as opening one is.
+    <WriteOnly permission={PERMISSION.FrontDesk}>
+      <div className={wrap ? 'flex flex-wrap gap-2' : 'flex items-center gap-2'}>
+        <Button size="sm" variant={addingTo === t.id ? 'secondary' : 'outline'} onClick={() => setAddingTo(t.id)}>
+          <Plus className="w-3.5 h-3.5 mr-1" /> Item
+        </Button>
+        <Button
+          size="sm"
+          onClick={() => close(t)}
+          disabled={actingOn === t.id}
+          className="bg-emerald-600 hover:bg-emerald-700"
+        >
+          Close + post
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => doVoid(t)}
+          disabled={actingOn === t.id}
+          className="text-rose-700 hover:bg-rose-50"
+        >
+          Void
+        </Button>
+      </div>
+    </WriteOnly>
   );
 
   const tabColumns: RecordColumn<OpenTab>[] = [
@@ -346,15 +353,17 @@ export default function Tabs() {
             title="Open Tabs"
             subtitle="Running checks at the bar and restaurant. Closing a tab posts a charge and awards points."
             actions={
-              <Button
-                onClick={() => {
-                  setOpenForm({ memberId: '', venue: 'Bar', serverName: '' });
-                  setOpenDialog(true);
-                }}
-                className={heroPrimary('amber')}
-              >
-                <Plus className="h-4 w-4" /> Open tab
-              </Button>
+              <WriteOnly permission={PERMISSION.FrontDesk}>
+                <Button
+                  onClick={() => {
+                    setOpenForm({ memberId: '', venue: 'Bar', serverName: '' });
+                    setOpenDialog(true);
+                  }}
+                  className={heroPrimary('amber')}
+                >
+                  <Plus className="h-4 w-4" /> Open tab
+                </Button>
+              </WriteOnly>
             }
             stats={[
               { label: 'Open tabs', value: stats.openCount, icon: Wine, tone: 'amber' },

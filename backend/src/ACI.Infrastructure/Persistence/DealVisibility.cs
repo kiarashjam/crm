@@ -1,3 +1,4 @@
+using ACI.Domain.Common;
 using ACI.Domain.Entities;
 using ACI.Domain.Enums;
 
@@ -21,7 +22,20 @@ public static class DealVisibility
                 && (!d.IsPrivate
                     || d.UserId == userId
                     || d.AssigneeId == userId
-                    || db.OrganizationMembers.Any(m => m.OrganizationId == organizationId
-                        && m.UserId == userId
-                        && (m.Role == OrgMemberRole.Owner || m.Role == OrgMemberRole.Manager))));
+                    || db.OrganizationMembers.Where(m => m.OrganizationId == organizationId && m.UserId == userId).Any(SeesAllDeals)));
+
+    // Who may see every deal, in SQL: MemberPermissions.Effective holding SeeAllDeals.
+    // The owner always; a member with a list of their own when it holds it; one with a
+    // preset when the preset does; and a member from before presets when they were a manager.
+    private static readonly string[] PresetsSeeingAll = MemberPermissions.PresetsWith(MemberPermissions.SeeAllDeals);
+    private static readonly string SeeAllStored = MemberPermissions.Stored(MemberPermissions.SeeAllDeals);
+
+    /// <summary>Whether a membership sees every deal of its organization, private ones too.</summary>
+    public static readonly System.Linq.Expressions.Expression<Func<OrganizationMember, bool>> SeesAllDeals = m =>
+        m.Role == OrgMemberRole.Owner
+        || (m.Permissions != null
+            ? m.Permissions.Contains(SeeAllStored)
+            : m.PermissionPreset != null
+                ? PresetsSeeingAll.Contains(m.PermissionPreset)
+                : m.Role == OrgMemberRole.Manager);
 }

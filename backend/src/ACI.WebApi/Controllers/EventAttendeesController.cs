@@ -5,6 +5,7 @@ using ACI.WebApi.Extensions;
 using ACI.WebApi.Filters;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ACI.Domain.Common;
 
 namespace ACI.WebApi.Controllers;
 
@@ -16,6 +17,7 @@ namespace ACI.WebApi.Controllers;
 [Authorize]
 [WorkspaceRequired]
 [Produces("application/json")]
+[Requires(MemberPermissions.ClubMembers, MemberPermissions.FrontDesk, Any = true, WritesOnly = true)]
 public class EventAttendeesController : ControllerBase
 {
     private readonly IEventAttendeeService _attendees;

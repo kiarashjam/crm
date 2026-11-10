@@ -4,7 +4,7 @@
 // enrollments use the same idea: one suggestion per record, from the fields
 // already saved. No language model, and nothing here writes.
 
-import { duplicateCompanyGroups, duplicateContactGroups } from '@/app/api/dedupe';
+import { duplicateCompanyGroups, duplicateContactGroups, pairsOf, type DuplicateGroup } from '@/app/api/dedupe';
 import type { SequenceStepType } from '@/app/api/sequences';
 import { calendarKey, daysBetween, todayKey } from './calendarDay';
 import { nextActionForLead, type NextAction, type SuggestionKind, type SuggestableLead } from './nextAction';
@@ -41,8 +41,10 @@ export interface SuggestableDeal {
   closedReason?: string | null;
   assigneeId?: string | null;
   lastActivityAtUtc?: string | null;
-  /** Saved amount, when the deal carries one. The judge reads it and can move the row. */
+  /** The saved amount as text, for older servers. Read `amount`. */
   value?: string | null;
+  /** Saved amount, to the cent, when the deal carries one. The judge reads it and can move the row. */
+  amount?: number | null;
   /** ISO code the amount is in. Totals are kept per currency and never added across them. */
   currency?: string | null;
   probability?: number | null;
@@ -414,9 +416,16 @@ function leadSuggestion(step: NextAction, lead: SuggestableLead): WorkSuggestion
   }, canWrite ? LEAD_BRIEF[step.kind] ?? null : null);
 }
 
+/** "Same phone · Same name", as the group's reason reads, as a sentence: "They have the same phone and the same name". */
+function sharedSentence(reason: string | undefined, fallback: string): string {
+  const parts = (reason ?? '').split('·').map((part) => part.trim().toLowerCase().replace(/^same /, 'the same ')).filter(Boolean);
+  if (parts.length === 0) return fallback;
+  return `They have ${parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`}`;
+}
+
 function duplicateSuggestions(
   kind: 'contacts' | 'companies',
-  groups: { records: { id: string; name?: string | null; email?: string | null; doNotContact?: boolean | null }[] }[],
+  groups: { reason?: string; records: { id: string; name?: string | null; email?: string | null; doNotContact?: boolean | null }[] }[],
 ): WorkSuggestion[] {
   const people = kind === 'contacts';
   const rows: WorkSuggestion[] = [];
@@ -430,15 +439,23 @@ function duplicateSuggestions(
       ?? first;
     const rest = records.filter((record) => record.id !== primary.id);
     const kept = primary.name?.trim() || (people ? 'the contact with an email' : 'the first company');
+    // Who goes, by name, and why: the merge is one click from this line, and people who
+    // only share a phone (a household's landline, a switchboard) can be two people.
+    const describe = (record: (typeof rest)[number]) => {
+      const name = record.name?.trim();
+      const email = record.email?.trim();
+      return name && email ? `${name} (${email})` : name || email || 'a record with no name';
+    };
+    const going = rest.slice(0, 3).map(describe).join('; ') + (rest.length > 3 ? `; and ${rest.length - 3} more` : '');
     rows.push({
       key: index === 0 ? `duplicates:${kind}` : `duplicates:${kind}:${primary.id}`,
       href: '/duplicates',
       name: primary.name?.trim() || (people ? 'Duplicate contacts' : 'Duplicate companies'),
       list: 'Duplicates',
-      action: `Merge ${rest.length} duplicate${rest.length === 1 ? '' : 's'} into ${kept}.`,
+      action: `Merge ${rest.length} duplicate${rest.length === 1 ? '' : 's'} into ${kept}: ${going}.`,
       because: people
-        ? 'They share an email or a name. The record with an email is kept.'
-        : 'They share a domain or a name. The first record in the group is kept.',
+        ? `${sharedSentence(group.reason, 'They share an email, a phone or a name')}. The record with an email is kept.`
+        : `${sharedSentence(group.reason, 'They share a domain or a name')}. The first record in the group is kept.`,
       priority: 62,
       mergeKind: kind,
       mergePrimaryId: primary.id,
@@ -457,6 +474,8 @@ export interface WorkspaceInput {
   contacts?: SuggestableContact[];
   companies?: SuggestableCompany[];
   automations?: SuggestableAutomation[];
+  /** Pairs of record ids (sorted, joined by "|") the team said are not the same. */
+  notSame?: string[];
 }
 
 /** The most urgent suggestions across every working list. One row per record. */
@@ -504,8 +523,12 @@ export function collectWork(input: WorkspaceInput, now: Date = new Date(), limit
     const step = nextActionForAutomation(rule);
     if (step) items.push(step);
   }
-  const contactGroups = duplicateContactGroups(contacts);
-  const companyGroups = duplicateCompanyGroups(input.companies ?? []);
+  // A group every pair of which the team said is not the same is not offered again.
+  const decided = new Set(input.notSame ?? []);
+  const undecided = <T extends { id: string }>(groups: DuplicateGroup<T>[]) =>
+    groups.filter((g) => !pairsOf(g.records.map((r) => r.id)).every((p) => decided.has(p)));
+  const contactGroups = undecided(duplicateContactGroups(contacts));
+  const companyGroups = undecided(duplicateCompanyGroups(input.companies ?? []));
   for (const step of duplicateSuggestions('contacts', contactGroups)) items.push(step);
   for (const step of duplicateSuggestions('companies', companyGroups)) items.push(step);
 

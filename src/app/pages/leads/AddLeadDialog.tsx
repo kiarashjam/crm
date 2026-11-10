@@ -19,6 +19,7 @@ import {
 } from '@/app/components/ui/select';
 import type { AddLeadDialogProps, WizardStep } from './types';
 import { WIZARD_STEPS, SOURCE_ICONS, STATUS_COLORS, LIFECYCLE_STAGES } from './config';
+import { whenChosen } from '@/app/lib/whenChosen';
 
 export function AddLeadDialog({
   open,
@@ -282,7 +283,9 @@ export function AddLeadDialog({
                 </Label>
                 <Select
                   value={form.referredByContactId || 'none'}
-                  onValueChange={(v) => setForm((f) => ({ ...f, referredByContactId: v === 'none' ? '' : v }))}
+                  // A referrer emptied by Radix itself, while the contact list is still
+                  // loading, would be saved as "no referrer" (see whenChosen).
+                  onValueChange={whenChosen((v) => setForm((f) => ({ ...f, referredByContactId: v === 'none' ? '' : v })))}
                 >
                   <SelectTrigger aria-label="Referred By (optional)" className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-orange-300 focus:ring-orange-100">
                     <SelectValue placeholder="Select contact (or none)" />
@@ -326,7 +329,7 @@ export function AddLeadDialog({
                 </Label>
                 <Select
                   value={form.companyId || 'none'}
-                  onValueChange={(v) => setForm((f) => ({ ...f, companyId: v === 'none' ? '' : v }))}
+                  onValueChange={whenChosen((v) => setForm((f) => ({ ...f, companyId: v === 'none' ? '' : v })))}
                 >
                   <SelectTrigger aria-label="Company (optional)" className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-orange-300 focus:ring-orange-100">
                     <SelectValue placeholder="No company" />
@@ -467,7 +470,7 @@ export function AddLeadDialog({
                 </Label>
                 <Select
                   value={form.lifecycleStage || 'none'}
-                  onValueChange={(v) => setForm((f) => ({ ...f, lifecycleStage: v === 'none' ? '' : v }))}
+                  onValueChange={whenChosen((v) => setForm((f) => ({ ...f, lifecycleStage: v === 'none' ? '' : v })))}
                 >
                   <SelectTrigger aria-label="Lifecycle Stage (optional)" className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-orange-300 focus:ring-orange-100">
                     <SelectValue placeholder="Select lifecycle stage" />

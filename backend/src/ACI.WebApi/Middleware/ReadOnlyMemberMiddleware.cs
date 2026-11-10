@@ -1,17 +1,20 @@
+using ACI.Application.Common;
 using ACI.Application.Interfaces;
-using ACI.Domain.Enums;
+using ACI.Domain.Common;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ACI.WebApi.Middleware;
 
 /// <summary>
-/// Enforces the read-only <see cref="OrgMemberRole.Viewer"/> role.
+/// Enforces read-only membership: a member whose permissions change nothing (a Viewer,
+/// a read-only accountant, anyone the owner left only exporting) may read everything in
+/// the organization but must not change anything.
 ///
-/// A Viewer may read everything in the organization but must not change anything.
-/// Rather than adding a role check to every controller — which would silently miss
-/// any endpoint added later — this is a single choke point: every state-changing
-/// HTTP method is rejected with 403 when the caller's role in the active
-/// organization is Viewer.
+/// Rather than adding a check to every controller — which would silently miss any
+/// endpoint added later — this is a single choke point: every state-changing HTTP
+/// method is rejected with 403 when the caller holds none of the permissions that
+/// change something (MemberPermissions.Writes). What each of the others may change is
+/// checked by the endpoints themselves (RequiresAttribute).
 ///
 /// Must be registered AFTER authentication (so the user is resolved) and AFTER
 /// <see cref="OrganizationAccessMiddleware"/> (so a forged/stale organization
@@ -44,7 +47,7 @@ public sealed class ReadOnlyMemberMiddleware
     public async Task InvokeAsync(
         HttpContext context,
         ICurrentUserService currentUser,
-        IOrganizationRepository organizationRepository)
+        IPermissionService permissions)
     {
         if (!IsStateChanging(context.Request.Method) || IsSelfServiceWrite(context.Request))
         {
@@ -62,15 +65,15 @@ public sealed class ReadOnlyMemberMiddleware
             return;
         }
 
-        var role = await organizationRepository.GetMemberRoleAsync(userId, organizationId, context.RequestAborted);
-        if (role != OrgMemberRole.Viewer)
+        var held = await permissions.PermissionsAsync(userId, organizationId, context.RequestAborted);
+        if (held.Any(MemberPermissions.Writes.Contains))
         {
             await _next(context);
             return;
         }
 
         _logger.LogInformation(
-            "Blocked {Method} {Path} for user {UserId}: read-only (Viewer) in organization {OrganizationId}",
+            "Blocked {Method} {Path} for user {UserId}: read-only in organization {OrganizationId}",
             context.Request.Method, context.Request.Path, userId, organizationId);
 
         await WriteForbiddenAsync(context);

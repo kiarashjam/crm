@@ -15,6 +15,13 @@ namespace ACI.WebApi.Tests;
 /// </summary>
 public class CustomWebApplicationFactory : WebApplicationFactory<Program>
 {
+    /// <summary>
+    /// Whether the outbox's background dispatcher runs. Off by default: a test sends what
+    /// is queued when it chooses (DispatchOutboxAsync), so what it sees does not depend on
+    /// when a background loop happened to wake.
+    /// </summary>
+    protected virtual bool RunsOutboxInBackground => false;
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -37,6 +44,12 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
 
         builder.ConfigureServices(services =>
         {
+            if (!RunsOutboxInBackground)
+            {
+                foreach (var dispatcher in services.Where(d => d.ImplementationType == typeof(ACI.WebApi.Services.OutboxDispatcherBackgroundService)).ToList())
+                    services.Remove(dispatcher);
+            }
+
             // Remove existing DbContext registration
             var descriptor = services.SingleOrDefault(
                 d => d.ServiceType == typeof(DbContextOptions<AppDbContext>));

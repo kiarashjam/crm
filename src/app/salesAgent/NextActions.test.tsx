@@ -1,7 +1,7 @@
 // The sales agent's panel, as a salesperson meets it.
 //
-// The lists come from the shared store (agentData.ts), mocked here at the API
-// boundary so the store's real loading, freshness and scoping run underneath.
+// The lists come from the shared query cache (agentData.ts), mocked here at the API
+// boundary so the cache's real loading, freshness and scoping run underneath.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
@@ -21,12 +21,12 @@ vi.mock('@/app/api/settings', () => ({
 import { getCompanies, getContacts, getDeals, getLeads, getTasks } from '@/app/api';
 import { getAutomations } from '@/app/api/automations';
 import { getEnrollments, getSequences } from '@/app/api/sequences';
-import { announceDataChanged } from '@/app/api/dataChanged';
+import { announceDataChanged, resourcesChangedBy } from '@/app/api/dataChanged';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { NextActions } from './NextActions';
 import { NextActionsSlot } from './NextActionsSlot';
-import { resetAgentDataForTests, SETTLE_MS } from './agentData';
+import { withQueries } from '@/test/queryWrapper';
 
 const leads = vi.mocked(getLeads as () => Promise<unknown>);
 const deals = vi.mocked(getDeals as () => Promise<unknown>);
@@ -39,15 +39,14 @@ const lead = (id: string, name: string, pipeline: object) => ({
 const lost = (id: string, name: string) => lead(id, name, { outreachStatus: 'contacted', contactOutcome: 'not_interested' });
 
 function at(path: string) {
-  return render(
+  return render(withQueries(
     <MemoryRouter initialEntries={[path]}>
       <NextActions />
     </MemoryRouter>,
-  );
+  ));
 }
 
 beforeEach(() => {
-  resetAgentDataForTests();
   localStorage.clear();
   leads.mockReset();
   deals.mockReset();
@@ -57,7 +56,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  resetAgentDataForTests();
   vi.useRealTimers();
 });
 
@@ -221,25 +219,21 @@ describe('on a record', () => {
   it('catches up with an edit made on the page beneath it', async () => {
     // The bug, end to end: log "no answer" on the lead, and the panel above kept
     // saying "make the first call" — telling you to do what you had just done.
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     leads.mockResolvedValue([lead('l1', 'Ada', {})]);
     at('/leads/l1');
-    await act(async () => { for (let i = 0; i < 5; i += 1) await Promise.resolve(); });
-    expect(screen.getByText('Make the first call and log whether they answered.')).toBeInTheDocument();
+    expect(await screen.findByText('Make the first call and log whether they answered.')).toBeInTheDocument();
 
-    // The page saves the pipeline; the save announces itself.
+    // The page saves the pipeline; the save announces what it changed.
     leads.mockResolvedValue([lead('l1', 'Ada', { outreachStatus: 'attempted_no_answer' })]);
-    announceDataChanged();
-    await act(async () => { vi.advanceTimersByTime(SETTLE_MS); });
-    await act(async () => { for (let i = 0; i < 5; i += 1) await Promise.resolve(); });
+    act(() => announceDataChanged({ resources: resourcesChangedBy('PUT', '/api/leads/l1/pipeline') }));
 
+    expect(await screen.findByText(/Call again at a different time of day/, undefined, { timeout: 2000 })).toBeInTheDocument();
     expect(screen.queryByText('Make the first call and log whether they answered.')).toBeNull();
-    expect(screen.getByText(/Call again at a different time of day/)).toBeInTheDocument();
   });
 
   it('sits right after the page title when the page gives it a slot', async () => {
     leads.mockResolvedValue([lost('l1', 'Ada')]);
-    render(
+    render(withQueries(
       <MemoryRouter initialEntries={['/leads']}>
         <NextActions />
         <main>
@@ -248,7 +242,7 @@ describe('on a record', () => {
           <p>The page</p>
         </main>
       </MemoryRouter>,
-    );
+    ));
     const heading = await screen.findByRole('heading', { name: 'Do this next' });
     const slot = heading.closest('[data-next-actions-slot]');
     expect(slot).not.toBeNull();
@@ -258,12 +252,12 @@ describe('on a record', () => {
 
   it('leaves no gap when a record owes nothing', async () => {
     leads.mockResolvedValue([lost('l1', 'Ada')]);
-    const { container } = render(
+    const { container } = render(withQueries(
       <MemoryRouter initialEntries={['/contacts/c9']}>
         <NextActions />
         <NextActionsSlot />
       </MemoryRouter>,
-    );
+    ));
     await waitFor(() => expect(container.querySelector('[aria-label="Loading next steps"]')).toBeNull());
     const slot = container.querySelector('[data-next-actions-slot]')!;
     expect(slot).toBeEmptyDOMElement();

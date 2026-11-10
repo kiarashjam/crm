@@ -4,6 +4,8 @@ using ACI.Application.Interfaces;
 using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ACI.Domain.Common;
+using ACI.WebApi.Filters;
 
 namespace ACI.WebApi.Controllers;
 
@@ -14,6 +16,7 @@ namespace ACI.WebApi.Controllers;
 [Route("api/[controller]")]
 [Authorize]
 [Produces("application/json")]
+[Requires(MemberPermissions.EditRecords, WritesOnly = true)]
 public class LeadsController : ControllerBase
 {
     private readonly ILeadService _leadService;
@@ -180,6 +183,7 @@ public class LeadsController : ControllerBase
             _currentUser.CurrentOrganizationId, 
             ct);
         
+        if (result.IsSuccess) Response.SetETag(result.Value.Version);
         return result.ToActionResult();
     }
 
@@ -223,11 +227,13 @@ public class LeadsController : ControllerBase
     /// <response code="400">Invalid request data or lead is already converted.</response>
     /// <response code="401">User is not authenticated.</response>
     /// <response code="404">Lead not found.</response>
+    /// <response code="409">Someone saved the lead after the version this edit sends (in <c>version</c> or If-Match).</response>
     [HttpPut("{id:guid}")]
     [ProducesResponseType(typeof(LeadDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     public async Task<ActionResult<LeadDto>> Update(
         Guid id, 
         [FromBody] UpdateLeadRequest request, 
@@ -235,14 +241,19 @@ public class LeadsController : ControllerBase
     {
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
-        
+
+        // The version the edit was made from, from the body or from If-Match.
+        var (version, versionError) = Request.ExpectedVersion(request.Version);
+        if (versionError != null) return versionError.ToProblemResult();
+
         var result = await _leadService.UpdateAsync(
             id, 
             userId.Value, 
             _currentUser.CurrentOrganizationId, 
-            request, 
+            request with { Version = version }, 
             ct);
-        
+
+        if (result.IsSuccess) Response.SetETag(result.Value.Version);
         return result.ToActionResult();
     }
 
@@ -321,6 +332,7 @@ public class LeadsController : ControllerBase
     /// <summary>Keeps this lead and folds the other one into it.</summary>
     /// <response code="204">Merged; the other lead is gone and everything on it is on this one.</response>
     /// <response code="404">Either lead is not in this workspace, or they are the same lead.</response>
+    [Requires(MemberPermissions.DeleteRecords)]
     [HttpPost("{id:guid}/merge")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -344,6 +356,7 @@ public class LeadsController : ControllerBase
     /// <response code="204">Lead deleted successfully.</response>
     /// <response code="401">User is not authenticated.</response>
     /// <response code="404">Lead not found.</response>
+    [Requires(MemberPermissions.DeleteRecords)]
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]

@@ -193,12 +193,12 @@ public sealed class CustomFieldService : ICustomFieldService
     {
         // A personal workspace is its owner's alone.
         if (organizationId is not { } orgId) return true;
-        var role = await _organizations.GetMemberRoleAsync(userId, orgId, ct);
-        return role is OrgMemberRole.Owner or OrgMemberRole.Manager;
+        return await _organizations.HasPermissionAsync(userId, orgId, Domain.Common.MemberPermissions.ManageSettings, ct);
     }
 
     /// <summary>A value checked against its field; strings that are empty become null.</summary>
-    private static (bool Ok, JsonElement Value, string Expected) Normalize(CustomFieldDefinition definition, JsonElement raw)
+    /// <remarks>Internal so an import checks each cell by this same rule before it writes anything.</remarks>
+    internal static (bool Ok, JsonElement Value, string Expected) Normalize(CustomFieldDefinition definition, JsonElement raw)
     {
         var none = JsonSerializer.SerializeToElement<object?>(null);
         if (raw.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined) return (true, none, "");

@@ -19,7 +19,8 @@ public static class LeadStatusVocabulary
     /// <summary>
     /// The agreed stages, in display order. These mirror the five-phase lead
     /// pipeline one-for-one so a status is always derivable from recorded work
-    /// rather than typed in separately — see leadStatusSync.ts for the mapping.
+    /// rather than typed in separately — see LeadStatusDerivation in ACI.Application
+    /// for the mapping (leadStatusSync.ts in the browser previews the same rule).
     /// </summary>
     public static readonly string[] Default =
     {
@@ -75,6 +76,19 @@ public static class LeadStatusVocabulary
 
     /// <summary>The stage that means "they said no". Last in the list, but not "furthest along".</summary>
     public const string Lost = "Lost / Not Interested";
+
+    /// <summary>The stage that means "they signed".</summary>
+    public const string Signed = "Signed";
+
+    /// <summary>
+    /// Whether a status closes the lead: they signed, or said no. A retired label counts
+    /// as the stage it was mapped to ("Open Deal" signed, "Unqualified" said no).
+    /// </summary>
+    public static bool IsClosed(string? status)
+    {
+        var index = StageIndex(status);
+        return index >= 0 && (Default[index] == Signed || Default[index] == Lost);
+    }
 
     /// <summary>
     /// Where a status sits in <see cref="Default"/>, reading a retired label as the

@@ -4,6 +4,7 @@ using System.Text.Json;
 using ACI.Domain.Entities;
 using ACI.Domain.Enums;
 using ACI.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -22,6 +23,16 @@ namespace ACI.WebApi.Tests.Helpers;
 public static class Workspaces
 {
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    /// <summary>
+    /// Today in Zurich, a new workspace's time zone, as the UTC midnight a close date is
+    /// stored as. The server counts "this month" and what is overdue on this calendar, so
+    /// a test that took UTC's date failed in the hour or two each night when they differ.
+    /// </summary>
+    public static DateTime WorkspaceToday =>
+        ACI.Application.Common.RegionalSettings.TodayIn(
+                ACI.Application.Common.RegionalSettings.ZoneOf(ACI.Application.Common.RegionalSettings.DefaultTimeZone), DateTime.UtcNow)
+            .ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
 
     public static StringContent Body(object value) =>
         new(JsonSerializer.Serialize(value, Json), Encoding.UTF8, "application/json");
@@ -73,10 +84,18 @@ public static class Workspaces
         return client;
     }
 
+    /// <summary>
+    /// Look at what is saved, in every workspace: the app reads only the workspace a
+    /// request or job acts for, and a test checks what landed where.
+    /// </summary>
     public static async Task<T> Read<T>(this IServiceProvider services, Func<AppDbContext, T> read)
     {
         using var scope = services.CreateScope();
-        await Task.CompletedTask;
-        return read(scope.ServiceProvider.GetRequiredService<AppDbContext>());
+        await using var db = new EveryWorkspaceDbContext(scope.ServiceProvider.GetRequiredService<DbContextOptions<AppDbContext>>());
+        return read(db);
     }
+
+    /// <summary>A context over the test database that reads every workspace, for a test that keeps it open.</summary>
+    public static AppDbContext EveryWorkspace(this IServiceProvider services) =>
+        new EveryWorkspaceDbContext(services.GetRequiredService<DbContextOptions<AppDbContext>>());
 }

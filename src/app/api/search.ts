@@ -10,7 +10,7 @@ export interface GlobalSearchResult {
   leads: { id: string; name: string; email: string; status?: string }[];
   contacts: { id: string; name?: string; email?: string }[];
   companies: { id: string; name: string }[];
-  deals: { id: string; name: string; value?: string }[];
+  deals: { id: string; name: string; value?: string; amount?: number | null; currency?: string }[];
   activities: SearchHit[];
   tasks: SearchHit[];
 }

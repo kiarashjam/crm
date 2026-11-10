@@ -7,12 +7,14 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import type { TaskItem } from '@/app/api/types';
+import { withQueries } from '@/test/queryWrapper';
 
 const REFUSED = 'The person you picked cannot see this private deal, so they could not open the task.';
 
 const api = {
   getTasks: vi.fn(), getTaskStats: vi.fn(), getLeads: vi.fn(), getDeals: vi.fn(), getContacts: vi.fn(),
   getOrgMembers: vi.fn(), assignTask: vi.fn(), linkTaskToDeal: vi.fn(), linkTaskToLead: vi.fn(), createActivity: vi.fn(),
+  createTask: vi.fn(),
 };
 vi.mock('@/app/api', async () => {
   const actual = await vi.importActual<typeof import('@/app/api')>('@/app/api');
@@ -71,7 +73,9 @@ const TASK: TaskItem = {
   createdAtUtc: '2026-10-01T09:00:00Z',
 } as TaskItem;
 
-const show = () => render(<MemoryRouter><Tasks /></MemoryRouter>);
+const show = () => render(withQueries(<MemoryRouter><Tasks /></MemoryRouter>));
+/** The read was handed a signal, so leaving the page or switching scope cancels it. */
+const cancellable = expect.objectContaining({ signal: expect.any(AbortSignal) });
 // The open detail view hides the page behind it from the accessibility tree.
 const card = () => screen.getByRole('article', { name: 'Card Send the offer', hidden: true });
 const assigneePicker = () => {
@@ -135,5 +139,72 @@ describe('a refused change on a task', () => {
     expect(assigneePicker().value).toBe('u-rep');
     expect(within(card()).getByText('Assignee: Rep')).toBeInTheDocument();
     expect(toast.error).not.toHaveBeenCalled();
+  });
+});
+
+describe('whose tasks', () => {
+  it("opens on my tasks and their figures, and shows the team's on the switch, remembered", async () => {
+    localStorage.clear();
+    const { unmount } = show();
+    await screen.findByRole('article', { name: 'Card Send the offer' });
+
+    expect(api.getTasks).toHaveBeenCalledWith({ scope: 'mine' }, cancellable);
+    expect(api.getTaskStats).toHaveBeenCalledWith('mine', cancellable);
+    expect(screen.getByRole('button', { name: 'My tasks' })).toHaveAttribute('aria-pressed', 'true');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Team' }));
+
+    await waitFor(() => expect(api.getTasks).toHaveBeenLastCalledWith({ scope: 'team' }, cancellable));
+    await waitFor(() => expect(api.getTaskStats).toHaveBeenLastCalledWith('team', cancellable));
+    unmount();
+
+    api.getTasks.mockClear();
+    show();
+    await screen.findByRole('article', { name: 'Card Send the offer' });
+    expect(api.getTasks).toHaveBeenCalledWith({ scope: 'team' }, cancellable);
+  });
+});
+
+describe('when a read fails', () => {
+  it('says the tasks could not be loaded, instead of "No tasks yet", and loads them on retry', async () => {
+    api.getTasks.mockRejectedValueOnce(new Error('The server is not answering.'));
+    show();
+
+    expect(await screen.findByText('Your tasks could not be loaded.')).toBeInTheDocument();
+    expect(screen.getByText('The server is not answering.')).toBeInTheDocument();
+    expect(screen.queryByText('No tasks yet')).toBeNull();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByRole('article', { name: 'Card Send the offer' })).toBeInTheDocument();
+    expect(screen.queryByText('Your tasks could not be loaded.')).toBeNull();
+  });
+
+  it('still says so after a task is created, rather than showing that task as the whole list', async () => {
+    // A list that was never read is not a list. The new task used to be written into
+    // it, and the page showed a board of that one task, as fresh, and no word that
+    // every other task was missing.
+    api.getTasks.mockRejectedValue(new Error('The server is not answering.'));
+    api.createTask.mockResolvedValue({ ...TASK, id: 't-new', title: 'Call the Müllers' });
+    show();
+    expect(await screen.findByText('Your tasks could not be loaded.')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /New Task/ }));
+    await userEvent.type(screen.getByLabelText(/Task Title/), 'Call the Müllers');
+    await userEvent.click(screen.getByRole('button', { name: /Create Task/ }));
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+
+    expect(screen.getByText('Your tasks could not be loaded.')).toBeInTheDocument();
+    expect(screen.queryByRole('article', { name: 'Card Call the Müllers', hidden: true })).toBeNull();
+  });
+
+  it('still shows the tasks when a picker list fails', async () => {
+    // One slow list used to blank the whole page.
+    api.getContacts.mockRejectedValue(new Error('timeout'));
+    api.getLeads.mockRejectedValue(new Error('timeout'));
+    show();
+
+    expect(await screen.findByRole('article', { name: 'Card Send the offer' })).toBeInTheDocument();
+    expect(screen.queryByText(/could not be loaded/)).toBeNull();
   });
 });

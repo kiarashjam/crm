@@ -17,8 +17,6 @@ interface Props {
   drift: StatusDrift | null;
   /** Why auto-sync declined to write it, when it declined. */
   reasons?: SuggestReason[];
-  enabled: boolean;
-  onToggleEnabled: (next: boolean) => void;
   /** Apply the suggested status. */
   onApply: (statusName: string) => Promise<void> | void;
   /** Dismiss this suggestion without changing anything. */
@@ -28,7 +26,7 @@ interface Props {
 }
 
 export function StatusSyncStrip({
-  drift, reasons, enabled, onToggleEnabled, onApply, onDismiss, disabled, className,
+  drift, reasons, onApply, onDismiss, disabled, className,
 }: Props) {
   const [busy, setBusy] = useState(false);
 
@@ -42,26 +40,19 @@ export function StatusSyncStrip({
     }
   };
 
-  // Nothing to reconcile — just state how the feature is behaving.
+  // Nothing to reconcile — just state how the feature behaves. There is no off
+  // switch: the server sets the status for every writer, including an e-signed
+  // contract nobody watched, so a switch in this browser could not stop it.
   if (!drift) {
     return (
       <div className={cn(
-        'flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white/70 px-3 py-2',
+        'flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white/70 px-3 py-2',
         className,
       )}>
         <span className="inline-flex items-center gap-2 text-xs text-slate-500">
-          <Wand2 className={cn('h-3.5 w-3.5', enabled ? 'text-indigo-500' : 'text-slate-300')} />
-          {enabled
-            ? 'Lead status follows the pipeline automatically.'
-            : 'Automatic status updates are off for you.'}
+          <Wand2 className="h-3.5 w-3.5 text-indigo-500" />
+          Lead status follows the pipeline automatically.
         </span>
-        <button
-          type="button"
-          onClick={() => onToggleEnabled(!enabled)}
-          className="-my-1 inline-flex min-h-6 items-center rounded px-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
-        >
-          {enabled ? 'Turn off' : 'Turn on'}
-        </button>
       </div>
     );
   }
@@ -92,13 +83,6 @@ export function StatusSyncStrip({
                 ))}
               </ul>
             )}
-            {/* Without this the strip prompts for a change while offering no
-                clue why nothing happened on its own. */}
-            {!enabled && (
-              <p className="mt-1 text-[11px] text-amber-700">
-                · Automatic status updates are off for you, so this is yours to apply.
-              </p>
-            )}
             {drift.derived.conflicts.length > 0 && (
               <p className="mt-1 text-[11px] text-amber-700">
                 Overrides: {drift.derived.conflicts.join('; ')}.
@@ -118,15 +102,6 @@ export function StatusSyncStrip({
             {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
             Set to {target}
           </button>
-          {!enabled && (
-            <button
-              type="button"
-              onClick={() => onToggleEnabled(true)}
-              className="rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-amber-800 hover:bg-amber-50"
-            >
-              Turn on
-            </button>
-          )}
           {onDismiss && (
             <button
               type="button"

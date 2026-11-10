@@ -1,3 +1,4 @@
+using ACI.Application.Common;
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
 using ACI.Domain.Enums;
@@ -64,6 +65,18 @@ public sealed class DealRepository : IDealRepository
         return await query.CountAsync(ct);
     }
 
+    public async Task<IReadOnlyList<Deal>> GetOpenAsync(Guid userId, Guid? organizationId, bool mineOnly, int take, CancellationToken ct = default)
+    {
+        // A lost deal with no reason still owes one: "record why it was lost" is a step.
+        var query = FilterByUserAndOrg(_db.Deals.AsNoTracking(), userId, organizationId)
+            .Where(d => d.IsWon == null || (d.IsWon == false && (d.ClosedReason == null || d.ClosedReason.Trim() == "")));
+        if (mineOnly) query = query.Where(WorkScope.DealOf(userId));
+        return await IncludeRelated(query)
+            .OrderBy(d => d.ExpectedCloseDateUtc ?? DateTime.MaxValue).ThenBy(d => d.Name).ThenBy(d => d.Id)
+            .Take(take)
+            .ToListAsync(ct);
+    }
+
     public async Task<IReadOnlyList<Deal>> GetByUserIdAsync(Guid userId, Guid? organizationId, CancellationToken ct = default) =>
         await IncludeRelated(FilterByUserAndOrg(_db.Deals, userId, organizationId)).OrderBy(d => d.Name).ToListAsync(ct);
 
@@ -104,8 +117,10 @@ public sealed class DealRepository : IDealRepository
     {
         var existing = await IncludeRelated(FilterByUserAndOrg(_db.Deals, userId, organizationId)).FirstOrDefaultAsync(d => d.Id == deal.Id, ct);
         if (existing == null) return null;
+        _db.ExpectVersionOf(existing, deal);
         existing.Name = deal.Name;
         existing.Value = deal.Value;
+        existing.Amount = deal.Amount;
         existing.Currency = deal.Currency;
         existing.Stage = deal.Stage;
         existing.PipelineId = deal.PipelineId;
@@ -122,7 +137,7 @@ public sealed class DealRepository : IDealRepository
         existing.ClosedAtUtc = deal.ClosedAtUtc;
         existing.UpdatedAtUtc = DateTime.UtcNow;
         existing.UpdatedByUserId = userId;
-        await _db.SaveChangesAsync(ct);
+        await _db.SaveRefusingStaleAsync(ct);
         return existing;
     }
 
@@ -160,6 +175,8 @@ public sealed class DealRepository : IDealRepository
                 item.DealId = keepId;
             foreach (var message in await _db.SentMessages.Where(m => m.DealId == dropId).ToListAsync(ct))
                 message.DealId = keepId;
+            foreach (var message in await _db.OutboundMessages.Where(m => m.DealId == dropId).ToListAsync(ct))
+                message.DealId = keepId;
             foreach (var contract in await _db.Contracts.Where(c => c.DealId == dropId).ToListAsync(ct))
                 contract.DealId = keepId;
             foreach (var lead in await _db.Leads.Where(l => l.ConvertedToDealId == dropId).ToListAsync(ct))
@@ -168,9 +185,10 @@ public sealed class DealRepository : IDealRepository
             await RecordMerge.MoveDependentsAsync(_db, RecordTypes.Deal, keepId, dropId, ct);
 
             // The kept deal's own values stay — its name, stage and outcome among them;
-            // what it is missing is filled in.
-            if (IsBlankValue(keep.Value) && !IsBlankValue(drop.Value))
+            // what it is missing is filled in. An amount of zero, or none at all, is missing.
+            if (IsBlankAmount(keep) && !IsBlankAmount(drop))
             {
+                keep.Amount = drop.Amount;
                 keep.Value = drop.Value;
                 keep.Currency = drop.Currency ?? keep.Currency;
             }
@@ -195,18 +213,22 @@ public sealed class DealRepository : IDealRepository
             return true;
         }, ct);
 
-    private static bool IsBlankValue(string? value) =>
-        string.IsNullOrWhiteSpace(value)
-        || (decimal.TryParse(value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var amount) && amount == 0);
+    // Read from the stored amount, not by parsing the text again: the text of an older deal
+    // can be in any notation, and "1.234,56" read as invariant text is not 1234.56.
+    private static bool IsBlankAmount(Deal deal) =>
+        deal.Amount == 0m || (deal.Amount == null && string.IsNullOrWhiteSpace(deal.Value));
 
-    /// <summary>HP-11: Record a deal stage change.</summary>
-    public async Task AddStageChangeAsync(DealStageChange change, CancellationToken ct = default)
+    public async Task<IReadOnlyDictionary<Guid, DealPaceInfo>> GetPaceAsync(Guid userId, Guid? organizationId, IEnumerable<Guid> dealIds, CancellationToken ct = default)
     {
-        _db.DealStageChanges.Add(change);
-        await _db.SaveChangesAsync(ct);
+        var ids = dealIds.Distinct().ToList();
+        if (ids.Count == 0) return new Dictionary<Guid, DealPaceInfo>();
+        var rows = await FilterByUserAndOrg(_db.Deals.AsNoTracking(), userId, organizationId)
+            .Where(d => ids.Contains(d.Id))
+            .PaceOf(_db, userId, organizationId)
+            .ToListAsync(ct);
+        return rows.ToDictionary(r => r.DealId, r => new DealPaceInfo(r.StageEnteredAtUtc, r.LastMoveAtUtc));
     }
 
-    /// <summary>HP-11: Get stage change history for a deal.</summary>
     public async Task<IReadOnlyList<DealStageChange>> GetStageChangesAsync(
         Guid dealId, Guid userId, Guid? organizationId, CancellationToken ct = default)
     {
@@ -215,10 +237,11 @@ public sealed class DealRepository : IDealRepository
             .AnyAsync(d => d.Id == dealId, ct);
         if (!dealExists) return Array.Empty<DealStageChange>();
 
-        return await _db.DealStageChanges
+        return await _db.DealStageChanges.AsNoTracking()
             .Where(sc => sc.DealId == dealId)
             .Include(sc => sc.ChangedByUser)
             .OrderByDescending(sc => sc.ChangedAtUtc)
+            .ThenByDescending(sc => sc.Id)
             .ToListAsync(ct);
     }
 }

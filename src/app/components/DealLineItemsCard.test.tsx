@@ -54,6 +54,19 @@ describe('DealLineItemsCard', () => {
     expect(await screen.findByLabelText('Quantity of Growth plan')).toBeInTheDocument();
   });
 
+  it("sets the deal's amount to the cent, which the old text field refused", async () => {
+    // 7 x 14.20 is 99.39999999999999 in floating point.
+    api.getDealLineItems.mockResolvedValue([{ ...line, name: 'Canapé platter', quantity: 7, unitPrice: 14.2 }]);
+    api.updateDeal.mockResolvedValue({ id: 'deal-1' });
+    const synced = vi.fn();
+    render(<DealLineItemsCard dealId="deal-1" currency="CHF" onValueSynced={synced} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /set deal value/i }));
+
+    await waitFor(() => expect(api.updateDeal).toHaveBeenCalledWith('deal-1', { amount: 99.4 }));
+    expect(synced).toHaveBeenCalledWith(99.4);
+  });
+
   it('shows why a new line was refused', async () => {
     api.addDealLineItem.mockRejectedValue(new Error('You have read-only access to this organization.'));
     render(<DealLineItemsCard dealId="deal-1" />);

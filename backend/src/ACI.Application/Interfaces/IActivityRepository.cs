@@ -17,6 +17,11 @@ public interface IActivityRepository
     Task<IReadOnlyList<Activity>> GetByDealIdAsync(Guid dealId, Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<IReadOnlyList<Activity>> GetByLeadIdAsync(Guid leadId, Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<IReadOnlyList<Activity>> GetByLeadIdsAsync(IReadOnlyCollection<Guid> leadIds, Guid userId, Guid? organizationId, CancellationToken ct = default);
+    /// <summary>
+    /// Meetings, video calls and demos that happened in [<paramref name="fromUtc"/>,
+    /// <paramref name="toUtc"/>), by when: those the person logged, or the team's. At most <paramref name="take"/>.
+    /// </summary>
+    Task<IReadOnlyList<Activity>> GetMeetingsBetweenAsync(Guid userId, Guid? organizationId, DateTime fromUtc, DateTime toUtc, bool mineOnly, int take, CancellationToken ct = default);
     Task<Activity?> GetByIdAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<Activity> AddAsync(Activity activity, CancellationToken ct = default);
     Task<Activity?> UpdateAsync(Activity activity, Guid userId, Guid? organizationId, CancellationToken ct = default);

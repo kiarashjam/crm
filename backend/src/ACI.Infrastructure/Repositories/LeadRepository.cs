@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using ACI.Application.Common;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
@@ -150,6 +151,51 @@ public sealed class LeadRepository : ILeadRepository
         return await query.CountAsync(ct);
     }
 
+    public async Task<IReadOnlyList<Lead>> GetOpenAsync(Guid userId, Guid? organizationId, bool mineOnly, int take, CancellationToken ct = default)
+    {
+        var query = FilterByUserAndOrg(_db.Leads.AsNoTracking(), userId, organizationId).Where(l => !l.IsConverted);
+        if (mineOnly) query = query.Where(WorkScope.LeadOf(userId));
+        // The ones touched most lately first, so a cut-off list keeps the live ones.
+        return await MaterializeListAsync(
+            query.OrderByDescending(l => l.UpdatedAtUtc ?? l.CreatedAtUtc).ThenBy(l => l.Id).Take(take), ct);
+    }
+
+    public async Task<IReadOnlyList<Lead>> GetWithMeetingInMonthsAsync(Guid userId, Guid? organizationId, IReadOnlyList<string> months, bool mineOnly, int take, CancellationToken ct = default)
+    {
+        if (months.Count == 0) return Array.Empty<Lead>();
+        var query = FilterByUserAndOrg(_db.Leads.AsNoTracking(), userId, organizationId).Where(MeetingIn(months));
+        if (mineOnly) query = query.Where(WorkScope.LeadOf(userId));
+        return await query.Include(l => l.AssignedToUser).OrderBy(l => l.Id).Take(take).ToListAsync(ct);
+    }
+
+    /// <summary>
+    /// The pipeline's meeting date is in one of <paramref name="months"/>, read as text in
+    /// SQL: "meetingDate":"2026-11, as this app writes its JSON, or with the spaces other
+    /// writers put around the colon. The caller still reads the date itself for its day.
+    /// </summary>
+    /// <remarks>
+    /// The month used to be matched anywhere in the text, so a lead first called or sent
+    /// a contract that month got through as well and took a place under the cut; enough
+    /// of them pushed real meetings past it, and nothing said so.
+    /// </remarks>
+    private static Expression<Func<Lead, bool>> MeetingIn(IEnumerable<string> months)
+    {
+        var lead = Expression.Parameter(typeof(Lead), "l");
+        var state = Expression.Property(lead, nameof(Lead.PipelineState));
+        var contains = typeof(string).GetMethod(nameof(string.Contains), [typeof(string)])!;
+        Expression? any = null;
+        foreach (var month in months)
+        {
+            foreach (var colon in new[] { ":", ": ", " :", " : " })
+            {
+                Expression match = Expression.Call(state, contains, Expression.Constant($"\"meetingDate\"{colon}\"{month}"));
+                any = any == null ? match : Expression.OrElse(any, match);
+            }
+        }
+        var hasState = Expression.NotEqual(state, Expression.Constant(null, typeof(string)));
+        return Expression.Lambda<Func<Lead, bool>>(Expression.AndAlso(hasState, any!), lead);
+    }
+
     public async Task<IReadOnlyList<Lead>> GetByUserIdAsync(Guid userId, Guid? organizationId, CancellationToken ct = default) =>
         await MaterializeListAsync(
             ApplySort(
@@ -233,6 +279,9 @@ public sealed class LeadRepository : ILeadRepository
     {
         var existing = await FilterByUserAndOrg(_db.Leads, userId, organizationId).FirstOrDefaultAsync(l => l.Id == lead.Id, ct);
         if (existing == null) return null;
+        // Callers pass a copy they read earlier, and every field below is copied from it,
+        // so the save has to be checked against that read, not this one.
+        _db.ExpectVersionOf(existing, lead);
         existing.Name = lead.Name;
         existing.Email = lead.Email;
         existing.Phone = lead.Phone;
@@ -264,11 +313,12 @@ public sealed class LeadRepository : ILeadRepository
         existing.TerritoryId = lead.TerritoryId;
         existing.EnrichedDomain = lead.EnrichedDomain;
         existing.ConvertedToContactId = lead.ConvertedToContactId;
+        existing.PersonContactRemovedAtUtc = lead.PersonContactRemovedAtUtc;
         existing.ConvertedToDealId = lead.ConvertedToDealId;
         existing.ConvertedToCompanyId = lead.ConvertedToCompanyId;
         existing.UpdatedAtUtc = DateTime.UtcNow;
         existing.UpdatedByUserId = userId;
-        await _db.SaveChangesAsync(ct);
+        await _db.SaveRefusingStaleAsync(ct);
         return existing;
     }
 
@@ -333,6 +383,8 @@ public sealed class LeadRepository : ILeadRepository
             foreach (var change in await _db.LeadStatusEvents.Where(e => e.LeadId == dropId).ToListAsync(ct))
                 change.LeadId = keepId;
             foreach (var message in await _db.SentMessages.Where(m => m.LeadId == dropId).ToListAsync(ct))
+                message.LeadId = keepId;
+            foreach (var message in await _db.OutboundMessages.Where(m => m.LeadId == dropId).ToListAsync(ct))
                 message.LeadId = keepId;
             foreach (var contract in await _db.Contracts.Where(c => c.LeadId == dropId).ToListAsync(ct))
                 contract.LeadId = keepId;

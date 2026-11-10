@@ -36,8 +36,15 @@ public class DealStageOutcomeTests
 
         _deals.Setup(r => r.GetByIdAsync(_deal.Id, User, Org, It.IsAny<CancellationToken>())).ReturnsAsync(_deal);
         _deals.Setup(r => r.UpdateAsync(It.IsAny<Deal>(), User, Org, It.IsAny<CancellationToken>())).ReturnsAsync((Deal d, Guid _, Guid? _, CancellationToken _) => d);
+        // A save answers with the deal as a read does; these deals have no stage history.
+        _deals.Setup(r => r.GetPaceAsync(User, Org, It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, DealPaceInfo>());
 
-        _sut = new DealService(_deals.Object, Mock.Of<IActivityRepository>(), _records.Object, Mock.Of<ILogger<DealService>>(),
+        var activities = new Mock<IActivityRepository>();
+        activities.Setup(r => r.GetLastActivityByDealIdsAsync(User, Org, It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, DateTime>());
+
+        _sut = new DealService(_deals.Object, activities.Object, _records.Object, Mock.Of<ILogger<DealService>>(),
             _automations.Object, stages: _stages.Object);
     }
 

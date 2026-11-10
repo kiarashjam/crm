@@ -39,6 +39,7 @@ public sealed class DealStageRepository : IDealStageRepository
         existing.DisplayOrder = stage.DisplayOrder;
         existing.IsWon = stage.IsWon;
         existing.IsLost = stage.IsLost;
+        existing.Probability = stage.Probability;
         await _db.SaveChangesAsync(ct);
         return existing;
     }
@@ -55,4 +56,7 @@ public sealed class DealStageRepository : IDealStageRepository
 
     public async Task<bool> HasAnyDealsAsync(Guid stageId, CancellationToken ct = default) =>
         await _db.Deals.AnyAsync(d => d.DealStageId == stageId, ct);
+
+    public async Task<IReadOnlyList<Deal>> GetDealsWithOutcomeAsync(Guid stageId, bool? outcome, CancellationToken ct = default) =>
+        await _db.Deals.Where(d => d.DealStageId == stageId && d.IsWon == outcome).ToListAsync(ct);
 }

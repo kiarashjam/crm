@@ -46,8 +46,11 @@ public sealed class AttachmentRepository : IAttachmentRepository
         WithoutContent(InWorkspace(_db.Attachments.AsNoTracking(), userId, organizationId).Where(a => a.Id == id))
             .FirstOrDefaultAsync(ct);
 
+    // Only behind a signed download link (AttachmentService.OpenAsync), which a browser
+    // opens without the app's sign-in: the link's signature is the authority, so the
+    // file is found in whichever workspace holds it.
     public Task<Attachment?> GetWithContentAsync(Guid id, CancellationToken ct = default) =>
-        _db.Attachments.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id, ct);
+        _db.Attachments.AsNoTracking().IgnoreQueryFilters().FirstOrDefaultAsync(a => a.Id == id, ct);
 
     public async Task AddAsync(Attachment attachment, CancellationToken ct = default)
     {
