@@ -67,6 +67,38 @@ public class StatementPdfTests
     }
 
     [Fact]
+    public void AHouseholdStatement_SaysWhoseHouseholdItIs_WhoRanUpEachLine_AndWhatEachPersonRanUp()
+    {
+        var request = Request(
+        [
+            new(new DateTime(2026, 10, 1, 6, 0, 0, DateTimeKind.Utc), "Gold dues · 1 Oct 2026 – 31 Oct 2026", null, 299m, 0m, 299m, null),
+            new(new DateTime(2026, 10, 4, 18, 0, 0, DateTimeKind.Utc), "Massage", "Incurred by Anna Dupont", 180m, 0m, 479m, null),
+        ], closing: 479m) with
+        {
+            Title = "Household statement",
+            HouseholdName = "Dupont",
+            Household =
+            [
+                new("Jean Dupont", "Primary", 299m, null),
+                new("Anna Dupont", "Spouse", 180m, null),
+                new("Kit Dupont", "Child", 0m, 40m),
+                new("Lou Dupont", "Child", 0m, -15m),
+            ],
+        };
+
+        var text = TextOf(StatementPdf.Render(request, compressStreams: false));
+
+        text.Should().Contain("Household statement").And.Contain("For the Dupont household");
+        text.Should().Contain("Massage").And.Contain("Incurred by Anna Dupont");
+        text.Should().Contain("Who ran up what in this period");
+        text.Should().Contain("Anna Dupont · Spouse").And.Contain("CHF 180.00");
+        text.Should().Contain("Own account owes CHF 40.00", "a child billed on their own account still owes on it")
+            .And.Contain("Own account in credit CHF 15.00");
+        // A member's own statement says none of it.
+        TextOf(StatementPdf.Render(Request(), compressStreams: false)).Should().NotContain("Who ran up what").And.NotContain("household");
+    }
+
+    [Fact]
     public void ALongStatementCarriesOnOverPages_AndNoTextRunsPastTheMargins()
     {
         var lines = Enumerable.Range(1, 90).Select(i => new StatementPdfLine(
