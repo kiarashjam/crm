@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import type { Deal, DealBoard, DealBoardColumn } from '@/app/api/types';
+import { announceDataChanged } from '@/app/api/dataChanged';
 import { withQueries } from '@/test/queryWrapper';
 
 const api = vi.hoisted(() => ({
@@ -105,6 +106,49 @@ describe('moving a deal on the board', () => {
     // The old place lets the card go once its exit animation has played.
     await waitFor(() => expect(within(columnOf('Enquiry')).queryByTitle('Alpine Club')).toBeNull());
     expect(api.updateDeal).toHaveBeenCalledWith('Alpine Club', expect.objectContaining({ dealStageId: SIGNED, isWon: true }));
+  });
+
+  it('keeps a second card moved while the board is read again after the first', async () => {
+    // Two cards moved in a row. The read the first save starts can come back before
+    // the second save reaches the server; the second card used to jump back to its old
+    // column until the read after its own save, as if the server had refused it.
+    const alpine = card({ name: 'Alpine Club' });
+    const bergsee = card({ name: 'Bergsee AG' });
+    const oldWin = card({ name: 'Old win', dealStageId: SIGNED, stage: 'Signed', isWon: true });
+    const signed = (deal: Deal): Deal => ({ ...deal, dealStageId: SIGNED, stage: 'Signed', isWon: true });
+    const boardOf = (enquiry: Deal[], won: Deal[]): DealBoard => ({
+      ...board(),
+      columns: [
+        column({ count: enquiry.length, deals: enquiry }),
+        column({ key: SIGNED, dealStageId: SIGNED, name: 'Signed', displayOrder: 2, isWon: true, count: won.length, deals: won }),
+      ],
+    });
+    api.getDealBoard.mockImplementation(async () => boardOf([alpine, bergsee], [oldWin]));
+    api.updateDeal.mockImplementation(async (id: string) => signed(card({ name: id })));
+    show();
+    await screen.findByTitle('Bergsee AG', undefined, { timeout: 5000 });
+
+    // The first move is saved, and the save's announcement starts a read of the board,
+    // held here until the second card has moved.
+    let release!: (next: DealBoard) => void;
+    api.getDealBoard.mockImplementationOnce(() => new Promise<DealBoard>((resolve) => { release = resolve; }));
+    fireEvent.change(stagePickerOf('Alpine Club'), { target: { value: SIGNED } });
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1));
+    const readsBefore = api.getDealBoard.mock.calls.length;
+    announceDataChanged({ resources: ['deals'] });
+    await waitFor(() => expect(api.getDealBoard.mock.calls.length).toBeGreaterThan(readsBefore), { timeout: 3000 });
+
+    // The second card moves; its save is still on its way when the read comes back
+    // with the board as the server had it: the first card moved, the second not yet.
+    api.updateDeal.mockReturnValue(new Promise(() => {}));
+    fireEvent.change(stagePickerOf('Bergsee AG'), { target: { value: SIGNED } });
+    await waitFor(() => expect(within(columnOf('Signed')).getByTitle('Bergsee AG')).toBeInTheDocument());
+    await waitFor(() => expect(within(columnOf('Enquiry')).queryByTitle('Bergsee AG')).toBeNull());
+    release(boardOf([bergsee], [signed(alpine), oldWin]));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(within(columnOf('Enquiry')).queryByTitle('Bergsee AG')).toBeNull();
+    expect(within(columnOf('Signed')).getByTitle('Bergsee AG')).toBeInTheDocument();
   });
 
   it('puts the card back when the server refuses the move', async () => {

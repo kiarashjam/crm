@@ -5,7 +5,7 @@
 // needs it any more, a failure the page can show and retry, and a refresh when a save
 // changes that kind of record (invalidation.ts).
 
-import { useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
+import { useQuery, useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query';
 import { useCallback } from 'react';
 // Through the API's front door, as the pages import it, so what a page's test puts in
 // place of a read is what its queries call.
@@ -25,14 +25,30 @@ import { useWorkspaceScope } from './useWorkspaceScope';
 type Params<F extends (...args: never[]) => unknown> = NonNullable<Parameters<F>[0]>;
 
 /**
- * Write into a cached read: a page's own change shown at once, before (or instead of)
- * reading the list again. `update` gets the cached value, or undefined before the
- * first read.
+ * Write a page's own change into a cached read, to show it at once. `update` gets the
+ * cached value, or undefined before the first read.
+ *
+ * A read of the same list already on its way began before this change, so it cannot
+ * hold it, and when it came back it put the list as it was: a second card moved on the
+ * board while the read after the first move was out jumped back to its old column, as
+ * if the server had refused it. That read is dropped (the copy it was refreshing stays,
+ * changed), and the save's own announcement reads the list again. A first read is left
+ * to finish: with nothing on screen yet, it is all there is to show.
  */
+export function writeOwnChange<T>(client: QueryClient, key: QueryKey, update: (current: T | undefined) => T | undefined) {
+  void client.cancelQueries({
+    queryKey: key,
+    exact: true,
+    predicate: (query) => query.state.fetchStatus === 'fetching' && query.state.data !== undefined,
+  });
+  return client.setQueryData<T>(key, update);
+}
+
+/** {@link writeOwnChange}, bound to the app's cache. */
 export function useCacheWriter() {
   const client = useQueryClient();
   return useCallback(
-    <T,>(key: QueryKey, update: (current: T | undefined) => T | undefined) => client.setQueryData<T>(key, update),
+    <T,>(key: QueryKey, update: (current: T | undefined) => T | undefined) => writeOwnChange<T>(client, key, update),
     [client],
   );
 }

@@ -9,7 +9,7 @@ import { AUTH_SESSION_CHANGED } from '@/app/lib/auth';
 import { queryKeys, type WorkspaceScope } from './queryKeys';
 import { clearOnSessionChange, keepOnlyWorkspace, refreshAfterWrites, SETTLE_MS } from './invalidation';
 import { RequestTimeoutError, retryOnce, timed } from './queryClient';
-import { keepPreviousInWorkspace } from './records';
+import { keepPreviousInWorkspace, writeOwnChange } from './records';
 
 const PAVILLON: WorkspaceScope = { orgId: 'pavillon', userId: 'u1' };
 const LAC: WorkspaceScope = { orgId: 'lac-leman', userId: 'u1' };
@@ -85,6 +85,46 @@ describe('after a save', () => {
 
     expect(read).toHaveBeenCalledTimes(2);
     expect(client.getQueryData(queryKeys.leads.all(PAVILLON))).toEqual(['after the save']);
+    unsubscribe();
+  });
+
+  it("keeps a page's own change when a read that began before it comes back", async () => {
+    // The page shows a task moved at once. A read started by an earlier save, still on
+    // its way, cannot hold that move, and used to put the list back as it was.
+    let release!: (rows: string[]) => void;
+    const read = vi.fn()
+      .mockResolvedValueOnce(['call Anna: to do'])
+      .mockImplementationOnce(() => new Promise<string[]>((resolve) => { release = resolve; }));
+    const { QueryObserver } = await import('@tanstack/react-query');
+    const key = queryKeys.tasks.list(PAVILLON);
+    const unsubscribe = new QueryObserver(client, { queryKey: key, queryFn: read }).subscribe(() => {});
+    await vi.advanceTimersByTimeAsync(0);
+    announceDataChanged({ resources: ['tasks'] });
+    await vi.advanceTimersByTimeAsync(SETTLE_MS);
+    expect(read).toHaveBeenCalledTimes(2);
+
+    writeOwnChange<string[]>(client, key, () => ['call Anna: done']);
+    release(['call Anna: to do']);
+    await vi.runAllTimersAsync();
+
+    expect(client.getQueryData(key)).toEqual(['call Anna: done']);
+    unsubscribe();
+  });
+
+  it('lets a first read finish when a page writes before it arrives', async () => {
+    // With nothing on screen yet, the first read is all there is to show.
+    let release!: (rows: string[]) => void;
+    const read = vi.fn(() => new Promise<string[]>((resolve) => { release = resolve; }));
+    const { QueryObserver } = await import('@tanstack/react-query');
+    const key = queryKeys.deals.all(PAVILLON);
+    const unsubscribe = new QueryObserver(client, { queryKey: key, queryFn: read }).subscribe(() => {});
+    await vi.advanceTimersByTimeAsync(0);
+
+    writeOwnChange<string[]>(client, key, (current) => current && [...current, 'nothing to change yet']);
+    release(['Alpine Club']);
+    await vi.runAllTimersAsync();
+
+    expect(client.getQueryData(key)).toEqual(['Alpine Club']);
     unsubscribe();
   });
 
