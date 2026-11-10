@@ -1,11 +1,13 @@
 using System.ComponentModel.DataAnnotations;
+using ACI.Application.Common;
 
 namespace ACI.Application.DTOs;
 
 /// <summary>
-/// Request to update an existing deal.
+/// Request to update an existing deal. A field left out is kept; the company, contact,
+/// owner, expected close date, probability and description are cleared when sent as null.
 /// </summary>
-public record UpdateDealRequest
+public record UpdateDealRequest : IMergePatchRequest
 {
     /// <summary>
     /// Deal name/title.
@@ -112,4 +114,8 @@ public record UpdateDealRequest
     /// is now: right for a change to one field that reads nothing else, such as a move to another stage.
     /// </summary>
     public Guid? Version { get; init; }
+
+    /// <inheritdoc />
+    [System.Text.Json.Serialization.JsonIgnore]
+    public ISet<string> NullsSent { get; } = new HashSet<string>(StringComparer.Ordinal);
 }

@@ -293,15 +293,22 @@ public class ContactService : IContactService
             }
         }
 
-        // Apply partial updates
+        // Apply partial updates. A field sent as null is taken off; one left out is kept.
+        // Only "left out" used to be possible, so a contact who left Acme stayed linked
+        // to it, and a wrong phone number could be changed but never removed.
         if (request.Name != null) existing.Name = request.Name.Trim();
         if (request.Email != null) existing.Email = request.Email.Trim();
         if (request.Phone != null) existing.Phone = request.Phone.Trim();
+        else if (request.Clears(nameof(request.Phone))) existing.Phone = null;
         if (request.CompanyId.HasValue) existing.CompanyId = request.CompanyId;
+        else if (request.Clears(nameof(request.CompanyId))) existing.CompanyId = null;
         if (request.JobTitle != null) existing.JobTitle = request.JobTitle.Trim();
+        else if (request.Clears(nameof(request.JobTitle))) existing.JobTitle = null;
         if (request.DoNotContact.HasValue) existing.DoNotContact = request.DoNotContact.Value;
         if (request.PreferredContactMethod != null) existing.PreferredContactMethod = request.PreferredContactMethod.Trim();
+        else if (request.Clears(nameof(request.PreferredContactMethod))) existing.PreferredContactMethod = null;
         if (request.Description != null) existing.Description = request.Description.Trim();
+        else if (request.Clears(nameof(request.Description))) existing.Description = null;
 
         existing.UpdatedAtUtc = DateTime.UtcNow;
         existing.UpdatedByUserId = userId;

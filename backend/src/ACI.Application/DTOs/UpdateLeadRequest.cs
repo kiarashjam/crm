@@ -4,9 +4,11 @@ using ACI.Application.Common;
 namespace ACI.Application.DTOs;
 
 /// <summary>
-/// Request to update an existing lead.
+/// Request to update an existing lead. A field left out is kept; the company, phone,
+/// description, lifecycle stage, job title, country, industry and company size are
+/// cleared when sent as null.
 /// </summary>
-public record UpdateLeadRequest
+public record UpdateLeadRequest : IMergePatchRequest
 {
     /// <summary>
     /// Lead's full name.
@@ -124,4 +126,8 @@ public record UpdateLeadRequest
     /// is now: right for a change to one field that reads nothing else, such as a step recorded on its pipeline.
     /// </summary>
     public Guid? Version { get; init; }
+
+    /// <inheritdoc />
+    [System.Text.Json.Serialization.JsonIgnore]
+    public ISet<string> NullsSent { get; } = new HashSet<string>(StringComparer.Ordinal);
 }

@@ -77,7 +77,9 @@ try
         });
     });
 
-    builder.Services.AddControllers();
+    // An update body that sends a field as null clears it; a field left out is kept.
+    builder.Services.AddControllers()
+        .AddJsonOptions(options => ACI.WebApi.Extensions.MergePatchJson.TrackNullsSent(options.JsonSerializerOptions));
 
     // The public form and tracking endpoints are partitioned by form token and by
     // lead, not by IP: behind Azure's front end the connection address may be the

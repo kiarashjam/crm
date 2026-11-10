@@ -1,11 +1,13 @@
 using System.ComponentModel.DataAnnotations;
+using ACI.Application.Common;
 
 namespace ACI.Application.DTOs;
 
 /// <summary>
-/// Request to update an existing contact.
+/// Request to update an existing contact. A field left out is kept; the company, phone,
+/// job title, preferred contact method and description are cleared when sent as null.
 /// </summary>
-public record UpdateContactRequest
+public record UpdateContactRequest : IMergePatchRequest
 {
     /// <summary>
     /// Contact's full name.
@@ -62,4 +64,8 @@ public record UpdateContactRequest
     /// is now: right for a change to one field that reads nothing else, such as turning Do Not Contact on.
     /// </summary>
     public Guid? Version { get; init; }
+
+    /// <inheritdoc />
+    [System.Text.Json.Serialization.JsonIgnore]
+    public ISet<string> NullsSent { get; } = new HashSet<string>(StringComparer.Ordinal);
 }

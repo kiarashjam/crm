@@ -346,11 +346,15 @@ public class LeadService : ILeadService
 
         var previousStatus = existing.Status;
 
-        // Apply partial updates
+        // Apply partial updates. A field sent as null is taken off; one left out is kept.
+        // Only "left out" used to be possible, so choosing "No company" logged "Company
+        // cleared" while the company, and its score points, stayed.
         if (request.Name != null) existing.Name = request.Name.Trim();
         if (request.Email != null) existing.Email = request.Email.Trim();
         if (request.Phone != null) existing.Phone = request.Phone.Trim();
+        else if (request.Clears(nameof(request.Phone))) existing.Phone = null;
         if (request.CompanyId != null) existing.CompanyId = request.CompanyId;
+        else if (request.Clears(nameof(request.CompanyId))) existing.CompanyId = null;
         if (request.Source != null) existing.Source = request.Source.Trim();
         if (request.Status != null) existing.Status = request.Status.Trim();
         if (request.LeadSourceId.HasValue) existing.LeadSourceId = request.LeadSourceId;
@@ -366,7 +370,9 @@ public class LeadService : ILeadService
         }
         if (request.LastContactedAt.HasValue) existing.LastContactedAt = request.LastContactedAt;
         if (request.Description != null) existing.Description = request.Description.Trim();
+        else if (request.Clears(nameof(request.Description))) existing.Description = null;
         if (request.LifecycleStage != null) existing.LifecycleStage = request.LifecycleStage.Trim();
+        else if (request.Clears(nameof(request.LifecycleStage))) existing.LifecycleStage = null;
         if (request.PipelineState != null)
         {
             // The steps this edit changed, merged into the pipeline as it is now, so a step
@@ -382,9 +388,13 @@ public class LeadService : ILeadService
             }
         }
         if (request.JobTitle != null) existing.JobTitle = request.JobTitle.Trim();
+        else if (request.Clears(nameof(request.JobTitle))) existing.JobTitle = null;
         if (request.Country != null) existing.Country = request.Country.Trim();
+        else if (request.Clears(nameof(request.Country))) existing.Country = null;
         if (request.Industry != null) existing.Industry = request.Industry.Trim();
+        else if (request.Clears(nameof(request.Industry))) existing.Industry = null;
         if (request.CompanySize != null) existing.CompanySize = request.CompanySize.Trim();
+        else if (request.Clears(nameof(request.CompanySize))) existing.CompanySize = null;
 
         // The pipeline decides the status, here rather than in the browser, so the
         // answer is the same whoever sends the pipeline. A status sent alongside it is

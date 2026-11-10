@@ -250,13 +250,14 @@ public class CompanyService : ICompanyService
             return string.IsNullOrEmpty(trimmed) ? null : trimmed;
         }
 
+        // A field sent empty, or as null, is taken off; one left out is kept.
         if (request.Name != null) existing.Name = request.Name.Trim();
-        if (request.Domain != null) existing.Domain = NormalizeNullable(request.Domain);
-        if (request.Industry != null) existing.Industry = NormalizeNullable(request.Industry);
-        if (request.Size != null) existing.Size = NormalizeNullable(request.Size);
-        if (request.Description != null) existing.Description = NormalizeNullable(request.Description);
-        if (request.Website != null) existing.Website = NormalizeNullable(request.Website);
-        if (request.Location != null) existing.Location = NormalizeNullable(request.Location);
+        if (request.Domain != null || request.Clears(nameof(request.Domain))) existing.Domain = NormalizeNullable(request.Domain);
+        if (request.Industry != null || request.Clears(nameof(request.Industry))) existing.Industry = NormalizeNullable(request.Industry);
+        if (request.Size != null || request.Clears(nameof(request.Size))) existing.Size = NormalizeNullable(request.Size);
+        if (request.Description != null || request.Clears(nameof(request.Description))) existing.Description = NormalizeNullable(request.Description);
+        if (request.Website != null || request.Clears(nameof(request.Website))) existing.Website = NormalizeNullable(request.Website);
+        if (request.Location != null || request.Clears(nameof(request.Location))) existing.Location = NormalizeNullable(request.Location);
         
         try
         {

@@ -9,7 +9,11 @@ public record MemberDto(
     string Tier, string Status, DateTime JoinedAtUtc, DateTime RenewsAtUtc,
     decimal DuesAmount, string DuesFrequency, decimal HouseAccountBalance, string? Notes);
 
-public class MemberWriteRequest
+/// <summary>
+/// A member to add, or the fields of one to change. On a change a field left out is
+/// kept, and the phone and notes are cleared when sent as null.
+/// </summary>
+public class MemberWriteRequest : IMergePatchRequest
 {
     public string? FirstName { get; set; }
     public string? LastName { get; set; }
@@ -23,6 +27,10 @@ public class MemberWriteRequest
     public string? DuesFrequency { get; set; }
     public decimal? HouseAccountBalance { get; set; }
     public string? Notes { get; set; }
+
+    /// <inheritdoc />
+    [System.Text.Json.Serialization.JsonIgnore]
+    public ISet<string> NullsSent { get; } = new HashSet<string>(StringComparer.Ordinal);
 }
 
 /// <summary>The member to fold into the one named in the route.</summary>
@@ -144,7 +152,11 @@ public sealed class ClubService : IClubService
         if (!string.IsNullOrWhiteSpace(request.FirstName)) row.FirstName = request.FirstName.Trim();
         if (!string.IsNullOrWhiteSpace(request.LastName)) row.LastName = request.LastName.Trim();
         if (!string.IsNullOrWhiteSpace(request.Email)) row.Email = request.Email.Trim();
+        // Sent as null, the phone or the notes are taken off; left out, they are kept.
+        // Only "left out" used to be possible, so a member who asked for their number to
+        // be deleted kept getting texts on it.
         if (request.Phone != null) row.Phone = request.Phone.Trim();
+        else if (request.Clears(nameof(request.Phone))) row.Phone = null;
         if (!string.IsNullOrWhiteSpace(request.Tier)) row.Tier = request.Tier.Trim();
         if (!string.IsNullOrWhiteSpace(request.Status)) row.Status = request.Status.Trim();
         if (request.JoinedAtUtc.HasValue) row.JoinedAtUtc = request.JoinedAtUtc.Value;
@@ -159,6 +171,7 @@ public sealed class ClubService : IClubService
             row.HouseAccountBalance = balance;
         }
         if (request.Notes != null) row.Notes = request.Notes;
+        else if (request.Clears(nameof(request.Notes))) row.Notes = null;
         await _club.SaveMemberAsync(row, ct);
         return ToDto(row);
     }

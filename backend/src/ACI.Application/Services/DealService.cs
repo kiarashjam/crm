@@ -312,18 +312,26 @@ public class DealService : IDealService
 
         var now = DateTime.UtcNow;
 
-        // Apply partial updates
+        // Apply partial updates. A field sent as null is taken off; one left out is kept.
+        // Only "left out" used to be possible, so choosing no company or no owner, or
+        // emptying the close date, said "Deal updated" and changed nothing.
         if (request.Name != null) existing.Name = request.Name.Trim();
         if (amount.Value is decimal newAmount) DealMoney.SetAmount(existing, newAmount);
         if (currency != null) existing.Currency = currency;
         if (request.Stage != null) existing.Stage = request.Stage.Trim();
         if (request.PipelineId != null) existing.PipelineId = request.PipelineId;
         if (request.CompanyId.HasValue) existing.CompanyId = request.CompanyId;
+        else if (request.Clears(nameof(request.CompanyId))) existing.CompanyId = null;
         if (request.AssigneeId.HasValue) existing.AssigneeId = request.AssigneeId;
+        else if (request.Clears(nameof(request.AssigneeId))) existing.AssigneeId = null;
         if (request.ExpectedCloseDateUtc != null) existing.ExpectedCloseDateUtc = request.ExpectedCloseDateUtc;
+        else if (request.Clears(nameof(request.ExpectedCloseDateUtc))) existing.ExpectedCloseDateUtc = null;
         if (request.Description != null) existing.Description = request.Description.Trim();
+        else if (request.Clears(nameof(request.Description))) existing.Description = null;
         if (request.Probability.HasValue) existing.Probability = request.Probability;
+        else if (request.Clears(nameof(request.Probability))) existing.Probability = null;
         if (request.ContactId.HasValue) existing.ContactId = request.ContactId;
+        else if (request.Clears(nameof(request.ContactId))) existing.ContactId = null;
 
         // Handle close with reason (HP-8)
         if (request.IsWon != null)
