@@ -159,6 +159,41 @@ describe('a payment', () => {
   });
 });
 
+describe('a payment Stripe took', () => {
+  const STRIPE: Payment = { ...PAYMENT, id: 'p2', method: 'Twint', provider: 'stripe', providerPaymentId: 'pi_123' };
+
+  it('says Stripe took it, and how, and is paid back through Stripe', async () => {
+    as([PERMISSION.ManageMoney, PERMISSION.VoidMoney]);
+    charges.getPayments.mockResolvedValue([STRIPE]);
+    prompt.mockReturnValueOnce('100').mockReturnValueOnce('Booking cancelled');
+    const user = userEvent.setup();
+    show(<Charges />);
+
+    await user.click(await screen.findByRole('tab', { name: /Payments/ }));
+    expect(await screen.findByText('Stripe')).toBeInTheDocument();
+    expect(screen.getByText('TWINT')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Refund payment of/ }));
+
+    expect(prompt.mock.calls[0]![0]).toMatch(/Stripe pays it back/);
+    await vi.waitFor(() => expect(charges.refundPayment).toHaveBeenCalledWith('p2', 100, 'Booking cancelled'));
+  });
+
+  it('is voided only past a warning that the member is not paid back', async () => {
+    as([PERMISSION.ManageMoney, PERMISSION.VoidMoney]);
+    charges.getPayments.mockResolvedValue([STRIPE]);
+    const confirm = vi.fn<(message?: string) => boolean>().mockReturnValue(false);
+    Object.defineProperty(window, 'confirm', { value: confirm, configurable: true, writable: true });
+    const user = userEvent.setup();
+    show(<Charges />);
+
+    await user.click(await screen.findByRole('tab', { name: /Payments/ }));
+    await user.click(await screen.findByRole('button', { name: /Void payment of/ }));
+
+    expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/not paid back/));
+    expect(prompt).not.toHaveBeenCalled();
+  });
+});
+
 describe('a donation', () => {
   it('is voided with a reason and stays on the list, saying why', async () => {
     as([PERMISSION.ManageMoney, PERMISSION.VoidMoney]);

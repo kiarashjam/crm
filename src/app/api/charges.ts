@@ -46,9 +46,15 @@ export interface Payment {
   memberId: string;
   memberName: string;
   amount: number;
-  method: 'CardOnFile' | 'Cash' | 'Check' | 'Wire' | 'AppliedCredit';
+  method: 'CardOnFile' | 'Card' | 'Twint' | 'DirectDebit' | 'Cash' | 'Check' | 'Wire' | 'AppliedCredit';
   reference?: string;
   receivedAtUtc: string;
+  /**
+   * Who took the money, when it came from outside: stripe (an online payment, with Stripe's
+   * payment id) or bank (a transfer from the bank's file, with the bank's entry reference).
+   */
+  provider?: string;
+  providerPaymentId?: string;
   chargeId?: string;
   appliedToChargeIds: string[];
   /**
@@ -123,6 +129,9 @@ export const CHARGE_STATUSES: ChargeStatus[] = [
 ];
 export const PAYMENT_METHODS: Payment['method'][] = [
   'CardOnFile',
+  'Card',
+  'Twint',
+  'DirectDebit',
   'Cash',
   'Check',
   'Wire',
@@ -131,10 +140,19 @@ export const PAYMENT_METHODS: Payment['method'][] = [
 
 export const PAYMENT_METHOD_LABELS: Record<Payment['method'], string> = {
   CardOnFile: 'Card on file',
+  Card: 'Card',
+  Twint: 'TWINT',
+  DirectDebit: 'Direct debit',
   Cash: 'Cash',
   Check: 'Check',
   Wire: 'Wire transfer',
   AppliedCredit: 'House credit',
+};
+
+/** Who took a payment from outside the club, as the payments list says it. */
+export const PAYMENT_PROVIDER_LABELS: Record<string, string> = {
+  stripe: 'Stripe',
+  bank: 'Bank file',
 };
 
 const day = 86_400_000;

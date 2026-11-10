@@ -51,6 +51,7 @@ import {
   CHARGE_STATUSES,
   PAYMENT_METHODS,
   PAYMENT_METHOD_LABELS,
+  PAYMENT_PROVIDER_LABELS,
   type Charge,
   type ChargeKind,
   type ChargeStatus,
@@ -303,6 +304,12 @@ export default function Charges() {
   };
 
   const voidOnePayment = async (p: Payment) => {
+    // A void says the payment was recorded in error. Stripe's money is real: voiding takes it
+    // off the ledger and leaves it with the club; a refund is what pays it back.
+    if (p.provider === 'stripe' && !window.confirm(
+      'Stripe took this payment. Voiding it only takes it off the ledger: the member is not paid back. '
+      + 'To pay the money back, refund it instead. Void it anyway?',
+    )) return;
     const reason = askReason(`this ${formatCurrency(p.amount)} payment`);
     if (!reason) return;
     setVoidingId(p.id);
@@ -321,8 +328,10 @@ export default function Charges() {
   // ledger. What the payment left unused goes back first; beyond that its charges owe again.
   const refundOnePayment = async (p: Payment) => {
     const left = Math.round((p.amount - (p.refundedAmount ?? 0)) * 100) / 100;
+    // A payment Stripe took is paid back through Stripe, to the card or account it came from.
+    const how = p.provider === 'stripe' ? ' Stripe pays it back to the card or account it came from.' : '';
     const typed = window.prompt(
-      `How much of this ${formatCurrency(p.amount)} payment is being paid back? Up to ${formatCurrency(left)}.`,
+      `How much of this ${formatCurrency(p.amount)} payment is being paid back?${how} Up to ${formatCurrency(left)}.`,
       left.toFixed(2),
     );
     if (typed === null) return;
@@ -416,6 +425,23 @@ export default function Charges() {
       </div>
     ) : null;
 
+  /** How it was paid, and who took it when it came from outside the club (Stripe, the bank's file). */
+  const paymentMethod = (p: Payment) => (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      <span>{PAYMENT_METHOD_LABELS[p.method]}</span>
+      {p.provider && (
+        <span
+          className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700 ring-1 ring-indigo-200"
+          title={p.providerPaymentId}
+        >
+          {PAYMENT_PROVIDER_LABELS[p.provider] ?? p.provider}
+        </span>
+      )}
+    </span>
+  );
+  const paymentMethodText = (p: Payment) =>
+    p.provider ? `${PAYMENT_METHOD_LABELS[p.method]} · ${PAYMENT_PROVIDER_LABELS[p.provider] ?? p.provider}` : PAYMENT_METHOD_LABELS[p.method];
+
   const paymentAmount = (p: Payment) =>
     p.status === 'Voided' ? (
       <span className="block text-right">
@@ -476,7 +502,7 @@ export default function Charges() {
         </span>
       ),
     },
-    { id: 'method', label: 'Method', cell: (p) => PAYMENT_METHOD_LABELS[p.method] },
+    { id: 'method', label: 'Method', cell: paymentMethod },
     { id: 'reference', label: 'Reference', cell: (p) => <span className="font-mono text-xs text-slate-500">{p.reference ?? '—'}</span> },
     { id: 'amount', label: 'Amount', numeric: true, cell: paymentAmount },
     { id: 'received', label: 'Received', cell: (p) => <span className="whitespace-nowrap">{formatDate(p.receivedAtUtc)}</span> },
@@ -661,7 +687,7 @@ export default function Charges() {
                         getKey={(p) => p.id}
                         leading={(p) => <InitialsAvatar name={p.memberName} />}
                         title={(p) => p.memberName}
-                        subtitle={(p) => `+${formatCurrency(p.amount)} · ${PAYMENT_METHOD_LABELS[p.method]}`}
+                        subtitle={(p) => `+${formatCurrency(p.amount)} · ${paymentMethodText(p)}`}
                         columns={paymentColumns}
                         actions={paymentActions}
                       />
@@ -677,7 +703,7 @@ export default function Charges() {
                               <InitialsAvatar name={p.memberName} />
                               <div className="min-w-0 flex-1">
                                 <p className="truncate font-semibold text-slate-900">{p.memberName}</p>
-                                <p className="text-xs text-slate-500">{PAYMENT_METHOD_LABELS[p.method]}</p>
+                                <p className="text-xs text-slate-500">{paymentMethod(p)}</p>
                               </div>
                               <div className="shrink-0 font-bold">{paymentAmount(p)}</div>
                             </div>
