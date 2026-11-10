@@ -507,14 +507,18 @@ public sealed class ClubApplicationService : IClubApplications
         }
         else if (member.Status is "Pending" or "Lapsed" or "Cancelled")
         {
-            // Approving someone who was a member is admitting them again.
+            // Approving someone who was a member is admitting them again, at the tier approved
+            // and its dues: the dues started below are that tier's, so the record says so too.
             member.Status = "Active";
             member.BillingLapsedAtUtc = null;
             member.StatusBeforeLapse = null;
+            member.Tier = plan.Tier.Name;
+            member.DuesAmount = plan.Tier.Price;
+            member.DuesFrequency = Cadence(plan.Tier.Cadence);
             readmitted = true;
             notes.Add($"{Name(member)} was already a member, so their record was used and set active again.");
         }
-        else notes.Add($"{Name(member)} is already a member: the application is linked to their record, and their tier stays {member.Tier}.");
+        else notes.Add($"{Name(member)} is already an active member: the application is linked to their record, their tier stays {member.Tier}, and nothing was charged or started.");
 
         // The person the sales side has for them, carried onto the member. From the public form
         // the link is by address alone, so it is carried only when the name matches as well.
@@ -555,15 +559,19 @@ public sealed class ClubApplicationService : IClubApplications
         var feeCharged = false;
         var wantDues = request.StartDues != false;
         var wantFee = request.ChargeInitiationFee != false;
-        if (approval.MayHandleMoney)
+        // An active member's membership does not change: no dues at the tier they asked for
+        // (their tier stays theirs) and no fee. Starting dues for them billed a Silver member
+        // Gold dues while their record still said Silver.
+        var admitting = created || readmitted;
+        if (admitting && approval.MayHandleMoney)
         {
             var money = await SetUpMoneyAsync(organizationId, app, member, plan.Tier, plan.FeeApplies, wantDues, wantFee, plan.FeeDueDays, notes, ct);
             if (!money.IsSuccess) return money.Error;
             (duesStarted, feeCharged) = money.Value;
             app.MoneyPending = false;
         }
-        else if ((wantDues && plan.Tier.Price > 0 && !await HasRunningSubscriptionAsync(organizationId, member.Id, ct))
-                 || (wantFee && plan.FeeApplies && plan.Tier.InitiationFee > 0))
+        else if (admitting && ((wantDues && plan.Tier.Price > 0 && !await HasRunningSubscriptionAsync(organizationId, member.Id, ct))
+                 || (wantFee && plan.FeeApplies && plan.Tier.InitiationFee > 0)))
         {
             // Left for finance only when there is something to set up: a member whose dues
             // already run, with no fee due, has nothing waiting.

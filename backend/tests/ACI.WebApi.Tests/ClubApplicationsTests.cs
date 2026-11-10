@@ -172,6 +172,37 @@ public class ClubApplicationsTests
     }
 
     [Fact]
+    public async Task ApprovingAnActiveMembersApplication_ChangesNothingTheyPay_AndAReturningOneIsAdmittedAtTheTierApproved()
+    {
+        // An active Silver member applying for Gold: the approval links the application and says
+        // their tier stays Silver. It started Gold dues all the same. A lapsed one admitted again
+        // is admitted at the tier approved, and their record says so, as their dues do.
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await ClubAsync(factory);
+        async Task<Guid> Member(string first, string status) => (await Json(await client.PostAsync("/api/members", Body(new
+        {
+            firstName = first, lastName = "Meier", email = $"{first.ToLowerInvariant()}@example.ch", tier = "Silver", status,
+        })), $"add {first}")).GetProperty("id").GetGuid();
+        var active = await Member("Peter", "Active");
+        var lapsed = await Member("Rosa", "Lapsed");
+
+        var linked = await Json(await client.PostAsync($"/api/applications/{(await ApplyAsync(client, "Peter", "Meier")).GetProperty("id").GetGuid()}/approve",
+            Body(new { })), "approve the active member's application");
+        linked.GetProperty("memberId").GetGuid().Should().Be(active);
+        (linked.GetProperty("duesStarted").GetBoolean(), linked.GetProperty("feeCharged").GetBoolean(), linked.GetProperty("moneyPending").GetBoolean())
+            .Should().Be((false, false, false));
+        (await Read(factory, db => db.ClubSubscriptions.Count(s => s.MemberId == active))).Should().Be(0, "no Gold dues for a member whose tier stays Silver");
+        (await Read(factory, db => db.ClubMembers.Single(m => m.Id == active).Tier)).Should().Be("Silver");
+
+        var readmitted = await Json(await client.PostAsync($"/api/applications/{(await ApplyAsync(client, "Rosa", "Meier")).GetProperty("id").GetGuid()}/approve",
+            Body(new { })), "approve the lapsed member's application");
+        readmitted.GetProperty("duesStarted").GetBoolean().Should().BeTrue();
+        var rosa = await Read(factory, db => db.ClubMembers.Single(m => m.Id == lapsed));
+        (rosa.Status, rosa.Tier, rosa.DuesAmount).Should().Be(("Active", "Gold", 299m), "admitted again at the tier approved");
+        (await Read(factory, db => db.ClubSubscriptions.Single(s => s.MemberId == lapsed).Name)).Should().Be("Gold dues");
+    }
+
+    [Fact]
     public async Task AWaitlistedApplication_CanBeApprovedOrReopened_ButARejectedOneMustBeReopenedFirst()
     {
         using var factory = new CustomWebApplicationFactory();
