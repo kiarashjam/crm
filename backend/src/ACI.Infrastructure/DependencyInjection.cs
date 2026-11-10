@@ -70,6 +70,8 @@ public static class DependencyInjection
         // How people join (applications, the public form, approval) and who belongs together.
         services.AddScoped<IClubApplications, ClubApplicationService>();
         services.AddScoped<IClubHouseholds, ClubHouseholdService>();
+        // The club's figures (Club Reports, Today at the Club), summed by the database.
+        services.AddScoped<IClubReports, ClubReportService>();
         // Money from outside the club: payment settings, QR-bills, bank files, Stripe and the
         // accounting journal. Every payment they take goes through the ledger above.
         services.AddScoped<ACI.Infrastructure.Services.Payments.ClubPaymentSettingsService>();
