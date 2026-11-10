@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
+import { withQueries } from '@/test/queryWrapper';
 import type { Member } from '@/app/api/members';
 
 vi.mock('@/app/components/AppHeader', () => ({ default: () => null }));
@@ -50,7 +51,7 @@ beforeEach(() => {
 describe('POS terminal', () => {
   it('does not offer gift cards or points as a way to pay, and says why', async () => {
     const user = userEvent.setup();
-    render(<MemoryRouter><PosTerminal /></MemoryRouter>);
+    render(withQueries(<MemoryRouter><PosTerminal /></MemoryRouter>));
 
     await user.click(await screen.findByRole('button', { name: /Jean Dupont/ }));
 
@@ -70,7 +71,7 @@ describe('POS terminal', () => {
 
   it('still posts charges, opens tabs and checks members in', async () => {
     const user = userEvent.setup();
-    render(<MemoryRouter><PosTerminal /></MemoryRouter>);
+    render(withQueries(<MemoryRouter><PosTerminal /></MemoryRouter>));
 
     await user.click(await screen.findByRole('button', { name: /Jean Dupont/ }));
 

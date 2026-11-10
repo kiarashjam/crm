@@ -89,6 +89,23 @@ describe('what a write changes', () => {
   it('a club write changes only its own records, whatever the query string', () => {
     expect(resourcesChangedBy('POST', 'https://api.example.com/api/visits?memberId=m-1')).toEqual(['visits']);
   });
+
+  it("the club's money is one ledger: a charge, a payment or a tab moves balances and statements", () => {
+    // A charge or a payment moves the member's balance on the members list and their
+    // statement; a payment settles charges; a tab's close posts a charge and earns points.
+    expect(resourcesChangedBy('POST', '/api/charges')).toEqual(expect.arrayContaining(['charges', 'members', 'statements']));
+    expect(resourcesChangedBy('POST', '/api/payments/p-1/void')).toEqual(expect.arrayContaining(['payments', 'charges', 'members', 'statements']));
+    expect(resourcesChangedBy('POST', '/api/tabs/t-1/close')).toEqual(expect.arrayContaining(['tabs', 'charges', 'members', 'loyalty', 'statements']));
+    expect(resourcesChangedBy('POST', '/api/subscriptions/s-1/bill')).toEqual(expect.arrayContaining(['subscriptions', 'charges', 'members']));
+    // A balance set by hand on a member is an entry on the ledger too.
+    expect(resourcesChangedBy('PUT', '/api/members/m-1')).toEqual(expect.arrayContaining(['members', 'charges', 'statements']));
+  });
+
+  it("a club member's merge moves club records, not the sales lists", () => {
+    const changed = resourcesChangedBy('POST', '/api/members/m-1/merge');
+    expect(changed).toEqual(expect.arrayContaining(['members', 'charges', 'payments']));
+    expect(changed).not.toContain('leads');
+  });
 });
 
 describe('what the signal carries', () => {

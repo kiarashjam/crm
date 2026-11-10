@@ -4,7 +4,7 @@
 // they go; closing the tab converts it to a Charge on the member's house
 // account and writes a loyalty ledger entry sized to the total.
 
-import { apiWithFallback, authFetchJson, servesDemoData } from './apiClient';
+import { apiWithFallback, authFetchJson, servesDemoData, type RequestOptions } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import { createCharge, type ChargeKind } from './charges';
 import { addLoyaltyEntry, TIER_MULTIPLIERS } from './loyalty';
@@ -107,10 +107,10 @@ const tabStore = createMockStore<OpenTab>({
   idOf: (t) => t.id,
 });
 
-export async function getTabs(): Promise<OpenTab[]> {
+export async function getTabs(req?: RequestOptions): Promise<OpenTab[]> {
   return apiWithFallback(
     async () => {
-      const res = await authFetchJson<OpenTab[]>('/api/tabs');
+      const res = await authFetchJson<OpenTab[]>('/api/tabs', { signal: req?.signal });
       return Array.isArray(res) ? res : [];
     },
     async () => {

@@ -107,4 +107,20 @@ export const queryKeys = {
   copyHistory: {
     stats: (s: WorkspaceScope) => key(s, 'copy-history', 'stats'),
   },
+  // The club: its members, and its money on the ledger. A charge, a payment, a tab's close
+  // or a bill moves a member's balance, so writes to those refresh the members list too
+  // (api/dataChanged).
+  club: {
+    members: (s: WorkspaceScope) => key(s, 'members', 'all'),
+    charges: (s: WorkspaceScope) => key(s, 'charges', 'all'),
+    payments: (s: WorkspaceScope) => key(s, 'payments', 'all'),
+    giftCards: (s: WorkspaceScope) => key(s, 'gift-cards', 'all'),
+    redemptions: (s: WorkspaceScope) => key(s, 'gift-cards', 'redemptions'),
+    tabs: (s: WorkspaceScope) => key(s, 'tabs', 'all'),
+    subscriptions: (s: WorkspaceScope) => key(s, 'subscriptions', 'all'),
+    donations: (s: WorkspaceScope) => key(s, 'donations', 'all'),
+    loyalty: (s: WorkspaceScope) => key(s, 'loyalty', 'ledger'),
+    visits: (s: WorkspaceScope) => key(s, 'visits', 'all'),
+    statement: (s: WorkspaceScope, memberId: string, fromUtc: string, toUtc: string) => key(s, 'statements', memberId, fromUtc, toUtc),
+  },
 } as const;

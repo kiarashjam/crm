@@ -36,11 +36,13 @@ public sealed class SqlServerApp : WebApplicationFactory<Program>
 
     private readonly string _connectionString;
     private readonly string _environment;
+    private readonly Action<IServiceCollection>? _services;
 
-    private SqlServerApp(string connectionString, string environment)
+    private SqlServerApp(string connectionString, string environment, Action<IServiceCollection>? services)
     {
         _connectionString = connectionString;
         _environment = environment;
+        _services = services;
     }
 
     /// <summary>A database name no other test uses, not yet created.</summary>
@@ -61,9 +63,10 @@ public sealed class SqlServerApp : WebApplicationFactory<Program>
         new SqlConnectionStringBuilder(ServerConnectionString) { InitialCatalog = database }.ConnectionString;
 
     /// <summary>Start the API against <paramref name="database"/>. Start-up, schema work included, has finished when this returns.</summary>
-    public static SqlServerApp Start(string database, string environment = "Testing")
+    /// <param name="services">Services to put in place of the app's, such as a gate that holds two requests at the same point.</param>
+    public static SqlServerApp Start(string database, string environment = "Testing", Action<IServiceCollection>? services = null)
     {
-        var app = new SqlServerApp(ConnectionString(database), environment);
+        var app = new SqlServerApp(ConnectionString(database), environment, services);
         _ = app.Server; // builds and starts the host, which runs the database set-up
         return app;
     }
@@ -136,6 +139,7 @@ public sealed class SqlServerApp : WebApplicationFactory<Program>
             services.RemoveAll(typeof(DbContextOptions<AppDbContext>));
             services.RemoveAll(typeof(AppDbContext));
             services.AddDbContext<AppDbContext>(options => options.UseSqlServer(_connectionString));
+            _services?.Invoke(services);
         });
     }
 }

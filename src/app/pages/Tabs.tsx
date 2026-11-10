@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Wine,
   Plus,
@@ -33,7 +33,6 @@ import {
   SelectValue,
 } from '@/app/components/ui/select';
 import {
-  getTabs,
   openTab,
   addItemToTab,
   removeItemFromTab,
@@ -45,8 +44,9 @@ import {
   type OpenTab,
   type TabVenue,
 } from '@/app/api/tabs';
-import { getMembers, type Member } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { ClubReadState } from '@/app/components/ClubReadState';
+import { NONE, useClubMembers, useClubReads, useClubTabs } from '@/app/hooks/queries';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import {
@@ -71,10 +71,16 @@ function errorText(err: unknown, fallback: string): string {
 
 export default function Tabs() {
   const { format: formatCurrency } = useClubMoney();
-  const [tabs, setTabs] = useState<OpenTab[]>([]);
-  const [members, setMembers] = useState<Member[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Read through the app's cache: a failed read says so with a way to try again, rather
+  // than looking like no tab is open.
+  const tabsQuery = useClubTabs();
+  const membersQuery = useClubMembers();
+  const reads = useClubReads(tabsQuery, membersQuery);
+  const tabs: OpenTab[] = tabsQuery.data ?? NONE;
+  const members = membersQuery.data ?? NONE;
+  const loading = reads.loading;
   usePageLoading(loading);
+  const load = reads.reload;
   const [openDialog, setOpenDialog] = useState(false);
   const [addingTo, setAddingTo] = useState<string | null>(null);
 
@@ -87,20 +93,6 @@ export default function Tabs() {
   const [busy, setBusy] = useState(false);
   // The tab being closed or voided, so a second press cannot send it twice.
   const [actingOn, setActingOn] = useState<string | null>(null);
-
-  const load = async () => {
-    try {
-      const [t, m] = await Promise.all([getTabs(), getMembers()]);
-      setTabs(t);
-      setMembers(m);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void load();
-  }, []);
 
   const stats = useMemo(() => computeTabStats(tabs), [tabs]);
   const openTabs = useMemo(() => tabs.filter((t) => t.status === 'Open'), [tabs]);
@@ -373,6 +365,7 @@ export default function Tabs() {
             ]}
           />
 
+          <ClubReadState reads={reads} what="Tabs">
           {loading ? (
             <div className="flex items-center justify-center py-20 text-slate-500">
               <Loader2 className="h-6 w-6 animate-spin" />
@@ -510,6 +503,7 @@ export default function Tabs() {
               </div>
             </section>
           )}
+          </ClubReadState>
         </main>
       </PageTransition>
 

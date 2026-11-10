@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Repeat2,
   Plus,
@@ -36,7 +36,6 @@ import {
   SelectValue,
 } from '@/app/components/ui/select';
 import {
-  getSubscriptions,
   createSubscription,
   updateSubscription,
   deleteSubscription,
@@ -49,8 +48,9 @@ import {
   type SubscriptionCadence,
   type SubscriptionStatus,
 } from '@/app/api/subscriptions';
-import { getMembers, type Member } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { ClubReadState } from '@/app/components/ClubReadState';
+import { NONE, useClubMembers, useClubReads, useClubSubscriptions } from '@/app/hooks/queries';
 import PageHero, { heroPrimary, heroSecondary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import {
@@ -86,10 +86,16 @@ function daysUntil(iso: string): number {
 
 export default function Subscriptions() {
   const { format: formatCurrency, currency } = useClubMoney();
-  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
-  const [members, setMembers] = useState<Member[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Read through the app's cache: a failed read says so with a way to try again, rather
+  // than looking like nobody subscribes to anything.
+  const subscriptionsQuery = useClubSubscriptions();
+  const membersQuery = useClubMembers();
+  const reads = useClubReads(subscriptionsQuery, membersQuery);
+  const subscriptions: Subscription[] = subscriptionsQuery.data ?? NONE;
+  const members = membersQuery.data ?? NONE;
+  const loading = reads.loading;
   usePageLoading(loading);
+  const load = reads.reload;
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | SubscriptionStatus>('All');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -102,20 +108,6 @@ export default function Subscriptions() {
   const [busy, setBusy] = useState(false);
   const [runningId, setRunningId] = useState<string | null>(null);
   const [runningAll, setRunningAll] = useState(false);
-
-  const load = async () => {
-    try {
-      const [s, m] = await Promise.all([getSubscriptions(), getMembers()]);
-      setSubscriptions(s);
-      setMembers(m);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void load();
-  }, []);
 
   const stats = useMemo(() => computeSubscriptionStats(subscriptions), [subscriptions]);
 
@@ -165,25 +157,44 @@ export default function Subscriptions() {
     }
   };
 
+  // A refusal carries the server's sentence (changed somewhere else at the same moment,
+  // or billed already and so cancelled rather than deleted). Uncaught, it went nowhere and
+  // the button seemed to do nothing.
+  const refused = (err: unknown, fallback: string) =>
+    toast.error(err instanceof Error && err.message ? err.message : fallback);
+
   const togglePause = async (s: Subscription) => {
     const newStatus: SubscriptionStatus = s.status === 'Paused' ? 'Active' : 'Paused';
-    await updateSubscription(s.id, { status: newStatus });
-    toast.success(`Subscription ${newStatus.toLowerCase()}`);
-    await load();
+    try {
+      await updateSubscription(s.id, { status: newStatus });
+      toast.success(`Subscription ${newStatus.toLowerCase()}`);
+      await load();
+    } catch (err) {
+      refused(err, 'Could not change the subscription');
+    }
   };
 
   const cancel = async (s: Subscription) => {
     if (!confirm(`Cancel ${s.name} for ${s.memberName}?`)) return;
-    await updateSubscription(s.id, { status: 'Cancelled' });
-    toast.success('Cancelled');
-    await load();
+    try {
+      await updateSubscription(s.id, { status: 'Cancelled' });
+      toast.success('Cancelled');
+      await load();
+    } catch (err) {
+      refused(err, 'Could not cancel the subscription');
+    }
   };
 
+  // One that has billed a charge is cancelled instead: its charges name it.
   const remove = async (s: Subscription) => {
     if (!confirm(`Delete ${s.name} for ${s.memberName}?`)) return;
-    await deleteSubscription(s.id);
-    toast.success('Deleted');
-    await load();
+    try {
+      await deleteSubscription(s.id);
+      toast.success('Deleted');
+      await load();
+    } catch (err) {
+      refused(err, 'Could not delete the subscription');
+    }
   };
 
   const charge = async (s: Subscription) => {
@@ -206,6 +217,11 @@ export default function Subscriptions() {
     try {
       const count = await runDueBillingCycles();
       toast.success(`Ran ${count} due cycle${count === 1 ? '' : 's'}`);
+      await load();
+    } catch (err) {
+      // One refused (billed already, or at the same moment elsewhere) stops the run: say
+      // so, and show what the ones before it billed.
+      refused(err, 'Could not run the due cycles');
       await load();
     } finally {
       setRunningAll(false);
@@ -404,6 +420,7 @@ export default function Subscriptions() {
             <ViewSwitcher view={view} columns={columnChoices(subscriptionColumns)} className="md:ml-auto" />
           </div>
 
+          <ClubReadState reads={reads} what="Subscriptions">
           {loading ? (
             <div className="flex items-center justify-center py-20 text-slate-500">
               <Loader2 className="h-6 w-6 animate-spin" />
@@ -475,6 +492,7 @@ export default function Subscriptions() {
               )}
             </ViewTransition>
           )}
+          </ClubReadState>
         </main>
       </PageTransition>
 

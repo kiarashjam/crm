@@ -587,10 +587,7 @@ public class ClubMoneyTests
         using (var scope = factory.Services.CreateScope())
         {
             using var db = scope.ServiceProvider.EveryWorkspace();
-            var row = db.ClubDocuments.Single(d => d.Id == Guid.Parse(card));
-            var payload = JsonNode.Parse(row.Payload)!.AsObject();
-            payload["expiresAtUtc"] = DateTime.UtcNow.AddDays(-1).ToString("o");
-            row.Payload = payload.ToJsonString();
+            db.ClubGiftCards.Single(c => c.Id == Guid.Parse(card)).ExpiresAtUtc = DateTime.UtcNow.AddDays(-1);
             await db.SaveChangesAsync();
         }
 

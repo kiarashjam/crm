@@ -30,19 +30,22 @@ import {
   TabsContent,
 } from '@/app/components/ui/tabs';
 import {
-  getMembers,
   deleteMember,
   type Member,
   type MemberTier,
   type MemberStatus,
 } from '@/app/api/members';
-import { getCharges, getPayments, type Charge, type Payment } from '@/app/api/charges';
-import { getVisits, type Visit } from '@/app/api/visits';
+import { isSale, type Charge, type Payment } from '@/app/api/charges';
+import type { Visit } from '@/app/api/visits';
 import { getReservations, type Reservation } from '@/app/api/reservations';
-import { getLoyaltyLedger, type LoyaltyEntry, REASON_LABELS } from '@/app/api/loyalty';
+import { type LoyaltyEntry, REASON_LABELS } from '@/app/api/loyalty';
 import { commStatusLabel, getCommunications, type Communication } from '@/app/api/communications';
-import { getGiftCards, type GiftCard } from '@/app/api/giftCards';
+import type { GiftCard } from '@/app/api/giftCards';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { ClubReadState } from '@/app/components/ClubReadState';
+import {
+  NONE, useClubCharges, useClubMembers, useClubPayments, useClubReads, useClubVisits, useGiftCards, useLoyaltyLedger,
+} from '@/app/hooks/queries';
 import PageHero, { heroSecondary } from '@/app/components/PageHero';
 import { RecordAvatar } from '@/app/components/RecordCard';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
@@ -92,51 +95,48 @@ export default function MemberDetail() {
   const { format: formatCurrency } = useClubMoney();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [member, setMember] = useState<Member | null>(null);
-  const [allMembers, setAllMembers] = useState<Member[]>([]);
-  const [charges, setCharges] = useState<Charge[]>([]);
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [visits, setVisits] = useState<Visit[]>([]);
+  // The member and their money through the app's cache, shared with the club pages: a
+  // payment taken there shows here, and a failed read says so instead of "not found".
+  const membersQuery = useClubMembers();
+  const chargesQuery = useClubCharges();
+  const paymentsQuery = useClubPayments();
+  const visitsQuery = useClubVisits();
+  const loyaltyQuery = useLoyaltyLedger();
+  const giftCardsQuery = useGiftCards();
+  const reads = useClubReads(membersQuery, chargesQuery, paymentsQuery, visitsQuery, loyaltyQuery, giftCardsQuery);
+  const allMembers: Member[] = membersQuery.data ?? NONE;
+  const member = allMembers.find((x) => x.id === id) ?? null;
+  const charges: Charge[] = chargesQuery.data ?? NONE;
+  const payments: Payment[] = paymentsQuery.data ?? NONE;
+  const visits: Visit[] = visitsQuery.data ?? NONE;
+  const ledger: LoyaltyEntry[] = loyaltyQuery.data ?? NONE;
+  const giftCards: GiftCard[] = giftCardsQuery.data ?? NONE;
   const [reservations, setReservations] = useState<Reservation[]>([]);
-  const [ledger, setLedger] = useState<LoyaltyEntry[]>([]);
   const [comms, setComms] = useState<Communication[]>([]);
-  const [giftCards, setGiftCards] = useState<GiftCard[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [sideLoading, setSideLoading] = useState(true);
+  const loading = reads.loading || sideLoading;
   usePageLoading(loading);
   const [deleting, setDeleting] = useState(false);
 
-  const load = async () => {
-    try {
-      const [m, c, p, v, r, l, comm, g] = await Promise.all([
-        getMembers(),
-        getCharges(),
-        getPayments(),
-        getVisits(),
-        getReservations(),
-        getLoyaltyLedger(),
-        getCommunications(),
-        getGiftCards(),
-      ]);
-      setAllMembers(m);
-      const found = m.find((x) => x.id === id) ?? null;
-      setMember(found);
-      setCharges(c);
-      setPayments(p);
-      setVisits(v);
-      setReservations(r);
-      setLedger(l);
-      setComms(comm);
-      setGiftCards(g);
-    } catch {
-      toast.error('Failed to load member');
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Reservations and messages are not money and keep their own read.
   useEffect(() => {
-    void load();
-  }, [id]);
+    let live = true;
+    Promise.all([getReservations(), getCommunications()])
+      .then(([r, comm]) => {
+        if (!live) return;
+        setReservations(r);
+        setComms(comm);
+      })
+      .catch(() => {
+        if (live) toast.error('Could not load this member\'s reservations and messages');
+      })
+      .finally(() => {
+        if (live) setSideLoading(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
 
   const memberCharges = useMemo(
     () => charges.filter((c) => c.memberId === id),
@@ -170,8 +170,9 @@ export default function MemberDetail() {
     }, 0);
   }, [memberCharges]);
 
+  // What they spent: a balance brought over, once paid, was not spent here.
   const lifetimeSpend = useMemo(
-    () => memberCharges.filter((c) => c.status !== 'Voided').reduce((s, c) => s + c.paidAmount, 0),
+    () => memberCharges.filter((c) => c.status !== 'Voided' && isSale(c)).reduce((s, c) => s + c.paidAmount, 0),
     [memberCharges],
   );
 
@@ -193,6 +194,10 @@ export default function MemberDetail() {
         toast.success('Member removed');
         navigate('/members');
       }
+    } catch (err) {
+      // Refused while the member still has money with the club: the server's sentence says
+      // what to do instead, where the button used to seem to do nothing.
+      toast.error(err instanceof Error && err.message ? err.message : 'Failed to remove member');
     } finally {
       setDeleting(false);
     }
@@ -209,6 +214,17 @@ export default function MemberDetail() {
     );
   }
 
+
+  if (reads.failed) {
+    return (
+      <div className="min-h-screen bg-gradient-subtle">
+        <AppHeader />
+        <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
+          <ClubReadState reads={reads} what="This member">{null}</ClubReadState>
+        </main>
+      </div>
+    );
+  }
 
   if (!member) {
     return (

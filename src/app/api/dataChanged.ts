@@ -103,8 +103,13 @@ const LINKED = ['leads', 'contacts', 'companies', 'deals', 'tasks', 'activities'
  *   the workspace's currency and time zone decide how its figures are counted.
  * - Work-queue and report figures count leads, deals and tasks.
  *
- * A base not listed changes only its own records (the club's members, charges,
- * visits…), which is why checking someone in no longer reloads the sales lists.
+ * - The club's money is one ledger: a charge, a payment, a tab's close or a bill moves
+ *   the member's balance (on the members list) and their statement, a payment settles
+ *   charges, and closing a tab earns loyalty points. A balance set by hand on a member
+ *   is an entry too, and a member's merge moves the duplicate's entries.
+ *
+ * A base not listed changes only its own records (the club's visits, gift cards,
+ * donations…), which is why checking someone in no longer reloads the sales lists.
  * Add a base here when the server starts changing other records on its writes.
  */
 const CHANGES: Readonly<Record<string, readonly string[]>> = {
@@ -128,6 +133,11 @@ const CHANGES: Readonly<Record<string, readonly string[]>> = {
   joinrequests: ['team'],
   teams: ['team', 'reports'],
   duplicates: ['duplicates'],
+  members: ['members', 'charges', 'payments', 'statements'],
+  charges: ['charges', 'members', 'statements'],
+  payments: ['payments', 'charges', 'members', 'statements'],
+  tabs: ['tabs', 'charges', 'members', 'loyalty', 'statements'],
+  subscriptions: ['subscriptions', 'charges', 'members', 'statements'],
 };
 
 /** Which records an activity is about, from the body it was saved with. */
@@ -157,8 +167,9 @@ export function resourcesChangedBy(method: string | undefined, path: string, bod
   const base = segments[0] ?? '';
   const last = segments[segments.length - 1] ?? '';
   // A merge moves everything linked to the record merged away; a conversion makes
-  // a contact, a company and a deal from the lead.
-  if (last === 'merge' || (base === 'leads' && last === 'convert')) return [...LINKED];
+  // a contact, a company and a deal from the lead. A club member's merge moves club
+  // records, which its own entry below names.
+  if ((last === 'merge' && base !== 'members') || (base === 'leads' && last === 'convert')) return [...LINKED];
   if (base === 'activities' && (method ?? 'GET').toUpperCase() === 'POST') {
     const links = activityLinks(body);
     if (links) return [...new Set(['activities', ...links, 'work-queue', 'reports'])];

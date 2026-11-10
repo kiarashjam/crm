@@ -4,7 +4,7 @@
 // visit. A visit can earn loyalty points automatically — the staff check-in
 // flow records both at once.
 
-import { apiWithFallback, authFetch, authFetchJson, ensureOk } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson, ensureOk, type RequestOptions } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import { addLoyaltyEntry, TIER_MULTIPLIERS } from './loyalty';
 import { getMembers, type MemberTier } from './members';
@@ -131,10 +131,10 @@ const BASE_POINTS_BY_VENUE: Record<VisitVenue, number> = {
   Rooftop: 30,
 };
 
-export async function getVisits(): Promise<Visit[]> {
+export async function getVisits(req?: RequestOptions): Promise<Visit[]> {
   return apiWithFallback(
     async () => {
-      const res = await authFetchJson<Visit[]>('/api/visits');
+      const res = await authFetchJson<Visit[]>('/api/visits', { signal: req?.signal });
       return Array.isArray(res) ? res : [];
     },
     async () => {

@@ -111,6 +111,19 @@ public partial class AppDbContext
         Scope<ClubVisit>(model, e => e.OrganizationId);
         Scope<LoyaltyLedgerEntry>(model, e => e.OrganizationId);
         Scope<ClubDocument>(model, e => e.OrganizationId);
+        // The club's money ledger. Every row says its organization, the ones that hang off
+        // another (a tab's items, an allocation, a card's transactions) included, so none
+        // is ever read through a parent from another workspace.
+        Scope<ClubHouseAccount>(model, e => e.OrganizationId);
+        Scope<ClubCharge>(model, e => e.OrganizationId);
+        Scope<ClubPayment>(model, e => e.OrganizationId);
+        Scope<ClubPaymentAllocation>(model, e => e.OrganizationId);
+        Scope<ClubSubscription>(model, e => e.OrganizationId);
+        Scope<ClubGiftCard>(model, e => e.OrganizationId);
+        Scope<ClubGiftCardTransaction>(model, e => e.OrganizationId);
+        Scope<ClubTab>(model, e => e.OrganizationId);
+        Scope<ClubTabItem>(model, e => e.OrganizationId);
+        Scope<ClubDonation>(model, e => e.OrganizationId);
 
         // Copy templates follow a person rather than a workspace (TemplateRepository): the
         // system's templates are everyone's, a person's own go with them, and a team's
