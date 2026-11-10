@@ -55,13 +55,15 @@ const DUES: Charge = {
   amount: 299, paidAmount: 0, status: 'Pending', postedAtUtc: '2026-11-01T00:00:00Z',
 };
 const BAR: Charge = { ...DUES, id: 'c2', kind: 'Bar', description: 'Bar tab', amount: 40 };
+/** Charges a test adds to Jean's account for itself; emptied before each. */
+const moreCharges: Charge[] = [];
 vi.mock('@/app/api/members', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/app/api/members')>()),
   getMembers: async () => [JEAN],
 }));
 vi.mock('@/app/api/charges', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/app/api/charges')>()),
-  getCharges: async () => [DUES, BAR],
+  getCharges: async () => [DUES, BAR, ...moreCharges],
   getPayments: async () => [],
 }));
 vi.mock('@/app/api/visits', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/app/api/visits')>()), getVisits: async () => [] }));
@@ -119,6 +121,7 @@ Object.defineProperty(window, 'confirm', { value: confirm, configurable: true, w
 beforeEach(() => {
   localStorage.clear();
   resetClubCurrency();
+  moreCharges.length = 0;
   org.current = null;
   demo.on = false;
   confirm.mockClear();
@@ -189,6 +192,23 @@ describe("a member's online payments", () => {
 
     await waitFor(() => expect(pay.link).toHaveBeenCalledWith('m1', { purpose: 'charges', chargeIds: ['c2'] }));
     expect(await within(dialog).findByDisplayValue('https://club.example.ch/pay/tok-1')).toBeInTheDocument();
+  });
+
+  it("says whose a household member's rolled-up charge is, when ticking what a link is for", async () => {
+    // Roll-up puts a spouse's bills on the primary's account, so they are among the primary's
+    // open charges; the dialog says whose each is, as the account's charges list does.
+    as([PERMISSION.ManageMoney]);
+    moreCharges.push({ ...BAR, id: 'c3', kind: 'Spa', description: 'Massage', amount: 120, incurredByMemberId: 'm2', incurredByName: 'Marie Dupont' });
+    const { user, card } = await show();
+
+    await user.click(await within(card).findByRole('button', { name: /Pay online/ }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getAllByText(/^Incurred by /)).toHaveLength(1);
+    expect(within(dialog).getByText('Incurred by Marie Dupont')).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Pay Massage, incurred by Marie Dupont' }));
+    await user.click(within(dialog).getByRole('button', { name: /Make a link to copy/ }));
+
+    await waitFor(() => expect(pay.link).toHaveBeenCalledWith('m1', { purpose: 'charges', chargeIds: ['c3'] }));
   });
 
   it('emails a link for everything owed when nothing is ticked', async () => {

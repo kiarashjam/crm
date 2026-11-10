@@ -156,9 +156,14 @@ export function PayOnlineDialog({ open, onOpenChange, memberId, memberName, canE
                     <Checkbox
                       checked={chosen.includes(c.id)}
                       onCheckedChange={(v) => toggle(c.id, v === true)}
-                      aria-label={`Pay ${c.description}`}
+                      aria-label={c.incurredByName ? `Pay ${c.description}, incurred by ${c.incurredByName}` : `Pay ${c.description}`}
                     />
-                    <span className="min-w-0 flex-1 truncate">{c.description}</span>
+                    {/* A household member's bill rolled up to this account says whose it is, as the
+                        account's charges list does, so a link can be made for the right ones. */}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">{c.description}</span>
+                      {c.incurredByName && <span className="block truncate text-xs text-teal-700">Incurred by {c.incurredByName}</span>}
+                    </span>
                     <span className="shrink-0 font-medium">{format(c.amount - c.paidAmount)}</span>
                   </label>
                 </li>
