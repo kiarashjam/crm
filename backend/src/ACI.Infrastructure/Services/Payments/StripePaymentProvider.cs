@@ -162,6 +162,17 @@ public sealed class StripePaymentProvider : IPaymentProvider
         return ProviderResult<ProviderRefund>.Ok(ReadRefund(answer.Json!.Value));
     }
 
+    public async Task<ProviderResult<IReadOnlyList<ProviderRefund>>> ListRefundsAsync(string secretKey, string paymentIntentId, CancellationToken ct = default)
+    {
+        // A payment is refunded in a few parts at most; a hundred is Stripe's largest page.
+        var answer = await SendAsync(secretKey, HttpMethod.Get, $"v1/refunds?payment_intent={Uri.EscapeDataString(paymentIntentId)}&limit=100", null, null, ct);
+        if (answer.Failure is { } failure) return ProviderResult<IReadOnlyList<ProviderRefund>>.Fail(failure);
+        var refunds = new List<ProviderRefund>();
+        if (answer.Json is { } json && json.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array)
+            foreach (var refund in data.EnumerateArray()) refunds.Add(ReadRefund(refund));
+        return ProviderResult<IReadOnlyList<ProviderRefund>>.Ok(refunds);
+    }
+
     public async Task<ProviderResult<bool>> DetachPaymentMethodAsync(string secretKey, string paymentMethodId, CancellationToken ct = default)
     {
         var answer = await SendAsync(secretKey, HttpMethod.Post, $"v1/payment_methods/{Uri.EscapeDataString(paymentMethodId)}/detach", [], null, ct);

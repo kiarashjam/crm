@@ -185,8 +185,24 @@ public sealed partial class ClubPaymentsService
                 var payment = await _db.ClubPayments.AsNoTracking().FirstOrDefaultAsync(p => p.OrganizationId == organizationId
                     && p.Provider == PaymentProviders.Stripe && p.ProviderPaymentId == charge.PaymentIntentId && p.ReversesPaymentId == null, ct);
                 if (payment == null) return new Outcome("the refunded payment is not on the ledger", true);
+                // Since Stripe's API version 2022-11-15 a charge lists its refunds only when asked
+                // to, and a webhook cannot ask, so the event says that the charge was refunded but
+                // not by which refunds: they are read from Stripe. A post in an older version lists
+                // them, which is what there is to go on while the key is not set.
+                var refunds = charge.Refunds;
+                if (config.StripeKey != null)
+                {
+                    var listed = await Stripe.ListRefundsAsync(config.StripeKey, charge.PaymentIntentId, ct);
+                    if (listed.Failure is { } failure) throw new InvalidOperationException($"Stripe did not list the payment's refunds: {failure.Message}");
+                    refunds = listed.Value!;
+                }
+                else if (refunds.Count == 0)
+                {
+                    // Failed, so Stripe posts it again: once the key is back, the refunds are read.
+                    throw new InvalidOperationException("The payment's refunds cannot be read from Stripe without the Stripe key.");
+                }
                 var recorded = 0;
-                foreach (var refund in charge.Refunds.Where(r => r.Status is "succeeded" or "pending"))
+                foreach (var refund in refunds.Where(r => r.Status is "succeeded" or "pending"))
                 {
                     var result = await _ledger.RecordProviderRefundAsync(organizationId, payment.Id,
                         new ProviderRefundEntry(refund.Amount, "Refunded in Stripe", PaymentProviders.Stripe, refund.Id, "Stripe"), ct);

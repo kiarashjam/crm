@@ -36,6 +36,12 @@ public interface IPaymentProvider
 
     Task<ProviderResult<ProviderRefund>> RefundAsync(string secretKey, ProviderRefundRequest request, CancellationToken ct = default);
 
+    /// <summary>
+    /// The refunds made on a payment, as the provider lists them. A refund made in the provider's
+    /// own dashboard is read from here: the charge a webhook reports it with does not list them.
+    /// </summary>
+    Task<ProviderResult<IReadOnlyList<ProviderRefund>>> ListRefundsAsync(string secretKey, string paymentIntentId, CancellationToken ct = default);
+
     /// <summary>Removes a saved card or mandate from the customer, so it can no longer be charged.</summary>
     Task<ProviderResult<bool>> DetachPaymentMethodAsync(string secretKey, string paymentMethodId, CancellationToken ct = default);
 

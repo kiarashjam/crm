@@ -444,27 +444,40 @@ public class StripePaymentsTests
         sent.Form["amount"].Should().Be("5000");
         sent.IdempotencyKey.Should().StartWith("cadence-refund-");
 
-        // Stripe then reports that refund, and one made in its own dashboard.
-        object Refunds(params (string Id, long Amount)[] refunds) => new
+        // Stripe then reports that refund, and one made in its own dashboard. Since API version
+        // 2022-11-15 a charge in an event no longer lists its refunds (and a webhook cannot ask for
+        // them), so the charge says only that it was refunded; Stripe lists the refunds when asked.
+        var atStripe = new List<(string Id, long Amount)>();
+        app.Stripe.On("GET", "/v1/refunds", r => (HttpStatusCode.OK, new
         {
-            id = $"evt_refund_{refunds.Length}", @object = "event", type = "charge.refunded",
+            @object = "list",
+            data = atStripe.Where(_ => r.Query.Contains("payment_intent=pi_1", StringComparison.Ordinal))
+                .Select(x => new { id = x.Id, @object = "refund", status = "succeeded", amount = x.Amount, currency = "chf", payment_intent = "pi_1" }).ToArray(),
+            has_more = false,
+        }));
+        object Refunded(long amountRefunded) => new
+        {
+            id = $"evt_refund_{amountRefunded}", @object = "event", type = "charge.refunded",
             data = new
             {
                 @object = new
                 {
-                    id = "ch_pi_1", @object = "charge", payment_intent = "pi_1", currency = "chf",
-                    refunds = new { data = refunds.Select(r => new { id = r.Id, @object = "refund", status = "succeeded", amount = r.Amount, currency = "chf", payment_intent = "pi_1" }).ToArray() },
+                    id = "ch_pi_1", @object = "charge", payment_intent = "pi_1", currency = "chf", amount = 29900, amount_refunded = amountRefunded, refunded = false,
                 },
             },
         };
-        await Json(await stripe.SendAsync(FakeStripe.Webhook(club.Webhook, Secret, Refunds(("re_1", 5000)))), "Stripe reports the refund");
-        await Json(await stripe.SendAsync(FakeStripe.Webhook(club.Webhook, Secret, Refunds(("re_1", 5000), ("re_2", 1000)))), "and one made in its dashboard");
+        atStripe.Add(("re_1", 5000));
+        await Json(await stripe.SendAsync(FakeStripe.Webhook(club.Webhook, Secret, Refunded(5000))), "Stripe reports the refund");
+        atStripe.Add(("re_2", 1000));
+        await Json(await stripe.SendAsync(FakeStripe.Webhook(club.Webhook, Secret, Refunded(6000))), "and one made in its dashboard");
 
         var payment = (await Json(await club.Owner.GetAsync($"/api/payments?memberId={memberId}"), "payments")).EnumerateArray().Single();
         payment.GetProperty("refundedAmount").GetDecimal().Should().Be(60m, "50 asked for here, 10 made in Stripe, each once");
         payment.GetProperty("refunds").GetArrayLength().Should().Be(2);
         var balance = await Json(await club.Owner.GetAsync($"/api/members/{memberId}/balance"), "balance");
         balance.GetProperty("balance").GetDecimal().Should().Be(-60m, "the dues owe again what was paid back");
+        app.Stripe.Sent("GET", "/v1/refunds").Should().NotBeEmpty()
+            .And.OnlyContain(r => r.Query.Contains("payment_intent=pi_1", StringComparison.Ordinal), "the payment's refunds are read from Stripe");
     }
 
     [Fact]
