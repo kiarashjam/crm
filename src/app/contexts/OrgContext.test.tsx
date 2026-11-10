@@ -45,6 +45,26 @@ describe('a tab with two workspaces open in the browser', () => {
     expect(getCurrentOrganizationId()).toBe('pavillon');
   });
 
+  it('keeps the workspace it takes on a sign-in in another tab, whatever that tab picks next', async () => {
+    // This tab was opened signed out, so it had no workspace of its own. Another tab
+    // signs in, and this one takes the workspace that tab picked. It must keep it: a
+    // tab still reading the shared copy sent its next request to whichever workspace
+    // the other tab switched to, under this tab's header.
+    localStorage.removeItem('aci_token');
+    render(<OrgProvider><CurrentWorkspace /></OrgProvider>);
+    expect(await screen.findByText('none')).toBeInTheDocument();
+
+    localStorage.setItem('aci_token', 'token');
+    localStorage.setItem('aci_org_id', 'lac-leman');
+    await act(async () => { window.dispatchEvent(new Event(AUTH_SESSION_CHANGED)); });
+    expect(await screen.findByText('Lac Léman SA')).toBeInTheDocument();
+
+    // The other tab switches to Pavillon 46.
+    localStorage.setItem('aci_org_id', 'pavillon');
+
+    expect(getCurrentOrganizationId()).toBe('lac-leman');
+  });
+
   it('opens a new tab in its own workspace once it has the focus again', async () => {
     localStorage.setItem('aci_org_id', 'pavillon');
     render(<OrgProvider><CurrentWorkspace /></OrgProvider>);

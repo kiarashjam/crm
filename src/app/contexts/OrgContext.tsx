@@ -15,7 +15,6 @@ import {
   type InviteDto,
 } from '@/app/api/organizations';
 import {
-  getCurrentOrganizationId,
   setCurrentOrganizationId,
   keepWorkspaceInThisTab,
   offerWorkspaceToNewTabs,
@@ -89,7 +88,11 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       ]);
       setOrganizations(orgs);
       setPendingInvites(invites);
-      const stored = getCurrentOrganizationId();
+      // This tab's own workspace, or, if it has none yet (it was opened signed out and
+      // another tab has just signed in), the shared one, now made this tab's own.
+      // Taking the shared one without keeping it left this tab following every switch
+      // made in other tabs, while its header still named the one it took.
+      const stored = keepWorkspaceInThisTab();
       const storedIsValid = Boolean(stored && orgs.some((o) => o.id === stored));
       if (storedIsValid) {
         setCurrentOrgIdState(stored);
