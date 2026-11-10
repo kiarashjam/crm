@@ -22,8 +22,11 @@ namespace ACI.WebApi;
 /// </para>
 /// <para>
 /// Only once the database has what the baseline would have made: every table and column
-/// the model maps. One that lacks any is refused, not recorded, because once recorded
-/// nothing would ever add them. While the start-up DDL still runs first, it adds what it
+/// the baseline's model maps. One that lacks any is refused, not recorded, because once
+/// recorded nothing would ever add them. What a migration after the baseline adds (the club
+/// ledger's tables, say) is not looked for: that migration runs next and adds it. It used to
+/// be held against the current model, so the first migration after the baseline that made a
+/// table stopped every database made the old way from being recorded at all. While the start-up DDL still runs first, it adds what it
 /// made; once that DDL is gone, a database that never started on a release with it has to
 /// do so first. What that DDL never made (a column only a migration from before the
 /// baseline added, on a database that migration never ran on) has to be added by hand.
@@ -74,7 +77,7 @@ public static class SchemaBaseline
     /// recorded, or one with no tables yet.
     /// </summary>
     /// <returns>Whether it recorded the baseline.</returns>
-    /// <exception cref="InvalidOperationException">The database lacks a table or column the model maps.</exception>
+    /// <exception cref="InvalidOperationException">The database lacks a table or column the baseline maps.</exception>
     public static async Task<bool> RecordOnExistingDatabaseAsync(AppDbContext db, ILogger logger, CancellationToken ct = default)
     {
         var history = db.GetService<IHistoryRepository>();
@@ -82,7 +85,10 @@ public static class SchemaBaseline
             && (await history.GetAppliedMigrationsAsync(ct)).Any(m => m.MigrationId == MigrationId))
             return false;
 
-        var before = await CompareAsync(db, ct);
+        // What the baseline makes, not what the model has now: the migrations after the
+        // baseline run on this database once it is recorded, and make the rest.
+        var baseline = BaselineModel(db);
+        var before = await CompareWithAsync(db, baseline.GetRelationalModel(), ct);
         if (before.TableCount == 0) return false;
         if (before.Missing.Count > 0)
         {
@@ -109,10 +115,10 @@ public static class SchemaBaseline
                 logger.LogWarning(ex, "Could not {What} before recording the baseline", what);
             }
         }
-        await PutRightAsync(NamePrimaryKeysSql(db.Model, before.PrimaryKeys), "give the primary keys the baseline's names");
+        await PutRightAsync(NamePrimaryKeysSql(baseline, before.PrimaryKeys), "give the primary keys the baseline's names");
         await PutRightAsync(OutreachStepsForeignKeySql, "add the sequence steps' foreign key");
         var indexes = (await db.Database.SqlQueryRaw<string>(IndexNamesSql).ToListAsync(ct)).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        foreach (var (name, sql) in MissingPlainIndexesSql(db, indexes, logger))
+        foreach (var (name, sql) in MissingPlainIndexesSql(db, baseline, indexes, logger))
             await PutRightAsync(sql, $"add the index {name}");
 
         await db.Database.ExecuteSqlRawAsync(history.GetCreateIfNotExistsScript(), ct);
@@ -122,7 +128,7 @@ public static class SchemaBaseline
             history.GetEndIfScript()), ct);
         logger.LogInformation("Recorded the baseline migration {MigrationId} on a database made before it, without running it", MigrationId);
 
-        var after = await CompareAsync(db, ct);
+        var after = await CompareWithAsync(db, baseline.GetRelationalModel(), ct);
         foreach (var difference in after.Different)
             logger.LogWarning("The database differs from the baseline: {Difference}. A migration that changes it has to allow for that", difference);
         return true;
@@ -134,7 +140,21 @@ public static class SchemaBaseline
     /// indexes, column types and nullability). Tables and columns it has beyond the model
     /// are not counted: a column the model no longer maps is left alone, not dropped.
     /// </summary>
-    public static async Task<SchemaComparison> CompareAsync(AppDbContext db, CancellationToken ct = default)
+    public static Task<SchemaComparison> CompareAsync(AppDbContext db, CancellationToken ct = default) =>
+        CompareWithAsync(db, db.Model.GetRelationalModel(), ct);
+
+    /// <summary>
+    /// The model as the baseline migration left it (its designer's target model), ready to
+    /// write SQL from: what a database made the old way has to have before it is recorded.
+    /// </summary>
+    public static IModel BaselineModel(AppDbContext db)
+    {
+        var migrations = db.GetService<IMigrationsAssembly>();
+        var migration = migrations.CreateMigration(migrations.Migrations[MigrationId], db.Database.ProviderName!);
+        return db.GetService<IModelRuntimeInitializer>().Initialize(migration.TargetModel!, designTime: true);
+    }
+
+    private static async Task<SchemaComparison> CompareWithAsync(AppDbContext db, IRelationalModel model, CancellationToken ct)
     {
         var rows = await db.Database.SqlQueryRaw<CatalogRow>(CatalogSql).ToListAsync(ct);
         var ignoreCase = StringComparer.OrdinalIgnoreCase;
@@ -148,7 +168,7 @@ public static class SchemaBaseline
 
         var missing = new List<string>();
         var different = new List<string>();
-        foreach (var table in db.Model.GetRelationalModel().Tables)
+        foreach (var table in model.Tables)
         {
             if (!tables.Contains(table.Name))
             {
@@ -227,9 +247,8 @@ public static class SchemaBaseline
     /// index or a foreign key the data might not meet changes what a save or a delete does,
     /// and is left to the warnings.
     /// </remarks>
-    private static List<(string Name, string Sql)> MissingPlainIndexesSql(AppDbContext db, IReadOnlySet<string> existing, ILogger logger)
+    private static List<(string Name, string Sql)> MissingPlainIndexesSql(AppDbContext db, IModel model, IReadOnlySet<string> existing, ILogger logger)
     {
-        var model = db.GetService<IDesignTimeModel>().Model;
         var generator = db.GetService<IMigrationsSqlGenerator>();
         var missing = new List<(string, string)>();
         foreach (var index in model.GetRelationalModel().Tables.SelectMany(t => t.Indexes))
