@@ -380,6 +380,48 @@ public class StripePaymentsTests
     }
 
     [Fact]
+    public async Task TheCardIsNeverChargedForWhatTheMembersCreditAlreadyCovers()
+    {
+        await using var app = new PaymentsApp();
+        var club = await ClubAsync(app);
+        // Credit is spent on charges by hand (AppliedCredit), so dues can stand open on an
+        // account in credit: one member prepaid more than the dues, another part of them.
+        var (prepaid, _) = await SavedCardAsync(app, club, autoPay: true);
+        var (partly, _) = await SavedCardAsync(app, club, autoPay: true);
+        await Json(await club.Owner.PutAsync($"/api/members/{prepaid}", Body(new { houseAccountBalance = 500m })), "credit 500, the year paid ahead");
+        await Json(await club.Owner.PutAsync($"/api/members/{partly}", Body(new { houseAccountBalance = 100m })), "credit 100, overpaid last month");
+        await ChargeAsync(club.Owner, prepaid, 299m);
+        var partlyDues = await ChargeAsync(club.Owner, partly, 299m);
+        app.Stripe.On("POST", "/v1/payment_intents", r => (HttpStatusCode.OK, new
+        {
+            id = $"pi_{r.Form["metadata[cadence_member]"][..8]}", @object = "payment_intent", status = "succeeded", amount = long.Parse(r.Form["amount"]),
+            amount_received = long.Parse(r.Form["amount"]), currency = "chf", payment_method_types = new[] { "card" }, metadata = MetadataOf(r),
+        }));
+
+        using (var scope = app.Services.CreateScope())
+            await scope.ServiceProvider.GetRequiredService<IClubPayments>().CollectAutoPayAsync(DateTime.UtcNow);
+
+        var sent = app.Stripe.Sent("POST", "/v1/payment_intents");
+        sent.Should().ContainSingle("the prepaid member's credit covers their dues").Which.Form["amount"].Should().Be("19900", "299 of dues less 100 of credit");
+        sent.Single().Form["metadata[cadence_member]"].Should().Be(partly.ToString());
+        (await Json(await club.Owner.GetAsync($"/api/members/{prepaid}/balance"), "the prepaid balance")).GetProperty("balance").GetDecimal()
+            .Should().Be(201m, "still in credit, and nothing charged to the card");
+        (await Json(await club.Owner.GetAsync($"/api/members/{partly}/balance"), "the other balance")).GetProperty("balance").GetDecimal()
+            .Should().Be(0m, "the credit and the card pay the dues between them");
+
+        // Staff charging the card for everything open take no more than the account owes either.
+        (await Refused(await club.Owner.PostAsync($"/api/members/{prepaid}/card/charge", Body(new { })), HttpStatusCode.BadRequest,
+            "charge a card the credit covers")).Should().Contain("nothing to pay");
+        await ChargeAsync(club.Owner, prepaid, 250m, "Dining", "Dinner");
+        var charged = await Json(await club.Owner.PostAsync($"/api/members/{prepaid}/card/charge", Body(new { })), "charge what is owed");
+        charged.GetProperty("amount").GetDecimal().Should().Be(49m, "549 open less 500 of credit");
+        app.Stripe.Sent("POST", "/v1/payment_intents").Last().Form["amount"].Should().Be("4900");
+        // The other member's dues show what the card paid; their credit stays for staff to apply.
+        (await Json(await club.Owner.GetAsync($"/api/charges?memberId={partly}"), "the other member's charges")).EnumerateArray()
+            .Single(c => c.GetProperty("id").GetGuid() == partlyDues).GetProperty("paidAmount").GetDecimal().Should().Be(199m);
+    }
+
+    [Fact]
     public async Task ADeclinedCardIsMarkedFailedAndNotTriedAgainOnItsOwn_AndStaffCanChargeTheCardThemselves()
     {
         await using var app = new PaymentsApp();

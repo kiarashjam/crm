@@ -345,7 +345,8 @@ public sealed partial class ClubPaymentsService : IClubPayments
 
         var open = await OpenChargesAsync(organizationId, memberId, ct);
         var wanted = request.ChargeIds is { Count: > 0 } ids ? open.Where(c => ids.Contains(c.Id)).ToList() : open;
-        var amount = wanted.Sum(c => c.Amount - c.PaidAmount);
+        // Never more than the account owes: credit the member holds is theirs to pay with first.
+        var amount = Math.Min(wanted.Sum(c => c.Amount - c.PaidAmount), await OwedAsync(organizationId, memberId, ct));
         if (wanted.Count == 0 || amount <= 0) return DomainErrors.Payments.NothingToPay;
         var currency = await AccountCurrencyAsync(organizationId, memberId, config, ct);
 
@@ -433,13 +434,21 @@ public sealed partial class ClubPaymentsService : IClubPayments
                 var dues = (await OpenChargesAsync(organizationId, profile.MemberId, ct))
                     .Where(c => c.Kind == "Dues" && c.EntryType == ClubEntryTypes.Charge && c.PostedAtUtc >= agreed.AddMinutes(-1))
                     .ToList();
+                if (dues.Count == 0) continue;
+                // What the account owes, after any credit the member holds. Credit is spent on
+                // charges by hand (AppliedCredit), so dues can stand open on an account in credit,
+                // and the card is only charged for what that credit does not cover. A charge it
+                // covers is not claimed, so a later run charges it if the credit goes elsewhere.
+                var owed = await OwedAsync(organizationId, member.Id, ct);
                 foreach (var charge in dues)
                 {
                     if (tried >= MaxAutoPayPerRun) break;
+                    var amount = Math.Min(charge.Amount - charge.PaidAmount, owed);
+                    if (amount <= 0) break;
                     var key = $"autopay:{charge.Id}:1";
                     if (await _db.ClubOnlinePayments.AnyAsync(p => p.OrganizationId == organizationId && p.AttemptKey == key, ct)) continue;
                     var currency = await AccountCurrencyAsync(organizationId, member.Id, config, ct);
-                    var attempt = NewAttempt(organizationId, member, OnlinePaymentPurposes.AutoPay, charge.Amount - charge.PaidAmount, currency,
+                    var attempt = NewAttempt(organizationId, member, OnlinePaymentPurposes.AutoPay, amount, currency,
                         $"{config.ClubName}: {charge.Description}", charge.Id.ToString());
                     attempt.AttemptKey = key;
                     // Another server, or a run before this one, took it.
@@ -453,6 +462,7 @@ public sealed partial class ClubPaymentsService : IClubPayments
                     {
                         _logger.LogError(ex, "Charging dues {ChargeId} to a saved card failed", charge.Id);
                     }
+                    if (attempt.Status != OnlinePaymentStatuses.Failed) owed -= amount;
                 }
             }
             _db.ChangeTracker.Clear();
@@ -526,9 +536,14 @@ public sealed partial class ClubPaymentsService : IClubPayments
             };
             return (owed, $"{config.ClubName}: {words}");
         }
+        return (await OwedAsync(organizationId, memberId, ct), $"{config.ClubName}: what the account owes");
+    }
+
+    /// <summary>What the member's account owes now, after any credit they hold; nothing when it is in credit.</summary>
+    private async Task<decimal> OwedAsync(Guid organizationId, Guid memberId, CancellationToken ct)
+    {
         var balance = await _ledger.BalanceAsync(organizationId, memberId, null, ct);
-        var due = balance.IsSuccess ? Math.Max(0, -balance.Value.Balance) : 0;
-        return (due, $"{config.ClubName}: what the account owes");
+        return balance.IsSuccess ? Math.Max(0, -balance.Value.Balance) : 0;
     }
 
     private async Task<List<ChargeDto>> OpenChargesAsync(Guid organizationId, Guid memberId, CancellationToken ct) =>
