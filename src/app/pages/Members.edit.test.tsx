@@ -4,6 +4,7 @@
 // "Member updated".
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import type { Member } from '@/app/api/members';
 import { withQueries } from '@/test/queryWrapper';
@@ -62,5 +63,51 @@ describe('editing a member', () => {
 
     await waitFor(() => expect(membersApi.updateMember).toHaveBeenCalledTimes(1));
     expect(membersApi.updateMember.mock.calls[0]![1]).toMatchObject({ phone: '+41 79 765 43 21', notes: 'Prefers texts' });
+  });
+});
+
+// Radix Select asks the browser about pointer capture and scrolling, which happy-dom lacks.
+const proto = Element.prototype as unknown as Record<string, unknown>;
+proto.hasPointerCapture ??= () => false;
+proto.releasePointerCapture ??= () => undefined;
+proto.scrollIntoView ??= () => undefined;
+
+describe('adding a member', () => {
+  // The price catalogue here is demo data's: Gold is 299 a month with a 1,000 initiation fee.
+  const openAdd = async () => {
+    const user = userEvent.setup();
+    membersApi.createMember.mockResolvedValue({ ...jean, id: 'm2', firstName: 'Lea' });
+    render(withQueries(<MemoryRouter><Members /></MemoryRouter>));
+    await user.click(await screen.findByRole('button', { name: /Add member/ }));
+    fireEvent.change(screen.getByLabelText('First name'), { target: { value: 'Lea' } });
+    fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'Meier' } });
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'lea@example.ch' } });
+    await user.click(screen.getByLabelText('Tier'));
+    await user.click(await screen.findByRole('option', { name: /^Gold/ }));
+    return user;
+  };
+
+  it('says the dues start today, not that the member was billed, when only the dues are started', async () => {
+    const user = await openAdd();
+
+    await user.click(screen.getByLabelText('Start their dues today'));
+    await user.click(screen.getByRole('button', { name: 'Add member' }));
+
+    await waitFor(() => expect(membersApi.createMember).toHaveBeenCalledTimes(1));
+    expect(membersApi.createMember.mock.calls[0]![0]).toMatchObject({ tier: 'Gold', startDues: true });
+    expect(membersApi.createMember.mock.calls[0]![0].chargeInitiationFee).toBeUndefined();
+    // Nothing was charged: the first period is billed by the billing run, or "Bill what is due".
+    expect(toast.success).toHaveBeenCalledWith('Member added: their dues start today');
+  });
+
+  it('says the initiation fee was charged when it was', async () => {
+    const user = await openAdd();
+
+    await user.click(screen.getByLabelText('Charge the initiation fee'));
+    await user.click(screen.getByRole('button', { name: 'Add member' }));
+
+    await waitFor(() => expect(membersApi.createMember).toHaveBeenCalledTimes(1));
+    expect(membersApi.createMember.mock.calls[0]![0]).toMatchObject({ chargeInitiationFee: true });
+    expect(toast.success).toHaveBeenCalledWith('Member added and initiation fee charged');
   });
 });

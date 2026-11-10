@@ -309,12 +309,21 @@ export default function Members() {
         await updateMember(editing.id, { ...payload, phone: payload.phone ?? null, notes: payload.notes ?? null });
         toast.success('Member updated');
       } else {
+        // What adding them does to their account, said as it is: the fee is charged now;
+        // starting the dues starts a subscription, whose first period the billing bills
+        // (the daily run, or "Bill what is due"). A fee box ticked for a tier switched
+        // since to one without a fee is not sent.
+        const feeCharged = form.chargeInitiationFee && (formTier?.initiationFee ?? 0) > 0;
+        const duesStarted = form.startDues && (Number(form.duesAmount) || 0) > 0;
         await createMember({
           ...payload,
           startDues: form.startDues || undefined,
-          chargeInitiationFee: form.chargeInitiationFee || undefined,
+          chargeInitiationFee: feeCharged || undefined,
         });
-        toast.success(form.startDues || form.chargeInitiationFee ? 'Member added and billed' : 'Member added');
+        toast.success(feeCharged && duesStarted ? 'Member added: initiation fee charged, and their dues start today'
+          : feeCharged ? 'Member added and initiation fee charged'
+            : duesStarted ? 'Member added: their dues start today'
+              : 'Member added');
       }
       setDialogOpen(false);
       await load();
