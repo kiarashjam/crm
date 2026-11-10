@@ -182,6 +182,19 @@ public class ClubPayment : Common.BaseEntity
 
     public string? Reason { get; set; }
     public string? IdempotencyKey { get; set; }
+
+    /// <summary>
+    /// Where the money came from outside the club, when it did: stripe or bank (see
+    /// PaymentProviders). None for a payment taken at the desk or entered by hand.
+    /// </summary>
+    public string? Provider { get; set; }
+
+    /// <summary>
+    /// The provider's id for it: Stripe's payment intent (pi_…) or refund (re_…), or the
+    /// bank's reference for the transfer.
+    /// </summary>
+    public string? ProviderPaymentId { get; set; }
+
     public DateTime CreatedAtUtc { get; set; }
     public Guid? CreatedByUserId { get; set; }
     public string? CreatedByName { get; set; }

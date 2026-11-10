@@ -126,6 +126,17 @@ export async function downloadStatementPdf(memberId: string, fromUtc: string, to
   downloadFile(await res.blob(), fileNameOf(res, 'statement.pdf'));
 }
 
+/**
+ * Downloads an invoice for one charge, built on the server: what is still owed on it, with a
+ * Swiss QR-bill whose reference pays that charge when the club's bank details are set.
+ */
+export async function downloadChargeInvoicePdf(chargeId: string): Promise<void> {
+  if (servesDemoData()) throw new Error('Invoices are built by the live app; demo data has none.');
+  const res = await authFetch(`/api/charges/${chargeId}/invoice.pdf`);
+  await ensureOk(res);
+  downloadFile(await res.blob(), fileNameOf(res, 'invoice.pdf'));
+}
+
 /** Emails the member their statement for [fromUtc, toUtc), the PDF attached. */
 export async function emailStatement(memberId: string, fromUtc: string, toUtc: string): Promise<StatementDelivery> {
   if (servesDemoData()) throw new Error('Statements are emailed from the live app; demo data sends no email.');

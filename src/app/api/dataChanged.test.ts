@@ -195,6 +195,26 @@ describe('what a write changes', () => {
   it("a club member's merge moves their applications and household links", () => {
     expect(resourcesChangedBy('POST', '/api/members/m-1/merge')).toEqual(expect.arrayContaining(['applications', 'households']));
   });
+
+  it("money from outside: a bank file's payments and a saved card's charge refresh the ledger's lists, a card's setup only itself", () => {
+    // Matched transfers and one allocated by hand are payments: they settle charges and move balances.
+    for (const path of ['/api/bank/imports', '/api/bank/transactions/t-1/allocate', '/api/bank/transactions/t-1/ignore']) {
+      expect(resourcesChangedBy('POST', path)).toEqual(expect.arrayContaining(['bank', 'payments', 'charges', 'members', 'statements']));
+    }
+    // Stripe can answer a saved card's charge at once, and the payment is on the ledger before the answer.
+    expect(resourcesChangedBy('POST', '/api/members/m-1/card/charge')).toEqual(
+      expect.arrayContaining(['payment-profile', 'online-payments', 'payments', 'charges', 'members', 'statements']),
+    );
+    // A card removed, dues on file turned on or a pay link made move no money.
+    expect(resourcesChangedBy('DELETE', '/api/members/m-1/card')).toEqual(['payment-profile']);
+    expect(resourcesChangedBy('PUT', '/api/members/m-1/autopay')).toEqual(['payment-profile']);
+    expect(resourcesChangedBy('POST', '/api/members/m-1/pay-link')).toEqual(['payment-profile']);
+    // Emailing the link logs a message, like emailing a statement.
+    expect(resourcesChangedBy('POST', '/api/members/m-1/pay-link/email')).toEqual(['communications']);
+    expect(resourcesChangedBy('PUT', '/api/payment-settings')).toEqual(['payment-settings']);
+    // A merge moves the duplicate's card, online payments and transfers to the kept member.
+    expect(resourcesChangedBy('POST', '/api/members/m-1/merge')).toEqual(expect.arrayContaining(['payment-profile', 'online-payments', 'bank']));
+  });
 });
 
 describe('what the signal carries', () => {

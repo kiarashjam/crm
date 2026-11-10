@@ -103,6 +103,15 @@ public partial class AppDbContext : DbContext
     public DbSet<ClubApplicationForm> ClubApplicationForms => Set<ClubApplicationForm>();
     public DbSet<ClubHousehold> ClubHouseholds => Set<ClubHousehold>();
     public DbSet<ClubHouseholdMember> ClubHouseholdMembers => Set<ClubHouseholdMember>();
+    // Money from outside the club (Stripe, bank files with QR references) and the accounting
+    // settings: what a payment provider or the bank said, kept beside the ledger it posts to.
+    public DbSet<ClubPaymentSettings> ClubPaymentSettings => Set<ClubPaymentSettings>();
+    public DbSet<ClubPaymentProfile> ClubPaymentProfiles => Set<ClubPaymentProfile>();
+    public DbSet<ClubOnlinePayment> ClubOnlinePayments => Set<ClubOnlinePayment>();
+    public DbSet<ClubProviderEvent> ClubProviderEvents => Set<ClubProviderEvent>();
+    public DbSet<ClubPaymentReference> ClubPaymentReferences => Set<ClubPaymentReference>();
+    public DbSet<ClubBankImport> ClubBankImports => Set<ClubBankImport>();
+    public DbSet<ClubBankTransaction> ClubBankTransactions => Set<ClubBankTransaction>();
     public DbSet<SalesTeam> SalesTeams => Set<SalesTeam>();
     public DbSet<SalesTeamMember> SalesTeamMembers => Set<SalesTeamMember>();
     public DbSet<ImportBatch> ImportBatches => Set<ImportBatch>();

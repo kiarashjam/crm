@@ -1033,7 +1033,11 @@ public static readonly Error AlreadyMember = new(
             "Charge.DescriptionRequired", "A charge needs a description.");
 
         public static readonly Error MethodInvalid = new(
-            "Payment.MethodInvalid", "A payment is made by CardOnFile, Cash, Check, Wire or AppliedCredit.");
+            "Payment.MethodInvalid", "A payment is made by CardOnFile, Card, Twint, DirectDebit, Cash, Check, Wire or AppliedCredit.");
+
+        public static Error ReceivedCurrencyMismatch(string received, string account) => new(
+            "Payment.CurrencyMismatch",
+            $"The money came in {received}, and the member's account is kept in {account}: record it by hand at the rate the bank used.");
 
         public static readonly Error ExpiryInvalid = new(
             "GiftCard.ExpiryInvalid", "A gift card's expiry must be a date in the future.");
@@ -1280,6 +1284,80 @@ public static readonly Error AlreadyMember = new(
 
         public static readonly Error Changed = new(
             "CatalogItem.Changed.Conflict", "Someone else changed this item at the same moment, so nothing was saved. Reload and try again.");
+    }
+
+    /// <summary>
+    /// Money from outside the club: payment settings, Stripe, QR-bills, bank files and the journal.
+    /// </summary>
+    public static class Payments
+    {
+        public static Error SettingsInvalid(string sentence) => new("PaymentSettings.Invalid", sentence);
+
+        public static readonly Error SettingsChanged = new(
+            "PaymentSettings.Changed.Conflict", "Someone else changed the payment settings at the same moment, so nothing was saved. Reload and try again.");
+
+        public static readonly Error NotSetUp = new(
+            "Payments.NotSetUp", "Online payments are not set up in this workspace. Someone who manages settings adds the Stripe key under Club settings, Payments.");
+
+        public static readonly Error KeyUnreadable = new(
+            "Payments.KeyUnreadable", "The saved Stripe key can no longer be read on this server. Enter it again under Club settings, Payments.");
+
+        public static Error ProviderRefused(string message) => new("Payments.ProviderRefused", message);
+
+        public static Error ProviderUnreachable(string message) => new("Payments.SendFailed", message);
+
+        public static readonly Error LinkInvalid = new(
+            "PayLink.NotFound", "This payment link is not valid any more. Ask the club for a new one.");
+
+        public static readonly Error PurposeInvalid = new(
+            "PayLink.PurposeInvalid", "A payment link is for what the member owes (account), some of their charges (charges), or saving a card (setup).");
+
+        public static readonly Error NothingToPay = new(
+            "Payments.NothingToPay", "There is nothing to pay: the charges are paid, or the account is in credit.");
+
+        public static readonly Error TooManyCharges = new(
+            "Payments.TooManyCharges", "Choose at most 50 charges at a time, or none for everything the member owes.");
+
+        public static readonly Error CurrencyNotOffered = new(
+            "Payments.CurrencyNotOffered", "The member's account is in a currency online payments do not take.");
+
+        public static readonly Error NoSavedCard = new(
+            "Payments.NoSavedCard", "This member has no saved card. Send them a link to save one first.");
+
+        public static readonly Error AgreementRequired = new(
+            "Payments.AgreementRequired", "Charging dues to a saved card needs the member's agreement. Confirm that they agreed.");
+
+        public static readonly Error ProfileChanged = new(
+            "PaymentProfile.Changed.Conflict", "Someone else changed this member's saved card at the same moment, so nothing was saved. Reload and try again.");
+
+        public static readonly Error ChargeInProgress = new(
+            "Payments.Charge.Conflict", "A charge to this card is already under way for these charges. Wait for it to finish.");
+
+        public static readonly Error NotAProviderPayment = new(
+            "Payments.NotAProviderPayment", "This payment was not taken online, so it is refunded by hand.");
+
+        public static readonly Error ReferenceNotFound = new(
+            "PaymentReference.NotFound", "No QR-bill of this workspace carries that reference.");
+
+        public static Error BankFileInvalid(string sentence) => new("BankFile.Invalid", sentence);
+
+        public static readonly Error BankTransactionNotFound = new(
+            "BankTransaction.NotFound", "That bank transfer was not found.");
+
+        public static readonly Error BankTransactionResolved = new(
+            "BankTransaction.Resolved.Conflict", "This transfer is already recorded as a member's payment.");
+
+        public static readonly Error BankTransactionChanged = new(
+            "BankTransaction.Changed.Conflict", "Someone else dealt with this transfer at the same moment. Reload to see what they did.");
+
+        public static readonly Error IgnoreReasonRequired = new(
+            "BankTransaction.ReasonRequired", "Say why this transfer is not a member's payment.");
+
+        public static readonly Error JournalPeriodInvalid = new(
+            "Journal.PeriodInvalid", "The journal's period must start before it ends and cover at most a year.");
+
+        public static readonly Error JournalLayoutInvalid = new(
+            "Journal.LayoutInvalid", "The journal's layout is gross (one booking per entry, with its VAT code) or net (VAT booked on its own line).");
     }
 
     /// <summary>

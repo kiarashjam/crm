@@ -73,6 +73,19 @@ public class ChargesController : ControllerBase
     public async Task<ActionResult> Create([FromBody] PostChargeRequest request, CancellationToken ct) =>
         Ledger.Answer(this, await _ledger.PostChargeAsync(_user.CurrentOrganizationId, request, Ledger.Key(Request), ct));
 
+    /// <summary>
+    /// An invoice for the charge as a PDF, with a Swiss QR-bill for what is still owed on it once
+    /// the club's bank details are set: its reference names the charge, so the bank's payment pays it.
+    /// </summary>
+    [HttpGet("{id:guid}/invoice.pdf")]
+    [Produces("application/pdf", "application/json")]
+    public async Task<ActionResult> InvoicePdf(Guid id, CancellationToken ct)
+    {
+        var file = await _billing.ChargeInvoicePdfAsync(_user.CurrentOrganizationId!.Value, id, ct);
+        if (!file.IsSuccess) return file.Error.ToProblemResult();
+        return File(file.Value.Content, "application/pdf", file.Value.FileName);
+    }
+
     // A charge is voided, not deleted, so the record of what was charged stays. Answered
     // with a sentence rather than a bare 405, which the app would read as a missing feature.
     [HttpDelete("{id:guid}")]
@@ -100,8 +113,15 @@ public class PaymentsController : ControllerBase
 {
     private readonly IClubLedger _ledger;
     private readonly IClubBilling _billing;
+    private readonly IClubPayments _payments;
     private readonly ICurrentUserService _user;
-    public PaymentsController(IClubLedger ledger, IClubBilling billing, ICurrentUserService user) { _ledger = ledger; _billing = billing; _user = user; }
+    public PaymentsController(IClubLedger ledger, IClubBilling billing, IClubPayments payments, ICurrentUserService user)
+    {
+        _ledger = ledger;
+        _billing = billing;
+        _payments = payments;
+        _user = user;
+    }
 
     /// <summary>Money received (or one member's), each with what it paid, and any void or refunds.</summary>
     [HttpGet]
@@ -127,11 +147,22 @@ public class PaymentsController : ControllerBase
     public async Task<ActionResult> Void(Guid id, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] ReasonRequest? body, CancellationToken ct) =>
         Ledger.Answer(this, await _ledger.VoidPaymentAsync(_user.CurrentOrganizationId, id, body?.Reason, ct));
 
-    /// <summary>Pays money back to the member, part or all of a payment, with a reason.</summary>
+    /// <summary>
+    /// Pays money back to the member, part or all of a payment, with a reason. A payment Stripe
+    /// took goes back through Stripe, and the refund is recorded with Stripe's id; a method named
+    /// in the request (Cash, Wire…) records money paid back another way instead.
+    /// </summary>
     [HttpPost("{id:guid}/refund")]
     [Requires(MemberPermissions.VoidMoney, What = "refund a payment")]
-    public async Task<ActionResult> Refund(Guid id, [FromBody] RefundPaymentRequest request, CancellationToken ct) =>
-        Ledger.Answer(this, await _ledger.RefundPaymentAsync(_user.CurrentOrganizationId, id, request, ct));
+    public async Task<ActionResult> Refund(Guid id, [FromBody] RefundPaymentRequest request, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.Method) && _user.UserId is { } userId)
+        {
+            var online = await _payments.RefundAsync(_user.CurrentOrganizationId!.Value, userId, id, request, ct);
+            if (online.IsSuccess || online.Error.Code != DomainErrors.Payments.NotAProviderPayment.Code) return Ledger.Answer(this, online);
+        }
+        return Ledger.Answer(this, await _ledger.RefundPaymentAsync(_user.CurrentOrganizationId, id, request, ct));
+    }
 }
 
 /// <summary>A member's house account: the balance at any date, and the entries for a period.</summary>

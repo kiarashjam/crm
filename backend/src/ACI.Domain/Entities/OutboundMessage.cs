@@ -223,6 +223,8 @@ public static class OutboundSources
     public const string Event = "event";
     /// <summary>The welcome to a new member, queued when their application is approved; <see cref="OutboundMessage.SourceId"/> is the application.</summary>
     public const string Welcome = "welcome";
+    /// <summary>A link for a member to pay their account online or save a card, sent by staff.</summary>
+    public const string PaymentLink = "payment_link";
     public const string Webhook = "webhook";
 }
 

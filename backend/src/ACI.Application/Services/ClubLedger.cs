@@ -77,6 +77,23 @@ public interface IClubLedger
     Task<Result<PaymentDto>> RefundPaymentAsync(Guid? organizationId, Guid paymentId, RefundPaymentRequest request, CancellationToken ct = default);
 
     /// <summary>
+    /// Money that came in from outside for a member: a bank transfer read from the bank's file,
+    /// or a payment a provider (Stripe) took. Recorded as one payment with the provider and its
+    /// id, paying the charges named first, then the member's other open charges, oldest first,
+    /// each up to what it owes; what is left over stays on the account as credit. It is the
+    /// member's money already in the club's account, so it is never refused for being more than
+    /// they owe, and never recorded twice: the same idempotency key gets the first payment back.
+    /// </summary>
+    Task<Result<PaymentDto>> RecordReceivedPaymentAsync(Guid? organizationId, ReceivedPaymentRequest request, CancellationToken ct = default);
+
+    /// <summary>
+    /// A refund a provider made, recorded as the ledger's refund of the payment with the
+    /// provider's refund id, once: the same refund reported again (by its webhook after the
+    /// refund was asked for here, say) gets the payment back unchanged.
+    /// </summary>
+    Task<Result<PaymentDto>> RecordProviderRefundAsync(Guid? organizationId, Guid paymentId, ProviderRefundEntry refund, CancellationToken ct = default);
+
+    /// <summary>
     /// Sets the member's balance to <paramref name="newBalance"/> by an entry for the
     /// difference: a credit when it rises, a charge when it falls. Nothing when it is the same.
     /// </summary>
@@ -174,7 +191,11 @@ public interface IClubLedger
 /// </remarks>
 public interface ILedgerReadObserver
 {
-    /// <param name="kind">"charges", "gift-cards", "tabs", "subscriptions", "events", "reservations" or "applications".</param>
+    /// <param name="kind">
+    /// "charges", "gift-cards", "tabs", "subscriptions", "events", "reservations" or
+    /// "applications"; and, for the payments from outside, "bank-files" (a credit about to be
+    /// added) and "payment-references" (a QR reference number about to be taken).
+    /// </param>
     Task ReadAsync(string kind, CancellationToken ct = default);
 }
 
@@ -234,6 +255,44 @@ public sealed class RecordPaymentRequest
     /// <summary>Or the charges it pays, and how much of it each takes: they add up to the amount.</summary>
     public List<PaymentAllocationRequest>? Allocations { get; set; }
 }
+
+/// <summary>Money that came in from outside, as a bank file or a payment provider reports it.</summary>
+public sealed class ReceivedPaymentRequest
+{
+    public Guid MemberId { get; set; }
+    public decimal Amount { get; set; }
+
+    /// <summary>The currency it came in: it must be the account's.</summary>
+    public string Currency { get; set; } = string.Empty;
+
+    /// <summary>Wire, Card, Twint, DirectDebit or CardOnFile.</summary>
+    public string Method { get; set; } = string.Empty;
+
+    public DateTime ReceivedAtUtc { get; set; }
+
+    /// <summary>What staff see as its reference: the QR reference it quoted, Stripe's payment id.</summary>
+    public string? Reference { get; set; }
+
+    public string? Notes { get; set; }
+
+    /// <summary>stripe or bank (see PaymentProviders).</summary>
+    public string Provider { get; set; } = string.Empty;
+
+    /// <summary>The provider's id for it: Stripe's payment intent, the bank's reference for the transfer.</summary>
+    public string ProviderPaymentId { get; set; } = string.Empty;
+
+    /// <summary>The charges it pays before any other.</summary>
+    public IReadOnlyList<Guid> PayFirst { get; set; } = Array.Empty<Guid>();
+
+    /// <summary>Unique to the money: "stripe:pi_…", "bank:…". The same key twice records it once.</summary>
+    public string IdempotencyKey { get; set; } = string.Empty;
+
+    /// <summary>The name on the entry when nobody is signed in: "Stripe", "Bank file camt054.xml".</summary>
+    public string? RecordedBy { get; set; }
+}
+
+/// <summary>A refund a provider made of a payment it took.</summary>
+public sealed record ProviderRefundEntry(decimal Amount, string Reason, string Provider, string ProviderRefundId, string? RecordedBy);
 
 public sealed class RefundPaymentRequest
 {
@@ -383,7 +442,9 @@ public sealed record ChargeDto
 
 public sealed record PaymentAllocationDto(Guid ChargeId, decimal Amount);
 
-public sealed record PaymentRefundDto(Guid Id, decimal Amount, string? Reason, string? Method, DateTime AtUtc, string? ByName);
+public sealed record PaymentRefundDto(Guid Id, decimal Amount, string? Reason, string? Method, DateTime AtUtc, string? ByName,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Provider = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ProviderRefundId = null);
 
 public sealed record PaymentDto
 {
@@ -399,6 +460,13 @@ public sealed record PaymentDto
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Method { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Reference { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Notes { get; init; }
+
+    /// <summary>stripe or bank when the money came from outside; left out for one taken at the desk.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Provider { get; init; }
+
+    /// <summary>The provider's id for it: Stripe's payment intent, or the bank's reference.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? ProviderPaymentId { get; init; }
+
     public DateTime ReceivedAtUtc { get; init; }
 
     /// <summary>The first charge it paid, as the screens read it.</summary>

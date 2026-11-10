@@ -149,6 +149,16 @@ public partial class AppDbContext
         Scope<ClubApplicationForm>(model, e => e.OrganizationId);
         Scope<ClubHousehold>(model, e => e.OrganizationId);
         Scope<ClubHouseholdMember>(model, e => e.OrganizationId);
+        // Payments from outside the club and the accounting settings: club money, so an
+        // organization's alone. Stripe's posts and the payment job find their workspace
+        // across workspaces first (IgnoreQueryFilters, said where), then act for it.
+        Scope<ClubPaymentSettings>(model, e => e.OrganizationId);
+        Scope<ClubPaymentProfile>(model, e => e.OrganizationId);
+        Scope<ClubOnlinePayment>(model, e => e.OrganizationId);
+        Scope<ClubProviderEvent>(model, e => e.OrganizationId);
+        Scope<ClubPaymentReference>(model, e => e.OrganizationId);
+        Scope<ClubBankImport>(model, e => e.OrganizationId);
+        Scope<ClubBankTransaction>(model, e => e.OrganizationId);
 
         // Copy templates follow a person rather than a workspace (TemplateRepository): the
         // system's templates are everyone's, a person's own go with them, and a team's

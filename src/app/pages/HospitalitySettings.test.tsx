@@ -75,6 +75,13 @@ vi.mock('@/app/api/billing', async (importOriginal) => ({
   runBillingNow: () => billing.run(),
 }));
 
+const payments = vi.hoisted(() => ({ settings: vi.fn(), status: vi.fn() }));
+vi.mock('@/app/api/payments', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/app/api/payments')>()),
+  getPaymentSettings: () => payments.settings(),
+  getPaymentStatus: () => payments.status(),
+}));
+
 const { default: HospitalitySettings } = await import('./HospitalitySettings');
 
 /** Somewhere else in the app that shows money, open at the same time. */
@@ -146,6 +153,23 @@ const show = () => render(withQueries(
 const card = async (name: string) => (await screen.findByLabelText(`${name} dues`)).closest('article') as HTMLElement;
 
 describe('hospitality settings', () => {
+  it("opens on the payment settings from a link to them, as the server's messages send people there", async () => {
+    payments.status.mockResolvedValue({ onlinePayments: false, methods: [], webhookConfigured: false, qrBills: false, currency: 'CHF' });
+    payments.settings.mockResolvedValue({
+      stripeConfigured: false, stripeWebhookSecretSet: false, stripeOfferTwint: false, stripeOfferSepaDebit: false,
+      webhookUrl: 'https://api.example.ch/api/public/payments/stripe/k', webhookEvents: [], qrBillReady: false,
+      accounts: { revenueByKind: {}, vatCodes: {} }, currency: 'CHF', version: 'v1',
+    });
+    render(withQueries(
+      <MemoryRouter initialEntries={['/hospitality-settings?tab=payments']}>
+        <HospitalitySettings />
+      </MemoryRouter>,
+    ));
+
+    expect(await screen.findByRole('tab', { name: 'Payments', selected: true })).toBeInTheDocument();
+    expect(await screen.findByText(/Not set up: members cannot pay online/)).toBeInTheDocument();
+  });
+
   it('shows the tiers from the catalogue and nothing marked as not applied', async () => {
     show();
 

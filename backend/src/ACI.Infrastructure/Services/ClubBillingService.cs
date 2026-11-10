@@ -50,15 +50,18 @@ public sealed class ClubBillingService : IClubBilling
     private readonly IClubRules _rules;
     private readonly IOutbox _outbox;
     private readonly ICurrentUserService _user;
+    private readonly IClubQrBills _qrBills;
     private readonly ILogger<ClubBillingService> _logger;
 
-    public ClubBillingService(AppDbContext db, IClubLedger ledger, IClubRules rules, IOutbox outbox, ICurrentUserService user, ILogger<ClubBillingService> logger)
+    public ClubBillingService(AppDbContext db, IClubLedger ledger, IClubRules rules, IOutbox outbox, ICurrentUserService user,
+        IClubQrBills qrBills, ILogger<ClubBillingService> logger)
     {
         _db = db;
         _ledger = ledger;
         _rules = rules;
         _outbox = outbox;
         _user = user;
+        _qrBills = qrBills;
         _logger = logger;
     }
 
@@ -641,6 +644,10 @@ public sealed class ClubBillingService : IClubBilling
             l.Credit,
             Owed(l.Balance),
             l.VatRate)).ToList();
+        var amountDue = Math.Max(0, Owed(statement.ClosingBalance));
+        // The club's QR-bill for what is due, with a reference that names the member and this
+        // statement, when its bank details are set; none otherwise.
+        var slip = await _qrBills.ForStatementAsync(organizationId, memberId, statement.FromUtc, statement.ToUtc, amountDue, statement.Currency, ct);
         var bytes = StatementPdf.Render(new StatementPdfRequest(
             workspace.Name,
             statement.MemberName,
@@ -656,8 +663,8 @@ public sealed class ClubBillingService : IClubBilling
             statement.TotalCredits,
             Owed(statement.ClosingBalance),
             lines,
-            DateTime.UtcNow));
-        var amountDue = Math.Max(0, Owed(statement.ClosingBalance));
+            DateTime.UtcNow,
+            slip));
         return new StatementFile(FileName(statement, workspace), bytes, statement, amountDue);
     }
 
@@ -721,6 +728,46 @@ public sealed class ClubBillingService : IClubBilling
         var amountDue = Math.Max(0, Owed(statement.ClosingBalance));
         var fileName = $"household-{FileName(statement, workspace)}";
         return new StatementFile(fileName, bytes, statement, amountDue);
+    }
+
+    public async Task<Result<InvoiceFile>> ChargeInvoicePdfAsync(Guid organizationId, Guid chargeId, CancellationToken ct = default)
+    {
+        // The charge as the ledger sees it now: what has been paid on it, whether it was voided.
+        var memberId = await _db.ClubCharges.AsNoTracking()
+            .Where(c => c.Id == chargeId && c.OrganizationId == organizationId)
+            .Select(c => (Guid?)c.MemberId).FirstOrDefaultAsync(ct);
+        if (memberId is not { } owner) return DomainErrors.Club.ChargeNotFound;
+        var charge = (await _ledger.ChargesAsync(organizationId, owner, ct)).FirstOrDefault(c => c.Id == chargeId);
+        if (charge == null) return DomainErrors.Club.ChargeNotFound;
+        var member = await _db.ClubMembers.AsNoTracking().FirstOrDefaultAsync(m => m.Id == owner && m.OrganizationId == organizationId, ct);
+        var workspace = await WorkspaceAsync(organizationId, ct);
+
+        // The charge's document number in the accounting journal.
+        var number = "C-" + charge.Id.ToString("N")[..8].ToUpperInvariant();
+        var voided = charge.Status == "Voided";
+        var amountDue = ChargeInvoicePdf.Owed(charge.Amount, charge.PaidAmount, voided);
+        // The club's QR-bill for what is left on the charge, with a reference that names it.
+        var slip = await _qrBills.ForChargeAsync(organizationId, owner, charge.Id, amountDue, charge.Currency, "Invoice " + number, ct);
+        var bytes = ChargeInvoicePdf.Render(new ChargeInvoicePdfRequest(
+            workspace.Name,
+            charge.MemberName,
+            member?.Email,
+            member?.Tier,
+            number,
+            charge.Description,
+            charge.EntryType == "Charge" ? charge.Kind : "Balance brought over",
+            charge.PostedAtUtc,
+            charge.DueAtUtc,
+            charge.Amount,
+            charge.PaidAmount,
+            voided,
+            charge.VatRate,
+            charge.Currency,
+            workspace.Locale,
+            workspace.TimeZone,
+            DateTime.UtcNow,
+            slip));
+        return new InvoiceFile("invoice-" + number + ".pdf", bytes, amountDue);
     }
 
     public async Task<Result<StatementDeliveryDto>> EmailStatementAsync(Guid organizationId, Guid userId, Guid memberId, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default)

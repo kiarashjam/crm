@@ -31,9 +31,10 @@ const as = (permissions: Permission[]) => {
   };
 };
 
+const demo = vi.hoisted(() => ({ on: false }));
 vi.mock('@/app/api/apiClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/app/api/apiClient')>()),
-  servesDemoData: () => false,
+  servesDemoData: () => demo.on,
 }));
 vi.mock('@/app/api/hospitalitySettings', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/app/api/hospitalitySettings')>()),
@@ -68,6 +69,14 @@ vi.mock('@/app/api/billing', async (importOriginal) => ({
   emailStatement: (...a: unknown[]) => billing.email(...a),
 }));
 
+const payments = vi.hoisted(() => ({ status: vi.fn(), email: vi.fn() }));
+vi.mock('@/app/api/payments', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/app/api/payments')>()),
+  getPaymentStatus: () => payments.status(),
+  emailPayLink: (...a: unknown[]) => payments.email(...a),
+}));
+const NOTHING_SET_UP = { onlinePayments: false, methods: [], webhookConfigured: false, qrBills: false, currency: 'CHF' };
+
 const { default: Statements } = await import('./Statements');
 
 const confirm = vi.fn<(message?: string) => boolean>();
@@ -82,12 +91,17 @@ beforeEach(() => {
   localStorage.clear();
   resetClubCurrency();
   org.current = null;
+  demo.on = false;
   toast.success.mockReset();
   toast.error.mockReset();
   confirm.mockReset().mockReturnValue(true);
   getMemberStatement.mockReset().mockResolvedValue(STATEMENT);
   billing.download.mockReset().mockResolvedValue(undefined);
   billing.email.mockReset().mockResolvedValue(delivery({}));
+  payments.status.mockReset().mockResolvedValue(NOTHING_SET_UP);
+  payments.email.mockReset().mockResolvedValue({
+    url: 'https://club.example.ch/pay/t', purpose: 'account', amount: 299, currency: 'CHF', expiresAtUtc: '2027-01-09T00:00:00Z', emailStatus: 'queued',
+  });
 });
 
 const show = () => render(withQueries(<MemoryRouter><Statements /></MemoryRouter>));
@@ -164,5 +178,49 @@ describe("a member's statement as a PDF", () => {
     await screen.findByText('Gold dues');
     expect(screen.getByRole('button', { name: /Download PDF/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Email statement/ })).toBeNull();
+  });
+});
+
+describe('paying a statement', () => {
+  it('sends the member a link to pay what they owe online, when Stripe is set up', async () => {
+    as([PERMISSION.ManageMoney]);
+    payments.status.mockResolvedValue({ ...NOTHING_SET_UP, onlinePayments: true, methods: ['card', 'twint'], webhookConfigured: true });
+    const user = userEvent.setup();
+    show();
+
+    await screen.findByText('Gold dues');
+    await user.click(await screen.findByRole('button', { name: /Pay online/ }));
+    await user.click(await screen.findByRole('button', { name: /Email it to them/ }));
+
+    await vi.waitFor(() => expect(payments.email).toHaveBeenCalledWith('m1', { purpose: 'account' }));
+    expect(toast.success).toHaveBeenCalledWith('Link emailed to Jean Dupont');
+  });
+
+  it('offers no online payment without Stripe, and says what the QR-bill on the PDF needs', async () => {
+    as([PERMISSION.ManageMoney]);
+    show();
+
+    await screen.findByText('Gold dues');
+    expect(await screen.findByText(/carries no QR-bill yet/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Club settings, Payments' })).toHaveAttribute('href', '/hospitality-settings?tab=payments');
+    expect(screen.queryByRole('button', { name: /Pay online/ })).toBeNull();
+  });
+
+  it('says nothing of QR-bills or paying online with demo data, which has neither', async () => {
+    demo.on = true;
+    as([PERMISSION.ManageMoney]);
+    show();
+
+    await screen.findByText('Gold dues');
+    expect(screen.queryByText(/QR-bill/)).toBeNull();
+    expect(screen.queryByRole('button', { name: /Pay online/ })).toBeNull();
+  });
+
+  it('says the PDF carries a QR-bill matched back by its reference, once the bank details are set', async () => {
+    payments.status.mockResolvedValue({ ...NOTHING_SET_UP, qrBills: true, qrReferenceType: 'QRR' });
+    show();
+
+    // Only when something is due: a statement of an account in credit is printed without a slip.
+    expect(await screen.findByText(/When something is due, the PDF carries a Swiss QR-bill/)).toBeInTheDocument();
   });
 });

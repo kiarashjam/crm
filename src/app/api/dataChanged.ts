@@ -94,6 +94,7 @@ const LINKED = ['leads', 'contacts', 'companies', 'deals', 'tasks', 'activities'
 const MEMBER_MERGE = [
   'members', 'campaigns', 'communications', 'duplicates', 'visits', 'loyalty', 'charges', 'payments', 'statements',
   'tabs', 'reservations', 'events', 'gift-cards', 'donations', 'subscriptions', 'households', 'applications',
+  'payment-profile', 'online-payments', 'bank',
 ];
 
 /**
@@ -102,6 +103,13 @@ const MEMBER_MERGE = [
  * for a merge, the duplicates list.
  */
 const HOUSEHOLD_WRITE = ['households', 'members', 'contacts', 'leads', 'duplicates'];
+
+/**
+ * What charging a member's saved card changes: when Stripe answers at once, the payment is
+ * on the ledger before the answer comes back (settling charges, moving the balance and the
+ * statement, perhaps putting back a member the billing lapsed), and the attempt is listed.
+ */
+const SAVED_CARD_CHARGE = ['payment-profile', 'online-payments', 'payments', 'charges', 'members', 'statements'];
 
 /**
  * What a write under /api/<base> may change, beyond its own records. The server
@@ -181,6 +189,11 @@ const CHANGES: Readonly<Record<string, readonly string[]>> = {
   // the lead's and the contact's pages show the application and the member.
   applications: ['applications', 'members', 'charges', 'payments', 'subscriptions', 'statements', 'communications', 'households', 'billing', 'leads', 'contacts', 'campaigns'],
   households: HOUSEHOLD_WRITE,
+  // The payment settings decide what the money screens offer (pay online, the QR-bill).
+  'payment-settings': ['payment-settings'],
+  // A bank file's matched transfers, and one allocated by hand, are payments on the ledger:
+  // they settle charges, move balances and statements, and can put back a lapsed member.
+  bank: ['bank', 'payments', 'charges', 'members', 'statements'],
 };
 
 /** Which records an activity is about, from the body it was saved with. */
@@ -213,13 +226,20 @@ export function resourcesChangedBy(method: string | undefined, path: string, bod
   // A consent answer changes who a marketing campaign reaches, and nothing on the
   // member's account, so it leaves the money lists alone.
   if (base === 'members' && last === 'consent') return ['members', 'campaigns'];
-  // Emailing a statement writes a line in the member's communications log, nothing more.
+  // Emailing a statement or a pay link writes a line in the member's communications log, nothing more.
   if (base === 'members' && last === 'email') return ['communications'];
+  // A member's saved card and dues on it: a pay link is made, a card removed, dues on file
+  // turned on or off, or the card charged (a payment on the ledger when Stripe answers at once).
+  if (base === 'members' && segments.length >= 3) {
+    const sub = segments[2];
+    if (sub === 'card' && last === 'charge') return [...SAVED_CARD_CHARGE];
+    if (sub === 'card' || sub === 'autopay' || sub === 'pay-link') return ['payment-profile'];
+  }
   // Deleting a member detaches their places on event lists and their bookings, which stay
   // under the name they were made in: a screen still showing the member on one would send
   // the id of someone who is gone.
   if (base === 'members' && segments.length === 2 && (method ?? 'GET').toUpperCase() === 'DELETE') {
-    return [...(CHANGES.members ?? ['members']), 'events', 'reservations'];
+    return [...(CHANGES.members ?? ['members']), 'events', 'reservations', 'payment-profile'];
   }
   // Households merge on their own: the people move to the household kept.
   if (base === 'households') return [...HOUSEHOLD_WRITE];

@@ -92,6 +92,10 @@ public class SecretPathRedactionTests
     [InlineData("/api/public/contracts/")]
     [InlineData("/api/attachments")]
     [InlineData("/api/attachments/3f9a21c0-0000-0000-0000-000000000000")]
+    // A pay link's token travels in a header (IIS refuses an address segment as long as one),
+    // so its two addresses carry nothing to hide, and "checkout" is not taken for a secret.
+    [InlineData("/api/public/pay")]
+    [InlineData("/api/public/pay/checkout")]
     public void LeavesEverythingElseAlone(string path)
     {
         SecretPathRedactionMiddleware.RedactPath(path).Should().BeNull(

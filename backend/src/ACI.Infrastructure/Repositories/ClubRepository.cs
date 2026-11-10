@@ -67,6 +67,8 @@ public sealed class ClubRepository : IClubRepository
                 && await _db.ClubHouseholds.FirstOrDefaultAsync(h => h.Id == link.HouseholdId && h.OrganizationId == organizationId, ct) is { } empty)
                 _db.ClubHouseholds.Remove(empty);
         }
+        // Nothing more is charged to a card the member saved.
+        await MemberPayments.ForgetDeletedMemberAsync(_db, id, organizationId, ct);
         _db.ClubMembers.Remove(row);
         await _db.SaveChangesAsync(ct);
         return true;
@@ -174,6 +176,10 @@ public sealed class ClubRepository : IClubRepository
             // A person is in one household. The duplicate's place moves to the kept member when
             // they have none; when both have one, the kept member's stands and the duplicate's goes.
             await MergeHouseholdLinksAsync(keepId, dropId, organizationId, ct);
+
+            // Their online payments, QR references, bank transfers and saved card, so a payment
+            // confirmed later still lands on an account.
+            await MemberPayments.MoveToKeptMemberAsync(_db, keepId, dropId, organizationId, name, ct);
 
             // Consent answers and messages are the person's, so they move too.
             await MemberCommunications.MoveToKeptMemberAsync(_db, keepId, dropId, organizationId, ct);
