@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import type { CompanyListItem, CompanySummary } from '@/app/api/companies';
+import { withQueries } from '@/test/queryWrapper';
 
 const rows: CompanyListItem[] = [
   { id: 'co1', name: 'Hotel Bellevue', industry: 'Hospitality', contactCount: 35, dealCount: 2, dealTotals: [{ currency: 'CHF', value: 40000, dealCount: 2 }] },
@@ -34,11 +35,11 @@ const Companies = (await import('./Companies')).default;
 const lastQuery = () => api.getCompaniesPaged.mock.calls[api.getCompaniesPaged.mock.calls.length - 1]![0];
 
 function show(url = '/companies') {
-  render(
+  render(withQueries(
     <MemoryRouter initialEntries={[url]}>
       <Companies />
     </MemoryRouter>,
-  );
+  ));
 }
 
 beforeEach(() => {
@@ -87,5 +88,24 @@ describe('Companies', () => {
     await waitFor(() => expect(companiesApi.exportCompanies).toHaveBeenCalledTimes(1));
     expect(companiesApi.exportCompanies.mock.calls[0]![0]).toMatchObject({ industry: 'Hospitality', sortBy: 'name' });
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Exported 140 companies'));
+  });
+
+  it('says the companies could not be loaded, with a retry, instead of the empty first-day screen', async () => {
+    api.getCompaniesPaged.mockRejectedValueOnce(new Error('The server took too long to answer.'));
+    show();
+
+    expect(await screen.findByText('Companies could not be loaded.')).toBeTruthy();
+    expect(screen.queryByText('Build Your Account Base')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('Hotel Bellevue')).toBeTruthy();
+  });
+
+  it('still lists the companies when the deals their rows show cannot be read', async () => {
+    // The deals failing used to blank the whole page.
+    api.getDealsPaged.mockRejectedValue(new Error('timeout'));
+    show();
+    expect(await screen.findByText('Hotel Bellevue')).toBeTruthy();
+    expect(screen.queryByText(/could not be loaded/)).toBeNull();
   });
 });

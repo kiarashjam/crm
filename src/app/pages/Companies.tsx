@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { 
   Building2, Search, Plus, Pencil, Trash2, Globe, Briefcase, Users, X,
@@ -12,10 +12,12 @@ import { PageTransition } from '@/app/components/PageTransition';
 import { ContentSkeleton } from '@/app/components/PageSkeleton';
 import DataPagination from '@/app/components/DataPagination';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { getCompaniesPaged, getCompanyById, createCompany, updateCompany, deleteCompany, getDealsPaged, messages } from '@/app/api';
+import { getCompanyById, createCompany, updateCompany, deleteCompany, messages } from '@/app/api';
+import { useCompaniesPage, useCompanySummary, useDealsPage } from '@/app/hooks/queries';
+import { LoadFailed } from '@/app/components/LoadFailed';
 import { isEditConflict, showEditConflict } from '@/app/lib/editConflict';
 import {
-  exportCompanies, getCompanySummary,
+  exportCompanies,
   type CompanyListFilters, type CompanyListItem, type CompanySortField, type CompanySummary,
 } from '@/app/api/companies';
 import type { Company, Deal } from '@/app/api/types';
@@ -103,6 +105,9 @@ const COMPANY_SIZES = [
   { value: '1000+', label: '1000+ employees', category: 'Enterprise' },
 ];
 
+const NO_COMPANIES: CompanyListItem[] = [];
+const NO_DEALS: Deal[] = [];
+
 export default function Companies() {
   const money = useMoney();
   const navigate = useNavigate();
@@ -117,19 +122,10 @@ export default function Companies() {
   const filterSize = searchParams.get('size') || 'all';
   const [sortField, sortDirection] = parseSort(searchParams.get('sort'));
 
-  const [companies, setCompanies] = useState<CompanyListItem[]>([]);
-  // The figures above the list, over the whole workspace (null until read, or if they could not be).
-  const [summary, setSummary] = useState<CompanySummary | null>(null);
   const [exporting, setExporting] = useState(false);
-  const [deals, setDeals] = useState<Deal[]>([]);
-  const [loading, setLoading] = useState(true);
-  usePageLoading(loading);
   const [searchQuery, setSearchQuery] = useState(searchFromUrl);
   const [debouncedSearch, setDebouncedSearch] = useState(searchFromUrl);
   
-  // Pagination state
-  const [totalCount, setTotalCount] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCompany, setEditingCompany] = useState<Company | null>(null);
   const [form, setForm] = useState({ name: '', domain: '', industry: '', size: '', description: '', website: '', location: '' });
@@ -184,32 +180,21 @@ export default function Companies() {
     }
   }, [debouncedSearch]);
 
-  // Fetch companies with pagination
-  const fetchCompanies = useCallback(async () => {
-    setLoading(true);
-    try {
-      // Each row comes with its own counts, and the figures above the list with the
-      // server's count of the whole workspace; the page used to fetch every company's.
-      const [pagedResult, summaryData, dealsResult] = await Promise.all([
-        getCompaniesPaged({ page: currentPage, pageSize, ...listFilters }),
-        getCompanySummary().catch(() => null),
-        getDealsPaged({ page: 1, pageSize: 500 }),
-      ]);
-      setCompanies(pagedResult.items);
-      setTotalCount(pagedResult.totalCount);
-      setTotalPages(pagedResult.totalPages);
-      setSummary(summaryData);
-      setDeals(dealsResult.items);
-    } catch {
-      toast.error(messages.errors.loadFailed);
-    } finally {
-      setLoading(false);
-    }
-  }, [currentPage, pageSize, listFilters]);
-
-  useEffect(() => {
-    fetchCompanies();
-  }, [fetchCompanies]);
+  // The page of companies, each with its own counts, and the figures above the list
+  // with the server's count of the whole workspace, through the shared cache: keyed by
+  // page and filters, re-read after a save that changed companies, and the read for a
+  // search typed over cancelled. The deals a row lists are read on their own: their
+  // failing used to blank the whole page.
+  const companiesQuery = useCompaniesPage({ page: currentPage, pageSize, ...listFilters });
+  const companies = companiesQuery.data?.items ?? NO_COMPANIES;
+  const totalCount = companiesQuery.data?.totalCount ?? 0;
+  const totalPages = companiesQuery.data?.totalPages ?? 0;
+  // The figures help; the page still works without them.
+  const summary: CompanySummary | null = useCompanySummary().data ?? null;
+  const deals: Deal[] = useDealsPage({ page: 1, pageSize: 500 }).data?.items ?? NO_DEALS;
+  const loading = companiesQuery.isPending;
+  usePageLoading(loading);
+  const reloadCompanies = () => { void companiesQuery.refetch(); };
 
   // Pagination handlers
   const handlePageChange = (page: number) => {
@@ -317,7 +302,6 @@ export default function Companies() {
         if (updated) {
           toast.success(messages.success.companyUpdated);
           setDialogOpen(false);
-          fetchCompanies(); // Refresh data
         } else {
           toast.error(messages.errors.generic);
         }
@@ -334,7 +318,6 @@ export default function Companies() {
         if (created) {
           toast.success(messages.success.companyCreated);
           setDialogOpen(false);
-          fetchCompanies(); // Refresh data
         } else {
           toast.error(messages.errors.generic);
         }
@@ -348,7 +331,7 @@ export default function Companies() {
           void getCompanyById(companyId)
             .then((fresh) => { if (fresh) openEdit(fresh); })
             .catch(() => toast.error(messages.errors.generic));
-          fetchCompanies();
+          reloadCompanies();
         });
       } else if (msg.includes('DuplicateName') || msg.includes('already exists')) {
         toast.error('A company with this name already exists.');
@@ -368,7 +351,6 @@ export default function Companies() {
       if (ok) {
         toast.success(messages.success.companyDeleted);
         setDeleteConfirmCompany(null);
-        fetchCompanies(); // Refresh data
       } else {
         toast.error(messages.errors.generic);
       }
@@ -547,7 +529,7 @@ export default function Companies() {
             )}
           </PageHero>
 
-        <DuplicateMerge spec={COMPANY_DUPLICATES} onMerged={() => { void fetchCompanies(); }} />
+        <DuplicateMerge spec={COMPANY_DUPLICATES} onMerged={reloadCompanies} />
 
         {/* Search, filter and sort */}
         <div className="relative mb-6 overflow-hidden rounded-2xl border border-slate-200/80 bg-white/85 p-4 shadow-sm backdrop-blur">
@@ -787,8 +769,13 @@ export default function Companies() {
           )}
         </div>
 
+        {!loading && companiesQuery.isError && companiesQuery.data && (
+          <LoadFailed stale what="Companies" error={companiesQuery.error} onRetry={reloadCompanies} retrying={companiesQuery.isFetching} className="mb-4" />
+        )}
         {loading ? (
           <ContentSkeleton rows={6} />
+        ) : companiesQuery.isError && !companiesQuery.data ? (
+          <LoadFailed what="Companies" error={companiesQuery.error} onRetry={reloadCompanies} retrying={companiesQuery.isFetching} />
         ) : companies.length === 0 && activeFilterCount === 0 && !debouncedSearch && companyStats.total === 0 ? (
           /* Enhanced Empty State */
           <div className="w-full">
