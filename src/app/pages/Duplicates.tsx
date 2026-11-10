@@ -15,6 +15,7 @@ import {
   MergeDuplicatesDialog, useDuplicateGroups, type DuplicateKind,
 } from '@/app/components/duplicates';
 import type { DuplicateGroups } from '@/app/components/duplicates/useDuplicateGroups';
+import { PERMISSION } from '@/app/api/organizations';
 
 // Static class strings, because Tailwind only ships the classes it can read.
 const TILE: Record<string, string> = {
@@ -157,7 +158,7 @@ function KindCard<T extends { id: string }>({ index, spec, found }: { index: num
           </button>
         ) : <span />}
         {groups.length > 0 && (
-          <WriteOnly>
+          <WriteOnly permission={PERMISSION.DeleteRecords}>
             <Button size="sm" onClick={() => setOpen(true)} className="bg-gradient-to-r from-orange-500 to-pink-500 text-white hover:from-orange-600 hover:to-pink-600">
               Review & merge
               <ArrowRight />

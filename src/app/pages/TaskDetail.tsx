@@ -62,6 +62,7 @@ import { RecordCard } from '@/app/components/RecordCard';
 import { StaggerItem } from '@/app/components/motion/Stagger';
 import { fromLocalInputValue, toLocalInputValue } from '@/app/lib/dateInputs';
 import { MentionTextarea, useWorkspacePeople } from '@/app/components/MentionTextarea';
+import { PERMISSION } from '@/app/api/organizations';
 
 const STATUS_OPTIONS: { value: TaskStatusType; label: string; icon: typeof Circle; color: string }[] = [
   { value: 'todo', label: 'To Do', icon: Circle, color: 'text-slate-500' },
@@ -294,13 +295,15 @@ export default function TaskDetail() {
                 <Button variant="outline" onClick={() => setEditing(true)} className={heroSecondary}>
                   <Pencil className="h-4 w-4" /> Edit
                 </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setDeleteOpen(true)}
-                  className={`${heroSecondary} text-red-600 hover:border-red-200 hover:bg-red-50 hover:text-red-700`}
-                >
-                  <Trash2 className="h-4 w-4" /> Delete
-                </Button>
+                <WriteOnly permission={PERMISSION.DeleteRecords}>
+                  <Button
+                    variant="outline"
+                    onClick={() => setDeleteOpen(true)}
+                    className={`${heroSecondary} text-red-600 hover:border-red-200 hover:bg-red-50 hover:text-red-700`}
+                  >
+                    <Trash2 className="h-4 w-4" /> Delete
+                  </Button>
+                </WriteOnly>
               </WriteOnly>
             )}
             stats={[

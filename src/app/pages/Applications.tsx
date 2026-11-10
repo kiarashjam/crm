@@ -58,6 +58,8 @@ import {
   type RecordColumn,
 } from '@/app/components/views';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
+import { WriteOnly } from '@/app/components/WriteOnly';
+import { PERMISSION } from '@/app/api/organizations';
 
 const STATUS_BADGE: Record<ApplicationStatus, string> = {
   Submitted: 'bg-blue-50 text-blue-700 ring-1 ring-blue-200',
@@ -347,10 +349,12 @@ export default function Applications() {
             title="Applications"
             subtitle="Review prospective members, approve to onboard, or waitlist."
             actions={
-              <Button onClick={openCreate} className={heroPrimary('blue')}>
-                <Plus className="h-4 w-4" />
-                New application
-              </Button>
+              <WriteOnly permission={PERMISSION.ClubMembers}>
+                <Button onClick={openCreate} className={heroPrimary('blue')}>
+                  <Plus className="h-4 w-4" />
+                  New application
+                </Button>
+              </WriteOnly>
             }
             stats={[
               { label: 'Awaiting decision', value: stats.submitted + stats.underReview, icon: Clock, tone: 'amber', hint: `${stats.submitted} submitted · ${stats.underReview} reviewing` },

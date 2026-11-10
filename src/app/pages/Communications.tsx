@@ -58,6 +58,8 @@ import {
   RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
   type RecordColumn,
 } from '@/app/components/views';
+import { WriteOnly } from '@/app/components/WriteOnly';
+import { PERMISSION } from '@/app/api/organizations';
 
 const CHANNEL_ICON: Record<CommChannel, React.ElementType> = {
   Email: Mail,
@@ -211,19 +213,21 @@ export default function Communications() {
    * invisible icon, so the button was there but could not be seen.
    */
   const communicationActions = (c: Communication) => (
-    <button
-      type="button"
-      onClick={() => remove(c)}
-      disabled={deletingId === c.id}
-      className="rounded p-1.5 text-slate-300 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 shrink-0"
-      aria-label={`Delete message to ${c.memberName}`}
-    >
-      {deletingId === c.id ? (
-        <Loader2 className="h-4 w-4 animate-spin" />
-      ) : (
-        <Trash2 className="h-4 w-4" />
-      )}
-    </button>
+    <WriteOnly permission={PERMISSION.DeleteRecords}>
+      <button
+        type="button"
+        onClick={() => remove(c)}
+        disabled={deletingId === c.id}
+        className="rounded p-1.5 text-slate-300 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 shrink-0"
+        aria-label={`Delete message to ${c.memberName}`}
+      >
+        {deletingId === c.id ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Trash2 className="h-4 w-4" />
+        )}
+      </button>
+    </WriteOnly>
   );
 
   const communicationColumns: RecordColumn<Communication>[] = [
@@ -267,10 +271,12 @@ export default function Communications() {
             title="Communications"
             subtitle="A log of the emails, SMS and push messages your team sent members, kept with each member."
             actions={
-              <Button onClick={openSend} className={heroPrimary('violet')}>
-                <NotebookPen className="h-4 w-4" />
-                Log a message
-              </Button>
+              <WriteOnly permission={PERMISSION.ClubMembers}>
+                <Button onClick={openSend} className={heroPrimary('violet')}>
+                  <NotebookPen className="h-4 w-4" />
+                  Log a message
+                </Button>
+              </WriteOnly>
             }
             stats={[
               { label: 'Logged · 7d', value: stats.sentThisWeek, icon: CalendarDays, tone: 'violet', hint: 'in the last week' },

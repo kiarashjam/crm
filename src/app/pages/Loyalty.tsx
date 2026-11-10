@@ -64,6 +64,8 @@ import {
   type RecordColumn,
 } from '@/app/components/views';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
+import { WriteOnly } from '@/app/components/WriteOnly';
+import { PERMISSION } from '@/app/api/organizations';
 
 const KIND_BADGE: Record<LoyaltyEntryKind, string> = {
   Earned: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
@@ -229,15 +231,17 @@ export default function Loyalty() {
 
   /** Delete, the same in every layout. */
   const entryActions = (e: LoyaltyEntry) => (
-    <button
-      type="button"
-      onClick={() => remove(e)}
-      disabled={deletingId === e.id}
-      className="rounded p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
-      aria-label={`Delete entry for ${e.memberName}`}
-    >
-      {deletingId === e.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-    </button>
+    <WriteOnly permission={PERMISSION.DeleteRecords}>
+      <button
+        type="button"
+        onClick={() => remove(e)}
+        disabled={deletingId === e.id}
+        className="rounded p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+        aria-label={`Delete entry for ${e.memberName}`}
+      >
+        {deletingId === e.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+      </button>
+    </WriteOnly>
   );
 
   const entryColumns: RecordColumn<LoyaltyEntry>[] = [
@@ -295,10 +299,12 @@ export default function Loyalty() {
             title="Loyalty"
             subtitle="Points, tier multipliers, redemptions, and house credit."
             actions={
-              <Button onClick={openCreate} className={heroPrimary('amber')}>
-                <Plus className="h-4 w-4" />
-                Add entry
-              </Button>
+              <WriteOnly permission={PERMISSION.ClubMembers}>
+                <Button onClick={openCreate} className={heroPrimary('amber')}>
+                  <Plus className="h-4 w-4" />
+                  Add entry
+                </Button>
+              </WriteOnly>
             }
             stats={[
               { label: 'Total issued', value: stats.totalIssued, icon: TrendingUp, tone: 'emerald', hint: 'all-time earned points' },

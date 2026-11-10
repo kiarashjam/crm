@@ -29,6 +29,8 @@ import {
 } from '@/app/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/app/components/ui/avatar';
 import type { TaskItem, TaskStatusType, TaskPriorityType, Contact, Lead, Deal } from '@/app/api/types';
+import { WriteOnly } from '@/app/components/WriteOnly';
+import { PERMISSION } from '@/app/api/organizations';
 
 export interface ListTaskCardProps {
   task: TaskItem;
@@ -264,10 +266,12 @@ export function ListTaskCard({
                 )}
 
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => handleDelete(task)} className="text-red-600">
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Delete
-                </DropdownMenuItem>
+                <WriteOnly permission={PERMISSION.DeleteRecords}>
+                  <DropdownMenuItem onClick={() => handleDelete(task)} className="text-red-600">
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete
+                  </DropdownMenuItem>
+                </WriteOnly>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>

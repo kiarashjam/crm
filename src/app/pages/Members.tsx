@@ -63,6 +63,8 @@ import {
   type RecordColumn,
 } from '@/app/components/views';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
+import { WriteOnly } from '@/app/components/WriteOnly';
+import { PERMISSION } from '@/app/api/organizations';
 
 const TIER_BADGE: Record<MemberTier, string> = {
   Bronze: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
@@ -187,15 +189,17 @@ export default function Members() {
       >
         <Pencil className="h-4 w-4" />
       </button>
-      <button
-        type="button"
-        onClick={() => remove(m)}
-        disabled={deletingId === m.id}
-        className="rounded p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
-        aria-label="Remove member"
-      >
-        {deletingId === m.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-      </button>
+      <WriteOnly permission={PERMISSION.DeleteRecords}>
+        <button
+          type="button"
+          onClick={() => remove(m)}
+          disabled={deletingId === m.id}
+          className="rounded p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+          aria-label="Remove member"
+        >
+          {deletingId === m.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+        </button>
+      </WriteOnly>
     </>
   );
 
@@ -305,10 +309,12 @@ export default function Members() {
             title="Members"
             subtitle="Tiers, dues, renewals, and house account balances."
             actions={
-              <Button onClick={openCreate} className={heroPrimary('indigo')}>
-                <Plus className="h-4 w-4" />
-                Add member
-              </Button>
+              <WriteOnly permission={PERMISSION.ClubMembers}>
+                <Button onClick={openCreate} className={heroPrimary('indigo')}>
+                  <Plus className="h-4 w-4" />
+                  Add member
+                </Button>
+              </WriteOnly>
             }
             stats={[
               { label: 'Total members', value: stats.total, icon: Crown, tone: 'indigo', hint: `${stats.active} active` },

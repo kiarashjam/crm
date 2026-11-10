@@ -38,7 +38,8 @@ import {
   getOrgMembers,
   updateMemberRole,
   removeMember,
-  isOrgAdmin,
+  orgCan,
+  PERMISSION,
   type InviteDto,
   type JoinRequestDto,
   type OrgMemberDto,
@@ -190,21 +191,24 @@ export default function Settings() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- Only sync when API settings change, not when themeContext changes
   }, [settings?.theme, settings?.dataDensity, settings?.sidebarCollapsed, settings?.showWelcomeBanner]);
 
-  // Load org data
+  // What the caller may do here, as a key that changes only when that does.
+  const access = `${currentOrg?.isOwner}|${currentOrg?.role}|${currentOrg?.permissions?.join(',') ?? ''}`;
+
+  // Load org data: the team's invitations and requests are for whoever manages the team.
   useEffect(() => {
-    if (servesDemoData() || !isOrgAdmin(currentOrg) || !currentOrg?.id) return;
+    if (servesDemoData() || !currentOrg?.id || !orgCan(currentOrg, PERMISSION.ManageMembers)) return;
     listPendingInvitesForOrg(currentOrg.id).then(setOwnerInvites).catch(() => setOwnerInvites([]));
     listPendingJoinRequestsForOrg(currentOrg.id).then(setOwnerJoinRequests).catch(() => setOwnerJoinRequests([]));
     getOrgMembers(currentOrg.id).then(setOrgMembers).catch(() => setOrgMembers([]));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- isOrgAdmin only reads isOwner and role
-  }, [currentOrg?.id, currentOrg?.isOwner, currentOrg?.role]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- orgCan only reads isOwner, role and permissions (access)
+  }, [currentOrg?.id, access]);
 
-  // Load pipelines
+  // Load pipelines: changing them takes managing the workspace's settings.
   useEffect(() => {
-    if (servesDemoData() || !isOrgAdmin(currentOrg) || !currentOrg?.id) return;
+    if (servesDemoData() || !currentOrg?.id || !orgCan(currentOrg, PERMISSION.ManageSettings)) return;
     getPipelines().then(setPipelines).catch(() => setPipelines([]));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- isOrgAdmin only reads isOwner and role
-  }, [currentOrg?.id, currentOrg?.isOwner, currentOrg?.role]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- orgCan only reads isOwner, role and permissions (access)
+  }, [currentOrg?.id, access]);
 
   // Load pipeline stages when expanded
   useEffect(() => {

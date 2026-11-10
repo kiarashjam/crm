@@ -64,6 +64,7 @@ import { withActivity } from '@/app/components/RecordActivity';
 import {
   activityFactsLine, activityTime, factsDraftOf, factsPayload, factsProblem, factsUpdatePayload, EMPTY_FACTS, type ActivityFactsDraft,
 } from '@/app/lib/activityFacts';
+import { PERMISSION } from '@/app/api/organizations';
 
 const ACTIVITY_TYPES = [
   { id: 'call', label: 'Call', icon: Phone, color: 'emerald', bgColor: 'bg-emerald-100', textColor: 'text-emerald-700', borderColor: 'border-emerald-200' },
@@ -527,7 +528,7 @@ export default function Activities() {
             <Pencil className="w-4 h-4" />
           </Button>
         </WriteOnly>
-        <WriteOnly>
+        <WriteOnly permission={PERMISSION.DeleteRecords}>
           <Button
             variant="ghost"
             size="sm"
@@ -691,25 +692,27 @@ export default function Activities() {
                   </DropdownMenuContent>
                 </DropdownMenu>
 
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" disabled={exporting} className={`${heroSecondary} disabled:opacity-60`} aria-label="Export activity history">
-                      {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                      Export
-                      <ChevronDown className="h-3.5 w-3.5 opacity-60" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-56">
-                    <DropdownMenuItem onClick={() => handleExport('pdf')} className="gap-2">
-                      <FileTextIcon className="w-4 h-4 text-rose-500" />
-                      <span>Export as PDF</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleExport('csv')} className="gap-2">
-                      <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                      <span>Google Sheets (CSV)</span>
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <WriteOnly permission={PERMISSION.ExportRecords}>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" disabled={exporting} className={`${heroSecondary} disabled:opacity-60`} aria-label="Export activity history">
+                        {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                        Export
+                        <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-56">
+                      <DropdownMenuItem onClick={() => handleExport('pdf')} className="gap-2">
+                        <FileTextIcon className="w-4 h-4 text-rose-500" />
+                        <span>Export as PDF</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleExport('csv')} className="gap-2">
+                        <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                        <span>Google Sheets (CSV)</span>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </WriteOnly>
 
                 <WriteOnly>
                   <Button onClick={() => { setEditingActivity(null); setForm(EMPTY_FORM); setDialogOpen(true); }} className={heroPrimary('sky')}>

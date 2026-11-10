@@ -63,6 +63,8 @@ import {
   RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
   type RecordColumn,
 } from '@/app/components/views';
+import { WriteOnly } from '@/app/components/WriteOnly';
+import { PERMISSION } from '@/app/api/organizations';
 
 const STATUS_BADGE: Record<Campaign['status'], string> = {
   Draft: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
@@ -225,14 +227,16 @@ export default function Campaigns() {
           )}
         </Button>
       )}
-      <button
-        type="button"
-        onClick={() => remove(c)}
-        className="rounded p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-600"
-        aria-label={`Delete ${c.name}`}
-      >
-        <Trash2 className="w-4 h-4" />
-      </button>
+      <WriteOnly permission={PERMISSION.DeleteRecords}>
+        <button
+          type="button"
+          onClick={() => remove(c)}
+          className="rounded p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-600"
+          aria-label={`Delete ${c.name}`}
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
+      </WriteOnly>
     </div>
   );
 
@@ -276,9 +280,11 @@ export default function Campaigns() {
             title="Campaigns"
             subtitle="Write a message for a segment of members and log it against each of them."
             actions={
-              <Button onClick={openCreate} className={heroPrimary('fuchsia')}>
-                <Plus className="h-4 w-4" /> New campaign
-              </Button>
+              <WriteOnly permission={PERMISSION.ClubMembers}>
+                <Button onClick={openCreate} className={heroPrimary('fuchsia')}>
+                  <Plus className="h-4 w-4" /> New campaign
+                </Button>
+              </WriteOnly>
             }
             stats={[
               { label: 'Drafts', value: stats.drafts, icon: Megaphone, tone: 'fuchsia' },

@@ -60,6 +60,8 @@ import {
   InitialsAvatar, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
   type RecordColumn,
 } from '@/app/components/views';
+import { WriteOnly } from '@/app/components/WriteOnly';
+import { PERMISSION } from '@/app/api/organizations';
 
 const KIND_ICON: Record<ResourceKind, React.ElementType> = {
   Dining: Coffee,
@@ -302,19 +304,21 @@ export default function Reservations() {
       >
         <Pencil className="h-4 w-4" />
       </button>
-      <button
-        type="button"
-        onClick={() => remove(r)}
-        disabled={deletingId === r.id}
-        className="rounded p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
-        aria-label="Delete reservation"
-      >
-        {deletingId === r.id ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <Trash2 className="h-4 w-4" />
-        )}
-      </button>
+      <WriteOnly permission={PERMISSION.DeleteRecords}>
+        <button
+          type="button"
+          onClick={() => remove(r)}
+          disabled={deletingId === r.id}
+          className="rounded p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+          aria-label="Delete reservation"
+        >
+          {deletingId === r.id ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Trash2 className="h-4 w-4" />
+          )}
+        </button>
+      </WriteOnly>
     </div>
   );
 
@@ -360,10 +364,12 @@ export default function Reservations() {
             title="Reservations"
             subtitle="Book dining rooms, spa, courts, and meeting spaces."
             actions={
-              <Button onClick={openCreate} className={heroPrimary('emerald')}>
-                <Plus className="h-4 w-4" />
-                New booking
-              </Button>
+              <WriteOnly permission={PERMISSION.FrontDesk}>
+                <Button onClick={openCreate} className={heroPrimary('emerald')}>
+                  <Plus className="h-4 w-4" />
+                  New booking
+                </Button>
+              </WriteOnly>
             }
             stats={[
               { label: 'Today', value: stats.today, icon: CalendarClock, tone: 'emerald', hint: `${stats.totalGuestsToday} guests` },

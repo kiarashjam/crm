@@ -54,6 +54,8 @@ import {
   type RecordColumn,
 } from '@/app/components/views';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
+import { WriteOnly } from '@/app/components/WriteOnly';
+import { PERMISSION } from '@/app/api/organizations';
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - Date.parse(iso);
@@ -346,15 +348,17 @@ export default function Tabs() {
             title="Open Tabs"
             subtitle="Running checks at the bar and restaurant. Closing a tab posts a charge and awards points."
             actions={
-              <Button
-                onClick={() => {
-                  setOpenForm({ memberId: '', venue: 'Bar', serverName: '' });
-                  setOpenDialog(true);
-                }}
-                className={heroPrimary('amber')}
-              >
-                <Plus className="h-4 w-4" /> Open tab
-              </Button>
+              <WriteOnly permission={PERMISSION.FrontDesk}>
+                <Button
+                  onClick={() => {
+                    setOpenForm({ memberId: '', venue: 'Bar', serverName: '' });
+                    setOpenDialog(true);
+                  }}
+                  className={heroPrimary('amber')}
+                >
+                  <Plus className="h-4 w-4" /> Open tab
+                </Button>
+              </WriteOnly>
             }
             stats={[
               { label: 'Open tabs', value: stats.openCount, icon: Wine, tone: 'amber' },

@@ -54,7 +54,7 @@ import {
   type GiftCardRedemption,
 } from '@/app/api/giftCards';
 import { getMembers, type Member } from '@/app/api/members';
-import { isOrgAdmin } from '@/app/api/organizations';
+import { orgCan, PERMISSION } from '@/app/api/organizations';
 import { servesDemoData } from '@/app/api/apiClient';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
 import { endOfLocalDay } from '@/app/lib/dateInputs';
@@ -66,6 +66,7 @@ import {
   type RecordColumn,
 } from '@/app/components/views';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
+import { WriteOnly } from '@/app/components/WriteOnly';
 
 function formatDate(iso: string): string {
   try {
@@ -112,7 +113,7 @@ export default function GiftCards() {
   const [voidingId, setVoidingId] = useState<string | null>(null);
   // Writing off a card is an owner's or a manager's call; the server refuses anyone else.
   const org = useOrgOptional();
-  const canVoid = servesDemoData() || isOrgAdmin(org?.currentOrg);
+  const canVoid = servesDemoData() || (Boolean(org?.currentOrg) && orgCan(org?.currentOrg, PERMISSION.VoidMoney));
 
   const load = async () => {
     try {
@@ -362,10 +363,12 @@ export default function GiftCards() {
             title="Gift Cards"
             subtitle="Issue, track, and redeem house gift cards."
             actions={
-              <Button onClick={openIssueDialog} className={heroPrimary('rose')}>
-                <Plus className="h-4 w-4" />
-                Issue gift card
-              </Button>
+              <WriteOnly permission={PERMISSION.ManageMoney}>
+                <Button onClick={openIssueDialog} className={heroPrimary('rose')}>
+                  <Plus className="h-4 w-4" />
+                  Issue gift card
+                </Button>
+              </WriteOnly>
             }
             stats={[
               { label: 'Total issued', value: stats.totalIssued, icon: TrendingUp, tone: 'rose', hint: 'all-time face value', format: formatCurrency },

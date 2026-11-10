@@ -46,6 +46,8 @@ import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroSecondary } from '@/app/components/PageHero';
 import { RecordAvatar } from '@/app/components/RecordCard';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
+import { WriteOnly } from '@/app/components/WriteOnly';
+import { PERMISSION } from '@/app/api/organizations';
 
 const TIER_BADGE: Record<MemberTier, string> = {
   Bronze: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
@@ -273,15 +275,17 @@ export default function MemberDetail() {
                     <Pencil className="h-4 w-4" /> Edit
                   </Link>
                 </Button>
-                <Button
-                  variant="outline"
-                  onClick={remove}
-                  disabled={deleting}
-                  aria-label="Delete member"
-                  className={`${heroSecondary} text-rose-600 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700`}
-                >
-                  {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                </Button>
+                <WriteOnly permission={PERMISSION.DeleteRecords}>
+                  <Button
+                    variant="outline"
+                    onClick={remove}
+                    disabled={deleting}
+                    aria-label="Delete member"
+                    className={`${heroSecondary} text-rose-600 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700`}
+                  >
+                    {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  </Button>
+                </WriteOnly>
               </>
             }
             stats={[

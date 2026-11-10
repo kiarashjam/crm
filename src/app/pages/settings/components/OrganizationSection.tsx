@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { Building2, UserPlus, Mail, Check, X, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { servesDemoData } from '@/app/api/apiClient';
-import { isOrgAdmin, type InviteDto, type JoinRequestDto, type OrgMemberDto } from '@/app/api/organizations';
+import { orgCan, PERMISSION, type InviteDto, type JoinRequestDto, type OrgMemberDto } from '@/app/api/organizations';
 import { RegionalSettingsCard } from './RegionalSettingsCard';
 import { EmailSendingCard } from './EmailSendingCard';
 
@@ -94,7 +94,7 @@ export function OrganizationSection({
 
       <EmailSendingCard />
 
-      {!servesDemoData() && isOrgAdmin(currentOrg) && (
+      {!servesDemoData() && Boolean(currentOrg) && orgCan(currentOrg, PERMISSION.ManageMembers) && (
         <>
           <div className="pt-6 border-t border-slate-200">
             <h3 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">

@@ -66,6 +66,8 @@ import PageHero, { heroPrimary, heroSecondary } from '@/app/components/PageHero'
 import { motion } from 'motion/react';
 import { useMotionPreference } from '@/app/hooks/useMotionPreference';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
+import { WriteOnly } from '@/app/components/WriteOnly';
+import { PERMISSION } from '@/app/api/organizations';
 
 const STATUS_BADGE: Record<EventStatus, string> = {
   Draft: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
@@ -394,10 +396,14 @@ export default function EventDetail() {
             actions={
               <>
                 {event.status === 'Draft' && (
-                  <Button onClick={() => changeStatus('Published')} className={heroPrimary('emerald')}>Publish</Button>
+                  <WriteOnly permission={PERMISSION.ClubMembers}>
+                    <Button onClick={() => changeStatus('Published')} className={heroPrimary('emerald')}>Publish</Button>
+                  </WriteOnly>
                 )}
                 {event.status === 'Published' && Date.parse(event.endAtUtc) < Date.now() && (
-                  <Button onClick={() => changeStatus('Completed')} className={heroPrimary('pink')}>Mark completed</Button>
+                  <WriteOnly permission={PERMISSION.ClubMembers}>
+                    <Button onClick={() => changeStatus('Completed')} className={heroPrimary('pink')}>Mark completed</Button>
+                  </WriteOnly>
                 )}
                 {event.status !== 'Cancelled' && event.status !== 'Completed' && (
                   <Button
@@ -413,14 +419,16 @@ export default function EventDetail() {
                     <Pencil className="h-4 w-4" /> Edit
                   </Link>
                 </Button>
-                <Button
-                  variant="outline"
-                  onClick={removeEvent}
-                  aria-label="Delete event"
-                  className={`${heroSecondary} text-rose-600 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700`}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                <WriteOnly permission={PERMISSION.DeleteRecords}>
+                  <Button
+                    variant="outline"
+                    onClick={removeEvent}
+                    aria-label="Delete event"
+                    className={`${heroSecondary} text-rose-600 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </WriteOnly>
               </>
             }
             stats={[
@@ -685,19 +693,21 @@ function AttendeeList({
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
             {renderActions(a)}
-            <button
-              type="button"
-              onClick={() => onRemove(a)}
-              disabled={deletingId === a.id}
-              className="rounded p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
-              aria-label="Remove from event"
-            >
-              {deletingId === a.id ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Trash2 className="h-4 w-4" />
-              )}
-            </button>
+            <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.FrontDesk]}>
+              <button
+                type="button"
+                onClick={() => onRemove(a)}
+                disabled={deletingId === a.id}
+                className="rounded p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+                aria-label="Remove from event"
+              >
+                {deletingId === a.id ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+              </button>
+            </WriteOnly>
           </div>
         </div>
       ))}

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Kanban, Plus, Pencil, Trash2, ChevronRight } from 'lucide-react';
 import type { Pipeline, DealStage } from '@/app/api/types';
 import { servesDemoData } from '@/app/api/apiClient';
-import { isOrgAdmin } from '@/app/api/organizations';
+import { orgCan, PERMISSION } from '@/app/api/organizations';
 import { StaleDaysSetting, parseStaleDays } from './StaleDaysSetting';
 
 /** What a stage does to the deals in it: keeps them open, or closes them as won or lost. */
@@ -112,7 +112,7 @@ export function PipelinesSection({
   const [editingProbability, setEditingProbability] = useState('');
   const [editingOutcome, setEditingOutcome] = useState<StageOutcome>('open');
 
-  if (servesDemoData() || !isOrgAdmin(currentOrg)) {
+  if (servesDemoData() || !currentOrg || !orgCan(currentOrg, PERMISSION.ManageSettings)) {
     return (
       <div className="p-6">
         <div>

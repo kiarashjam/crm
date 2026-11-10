@@ -9,7 +9,7 @@ import { Mail } from 'lucide-react';
 import { toast } from 'sonner';
 import { useOrg } from '@/app/contexts/OrgContext';
 import {
-  getEmailSending, getEmailSuppressions, isOrgAdmin, liftEmailSuppression, updateEmailSending,
+  getEmailSending, getEmailSuppressions, liftEmailSuppression, orgCan, PERMISSION, updateEmailSending,
   type EmailSending, type EmailSuppression,
 } from '@/app/api/organizations';
 import { servesDemoData } from '@/app/api/apiClient';
@@ -61,7 +61,7 @@ export function EmailSendingCard() {
 
   // Demo workspaces send nothing; without an answer from the server there is nothing true to show.
   if (!currentOrg || servesDemoData() || !sender) return null;
-  const canEdit = isOrgAdmin(currentOrg);
+  const canEdit = Boolean(currentOrg) && orgCan(currentOrg, PERMISSION.ManageSettings);
   const from = sender.verified && sender.sendingAddress ? sender.sendingAddress : sender.sharedAddress;
   const domain = sender.sendingAddress?.split('@')[1];
   const changed = address.trim() !== (sender.sendingAddress ?? '');
@@ -133,7 +133,7 @@ export function EmailSendingCard() {
           {saving ? 'Saving…' : 'Save'}
         </button>
       ) : (
-        <p className="mt-4 text-xs text-slate-500">Only the owner or a manager can change this.</p>
+        <p className="mt-4 text-xs text-slate-500">Changing this takes managing the workspace&apos;s settings, which the owner and managers have.</p>
       )}
       {suppressions.length > 0 && (
         <div className="mt-6">

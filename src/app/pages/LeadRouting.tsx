@@ -8,7 +8,7 @@ import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
 import { servesDemoData } from '@/app/api/apiClient';
-import { getOrgMembers, isOrgAdmin, type OrgMemberDto } from '@/app/api/organizations';
+import { getOrgMembers, orgCan, PERMISSION, type OrgMemberDto } from '@/app/api/organizations';
 import {
   type AssignmentRule,
   type CaptureForm,
@@ -89,8 +89,8 @@ function errorText(err: unknown, fallback: string): string {
 export default function LeadRouting() {
   const org = useOrgOptional();
   const live = !servesDemoData();
-  // Writes need an owner or a manager; the server refuses anyone else.
-  const canManage = isOrgAdmin(org?.currentOrg);
+  // Writes need the settings permission (the owner and managers by default); the server refuses anyone else.
+  const canManage = Boolean(org?.currentOrg) && orgCan(org?.currentOrg, PERMISSION.ManageSettings);
   const orgId = org?.currentOrgId ?? null;
 
   const sla = useSection(() => getSla().then((s) => s.hours), 4, live);
@@ -169,7 +169,7 @@ export default function LeadRouting() {
           {!canManage && (
             <p className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200" role="note">
               <Lock className="h-4 w-4 shrink-0" aria-hidden="true" />
-              Only owners and managers can change lead routing. You can see how it is set up.
+              Changing lead routing takes managing the workspace&apos;s settings, which the owner and managers have. You can see how it is set up.
             </p>
           )}
 

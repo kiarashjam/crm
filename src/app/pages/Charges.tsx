@@ -57,7 +57,7 @@ import {
   type Payment,
 } from '@/app/api/charges';
 import { getMembers, type Member } from '@/app/api/members';
-import { isOrgAdmin } from '@/app/api/organizations';
+import { orgCan, PERMISSION } from '@/app/api/organizations';
 import { servesDemoData } from '@/app/api/apiClient';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
 import { endOfLocalDay } from '@/app/lib/dateInputs';
@@ -69,6 +69,7 @@ import {
   type RecordColumn,
 } from '@/app/components/views';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
+import { WriteOnly } from '@/app/components/WriteOnly';
 
 const STATUS_BADGE: Record<ChargeStatus, string> = {
   Pending: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
@@ -128,7 +129,7 @@ export default function Charges() {
   const [voidingId, setVoidingId] = useState<string | null>(null);
   // Voiding money is an owner's or a manager's call; the server refuses anyone else.
   const org = useOrgOptional();
-  const canVoid = servesDemoData() || isOrgAdmin(org?.currentOrg);
+  const canVoid = servesDemoData() || (Boolean(org?.currentOrg) && orgCan(org?.currentOrg, PERMISSION.VoidMoney));
 
   const load = async () => {
     try {
@@ -434,10 +435,12 @@ export default function Charges() {
             title="House Accounts"
             subtitle="Charges, payments, and outstanding balances across all members."
             actions={
-              <Button onClick={openChargeDialog} className={heroPrimary('emerald')}>
-                <Plus className="h-4 w-4" />
-                Post charge
-              </Button>
+              <WriteOnly permission={PERMISSION.ManageMoney}>
+                <Button onClick={openChargeDialog} className={heroPrimary('emerald')}>
+                  <Plus className="h-4 w-4" />
+                  Post charge
+                </Button>
+              </WriteOnly>
             }
             stats={[
               { label: 'Outstanding', value: stats.outstanding, icon: DollarSign, tone: 'amber', hint: `${stats.pendingCount} open charges`, format: formatCurrency },

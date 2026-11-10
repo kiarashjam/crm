@@ -6,8 +6,12 @@ export interface Organization {
   name: string;
   ownerUserId: string;
   isOwner: boolean;
-  /** 0 Owner, 1 Member, 2 Manager. */
+  /** 0 Owner, 1 Member, 2 Manager, 3 Viewer. The coarse role; what the member may do is `permissions`. */
   role: number;
+  /** The preset the caller's permissions start from, e.g. "sales_rep". Older servers send none. */
+  permissionPreset?: string;
+  /** What the caller may do here (see PERMISSION). Older servers send none, and the role decides. */
+  permissions?: string[];
   /** ISO code new deals are priced in. Older servers send none. Club pages keep their own (hospitality settings). */
   currency?: string;
   /** How amounts are written (the number format), e.g. "de-CH". Dates stay in the viewer's language. */
@@ -21,29 +25,129 @@ export interface Organization {
 /** Role ids as persisted by the backend (OrgMemberRole). */
 export const ORG_ROLE = { Owner: 0, Member: 1, Manager: 2, Viewer: 3 } as const;
 
-/** True when the current user is Owner or Manager of the organization (full admin access). */
-export function isOrgAdmin(org: { isOwner?: boolean; role?: number } | null | undefined): boolean {
-  if (!org) return false;
-  return org.isOwner === true || org.role === 0 || org.role === 2;
+/**
+ * What a member of an organization may do, beyond reading its records (the server's
+ * MemberPermissions). Each member holds a set, started from a preset; the server
+ * refuses what they do not hold, and the app hides it.
+ */
+export const PERMISSION = {
+  EditRecords: 'records.edit',
+  DeleteRecords: 'records.delete',
+  ExportRecords: 'records.export',
+  SeeAllDeals: 'deals.all',
+  ManageSettings: 'settings.manage',
+  ManageMembers: 'members.manage',
+  ManageMoney: 'money.manage',
+  VoidMoney: 'money.void',
+  ClubMembers: 'club.members',
+  FrontDesk: 'club.frontdesk',
+} as const;
+
+export type Permission = (typeof PERMISSION)[keyof typeof PERMISSION];
+
+const EVERY_PERMISSION: readonly string[] = Object.values(PERMISSION);
+
+/** The permissions that change something. A member with none of them can only read (and export). */
+const WRITES: ReadonlySet<string> = new Set(
+  EVERY_PERMISSION.filter((p) => p !== PERMISSION.ExportRecords && p !== PERMISSION.SeeAllDeals),
+);
+
+/** What a Member could do before permission sets, for a server that does not send permissions. */
+const LEGACY_MEMBER: readonly string[] = [
+  PERMISSION.EditRecords,
+  PERMISSION.DeleteRecords,
+  PERMISSION.ExportRecords,
+  PERMISSION.ManageMoney,
+  PERMISSION.ClubMembers,
+  PERMISSION.FrontDesk,
+];
+
+type OrgAccess = { isOwner?: boolean; role?: number; permissions?: string[] } | null | undefined;
+
+/**
+ * What the caller may do in this organization. With none (a personal workspace)
+ * everything is theirs; the owner may do everything; otherwise what the server sent,
+ * or, from a server too old to send it, what the role allowed.
+ */
+export function orgPermissions(org: OrgAccess): ReadonlySet<string> {
+  if (!org || org.isOwner === true || org.role === ORG_ROLE.Owner) return new Set(EVERY_PERMISSION);
+  if (Array.isArray(org.permissions)) return new Set(org.permissions);
+  if (org.role === ORG_ROLE.Manager) return new Set(EVERY_PERMISSION);
+  if (org.role === ORG_ROLE.Viewer) return new Set([PERMISSION.ExportRecords]);
+  return new Set(LEGACY_MEMBER);
+}
+
+/** Whether the caller may do this in the organization (a personal workspace: always). */
+export function orgCan(org: OrgAccess, permission: Permission): boolean {
+  return orgPermissions(org).has(permission);
 }
 
 /**
  * True when the user's role in this organization is view-only: they can see every
- * record but the backend rejects any create/edit/delete. The UI uses this to hide
- * or disable editing affordances so nothing is offered that would just fail.
+ * record but the backend rejects any change. The UI uses this to hide or disable
+ * editing affordances so nothing is offered that would just fail.
  */
-export function isOrgViewer(org: { isOwner?: boolean; role?: number } | null | undefined): boolean {
+export function isOrgViewer(org: OrgAccess): boolean {
   if (!org) return false;
   // An owner is never read-only, even if a stale role value says otherwise.
   if (org.isOwner === true) return false;
-  return org.role === ORG_ROLE.Viewer;
+  return ![...orgPermissions(org)].some((p) => WRITES.has(p));
 }
 
 export interface OrgMemberDto {
   userId: string;
   name: string;
   email: string;
-  role: number; // 0 Owner, 1 Member, 2 Manager
+  role: number; // 0 Owner, 1 Member, 2 Manager, 3 Viewer
+  /** The preset their permissions start from. Older servers send none. */
+  preset?: string;
+  /** What they may do. */
+  permissions?: string[];
+  /** Whether the owner changed their permissions from the preset's (or they kept an old role's). */
+  customised?: boolean;
+}
+
+/** A permission as the Team page lists it. */
+export interface PermissionInfo {
+  key: string;
+  label: string;
+  description: string;
+}
+
+/** A preset and what it allows. The owner's is listed but given to nobody. */
+export interface PermissionPreset {
+  key: string;
+  label: string;
+  description: string;
+  permissions: string[];
+  assignable: boolean;
+}
+
+export interface PermissionCatalogue {
+  permissions: PermissionInfo[];
+  presets: PermissionPreset[];
+}
+
+/** Every permission and preset a member can be given. */
+export async function getPermissionSets(organizationId: string): Promise<PermissionCatalogue> {
+  return authFetchJson<PermissionCatalogue>(`/api/organizations/${organizationId}/permission-sets`);
+}
+
+/**
+ * Set what a member may do: a preset, and (the owner only) their own list of
+ * permissions instead of the preset's. Throws with the server's reason when the
+ * caller may not give that much.
+ */
+export async function setMemberPermissions(
+  organizationId: string,
+  memberUserId: string,
+  preset: string,
+  permissions?: string[],
+): Promise<OrgMemberDto> {
+  return authFetchJson<OrgMemberDto>(`/api/organizations/${organizationId}/members/${memberUserId}/permissions`, {
+    method: 'PUT',
+    body: JSON.stringify(permissions ? { preset, permissions } : { preset }),
+  });
 }
 
 export interface InviteDto {
@@ -221,7 +325,7 @@ export async function getOrgMembers(organizationId: string): Promise<OrgMemberDt
     // Demo mode: the only "member" is the demo user themselves.
     const u = getCurrentUser();
     if (!u) return [];
-    return [{ userId: u.id, name: u.name, email: u.email, role: 0 }];
+    return [{ userId: u.id, name: u.name, email: u.email, role: 0, preset: 'owner', permissions: [...EVERY_PERMISSION] }];
   }
   const list = await authFetchJson<OrgMemberDto[]>(`/api/organizations/${organizationId}/members`);
   return Array.isArray(list) ? list : [];
@@ -232,10 +336,10 @@ export async function getOrgMembers(organizationId: string): Promise<OrgMemberDt
  * invitation + acceptance round trip. Owner/manager only. Throws with the
  * server's explanation when the person has no account yet or is already a member.
  */
-export async function addOrgMember(organizationId: string, email: string, role: number): Promise<OrgMemberDto | null> {
+export async function addOrgMember(organizationId: string, email: string, role: number, preset?: string): Promise<OrgMemberDto | null> {
   const member = await authFetchJson<OrgMemberDto>(`/api/organizations/${organizationId}/members`, {
     method: 'POST',
-    body: JSON.stringify({ email: email.trim().toLowerCase(), role }),
+    body: JSON.stringify(preset ? { email: email.trim().toLowerCase(), role, preset } : { email: email.trim().toLowerCase(), role }),
   });
   return member ?? null;
 }

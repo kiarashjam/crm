@@ -58,6 +58,8 @@ import {
   type RecordColumn,
 } from '@/app/components/views';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
+import { WriteOnly } from '@/app/components/WriteOnly';
+import { PERMISSION } from '@/app/api/organizations';
 
 const STATUS_BADGE: Record<SubscriptionStatus, string> = {
   Active: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
@@ -280,14 +282,16 @@ export default function Subscriptions() {
           Cancel
         </button>
       )}
-      <button
-        type="button"
-        onClick={() => remove(s)}
-        className="rounded p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600"
-        aria-label="Delete"
-      >
-        <Trash2 className="w-4 h-4" />
-      </button>
+      <WriteOnly permission={PERMISSION.DeleteRecords}>
+        <button
+          type="button"
+          onClick={() => remove(s)}
+          className="rounded p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600"
+          aria-label="Delete"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
+      </WriteOnly>
     </div>
   );
 
@@ -351,9 +355,11 @@ export default function Subscriptions() {
                     </>
                   )}
                 </Button>
-                <Button onClick={openCreate} className={heroPrimary('blue')}>
-                  <Plus className="h-4 w-4" /> New subscription
-                </Button>
+                <WriteOnly permission={PERMISSION.ManageMoney}>
+                  <Button onClick={openCreate} className={heroPrimary('blue')}>
+                    <Plus className="h-4 w-4" /> New subscription
+                  </Button>
+                </WriteOnly>
               </>
             }
             stats={[

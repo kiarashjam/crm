@@ -9,6 +9,8 @@ import type { ReactNode } from 'react';
 import { cn } from '@/app/components/ui/utils';
 import { Download } from 'lucide-react';
 import { Reveal } from '@/app/components/motion/PageEnter';
+import { useOrgOptional } from '@/app/contexts/OrgContext';
+import { orgCan, PERMISSION } from '@/app/api/organizations';
 
 /** Section accent, so each area of the page is identifiable at a glance. */
 export type Accent = 'indigo' | 'teal' | 'violet' | 'amber' | 'rose' | 'sky' | 'emerald';
@@ -256,6 +258,9 @@ export function Funnel({
  * CRM from public forms.
  */
 export function CsvButton({ onClick, disabled, what }: { onClick: () => void; disabled?: boolean; what: string }) {
+  const org = useOrgOptional();
+  // Reading a report takes nothing; taking its table away takes records.export.
+  if (org && !orgCan(org.currentOrg ?? null, PERMISSION.ExportRecords)) return null;
   return (
     <button
       type="button"

@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
-  acceptJoinRequest, getOrgMembers, isOrgAdmin,
+  acceptJoinRequest, getOrgMembers, orgCan, PERMISSION,
   listPendingJoinRequestsForOrg, rejectJoinRequest,
   type JoinRequestDto, type Organization,
 } from '@/app/api/organizations';
@@ -63,6 +63,11 @@ import { BrandName } from '@/app/components/BrandName';
 const TONE = 'indigo' as const;
 
 /** Human label for a route, for "Taking you to …". */
+/** Whether the caller may change this workspace or its team (the owner and managers by default). */
+function canChangeWorkspace(org: Organization | undefined): boolean {
+  return Boolean(org) && (orgCan(org, PERMISSION.ManageSettings) || orgCan(org, PERMISSION.ManageMembers));
+}
+
 function destinationLabel(path: string): string {
   const seg = path.split('?')[0]!.split('/').filter(Boolean);
   if (seg.length === 0) return 'your workspace';
@@ -631,10 +636,10 @@ export default function Organizations() {
           )}
         </section>
 
-        {/* Settings shortcut, only where it would actually work. Owners and
-            managers can change a workspace; members and viewers cannot, and the
-            old menu offered it to everyone. */}
-        {currentOrgId && isOrgAdmin(organizations.find((o) => o.id === currentOrgId)) && (
+        {/* Settings shortcut, only where it would actually work: for whoever may
+            change the workspace or its team (the owner and managers by default).
+            The old menu offered it to everyone. */}
+        {currentOrgId && canChangeWorkspace(organizations.find((o) => o.id === currentOrgId)) && (
           <p className="mt-5 text-xs text-slate-500">
             Need to rename a workspace or manage its team?{' '}
             <Link

@@ -60,6 +60,8 @@ import {
   type RecordColumn,
 } from '@/app/components/views';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
+import { WriteOnly } from '@/app/components/WriteOnly';
+import { PERMISSION } from '@/app/api/organizations';
 
 const STATUS_BADGE: Record<EventStatus, string> = {
   Draft: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
@@ -291,19 +293,21 @@ export default function Events() {
         >
           <Pencil className="h-4 w-4" />
         </button>
-        <button
-          type="button"
-          onClick={() => remove(e)}
-          disabled={deletingId === e.id}
-          className="rounded p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
-          aria-label={`Delete ${e.name}`}
-        >
-          {deletingId === e.id ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Trash2 className="h-4 w-4" />
-          )}
-        </button>
+        <WriteOnly permission={PERMISSION.DeleteRecords}>
+          <button
+            type="button"
+            onClick={() => remove(e)}
+            disabled={deletingId === e.id}
+            className="rounded p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+            aria-label={`Delete ${e.name}`}
+          >
+            {deletingId === e.id ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Trash2 className="h-4 w-4" />
+            )}
+          </button>
+        </WriteOnly>
       </div>
     );
   };
@@ -347,10 +351,12 @@ export default function Events() {
             title="Events"
             subtitle="Ticketing, capacity, waitlists, and member pricing."
             actions={
-              <Button onClick={openCreate} className={heroPrimary('pink')}>
-                <Plus className="h-4 w-4" />
-                New event
-              </Button>
+              <WriteOnly permission={PERMISSION.ClubMembers}>
+                <Button onClick={openCreate} className={heroPrimary('pink')}>
+                  <Plus className="h-4 w-4" />
+                  New event
+                </Button>
+              </WriteOnly>
             }
             stats={[
               { label: 'Upcoming', value: stats.upcoming, icon: CalendarHeart, tone: 'pink', hint: `${stats.draftCount} in draft` },

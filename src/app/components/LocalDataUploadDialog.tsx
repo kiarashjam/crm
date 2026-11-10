@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/app/com
 import { Button } from '@/app/components/ui/button';
 import { servesDemoData } from '@/app/api/apiClient';
 import { announceDataChanged } from '@/app/api/dataChanged';
-import { isOrgAdmin } from '@/app/api/organizations';
+import { orgCan, PERMISSION } from '@/app/api/organizations';
 import {
   findLocalUploads, hasLocalUploads, serverAcceptsUploads, uploadLocalData, uploadSteps,
   type LocalUploadPlan, type LocalUploadResult,
@@ -32,17 +32,18 @@ export default function LocalDataUploadDialog() {
   const [result, setResult] = useState<LocalUploadResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const probed = useRef<string | null>(null);
-  const canDefineFields = isOrgAdmin(currentOrg);
+  const canDefineFields = orgCan(currentOrg, PERMISSION.ManageSettings);
 
   useEffect(() => {
     // Wait for the workspace itself, not just its id: its role decides what can be uploaded.
-    if (servesDemoData() || !currentOrg || org?.isReadOnly) return;
+    // Uploading makes records, which takes records.edit.
+    if (servesDemoData() || !currentOrg || org?.isReadOnly || !orgCan(currentOrg, PERMISSION.EditRecords)) return;
     if (probed.current === currentOrg.id) return;
     probed.current = currentOrg.id;
     try { if (sessionStorage.getItem(SNOOZE_KEY)) return; } catch { /* proceed */ }
 
     const found = findLocalUploads();
-    if (!hasLocalUploads(found, isOrgAdmin(currentOrg))) return;
+    if (!hasLocalUploads(found, orgCan(currentOrg, PERMISSION.ManageSettings))) return;
     let cancelled = false;
     // Only offer once the server takes both; before that, the browser is still where they live.
     serverAcceptsUploads().then((ready) => {
@@ -103,7 +104,7 @@ export default function LocalDataUploadDialog() {
             </ul>
             {!canDefineFields && plan.fields.length > 0 && (
               <p className="text-sm text-slate-500">
-                Only an owner or manager can add fields. If {orgName} doesn&apos;t have one of these fields yet, its values
+                Only someone who manages the workspace&apos;s settings can add fields. If {orgName} doesn&apos;t have one of these fields yet, its values
                 stay in this browser until one of them adds it.
               </p>
             )}
@@ -163,7 +164,7 @@ function Summary({ result }: { result: LocalUploadResult }) {
         <p>{plural(result.elsewhere, 'item')} {result.elsewhere === 1 ? 'is' : 'are'} on records in another workspace. Switch to it and you&apos;ll be offered {result.elsewhere === 1 ? 'it' : 'them'} again.</p>
       )}
       {result.needsManager.length > 0 && (
-        <p>Waiting for an owner or manager to add: {result.needsManager.join(', ')}.</p>
+        <p>Waiting for someone who manages the workspace&apos;s settings to add: {result.needsManager.join(', ')}.</p>
       )}
       {result.failed > 0 && (
         <p>{plural(result.failed, 'item')} couldn&apos;t be uploaded and {result.failed === 1 ? 'is' : 'are'} still in this browser. You&apos;ll be asked again next time.</p>

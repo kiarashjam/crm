@@ -55,6 +55,7 @@ import { activityTime, factsPayload } from '@/app/lib/activityFacts';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import { currencyOf } from '@/app/lib/money';
 import { useMoney } from '@/app/hooks/useMoney';
+import { PERMISSION } from '@/app/api/organizations';
 
 export default function DealDetail() {
   const money = useMoney();
@@ -336,7 +337,7 @@ export default function DealDetail() {
                     </WriteOnly>
                   </>
                 )}
-                <WriteOnly>
+                <WriteOnly permission={PERMISSION.DeleteRecords}>
                   <Button
                     variant="outline"
                     aria-label="Delete deal"

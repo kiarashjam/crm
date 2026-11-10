@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
-import { isOrgAdmin, updateOrganizationSettings } from '@/app/api/organizations';
+import { orgCan, PERMISSION, updateOrganizationSettings } from '@/app/api/organizations';
 
 /** The workspace's default when nobody has changed it; the server's too. */
 const DEFAULT_DAYS = 30;
@@ -27,7 +27,7 @@ export function StaleDaysSetting() {
   const [saving, setSaving] = useState(false);
   useEffect(() => setText(String(current)), [current]);
 
-  if (!org || !isOrgAdmin(org)) return null;
+  if (!org || !orgCan(org, PERMISSION.ManageSettings)) return null;
   const days = parseStaleDays(text);
 
   const save = async (e: React.FormEvent) => {

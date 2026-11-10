@@ -4,13 +4,13 @@
 //
 // These were missing altogether, so a Swiss club's deals without a currency showed as
 // dollars and its months began at UTC midnight. They belong to the workspace, not to
-// each person, so the owner or a manager sets them here and everyone sees the same.
+// each person, so whoever manages its settings sets them here and everyone sees the same.
 
 import { useEffect, useState } from 'react';
 import { Globe2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useOrg } from '@/app/contexts/OrgContext';
-import { isOrgAdmin, updateOrganizationSettings } from '@/app/api/organizations';
+import { orgCan, PERMISSION, updateOrganizationSettings } from '@/app/api/organizations';
 import { servesDemoData } from '@/app/api/apiClient';
 import { currencyOptions, formatMoney, regionalOf, type Regional } from '@/app/lib/money';
 
@@ -80,7 +80,7 @@ export function RegionalSettingsCard() {
 
   // Demo workspaces have no server to keep them; they work in the defaults.
   if (!currentOrg || servesDemoData()) return null;
-  const canEdit = isOrgAdmin(currentOrg);
+  const canEdit = Boolean(currentOrg) && orgCan(currentOrg, PERMISSION.ManageSettings);
   const changed = form.currency !== saved.currency || form.locale !== saved.locale || form.timeZone !== saved.timeZone;
   const shown = preview(form);
   const locales = LOCALES.some((l) => l.code === form.locale) ? LOCALES : [{ code: form.locale, name: form.locale }, ...LOCALES];
@@ -168,7 +168,7 @@ export function RegionalSettingsCard() {
           {saving ? 'Saving…' : 'Save'}
         </button>
       ) : (
-        <p className="mt-4 text-xs text-slate-500">Only the owner or a manager can change these.</p>
+        <p className="mt-4 text-xs text-slate-500">Changing these takes managing the workspace&apos;s settings, which the owner and managers have.</p>
       )}
     </section>
   );

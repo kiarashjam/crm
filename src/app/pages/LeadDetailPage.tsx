@@ -23,7 +23,7 @@ import {
   messages,
 } from '@/app/api';
 import type { Lead, Company, Contact, LeadStatus, LeadSource, Activity, TaskItem } from '@/app/api/types';
-import { getOrgMembers, type OrgMemberDto } from '@/app/api/organizations';
+import { getOrgMembers, orgCan, PERMISSION, type OrgMemberDto } from '@/app/api/organizations';
 import { LeadStatusTimeline } from './leads/components/LeadStatusTimeline';
 import { useOrg } from '@/app/contexts/OrgContext';
 import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
@@ -67,6 +67,7 @@ import AttachmentsCard from '@/app/components/AttachmentsCard';
 import { Confetti } from '@/app/components/Confetti';
 import EmailComposerDialog from '@/app/components/EmailComposerDialog';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { WriteOnly } from '@/app/components/WriteOnly';
 
 type Tab = 'activity' | 'tasks' | 'notes';
 
@@ -125,7 +126,9 @@ export default function LeadDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const { currentOrgId, isReadOnly } = useOrg();
+  const { currentOrgId, currentOrg, isReadOnly: viewOnly } = useOrg();
+  // Working a lead takes records.edit: finance, the front desk and read-only members see it.
+  const isReadOnly = viewOnly || !orgCan(currentOrg, PERMISSION.EditRecords);
   // Less motion when the OS or Settings asks for it: things appear instead of moving.
   const reduce = useMotionPreference();
   const rise = (delay = 0) => (reduce
@@ -940,15 +943,17 @@ export default function LeadDetailPage() {
                         Convert
                       </Button>
                     )}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setDeleteOpen(true)}
-                      aria-label="Delete"
-                      className={`${heroSecondary} text-red-600 hover:border-red-200 hover:bg-red-50 hover:text-red-700`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <WriteOnly permission={PERMISSION.DeleteRecords}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setDeleteOpen(true)}
+                        aria-label="Delete"
+                        className={`${heroSecondary} text-red-600 hover:border-red-200 hover:bg-red-50 hover:text-red-700`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </WriteOnly>
                   </>
                 )}
               </>
@@ -1260,14 +1265,16 @@ export default function LeadDetailPage() {
                                     ? 'bg-amber-100 text-amber-700'
                                     : 'bg-sky-50 text-sky-600',
                               )}>{t.priority}</span>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteTask(t)}
-                                aria-label="Delete task"
-                                className="flex h-7 w-7 items-center justify-center rounded-md text-slate-300 opacity-0 transition-all hover:bg-red-50 hover:text-red-600 focus-visible:opacity-100 group-hover:opacity-100"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                              <WriteOnly permission={PERMISSION.DeleteRecords}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteTask(t)}
+                                  aria-label="Delete task"
+                                  className="flex h-7 w-7 items-center justify-center rounded-md text-slate-300 opacity-0 transition-all hover:bg-red-50 hover:text-red-600 focus-visible:opacity-100 group-hover:opacity-100"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </WriteOnly>
                             </div>
                           </motion.li>
                         );

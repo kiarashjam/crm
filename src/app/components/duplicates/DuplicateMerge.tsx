@@ -18,6 +18,7 @@ import { useMotionPreference } from '@/app/hooks/useMotionPreference';
 import type { DuplicateKind } from './kinds';
 import { MergeDuplicatesDialog } from './MergeDuplicatesDialog';
 import { useDuplicateGroups } from './useDuplicateGroups';
+import { PERMISSION } from '@/app/api/organizations';
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 
@@ -48,7 +49,7 @@ interface Props<T extends { id: string }> {
 
 export function DuplicateMerge<T extends { id: string }>({ spec, onMerged, className }: Props<T>) {
   return (
-    <WriteOnly>
+    <WriteOnly permission={PERMISSION.DeleteRecords}>
       <DuplicateMergeInner spec={spec} onMerged={onMerged} className={className} />
     </WriteOnly>
   );
