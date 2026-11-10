@@ -41,6 +41,9 @@ namespace ACI.Application.Services;
 /// <item><b>Gift cards</b>: issue, redeem, top up, void and expire, each a transaction on the
 /// card; <see cref="GiftCardBalanceAsync"/> at any date.</item>
 /// <item><b>Tabs</b>: open, add and remove items, close (one charge and the points, once) and void.</item>
+/// <item><b>Sales</b>: <see cref="PostSaleAsync"/> posts what a member bought at the till or on a POS
+/// ticket, line by line: a charge for each VAT rate on it, a payment for what was paid there, and
+/// the points it earns, together or not at all (ClubSales.cs).</item>
 /// <item><b>Subscriptions</b>: <see cref="BillSubscriptionAsync(Guid?, Guid, bool, CancellationToken)"/>
 /// bills a period once (a second bill of the same period is refused by the database), and
 /// <see cref="BillDueAsync"/> bills every period that has started, which the daily billing
@@ -56,7 +59,7 @@ namespace ACI.Application.Services;
 /// were read at, from the body or If-Match, and refuse a save from an older one.
 /// </para>
 /// </remarks>
-public interface IClubLedger
+public partial interface IClubLedger
 {
     // ── house accounts ────────────────────────────────────────────────────────
     Task<IReadOnlyList<ChargeDto>> ChargesAsync(Guid? organizationId, Guid? memberId = null, CancellationToken ct = default);
