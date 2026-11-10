@@ -128,6 +128,8 @@ function editFormFor(deal: Deal) {
     assigneeId: deal.assigneeId ?? '',
     description: deal.description ?? '',
     probability: deal.probability?.toString() ?? '',
+    // The save is checked against this, so it travels with the fields it belongs to.
+    version: deal.version ?? '',
   };
 }
 
@@ -200,7 +202,7 @@ export default function Pipeline() {
   const contacts: Contact[] = useAllContacts().data ?? NO_CONTACTS;
   const [saving, setSaving] = useState(false);
   const [editDeal, setEditDeal] = useState<Deal | null>(null);
-  const [editForm, setEditForm] = useState({ name: '', value: '', currency: '', expectedCloseDate: '', companyId: '', pipelineId: '', stageId: '', assigneeId: '', description: '', probability: '' });
+  const [editForm, setEditForm] = useState({ name: '', value: '', currency: '', expectedCloseDate: '', companyId: '', pipelineId: '', stageId: '', assigneeId: '', description: '', probability: '', version: '' });
   const [savingEdit, setSavingEdit] = useState(false);
   const [deleteConfirmDeal, setDeleteConfirmDeal] = useState<Deal | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -426,9 +428,11 @@ export default function Pipeline() {
     }
   };
 
-  useEffect(() => {
-    if (editDeal) setEditForm(editFormFor(editDeal));
-  }, [editDeal]);
+  /** Opens the edit dialog on a deal, with that deal's fields, in one update. */
+  const openEditDeal = (deal: Deal) => {
+    setEditDeal(deal);
+    setEditForm(editFormFor(deal));
+  };
 
   // The board may have loaded minutes ago, and the dialog's save is checked against the
   // version it opened with. So the dialog takes the deal as it is now, read when it
@@ -448,9 +452,12 @@ export default function Pipeline() {
     if (!freshEditDeal) return;
     setFreshEditDeal(null);
     if (!editDeal || editDeal.id !== freshEditDeal.id) return;
-    const untouched = JSON.stringify(editForm) === JSON.stringify(editFormFor(editDeal));
-    if (untouched) setEditDeal(freshEditDeal);
-  }, [freshEditDeal, editDeal, editForm]);
+    // Decided inside the form's own update, against the form as it is when the update
+    // applies. Checked here and applied by a later effect, a keystroke that landed in
+    // between was overwritten by the fresh copy: an emptied description came back.
+    const opened = JSON.stringify(editFormFor(editDeal));
+    setEditForm((current) => (JSON.stringify(current) === opened ? editFormFor(freshEditDeal) : current));
+  }, [freshEditDeal, editDeal]);
 
   /** After a refused save: the deal as it is now, in the dialog and on the board. */
   const reloadEditDeal = async (id: string) => {
@@ -458,6 +465,7 @@ export default function Pipeline() {
       const fresh = await getDealById(id);
       if (!fresh) return;
       setEditDeal(fresh);
+      setEditForm(editFormFor(fresh));
       setDeals((prev) => prev.map((d) => (d.id === id ? fresh : d)));
       refresh();
     } catch {
@@ -563,7 +571,7 @@ export default function Pipeline() {
         probability: editForm.probability ? parseInt(editForm.probability, 10) : null,
         // The dialog sends back every field it shows, so the save is refused, rather
         // than written over, when someone saved the deal after this copy was read.
-        version: editDeal.version,
+        version: editForm.version || undefined,
       });
       if (updated) {
         setDeals((prev) => prev.map((d) => (d.id === editDeal.id ? updated : d)));
@@ -843,7 +851,7 @@ export default function Pipeline() {
         variant="ghost"
         size="icon"
         className="h-8 w-8 rounded-xl text-slate-500 hover:bg-emerald-50 hover:text-emerald-600"
-        onClick={() => setEditDeal(deal)}
+        onClick={() => openEditDeal(deal)}
         aria-label={`Edit ${deal.name}`}
       >
         <Pencil className="h-4 w-4" />
@@ -1434,7 +1442,7 @@ export default function Pipeline() {
                         contacts={contacts}
                         stageList={stageList}
                         onMoveStage={handleMoveStage}
-                        onEdit={setEditDeal}
+                        onEdit={openEditDeal}
                         onDelete={setDeleteConfirmDeal}
                         onOpenDetail={openDealDetail}
                         taskCountsByDeal={taskCountsByDeal}
@@ -1483,7 +1491,7 @@ export default function Pipeline() {
                         stageId={deal.dealStageId ?? dealStageName(deal)}
                         stageName={dealStageName(deal)}
                         onMoveStage={handleMoveStage}
-                        onEdit={() => setEditDeal(deal)}
+                        onEdit={() => openEditDeal(deal)}
                         onDelete={() => setDeleteConfirmDeal(deal)}
                         onOpenDetail={() => openDealDetail(deal)}
                         stageList={stageList}
@@ -1602,7 +1610,7 @@ export default function Pipeline() {
                     size="sm"
                     className="flex-1 gap-2"
                     onClick={() => {
-                      setEditDeal(detailDeal);
+                      openEditDeal(detailDeal);
                       setDetailDeal(null);
                     }}
                   >
