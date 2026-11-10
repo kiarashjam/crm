@@ -17,8 +17,9 @@ namespace ACI.Infrastructure.Services;
 /// the club's payment terms after it is billed. There is no proration. A subscription
 /// starts its own cycle on its first date, so it never bills part of a period; a new amount
 /// or cadence applies from the next period billed; cancelling stops billing and refunds
-/// nothing of a period already billed; and periods that start while it is paused are not
-/// billed: on resuming it picks up at the next period that starts on or after that day.
+/// nothing of a period already billed; and periods that start while it is paused or
+/// cancelled are not billed: run again, it picks up at the next period that starts on or
+/// after that day.
 /// </para>
 /// </remarks>
 public sealed partial class ClubLedgerService
@@ -119,7 +120,8 @@ public sealed partial class ClubLedgerService
         if (request.Notes?.Trim().Length > 1000) return DomainErrors.Club.TooLong("A note", 1000);
 
         var now = DateTime.UtcNow;
-        var resuming = sub.Status == "Paused" && request.Status?.Trim() == "Active";
+        // Run again after a pause, or after it was cancelled (a member who comes back).
+        var resuming = sub.Status is "Paused" or "Cancelled" && request.Status?.Trim() == "Active";
         if (request.Status != null) sub.Status = request.Status.Trim();
         if (Money(request.Amount) is { } amount) sub.Amount = amount;
         if (request.Cadence != null) sub.Cadence = request.Cadence.Trim();
@@ -131,9 +133,9 @@ public sealed partial class ClubLedgerService
         }
         else if (resuming && sub.NextChargeAtUtc is { } due && due < now)
         {
-            // Periods that started while it was paused are not billed: it picks up at the
-            // next period that starts from today. Left where it was, the next billing run
-            // would have billed every month of the pause.
+            // Periods that started while it was paused or cancelled are not billed: it picks
+            // up at the next period that starts from today. Left where it was, the next
+            // billing run would have billed every month it was stopped.
             var anchor = sub.BillingAnchorDay ?? due.Day;
             sub.NextChargeAtUtc = BillingPeriods.FirstOnOrAfter(due, sub.Cadence, anchor, DateTime.SpecifyKind(now.Date, DateTimeKind.Utc));
             sub.BillingAnchorDay = anchor;

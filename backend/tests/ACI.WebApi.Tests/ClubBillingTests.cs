@@ -125,4 +125,24 @@ public class ClubBillingTests
         await Json(await client.PostAsync($"/api/subscriptions/{id}/bill", Body(new { early = true })), "bill the next period");
         (await ChargesAsync(client, memberId)).Select(c => Utc(c.GetProperty("billingPeriodStartUtc"))).Should().Equal(next);
     }
+
+    [Fact]
+    public async Task ASubscriptionStartedAgainAfterItWasCancelled_DoesNotBillTheMonthsItWasCancelled()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await ClubAsync(factory);
+        var memberId = await MemberAsync(client);
+        var sub = await SubscriptionAsync(client, memberId, MonthStart(3));
+        var id = sub.GetProperty("id").GetGuid();
+        await Json(await client.PutAsync($"/api/subscriptions/{id}", Body(new { status = "Cancelled" })), "cancel");
+
+        // The member comes back: the subscription runs again, from the next period, as one
+        // resumed after a pause does. Left at its old date, the daily run would have billed
+        // every month since it was cancelled.
+        var started = await Json(await client.PutAsync($"/api/subscriptions/{id}", Body(new { status = "Active" })), "start it again");
+        var next = BillingPeriods.FirstOnOrAfter(MonthStart(3), "Monthly", 1, DateTime.UtcNow.Date);
+        Utc(started.GetProperty("nextChargeAtUtc")).Should().Be(next);
+        var preview = await Json(await client.GetAsync("/api/billing/preview"), "what billing now would post");
+        preview.GetProperty("periods").GetInt32().Should().Be(next <= DateTime.UtcNow ? 1 : 0, "only a period that starts after it runs again");
+    }
 }
