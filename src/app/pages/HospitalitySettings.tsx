@@ -7,12 +7,15 @@
 //   for coming to an event, each times the member's tier multiplier.
 // - Billing: what the daily run does on its own, what billing now would post, and the
 //   runs so far.
+// - Payments: Stripe for paying online, the bank account for the QR-bill on statements, and
+//   the accounts the journal books to (saved on their own, for settings managers).
 //
 // The page used to save tiers, dues, multipliers and points that nothing read, and said
 // "Not applied yet" next to each. What is here now is applied; what was never used (the
 // redemption rate, the referral and anniversary bonuses) has gone.
 
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Settings, Save, RotateCcw, Crown, Sparkles, Loader2, Coins, Plus, X, Receipt, Tag, CalendarClock, PlayCircle, PartyPopper,
 } from 'lucide-react';
@@ -46,6 +49,7 @@ import { WriteOnly } from '@/app/components/WriteOnly';
 import { PERMISSION, orgCan } from '@/app/api/organizations';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
 import { servesDemoData } from '@/app/api/apiClient';
+import { PaymentSettingsPanel } from '@/app/components/payments/PaymentSettingsPanel';
 import {
   NONE, useBillingPreview, useBillingRuns, useClubCatalog, useClubReads, useHospitalitySettings, useWorkspaceScope,
 } from '@/app/hooks/queries';
@@ -54,6 +58,10 @@ import {
 const CATALOG_EDITORS = [PERMISSION.ManageSettings, PERMISSION.ManageMoney] as const;
 
 const OTHER_KINDS: CatalogKind[] = ['Dues', 'Fee', 'Product', 'Ticket', 'MenuItem'];
+
+/** The page's tabs; `?tab=payments` opens one (the server's messages send people to Payments). */
+const TABS = ['tiers', 'catalog', 'points', 'billing', 'payments'] as const;
+type Tab = (typeof TABS)[number];
 
 const message = (err: unknown, fallback: string) => (err instanceof Error && err.message ? err.message : fallback);
 
@@ -82,6 +90,16 @@ export default function HospitalitySettings() {
   const org = useOrgOptional()?.currentOrg ?? null;
   const demo = servesDemoData();
   const canSeeBilling = demo || orgCan(org, PERMISSION.ManageMoney) || orgCan(org, PERMISSION.ManageSettings);
+
+  const [search, setSearch] = useSearchParams();
+  const asked = search.get('tab');
+  const tab: Tab = TABS.includes(asked as Tab) ? (asked as Tab) : 'tiers';
+  const openTab = (value: string) => {
+    const next = new URLSearchParams(search);
+    if (value === 'tiers') next.delete('tab');
+    else next.set('tab', value);
+    setSearch(next, { replace: true });
+  };
 
   const settingsQuery = useHospitalitySettings();
   const catalogQuery = useClubCatalog();
@@ -206,12 +224,13 @@ export default function HospitalitySettings() {
                   </Select>
                 </div>
 
-                <Tabs defaultValue="tiers">
+                <Tabs value={tab} onValueChange={openTab}>
                   <TabsList className="mb-4 max-w-full justify-start overflow-x-auto">
                     <TabsTrigger value="tiers">Membership tiers</TabsTrigger>
                     <TabsTrigger value="catalog">Price catalogue</TabsTrigger>
                     <TabsTrigger value="points">Points</TabsTrigger>
                     <TabsTrigger value="billing">Billing</TabsTrigger>
+                    <TabsTrigger value="payments">Payments</TabsTrigger>
                   </TabsList>
 
                   <TabsContent value="tiers">
@@ -254,6 +273,10 @@ export default function HospitalitySettings() {
                         await Promise.all([runsQuery.refetch(), previewQuery.refetch()]);
                       }}
                     />
+                  </TabsContent>
+
+                  <TabsContent value="payments">
+                    <PaymentSettingsPanel />
                   </TabsContent>
                 </Tabs>
               </>

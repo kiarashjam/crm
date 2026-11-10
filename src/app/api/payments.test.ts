@@ -49,7 +49,7 @@ describe('payments against the server', () => {
     await savePaymentSettings({ stripeOfferTwint: true, iban: 'CH58 0079 1123 0008 8901 2', version: 'v1' });
 
     expect(requests).toHaveLength(1);
-    expect(JSON.parse(requests[0].body)).toEqual({ stripeOfferTwint: true, iban: 'CH58 0079 1123 0008 8901 2', version: 'v1' });
+    expect(JSON.parse(requests[0]!.body)).toEqual({ stripeOfferTwint: true, iban: 'CH58 0079 1123 0008 8901 2', version: 'v1' });
   });
 
   it("asks for one member's online payments, or one state's", async () => {
@@ -67,7 +67,7 @@ describe('payments against the server', () => {
 
     await importBankFile('camt054.xml', '<Document/>');
 
-    expect(JSON.parse(requests[0].body)).toEqual({ fileName: 'camt054.xml', content: '<Document/>' });
+    expect(JSON.parse(requests[0]!.body)).toEqual({ fileName: 'camt054.xml', content: '<Document/>' });
   });
 
   it("turns dues on file on only with the member's agreement said in so many words", async () => {
@@ -75,7 +75,7 @@ describe('payments against the server', () => {
 
     await setAutoPay('m1', true, true, 'v1');
 
-    expect(JSON.parse(requests[0].body)).toEqual({ enabled: true, memberAgreed: true, version: 'v1' });
+    expect(JSON.parse(requests[0]!.body)).toEqual({ enabled: true, memberAgreed: true, version: 'v1' });
   });
 
   it("saves the journal under the server's file name", async () => {
@@ -85,7 +85,7 @@ describe('payments against the server', () => {
 
     await downloadJournalCsv('2026-10-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z', 'net');
 
-    expect(requests[0].search).toBe('?from=2026-10-01T00%3A00%3A00.000Z&to=2026-11-01T00%3A00%3A00.000Z&layout=net&format=csv');
+    expect(requests[0]!.search).toBe('?from=2026-10-01T00%3A00%3A00.000Z&to=2026-11-01T00%3A00%3A00.000Z&layout=net&format=csv');
     expect(saved.files.map((f) => f.name)).toEqual(['journal-2026-10.csv']);
   });
 });
