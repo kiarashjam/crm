@@ -31,6 +31,11 @@ internal sealed class UserSettingsConfiguration : IEntityTypeConfiguration<UserS
         builder.Property(e => e.DefaultCurrency).HasMaxLength(10).HasDefaultValue("USD");
         builder.Property(e => e.DefaultFollowUpDays).HasDefaultValue(3);
 
+        // The lengths the start-up DDL gave these columns before the baseline migration,
+        // so a database the migrations create has the columns existing ones have.
+        builder.Property(e => e.AgentMemoryJson).HasMaxLength(4000);
+        builder.Property(e => e.ViewPreferencesJson).HasMaxLength(4000);
+
         // Relationship
         builder.HasOne(e => e.User).WithOne(u => u.Settings).HasForeignKey<UserSettings>(e => e.UserId);
     }

@@ -27,14 +27,14 @@ public class DealCurrencyFixTests
             await SqlServerApp.ExecuteAsync(database, $"DELETE FROM [AppliedDataFixes] WHERE [Name] = N'{DataFixes.FillDealCurrenciesName}'");
             var org = Guid.NewGuid();
             await SqlServerApp.ExecuteAsync(database,
-                $"INSERT INTO [Organizations] ([Id], [Name], [OwnerUserId], [CreatedAtUtc], [Currency]) VALUES ('{org}', N'Club', '{userId}', SYSUTCDATETIME(), N'EUR')");
+                $"INSERT INTO [Organizations] ([Id], [Name], [OwnerUserId], [CreatedAtUtc], [Currency], [StaleDealDays]) VALUES ('{org}', N'Club', '{userId}', SYSUTCDATETIME(), N'EUR', 30)");
             async Task<Guid> DealAsync(Guid? orgId, string? currency)
             {
                 var id = Guid.NewGuid();
                 var orgSql = orgId is Guid o ? $"'{o}'" : "NULL";
                 var currencySql = currency == null ? "NULL" : $"N'{currency}'";
                 await SqlServerApp.ExecuteAsync(database,
-                    $"INSERT INTO [Deals] ([Id], [UserId], [OrganizationId], [Name], [Value], [Currency], [CreatedAtUtc]) VALUES ('{id}', '{userId}', {orgSql}, N'Deal', N'100', {currencySql}, SYSUTCDATETIME())");
+                    $"INSERT INTO [Deals] ([Id], [UserId], [OrganizationId], [Name], [Value], [Currency], [CreatedAtUtc], [IsPrivate], [Version]) VALUES ('{id}', '{userId}', {orgSql}, N'Deal', N'100', {currencySql}, SYSUTCDATETIME(), 0, NEWID())");
                 return id;
             }
             var none = await DealAsync(org, null);

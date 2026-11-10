@@ -371,7 +371,7 @@ public class DuplicateEngineTests
             await SqlServerApp.ExecuteAsync(database, "DROP INDEX [IX_Contacts_OrganizationId_NameKey] ON [Contacts]");
             await SqlServerApp.ExecuteAsync(database, "ALTER TABLE [Contacts] DROP COLUMN [PhoneKey], [NameKey]");
             await SqlServerApp.ExecuteAsync(database,
-                $"INSERT INTO [Contacts] ([Id], [UserId], [Name], [Email], [Phone], [CreatedAtUtc], [IsArchived], [DoNotContact]) VALUES (NEWID(), '{userId}', N'Zoë Martin', 'zoe@example.ch', '+41 79 123 45 67', SYSUTCDATETIME(), 0, 0)");
+                $"INSERT INTO [Contacts] ([Id], [UserId], [Name], [Email], [Phone], [CreatedAtUtc], [IsArchived], [DoNotContact], [Version]) VALUES (NEWID(), '{userId}', N'Zoë Martin', 'zoe@example.ch', '+41 79 123 45 67', SYSUTCDATETIME(), 0, 0, NEWID())");
 
             using (SqlServerApp.Start(database))
             {

@@ -197,11 +197,8 @@ public class ReportingOnSqlServerTests
             app.Dispose();
 
             // The table as production has it before this deploy.
-            await SqlServerApp.ExecuteAsync(database, @"
-                ALTER TABLE [ForecastSnapshots] DROP CONSTRAINT [DF_ForecastSnapshots_SnapshotId], [DF_ForecastSnapshots_ByCloseDate],
-                    [DF_ForecastSnapshots_OverdueCount], [DF_ForecastSnapshots_OverdueValue], [DF_ForecastSnapshots_NoCloseDateCount],
-                    [DF_ForecastSnapshots_UnreadableCount];
-                ALTER TABLE [ForecastSnapshots] DROP COLUMN [SnapshotId], [ByCloseDate], [OverdueCount], [OverdueValue], [NoCloseDateCount], [UnreadableCount];");
+            await SqlServerApp.DropColumnsAsync(database, "ForecastSnapshots",
+                "SnapshotId", "ByCloseDate", "OverdueCount", "OverdueValue", "NoCloseDateCount", "UnreadableCount");
             var now = DateTime.UtcNow;
             var month = new DateTime(now.Year, now.Month, 1);
             var savedAt = month.AddHours(9);
