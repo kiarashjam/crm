@@ -194,6 +194,14 @@ public class OrganizationCloneTests
             new ClubTabItem { Id = Guid.NewGuid(), OrganizationId = org.Id, TabId = tab.Id, Name = "Negroni", Quantity = 2, UnitPrice = 15, AddedAtUtc = now },
             new ClubGiftCardTransaction { Id = Guid.NewGuid(), OrganizationId = org.Id, GiftCardId = card.Id, Type = "Issue", Amount = 100, AtUtc = now, CreatedAtUtc = now },
             new ClubDonation { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, MemberName = "Ana Silva", Cause = "Arts", Amount = 50, ReceivedAtUtc = now, CreatedAtUtc = now });
+        // An event with someone on its list whose ticket is on the ledger, and a booking of a
+        // resource with its deposit: rows that point at the event, the member, the resource and
+        // their charges, which the copy must point at its own copies of.
+        var gala = new ClubEvent { Id = Guid.NewGuid(), OrganizationId = org.Id, Name = "Gala", StartAtUtc = now.AddDays(7), EndAtUtc = now.AddDays(7).AddHours(3), Capacity = 40, MemberPrice = 30, Status = "Published", CreatedAtUtc = now, UpdatedAtUtc = now };
+        var court = new ClubResource { Id = Guid.NewGuid(), OrganizationId = org.Id, Name = "Court", Kind = "Court", Capacity = 4, DepositAmount = 299, CreatedAtUtc = now, UpdatedAtUtc = now };
+        db.AddRange(gala, court,
+            new ClubEventRegistration { Id = Guid.NewGuid(), OrganizationId = org.Id, EventId = gala.Id, MemberId = member.Id, Name = "Ana Silva", Status = "Reserved", TicketPrice = 30, ChargeId = tabCharge.Id, RegisteredAtUtc = now, CreatedAtUtc = now, UpdatedAtUtc = now },
+            new ClubReservation { Id = Guid.NewGuid(), OrganizationId = org.Id, ResourceId = court.Id, ResourceName = "Court", MemberId = member.Id, MemberName = "Ana Silva", StartAtUtc = now.AddDays(1), EndAtUtc = now.AddDays(1).AddHours(1), Status = "Confirmed", DepositAmount = 299, DepositChargeId = dues.Id, CreatedAtUtc = now, UpdatedAtUtc = now });
         db.AddRange(
             new LeadStatusEvent { Id = Guid.NewGuid(), LeadId = lead.Id, OrganizationId = org.Id, ToStatus = "Qualified", ChangedByUserId = rep, ChangedAtUtc = now },
             new LeadScoringRule { Id = Guid.NewGuid(), OrganizationId = org.Id, Field = "source", MatchValue = "Website", Points = 10, IsActive = true },

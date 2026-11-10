@@ -1,3 +1,5 @@
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Text.Json;
 using ACI.Infrastructure.Migrations;
 using ACI.WebApi.Tests.Helpers;
@@ -210,10 +212,41 @@ public class ClubEventsMoveTests
             // As the script runs it: not through EF's raw SQL, which reads the braces in it as placeholders.
             await SqlServerApp.ExecuteAsync(database, MoveEventsAndReservationsToTables.MoveDocumentsSql);
             (await CountsAsync(database)).Should().Equal(counts);
+
+            // And through the API, as the club's screens read it once the app starts.
+            using var app = SqlServerApp.Start(database);
+            var client = app.CreateClient();
+            var login = await client.PostAsJsonAsync("/api/auth/login", new { email = club.Email, password = Password });
+            var loginBody = await login.Content.ReadAsStringAsync();
+            login.IsSuccessStatusCode.Should().BeTrue(loginBody);
+            using (var token = JsonDocument.Parse(loginBody))
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.RootElement.GetProperty("token").GetString());
+            client.DefaultRequestHeaders.Add("X-Organization-Id", club.Org.ToString());
+
+            var events = await ReadAsync(client, "/api/events");
+            var wine = events.Single(e => e.GetProperty("id").GetGuid() == club.WineNight);
+            wine.GetProperty("registeredCount").GetInt32().Should().Be(6, "the seats the club saw taken before the move");
+            wine.GetProperty("waitlistCount").GetInt32().Should().Be(2);
+            var attendees = await ReadAsync(client, $"/api/events/{club.WineNight}/attendees");
+            attendees.Should().HaveCount(5);
+            attendees.Single(a => a.GetProperty("memberName").GetString() == "Jean Dupont").GetProperty("chargeState").GetString().Should().Be("not-charged");
+
+            var bookings = await ReadAsync(client, $"/api/reservations?memberId={club.Jean}");
+            bookings.Select(b => b.GetProperty("id").GetGuid()).Should().Equal(club.BookedByEmail);
+            (await ReadAsync(client, "/api/resources")).Should().HaveCount(3);
         }
         finally
         {
             await SqlServerApp.DropDatabaseAsync(database);
         }
+    }
+
+    private static async Task<List<JsonElement>> ReadAsync(HttpClient client, string path)
+    {
+        var res = await client.GetAsync(path);
+        var body = await res.Content.ReadAsStringAsync();
+        res.IsSuccessStatusCode.Should().BeTrue($"{path}: {body}");
+        using var doc = JsonDocument.Parse(body);
+        return doc.RootElement.EnumerateArray().Select(e => e.Clone()).ToList();
     }
 }

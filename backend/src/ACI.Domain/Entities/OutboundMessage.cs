@@ -212,5 +212,10 @@ public static class OutboundSources
     public const string CampaignTest = "campaign_test";
     /// <summary>A message staff wrote to one member, from the Communications page or the member's own.</summary>
     public const string Member = "member";
+    /// <summary>
+    /// An event's email to someone on its list: a seat that came free for them, or the event
+    /// cancelled; <see cref="OutboundMessage.SourceId"/> is their registration.
+    /// </summary>
+    public const string Event = "event";
     public const string Webhook = "webhook";
 }

@@ -75,7 +75,7 @@ public class ClubWorkspaceTests
         var (mine, _, _) = await ClubAsync(factory);
         var member = await MemberAsync(mine);
         var memberId = member.GetProperty("id").GetGuid();
-        var evt = await Json(await mine.PostAsync("/api/events", Body(new { name = "Wine night", capacity = 20 })), "add event");
+        var evt = await Json(await mine.PostAsync("/api/events", Body(new { name = "Wine night", capacity = 20, startAtUtc = DateTime.UtcNow.AddDays(3), endAtUtc = DateTime.UtcNow.AddDays(3).AddHours(2) })), "add event");
         var eventId = evt.GetProperty("id").GetGuid();
         var (theirs, _, _) = await ClubAsync(factory, "other@example.ch");
 
@@ -93,11 +93,11 @@ public class ClubWorkspaceTests
     {
         using var factory = new CustomWebApplicationFactory();
         var (mine, _, _) = await ClubAsync(factory);
-        var evt = await Json(await mine.PostAsync("/api/events", Body(new { name = "Wine night" })), "add event");
+        var evt = await Json(await mine.PostAsync("/api/events", Body(new { name = "Wine night", startAtUtc = DateTime.UtcNow.AddDays(3), endAtUtc = DateTime.UtcNow.AddDays(3).AddHours(2) })), "add event");
         var id = evt.GetProperty("id").GetString();
         var (theirs, _, _) = await ClubAsync(factory, "other@example.ch");
 
-        var copy = await Json(await theirs.PostAsync("/api/events", Body(new { id, name = "Hijacked" })), "post with someone else's id");
+        var copy = await Json(await theirs.PostAsync("/api/events", Body(new { id, name = "Hijacked", startAtUtc = DateTime.UtcNow.AddDays(3), endAtUtc = DateTime.UtcNow.AddDays(3).AddHours(2) })), "post with someone else's id");
 
         copy.GetProperty("id").GetString().Should().NotBe(id);
         (await Json(await mine.GetAsync("/api/events"), "my events"))[0].GetProperty("name").GetString().Should().Be("Wine night");
@@ -190,10 +190,10 @@ public class ClubWorkspaceTests
         scheduled.GetProperty("status").GetString().Should().Be("Scheduled");
         scheduled.TryGetProperty("createdAtUtc", out _).Should().BeTrue();
 
-        var resource = (await Json(await client.GetAsync("/api/resources"), "resources"))[0];
+        var resource = (await Json(await client.PostAsync("/api/resources/defaults", null), "the usual resources"))[0];
         var reservation = await Json(await client.PostAsync("/api/reservations", Body(new
         {
-            resourceId = resource.GetProperty("id").GetString(), memberId, startAtUtc = DateTime.UtcNow.AddDays(1),
+            resourceId = resource.GetProperty("id").GetString(), memberId, startAtUtc = DateTime.UtcNow.AddDays(1), endAtUtc = DateTime.UtcNow.AddDays(1).AddHours(1),
         })), "reserve");
         reservation.GetProperty("resourceName").GetString().Should().Be(resource.GetProperty("name").GetString());
 

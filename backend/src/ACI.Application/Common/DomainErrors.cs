@@ -76,40 +76,198 @@ public static class DomainErrors
     }
 
     /// <summary>
-    /// Club event attendee errors.
+    /// Club events and their guest lists. A code ending ".Conflict" answers 409: the event or
+    /// the list is not in a state to do it, not the request.
     /// </summary>
-    public static class EventAttendee
+    public static class ClubEvent
     {
-        // Codes ending ".NotFound" map to 404.
-        public static readonly Error EventNotFound = new(
-            "ClubEvent.NotFound", "The event was not found");
-
         public static readonly Error NotFound = new(
-            "EventAttendee.NotFound", "That person is not on this event's list");
+            "ClubEvent.NotFound", "The event was not found.");
+
+        public static readonly Error RegistrationNotFound = new(
+            "EventRegistration.NotFound", "That person is not on this event's list.");
 
         public static readonly Error MemberNotFound = new(
-            "EventAttendeeMember.NotFound", "That member is not in this workspace");
+            "EventMember.NotFound", "That member is not in this workspace.");
+
+        public static readonly Error HostNotFound = new(
+            "EventHost.NotFound", "The member bringing the guest is not in this workspace.");
 
         public static readonly Error NameRequired = new(
-            "EventAttendee.NameRequired", "A guest needs a name");
+            "ClubEvent.NameRequired", "An event needs a name.");
 
-        public static readonly Error TooLong = new(
-            "EventAttendee.TooLong", "A name can be up to 200 characters and an email up to 320");
+        public static readonly Error GuestNameRequired = new(
+            "EventRegistration.NameRequired", "A guest needs a name.");
+
+        public static readonly Error MemberRequired = new(
+            "EventRegistration.MemberRequired", "Pick the member this ticket is for, or make it a guest ticket.");
 
         public static readonly Error TicketInvalid = new(
-            "EventAttendee.TicketInvalid", "A ticket is a Member or a Guest ticket");
+            "EventRegistration.TicketInvalid", "A ticket is a Member or a Guest ticket.");
 
         public static readonly Error StatusInvalid = new(
-            "EventAttendee.StatusInvalid", "An attendee is Reserved, CheckedIn, Waitlisted or Cancelled");
+            "EventRegistration.StatusInvalid", "Someone on the list can be checked in (CheckedIn), cancelled (Cancelled), taken off the waitlist (Reserved) or marked a no-show (NoShow).");
 
-        // Mapped to 409 in ResultExtensions: the event's state, not the request, is the problem.
-        public static readonly Error EventFull = new(
-            "EventAttendee.EventFull", "The event is full: cancel a reservation first");
+        public static readonly Error EventStatusInvalid = new(
+            "ClubEvent.StatusInvalid", "An event is Draft, Published, Cancelled or Completed.");
 
-        // Also 409: someone else already checked this person in, and the screen asking
-        // has not caught up yet.
+        public static readonly Error VisibilityInvalid = new(
+            "ClubEvent.VisibilityInvalid", "An event is for MembersOnly, MembersAndGuests or the Public.");
+
+        public static readonly Error TimesInvalid = new(
+            "ClubEvent.TimesInvalid", "An event needs a start and an end, the end after the start and at most 31 days later.");
+
+        public static readonly Error CapacityInvalid = new(
+            "ClubEvent.CapacityInvalid", "Capacity is a whole number of seats from 0 (no limit) to 100,000.");
+
+        public static readonly Error PriceInvalid = new(
+            "ClubEvent.PriceInvalid", "A price or a fee is an amount from 0 to 1,000,000, to the cent.");
+
+        public static readonly Error UnnamedSeatsInvalid = new(
+            "ClubEvent.UnnamedSeatsInvalid", "Unnamed seats can only be released: the number can go down to 0, never up.");
+
+        public static Error TooLong(string what, int max) => new(
+            "ClubEvent.TooLong", $"{what} can be at most {max} characters.");
+
+        public static readonly Error Changed = new(
+            "ClubEvent.Changed.Conflict", "Someone else changed this event at the same moment, so nothing was saved. Reload and try again.");
+
+        public static Error Full(int capacity) => new(
+            "ClubEvent.Full.Conflict", $"The event is full: all {capacity} seats are taken. Cancel a reservation or mark a no-show first, or add them to the waitlist.");
+
+        public static Error CapacityBelowSeats(int taken) => new(
+            "ClubEvent.CapacityBelowSeats.Conflict", $"{taken} seats are taken, so the capacity can't go below {taken}. Cancel reservations first.");
+
+        public static readonly Error AlreadyRegistered = new(
+            "EventRegistration.AlreadyRegistered.Conflict", "This member is already on this event's list.");
+
         public static readonly Error AlreadyCheckedIn = new(
-            "EventAttendee.AlreadyCheckedIn", "This person is already checked in");
+            "EventRegistration.AlreadyCheckedIn.Conflict", "This person is already checked in.");
+
+        public static Error NotOpen(string status) => new(
+            "ClubEvent.NotOpen.Conflict", status == "Cancelled"
+                ? "This event was cancelled, so its list can't change."
+                : "This event is completed, so nobody new can be added to its list.");
+
+        public static Error CannotMove(string from, string to) => new(
+            "EventRegistration.CannotMove.Conflict", (from, to) switch
+            {
+                ("Cancelled", _) => "This registration was cancelled. Register them again instead.",
+                ("CheckedIn", _) => "This person has already been checked in.",
+                ("NoShow", "Cancelled") => "This person was marked a no-show; check them in if they came after all.",
+                (_, "NoShow") => "Only someone with a seat who did not come can be marked a no-show.",
+                (_, "Reserved") => "Only someone on the waitlist can be given a seat.",
+                _ => $"Someone who is {from} can't be set to {to}.",
+            });
+
+        public static readonly Error NotStarted = new(
+            "ClubEvent.NotStarted.Conflict", "The event hasn't started yet, so nobody can be marked a no-show.");
+
+        public static Error StatusStays(string from, string to) => new(
+            "ClubEvent.StatusStays.Conflict", from switch
+            {
+                "Cancelled" => "This event was cancelled and stays cancelled. Make a new event instead.",
+                "Completed" => "This event is completed and stays completed.",
+                _ when to == "Completed" => "The event hasn't started yet, so it can't be marked completed.",
+                _ => $"An event can't go from {from} to {to}.",
+            });
+
+        public static readonly Error HasMoney = new(
+            "ClubEvent.HasMoney.Conflict", "Tickets or fees for this event are on members' accounts, so it can't be deleted. Cancel it instead: everyone's tickets are taken back and the record stays.");
+
+        public static readonly Error RegistrationHasMoney = new(
+            "EventRegistration.HasMoney.Conflict", "This person's ticket or fee is on a house account, or they came, so they can't be taken off the list. Cancel the registration instead.");
+
+        public static readonly Error RsvpNeedsName = new(
+            "ClubEvent.RsvpNeedsName", "An RSVP needs a name now: add the member or guest to the event's list, so they can be checked in at the door and charged their ticket.");
+    }
+
+    /// <summary>
+    /// The club's bookable resources and their bookings. A code ending ".Conflict" answers 409.
+    /// </summary>
+    public static class Reservation
+    {
+        public static readonly Error NotFound = new(
+            "Reservation.NotFound", "That booking was not found.");
+
+        public static readonly Error ResourceNotFound = new(
+            "Resource.NotFound", "That resource was not found.");
+
+        public static readonly Error MemberNotFound = new(
+            "ReservationMember.NotFound", "That member is not in this workspace.");
+
+        public static readonly Error NameRequired = new(
+            "Reservation.NameRequired", "Pick the member this booking is for, or give the guest's name.");
+
+        public static readonly Error ResourceNameRequired = new(
+            "Resource.NameRequired", "A resource needs a name.");
+
+        public static readonly Error KindInvalid = new(
+            "Resource.KindInvalid", "A resource is Dining, Meeting, Spa, Court, Studio or Lounge.");
+
+        public static readonly Error ModeInvalid = new(
+            "Resource.BookingModeInvalid", "A resource is booked Exclusive (one booking at a time) or Shared (up to its capacity).");
+
+        public static readonly Error CapacityInvalid = new(
+            "Resource.CapacityInvalid", "A resource holds from 1 to 10,000 people.");
+
+        public static readonly Error PartyInvalid = new(
+            "Reservation.PartyInvalid", "A party is from 1 to 10,000 people.");
+
+        public static readonly Error TimesInvalid = new(
+            "Reservation.TimesInvalid", "A booking needs a start and an end, the end after the start and at most 14 days later.");
+
+        public static readonly Error AmountInvalid = new(
+            "Resource.AmountInvalid", "A deposit or a fee is an amount from 0 to 1,000,000, to the cent.");
+
+        public static readonly Error StatusInvalid = new(
+            "Reservation.StatusInvalid", "A booking is Pending, Confirmed, CheckedIn, Completed, Cancelled or NoShow.");
+
+        public static readonly Error DepositOptionInvalid = new(
+            "Reservation.DepositInvalid", "A deposit is charged to the member's house account (charge), paid now (paid, with how), or waived (waive, with a reason).");
+
+        public static readonly Error WaiveReasonRequired = new(
+            "Reservation.WaiveReasonRequired", "Say why the deposit is waived. The reason stays on the booking.");
+
+        public static Error TooLong(string what, int max) => new(
+            "Reservation.TooLong", $"{what} can be at most {max} characters.");
+
+        public static readonly Error Changed = new(
+            "Reservation.Changed.Conflict", "Someone else changed this booking at the same moment, so nothing was saved. Reload and try again.");
+
+        public static readonly Error ResourceChanged = new(
+            "Resource.Changed.Conflict", "Someone else changed this resource at the same moment, so nothing was saved. Reload and try again.");
+
+        public static readonly Error ResourceInactive = new(
+            "Resource.Inactive.Conflict", "This resource is not taking bookings. Make it bookable again first, or pick another.");
+
+        public static Error TooBig(string resource, int capacity, int party) => new(
+            "Reservation.Capacity.Conflict", $"{resource} holds {capacity}, so a party of {party} can't be booked into it.");
+
+        /// <summary>The booking it would overlap, named, for a resource booked one at a time.</summary>
+        public static Error Overlaps(string resource, string when, string who, string status) => new(
+            "Reservation.Overlap.Conflict", $"{resource} is already booked {when} by {who} ({status}), so it can't take this booking.");
+
+        /// <summary>For a shared resource: how full it already is at its busiest moment in the time asked.</summary>
+        public static Error Full(string resource, int capacity, int booked, string at, int bookings, int party) => new(
+            "Reservation.Capacity.Conflict", $"{resource} holds {capacity}, and {booked} {(booked == 1 ? "is" : "are")} already booked at {at} ({bookings} booking{(bookings == 1 ? "" : "s")}), so a party of {party} doesn't fit. {Math.Max(0, capacity - booked)} {(capacity - booked == 1 ? "place is" : "places are")} free then.");
+
+        public static readonly Error DepositNeedsMember = new(
+            "Reservation.DepositNeedsMember.Conflict", "This resource asks a deposit, which goes on a member's house account. Book it under the member hosting the guest, or have someone who handles money waive it.");
+
+        public static Error CannotMove(string from, string to) => new(
+            "Reservation.CannotMove.Conflict", from switch
+            {
+                "Cancelled" => "This booking was cancelled. Book again instead.",
+                "Completed" => "This booking is completed and stays completed.",
+                _ => $"A booking that is {from} can't be set to {to}.",
+            });
+
+        public static readonly Error HasMoney = new(
+            "Reservation.HasMoney.Conflict", "This booking's deposit or no-show fee is on the member's account, so it can't be deleted. Cancel it instead: the deposit is given back and the record stays.");
+
+        public static readonly Error ResourceHasBookings = new(
+            "Resource.HasBookings.Conflict", "This resource has bookings, so it can't be deleted. Make it not bookable instead: its bookings keep its name.");
     }
 
     /// <summary>

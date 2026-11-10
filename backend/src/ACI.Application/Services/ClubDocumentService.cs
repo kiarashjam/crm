@@ -12,7 +12,6 @@ public interface IClubDocumentService
     Task<Result<JsonObject>> CreateAsync(Guid? organizationId, string kind, JsonObject body, CancellationToken ct = default);
     Task<Result<JsonObject>> UpdateAsync(Guid? organizationId, string kind, Guid id, JsonObject patch, CancellationToken ct = default);
     Task<bool> DeleteAsync(Guid? organizationId, string kind, Guid id, CancellationToken ct = default);
-    Task<JsonObject?> RsvpAsync(Guid? organizationId, Guid id, CancellationToken ct = default);
     Task<JsonObject> GetSettingsAsync(Guid? organizationId, CancellationToken ct = default);
     Task<JsonObject> SaveSettingsAsync(Guid? organizationId, JsonObject patch, CancellationToken ct = default);
     Task<JsonObject> ResetSettingsAsync(Guid? organizationId, CancellationToken ct = default);
@@ -33,6 +32,16 @@ public sealed class ClubDocumentService : IClubDocumentService
         "charges", "payments", "gift-cards", "gift-card-redemptions", "tabs", "subscriptions", "donations",
     };
 
+    /// <summary>
+    /// Events, their attendees, the bookable resources and their bookings: in typed tables
+    /// (IClubEvents, IClubReservations) since the MoveEventsAndReservationsToTables migration
+    /// copied them there. Their old documents stay, unread, and nothing here writes one.
+    /// </summary>
+    private static readonly HashSet<string> MovedKinds = new(StringComparer.Ordinal)
+    {
+        "events", "event-attendees", "resources", "reservations",
+    };
+
     private readonly IClubDocumentRepository _docs;
 
     // The member list was only read to send a campaign and to keep a member's balance; both
@@ -45,8 +54,6 @@ public sealed class ClubDocumentService : IClubDocumentService
     public async Task<JsonArray> ListAsync(Guid? organizationId, string kind, CancellationToken ct = default)
     {
         RefuseMoney(kind);
-        if (kind == "resources")
-            await EnsureResourcesAsync(organizationId, ct);
         var rows = await _docs.ListAsync(organizationId, kind, ct);
         var array = new JsonArray();
         foreach (var row in rows)
@@ -58,7 +65,7 @@ public sealed class ClubDocumentService : IClubDocumentService
     public async Task<Result<JsonObject>> CreateAsync(Guid? organizationId, string kind, JsonObject body, CancellationToken ct = default)
     {
         RefuseMoney(kind);
-        var prepared = await PrepareAsync(organizationId, kind, body, ct);
+        var prepared = Prepare(kind, body);
         if (!prepared.IsSuccess) return prepared;
         var obj = prepared.Value;
         return await WriteAsync(async () =>
@@ -76,8 +83,6 @@ public sealed class ClubDocumentService : IClubDocumentService
         foreach (var pair in patch)
             current[pair.Key] = pair.Value?.DeepClone();
         current["id"] = id.ToString();
-        if (kind == "reservations" && patch.ContainsKey("resourceId"))
-            await NameResourceAsync(organizationId, current, ct);
         return await WriteAsync(async () =>
         {
             await Save(organizationId, kind, id, current, ct);
@@ -98,29 +103,8 @@ public sealed class ClubDocumentService : IClubDocumentService
                     if (Parse(link.Payload) is { } obj && Text(obj, "householdId") == id.ToString())
                         await _docs.DeleteAsync(link.Id, organizationId, "household-members", ct);
                 break;
-            case "events":
-                // Its guest list goes with it. Nothing shows a deleted event's attendees,
-                // so their names and emails would only have stayed in the table.
-                foreach (var attendee in await _docs.ListAsync(organizationId, "event-attendees", ct))
-                    if (Parse(attendee.Payload) is { } obj && Text(obj, "eventId") == id.ToString())
-                        await _docs.DeleteAsync(attendee.Id, organizationId, "event-attendees", ct);
-                break;
         }
         return true;
-    }
-
-    public async Task<JsonObject?> RsvpAsync(Guid? organizationId, Guid id, CancellationToken ct = default)
-    {
-        var ev = await Load(organizationId, "events", id, ct);
-        if (ev == null) return null;
-        var registered = Int(ev, "registeredCount");
-        var capacity = Int(ev, "capacity");
-        if (capacity > 0 && registered >= capacity)
-            ev["waitlistCount"] = Int(ev, "waitlistCount") + 1;
-        else
-            ev["registeredCount"] = registered + 1;
-        await Save(organizationId, "events", id, ev, ct);
-        return ev;
     }
 
     public async Task<JsonObject> GetSettingsAsync(Guid? organizationId, CancellationToken ct = default)
@@ -148,40 +132,15 @@ public sealed class ClubDocumentService : IClubDocumentService
         return new JsonObject();
     }
 
-    private async Task EnsureResourcesAsync(Guid? organizationId, CancellationToken ct)
-    {
-        var existing = await _docs.ListAsync(organizationId, "resources", ct);
-        if (existing.Count > 0) return;
-        (string Name, string Kind, int Capacity)[] seed =
-        [
-            ("Main Dining Room", "Dining", 40),
-            ("Private Dining Room", "Dining", 12),
-            ("Boardroom", "Meeting", 10),
-            ("Spa Suite", "Spa", 1),
-            ("Tennis Court", "Court", 4),
-            ("Fitness Studio", "Studio", 12),
-            ("Lounge", "Lounge", 20),
-        ];
-        foreach (var item in seed)
-        {
-            await CreateAsync(organizationId, "resources", new JsonObject
-            {
-                ["name"] = item.Name,
-                ["kind"] = item.Kind,
-                ["capacity"] = item.Capacity,
-            }, ct);
-        }
-    }
-
     /// <summary>A new record from the request body, checked and stamped but not yet saved.</summary>
-    private async Task<Result<JsonObject>> PrepareAsync(Guid? organizationId, string kind, JsonObject body, CancellationToken ct)
+    private static Result<JsonObject> Prepare(string kind, JsonObject body)
     {
         var obj = Clone(body);
         // The server picks the id. Saving looks a row up by id alone, so an id taken from
         // the request was a way to overwrite any record whose id someone had seen,
         // including another organization's.
         obj["id"] = Guid.NewGuid().ToString();
-        if (await StampAsync(organizationId, kind, obj, ct) is { } invalid) return invalid;
+        if (Stamp(kind, obj) is { } invalid) return invalid;
         return obj;
     }
 
@@ -195,7 +154,7 @@ public sealed class ClubDocumentService : IClubDocumentService
     /// <summary>
     /// Fills in what the server owns and checks what the client sent.
     /// </summary>
-    private async Task<Error?> StampAsync(Guid? organizationId, string kind, JsonObject obj, CancellationToken ct)
+    private static Error? Stamp(string kind, JsonObject obj)
     {
         var now = DateTime.UtcNow.ToString("o");
         switch (kind)
@@ -203,15 +162,6 @@ public sealed class ClubDocumentService : IClubDocumentService
             case "applications":
                 Set(obj, "submittedAtUtc", now);
                 Set(obj, "status", "Submitted");
-                break;
-            case "events":
-                Set(obj, "registeredCount", 0);
-                Set(obj, "waitlistCount", 0);
-                Set(obj, "status", "Draft");
-                break;
-            case "reservations":
-                Set(obj, "status", "Pending");
-                await NameResourceAsync(organizationId, obj, ct);
                 break;
             case "households":
                 Set(obj, "createdAtUtc", now);
@@ -241,14 +191,6 @@ public sealed class ClubDocumentService : IClubDocumentService
         }
     }
 
-    /// <summary>A reservation shows its resource's name, looked up rather than taken on trust.</summary>
-    private async Task NameResourceAsync(Guid? organizationId, JsonObject reservation, CancellationToken ct)
-    {
-        if (!Guid.TryParse(Text(reservation, "resourceId"), out var resourceId)) return;
-        var resource = await Load(organizationId, "resources", resourceId, ct);
-        reservation["resourceName"] = resource == null ? "Unknown resource" : Text(resource, "name");
-    }
-
     /// <summary>
     /// Runs a write as one transaction. A save that lost a race to another request comes
     /// back as a 409 the screen can show, not a 500, and nothing of it is kept.
@@ -265,11 +207,13 @@ public sealed class ClubDocumentService : IClubDocumentService
         }
     }
 
-    /// <summary>A money kind asked for here is a bug in the caller: those routes answer from the ledger.</summary>
+    /// <summary>A money kind, or one moved to its own table, asked for here is a bug in the caller: those routes answer from the typed tables.</summary>
     private static void RefuseMoney(string kind)
     {
         if (MoneyKinds.Contains(kind))
             throw new InvalidOperationException($"Club {kind} are kept in the money ledger (IClubLedger), not as documents.");
+        if (MovedKinds.Contains(kind))
+            throw new InvalidOperationException($"Club {kind} are kept in their own tables (IClubEvents, IClubReservations), not as documents.");
     }
 
     private async Task<JsonObject?> Load(Guid? organizationId, string kind, Guid id, CancellationToken ct)
@@ -308,7 +252,4 @@ public sealed class ClubDocumentService : IClubDocumentService
     }
 
     private static string Text(JsonObject obj, string key) => obj[key]?.ToString() ?? "";
-
-    private static int Int(JsonObject obj, string key) =>
-        obj[key] is JsonValue value && value.TryGetValue<int>(out var n) ? n : int.TryParse(Text(obj, key), out var p) ? p : 0;
 }

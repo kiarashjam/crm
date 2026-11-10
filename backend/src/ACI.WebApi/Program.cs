@@ -291,7 +291,6 @@ try
     builder.Services.AddScoped<IAutomationEngine, AutomationEngine>();
     builder.Services.AddScoped<IClubService, ClubService>();
     builder.Services.AddScoped<IClubDocumentService, ClubDocumentService>();
-    builder.Services.AddScoped<IEventAttendeeService, EventAttendeeService>();
     // Member consent, which the outbox reads before marketing goes to a member.
     builder.Services.AddScoped<ConsentService>();
     builder.Services.AddScoped<IConsentService>(sp => sp.GetRequiredService<ConsentService>());

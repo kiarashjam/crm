@@ -35,24 +35,8 @@ file static class ClubDocs
 
 // Campaigns and communications are typed now: CommunicationsControllers.cs. So is the
 // club's money (charges, payments, subscriptions, gift cards, tabs, donations):
-// ClubLedgerControllers.cs.
-
-[ApiController]
-[Route("api/events")]
-[Authorize]
-[WorkspaceRequired]
-public class EventsController : ControllerBase
-{
-    private readonly IClubDocumentService _docs;
-    private readonly ICurrentUserService _user;
-    public EventsController(IClubDocumentService docs, ICurrentUserService user) { _docs = docs; _user = user; }
-
-    [HttpGet] public async Task<IActionResult> List(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.ListAsync(org, "events", ct)); }
-    [HttpPost][Requires(MemberPermissions.ClubMembers)] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.CreateAsync(org, "events", await ClubDocs.Body(Request, ct), ct)); }
-    [HttpPut("{id:guid}")][Requires(MemberPermissions.ClubMembers)] public async Task<IActionResult> Update(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.UpdateAsync(org, "events", id, await ClubDocs.Body(Request, ct), ct)); }
-    [HttpDelete("{id:guid}")][Requires(MemberPermissions.ClubMembers)][Requires(MemberPermissions.DeleteRecords)] public async Task<IActionResult> Delete(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return await _docs.DeleteAsync(org, "events", id, ct) ? NoContent() : NotFound(); }
-    [HttpPost("{id:guid}/rsvp")][Requires(MemberPermissions.ClubMembers, MemberPermissions.FrontDesk, Any = true)] public async Task<IActionResult> Rsvp(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); var row = await _docs.RsvpAsync(org, id, ct); return row == null ? NotFound() : Ok(row); }
-}
+// ClubLedgerControllers.cs. And events with their guest lists (ClubEventControllers.cs), and
+// the bookable resources with their bookings (ClubReservationControllers.cs).
 
 [ApiController]
 [Route("api/applications")]
@@ -69,35 +53,6 @@ public class ApplicationsController : ControllerBase
     [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.CreateAsync(org, "applications", await ClubDocs.Body(Request, ct), ct)); }
     [HttpPut("{id:guid}")] public async Task<IActionResult> Update(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.UpdateAsync(org, "applications", id, await ClubDocs.Body(Request, ct), ct)); }
     [HttpDelete("{id:guid}")][Requires(MemberPermissions.DeleteRecords)] public async Task<IActionResult> Delete(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return await _docs.DeleteAsync(org, "applications", id, ct) ? NoContent() : NotFound(); }
-}
-
-[ApiController]
-[Route("api/resources")]
-[Authorize]
-[WorkspaceRequired]
-public class ResourcesController : ControllerBase
-{
-    private readonly IClubDocumentService _docs;
-    private readonly ICurrentUserService _user;
-    public ResourcesController(IClubDocumentService docs, ICurrentUserService user) { _docs = docs; _user = user; }
-    [HttpGet] public async Task<IActionResult> List(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.ListAsync(org, "resources", ct)); }
-}
-
-[ApiController]
-[Route("api/reservations")]
-[Authorize]
-[WorkspaceRequired]
-[Requires(MemberPermissions.FrontDesk, WritesOnly = true)]
-public class ReservationsController : ControllerBase
-{
-    private readonly IClubDocumentService _docs;
-    private readonly ICurrentUserService _user;
-    public ReservationsController(IClubDocumentService docs, ICurrentUserService user) { _docs = docs; _user = user; }
-
-    [HttpGet] public async Task<IActionResult> List(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.ListAsync(org, "reservations", ct)); }
-    [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.CreateAsync(org, "reservations", await ClubDocs.Body(Request, ct), ct)); }
-    [HttpPut("{id:guid}")] public async Task<IActionResult> Update(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.UpdateAsync(org, "reservations", id, await ClubDocs.Body(Request, ct), ct)); }
-    [HttpDelete("{id:guid}")][Requires(MemberPermissions.DeleteRecords)] public async Task<IActionResult> Delete(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return await _docs.DeleteAsync(org, "reservations", id, ct) ? NoContent() : NotFound(); }
 }
 
 [ApiController]
