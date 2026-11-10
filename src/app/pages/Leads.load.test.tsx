@@ -69,9 +69,20 @@ describe('the leads list', () => {
     await screen.findByText('Leads could not be loaded.', undefined, { timeout: 5000 });
 
     api.getLeadsPaged.mockImplementation(() => new Promise(() => {}));
+    // Every node the page adds from here on. The first-day screen used to be drawn for one
+    // render, before an effect swapped in the skeleton, so a look at the page afterwards
+    // saw it only when it happened to land in between.
+    const added: string[] = [];
+    const watch = new MutationObserver((records) => {
+      for (const record of records) for (const node of record.addedNodes) added.push(node.textContent ?? '');
+    });
+    watch.observe(document.body, { childList: true, subtree: true });
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'jean' } });
     await waitFor(() => expect(api.getLeadsPaged).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'jean' }), expect.anything()));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    watch.disconnect();
 
+    expect(added.filter((text) => text.includes('Start Building Your Pipeline'))).toEqual([]);
     expect(screen.queryByText('Start Building Your Pipeline')).toBeNull();
     expect(screen.queryByText('Leads could not be loaded.')).toBeNull();
   });

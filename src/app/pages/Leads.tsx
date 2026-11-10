@@ -185,7 +185,6 @@ export default function Leads() {
   // vanished while typing. Those keep the list on screen and show `refreshing`
   // instead. A workspace switch mounts the page afresh (WorkspaceOutlet).
   const [loading, setLoading] = useState(true);
-  usePageLoading(loading);
   const [searchQuery, setSearchQuery] = useState(searchFromUrl);
   const [debouncedSearch, setDebouncedSearch] = useState(searchFromUrl);
   
@@ -610,7 +609,16 @@ export default function Leads() {
   const listQuery = useClientMode ? allLeadsQuery : pageQuery;
   const statsQuery = useLeadStats();
   const leadStats = statsQuery.data ?? null;
-  const refreshing = !loading && listQuery.isFetching;
+  // Rows have been on screen at least once (set by the effect that lays them out below).
+  const rowsShownOnce = useRef(false);
+  // Nothing read yet for this view, no failure to say, and no earlier rows to keep on
+  // screen: the list is on its way. Worked out here, in the render, and not only by that
+  // effect, which runs after the render it follows. In between, a search typed after a
+  // failed first read showed the empty list, which reads as the first-day screen.
+  const awaitingFirstRows = listQuery.data === undefined && !listQuery.isError && !rowsShownOnce.current;
+  const listLoading = loading || awaitingFirstRows;
+  usePageLoading(listLoading);
+  const refreshing = !listLoading && listQuery.isFetching;
   /** Read the list and its figures again now, where nothing announced a save (a reload asked for). */
   const fetchLeads = useCallback(async () => {
     await Promise.all([listQuery.refetch(), statsQuery.refetch()]);
@@ -618,7 +626,6 @@ export default function Leads() {
 
   // The rows on screen, from what was read: the legacy browser maps merged in, and in
   // client mode the filters, order and page applied here.
-  const rowsShownOnce = useRef(false);
   useEffect(() => {
     const data = listQuery.data;
     if (data === undefined) {
@@ -1468,7 +1475,7 @@ export default function Leads() {
           setLeads((prev) => prev.map((l) => updated.find((u) => u.id === l.id) ?? l));
         }}
       />
-      <PageEnter ready={!loading}>
+      <PageEnter ready={!listLoading}>
         <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
           {/* Discovery for a problem nobody would otherwise go looking for: a lead
               can carry advanced steps while its status still reads New, and until
@@ -1501,8 +1508,8 @@ export default function Leads() {
             icon={Users}
             tone="orange"
             title="Leads"
-            subtitle={loading ? 'Loading…' : refreshing ? 'Updating…' : 'Manage and qualify your sales leads'}
-            badges={!loading && totalCount > 0 && (
+            subtitle={listLoading ? 'Loading…' : refreshing ? 'Updating…' : 'Manage and qualify your sales leads'}
+            badges={!listLoading && totalCount > 0 && (
               <>
                 {stats.hotLeads > 0 && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-orange-500 to-rose-500 px-2 py-0.5 text-[11px] font-bold text-white shadow-sm">
@@ -1551,7 +1558,7 @@ export default function Leads() {
                 )}
               </>
             }
-            stats={!loading && totalCount > 0 ? leadHeroStats : undefined}
+            stats={!listLoading && totalCount > 0 ? leadHeroStats : undefined}
           />
 
         <DuplicateMerge spec={LEAD_DUPLICATES} onMerged={() => { void fetchLeads(); }} />
@@ -1925,7 +1932,7 @@ export default function Leads() {
           )}
 
           {/* No results message */}
-          {filteredLeads.length === 0 && !loading && totalCount > 0 && (
+          {filteredLeads.length === 0 && !listLoading && totalCount > 0 && (
             <div className="mt-4 flex items-center gap-3 p-4 rounded-xl bg-slate-50 border border-slate-200">
               <div className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center">
                 <Search className="w-5 h-5 text-slate-500" />
@@ -1941,10 +1948,10 @@ export default function Leads() {
           )}
         </div>
 
-        {!loading && listQuery.isError && listQuery.data !== undefined && (
+        {!listLoading && listQuery.isError && listQuery.data !== undefined && (
           <LoadFailed stale what="Leads" error={listQuery.error} onRetry={() => { void fetchLeads(); }} retrying={listQuery.isFetching} className="mb-4" />
         )}
-        {loading ? (
+        {listLoading ? (
           <LeadsListSkeleton />
         ) : listQuery.isError && listQuery.data === undefined ? (
           <LoadFailed what="Leads" error={listQuery.error} onRetry={() => { void fetchLeads(); }} retrying={listQuery.isFetching} />
