@@ -147,5 +147,10 @@ export const queryKeys = {
     memberHousehold: (s: WorkspaceScope, memberId: string) => key(s, 'households', 'member', memberId),
     memberLinks: (s: WorkspaceScope, memberId: string) => key(s, 'members', 'links', memberId),
     personMembership: (s: WorkspaceScope, kind: 'lead' | 'contact', id: string) => key(s, 'members', 'membership', kind, id),
+    // The club's figures, summed on the server from the ledger, the events and the members:
+    // every write that moves money, a member, a booking or a check-in refreshes them
+    // (api/dataChanged).
+    report: (s: WorkspaceScope, range: object) => key(s, 'club-reports', 'report', range),
+    today: (s: WorkspaceScope) => key(s, 'club-reports', 'today'),
   },
 } as const;

@@ -87,8 +87,23 @@ describe('what a write changes', () => {
   });
 
   it('a club write changes only its own records, whatever the query string', () => {
-    // A check-in writes the points it earns with the visit, so the loyalty ledger moves too.
-    expect(resourcesChangedBy('POST', 'https://api.example.com/api/visits?memberId=m-1')).toEqual(['visits', 'loyalty']);
+    // A check-in writes the points it earns with the visit, so the loyalty ledger moves too,
+    // and the day's check-ins on Today at the Club.
+    expect(resourcesChangedBy('POST', 'https://api.example.com/api/visits?memberId=m-1')).toEqual(['visits', 'loyalty', 'club-reports']);
+    expect(resourcesChangedBy('POST', '/api/donations')).toEqual(['donations']);
+  });
+
+  it("refreshes the club's reports after every write that moves the figures they sum", () => {
+    for (const [method, path] of [
+      ['POST', '/api/charges'], ['POST', '/api/payments'], ['POST', '/api/tabs/t-1/close'], ['POST', '/api/subscriptions/s-1/bill'],
+      ['POST', '/api/billing/run'], ['POST', '/api/events/e-1/attendees'], ['POST', '/api/reservations'],
+      ['POST', '/api/applications/a-1/approve'], ['POST', '/api/bank/imports'], ['POST', '/api/gift-cards/g-1/redeem'],
+      ['POST', '/api/loyalty/ledger'], ['POST', '/api/members'], ['POST', '/api/members/m-1/merge'], ['POST', '/api/members/m-1/card/charge'],
+      ['PUT', '/api/catalog/c-1'],
+    ] as const) {
+      expect(resourcesChangedBy(method, path), `${method} ${path}`).toContain('club-reports');
+    }
+    expect(resourcesChangedBy('POST', '/api/donations')).not.toContain('club-reports');
   });
 
   it("the club's money is one ledger: a charge, a payment or a tab moves balances and statements", () => {

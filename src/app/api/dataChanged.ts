@@ -94,7 +94,7 @@ const LINKED = ['leads', 'contacts', 'companies', 'deals', 'tasks', 'activities'
 const MEMBER_MERGE = [
   'members', 'campaigns', 'communications', 'duplicates', 'visits', 'loyalty', 'charges', 'payments', 'statements',
   'tabs', 'reservations', 'events', 'gift-cards', 'donations', 'subscriptions', 'households', 'applications',
-  'payment-profile', 'online-payments', 'bank',
+  'payment-profile', 'online-payments', 'bank', 'club-reports',
 ];
 
 /**
@@ -109,7 +109,7 @@ const HOUSEHOLD_WRITE = ['households', 'members', 'contacts', 'leads', 'duplicat
  * on the ledger before the answer comes back (settling charges, moving the balance and the
  * statement, perhaps putting back a member the billing lapsed), and the attempt is listed.
  */
-const SAVED_CARD_CHARGE = ['payment-profile', 'online-payments', 'payments', 'charges', 'members', 'statements'];
+const SAVED_CARD_CHARGE = ['payment-profile', 'online-payments', 'payments', 'charges', 'members', 'statements', 'club-reports'];
 
 /**
  * What a write under /api/<base> may change, beyond its own records. The server
@@ -137,10 +137,13 @@ const SAVED_CARD_CHARGE = ['payment-profile', 'online-payments', 'payments', 'ch
  *   payment for it becoming credit), give a member their check-in points, and email the
  *   next in line (logged in their communications). A booking can post or give back a
  *   deposit and a no-show fee; a resource's settings show on its bookings.
+ * - Club Reports and Today at the Club (club-reports) are summed on the server from the
+ *   ledger, the members, check-ins, bookings, tabs, gift cards and points: every write
+ *   that moves one of those refreshes them.
  *
- * A base not listed changes only its own records (the club's visits, gift cards,
- * donations…), which is why checking someone in no longer reloads the sales lists.
- * Add a base here when the server starts changing other records on its writes.
+ * A base not listed changes only its own records (the club's donations, resources…),
+ * which is why checking someone in does not reload the sales lists. Add a base here
+ * when the server starts changing other records on its writes.
  */
 const CHANGES: Readonly<Record<string, readonly string[]>> = {
   leads: ['leads', 'contacts', 'tasks', 'activities', 'sequences', 'duplicates', 'work-queue', 'reports'],
@@ -166,34 +169,38 @@ const CHANGES: Readonly<Record<string, readonly string[]>> = {
   // A balance set by hand on a member is an entry on the ledger, a member's tier or
   // status changes who a campaign reaches, and a member added can start their dues
   // subscription (due today, so billing now has it to bill) and be charged their initiation fee.
-  members: ['members', 'charges', 'payments', 'statements', 'campaigns', 'subscriptions', 'billing'],
+  members: ['members', 'charges', 'payments', 'statements', 'campaigns', 'subscriptions', 'billing', 'club-reports'],
   // A void or a payment can put back a member the billing lapsed (members).
-  charges: ['charges', 'members', 'statements'],
-  payments: ['payments', 'charges', 'members', 'statements'],
-  tabs: ['tabs', 'charges', 'members', 'loyalty', 'statements'],
-  subscriptions: ['subscriptions', 'charges', 'members', 'statements', 'billing'],
+  charges: ['charges', 'members', 'statements', 'club-reports'],
+  payments: ['payments', 'charges', 'members', 'statements', 'club-reports'],
+  tabs: ['tabs', 'charges', 'members', 'loyalty', 'statements', 'club-reports'],
+  subscriptions: ['subscriptions', 'charges', 'members', 'statements', 'billing', 'club-reports'],
   // A check-in writes the points it earned to the loyalty ledger.
-  visits: ['visits', 'loyalty'],
+  visits: ['visits', 'loyalty', 'club-reports'],
+  // Club Reports and Today at the Club count what is left on gift cards and the points
+  // members hold, so a card spent or a point given changes them too.
+  'gift-cards': ['gift-cards', 'club-reports'],
+  loyalty: ['loyalty', 'club-reports'],
   // A tier renamed in the catalogue is renamed on every member who has it.
-  catalog: ['catalog', 'members'],
+  catalog: ['catalog', 'members', 'club-reports'],
   // Billing posts charges, moves subscriptions on and members' balances, and is a run.
-  billing: ['billing', 'charges', 'subscriptions', 'members', 'statements'],
+  billing: ['billing', 'charges', 'subscriptions', 'members', 'statements', 'club-reports'],
   hospitality: ['hospitality'],
-  events: ['events', 'charges', 'payments', 'members', 'statements', 'loyalty', 'communications'],
-  reservations: ['reservations', 'charges', 'payments', 'members', 'statements'],
+  events: ['events', 'charges', 'payments', 'members', 'statements', 'loyalty', 'communications', 'club-reports'],
+  reservations: ['reservations', 'charges', 'payments', 'members', 'statements', 'club-reports'],
   resources: ['resources', 'reservations'],
   // Sending a campaign writes a message per member into the communications log.
   campaigns: ['campaigns', 'communications'],
   // An approval makes the member, starts their dues, charges the initiation fee, joins the
   // household, records their consent and queues the welcome (logged in their communications);
   // the lead's and the contact's pages show the application and the member.
-  applications: ['applications', 'members', 'charges', 'payments', 'subscriptions', 'statements', 'communications', 'households', 'billing', 'leads', 'contacts', 'campaigns'],
+  applications: ['applications', 'members', 'charges', 'payments', 'subscriptions', 'statements', 'communications', 'households', 'billing', 'leads', 'contacts', 'campaigns', 'club-reports'],
   households: HOUSEHOLD_WRITE,
   // The payment settings decide what the money screens offer (pay online, the QR-bill).
   'payment-settings': ['payment-settings'],
   // A bank file's matched transfers, and one allocated by hand, are payments on the ledger:
   // they settle charges, move balances and statements, and can put back a lapsed member.
-  bank: ['bank', 'payments', 'charges', 'members', 'statements'],
+  bank: ['bank', 'payments', 'charges', 'members', 'statements', 'club-reports'],
 };
 
 /** Which records an activity is about, from the body it was saved with. */

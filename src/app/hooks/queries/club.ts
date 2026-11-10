@@ -8,7 +8,8 @@
 // to try again, and a refresh when a save changes that kind of record (invalidation.ts,
 // api/dataChanged).
 
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { getClubReport, getClubToday, type ClubReportRange } from '@/app/api/clubReports';
 import { getMembers } from '@/app/api/members';
 import { getCharges, getPayments, getMemberStatement } from '@/app/api/charges';
 import { getGiftCards, getRedemptions } from '@/app/api/giftCards';
@@ -137,6 +138,27 @@ export function useReservations(memberId: string | null = null) {
     queryKey: queryKeys.club.reservations(ws, memberId),
     queryFn: ({ signal }) => timed(signal, (s) => getReservations({ signal: s, memberId: memberId ?? undefined })),
   });
+}
+
+/**
+ * Club Reports for a period, summed on the server. A new period keeps the last one's figures
+ * on screen while it is read (marked as the earlier copy), rather than blanking the page.
+ * No period (a custom one that ends before it starts) asks nothing and keeps the last figures.
+ */
+export function useClubReport(range: ClubReportRange | null) {
+  const ws = useWorkspaceScope();
+  return useQuery({
+    queryKey: queryKeys.club.report(ws, range ?? {}),
+    queryFn: ({ signal }) => timed(signal, (s) => getClubReport(range!, { signal: s })),
+    enabled: !!range,
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** What the club's day holds, counted on the server. */
+export function useClubToday() {
+  const ws = useWorkspaceScope();
+  return useQuery({ queryKey: queryKeys.club.today(ws), queryFn: ({ signal }) => timed(signal, (s) => getClubToday({ signal: s })) });
 }
 
 /** A member's statement for [fromUtc, toUtc), from the server's ledger. Off until a member is picked. */
