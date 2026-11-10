@@ -144,13 +144,22 @@ const CHANGES: Readonly<Record<string, readonly string[]>> = {
   joinrequests: ['team'],
   teams: ['team', 'reports'],
   duplicates: ['duplicates'],
-  // A balance set by hand on a member is an entry on the ledger, and a member's tier or
-  // status changes who a campaign reaches.
-  members: ['members', 'charges', 'payments', 'statements', 'campaigns'],
+  // A balance set by hand on a member is an entry on the ledger, a member's tier or
+  // status changes who a campaign reaches, and a member added can start their dues
+  // subscription and be charged their initiation fee.
+  members: ['members', 'charges', 'payments', 'statements', 'campaigns', 'subscriptions'],
+  // A void or a payment can put back a member the billing lapsed (members).
   charges: ['charges', 'members', 'statements'],
   payments: ['payments', 'charges', 'members', 'statements'],
   tabs: ['tabs', 'charges', 'members', 'loyalty', 'statements'],
-  subscriptions: ['subscriptions', 'charges', 'members', 'statements'],
+  subscriptions: ['subscriptions', 'charges', 'members', 'statements', 'billing'],
+  // A check-in writes the points it earned to the loyalty ledger.
+  visits: ['visits', 'loyalty'],
+  // A tier renamed in the catalogue is renamed on every member who has it.
+  catalog: ['catalog', 'members'],
+  // Billing posts charges, moves subscriptions on and members' balances, and is a run.
+  billing: ['billing', 'charges', 'subscriptions', 'members', 'statements'],
+  hospitality: ['hospitality'],
   // Sending a campaign writes a message per member into the communications log.
   campaigns: ['campaigns', 'communications'],
 };
@@ -185,6 +194,8 @@ export function resourcesChangedBy(method: string | undefined, path: string, bod
   // A consent answer changes who a marketing campaign reaches, and nothing on the
   // member's account, so it leaves the money lists alone.
   if (base === 'members' && last === 'consent') return ['members', 'campaigns'];
+  // Emailing a statement writes a line in the member's communications log, nothing more.
+  if (base === 'members' && last === 'email') return ['communications'];
   // A merge moves everything linked to the record merged away; a conversion makes
   // a contact, a company and a deal from the lead.
   if (last === 'merge' || (base === 'leads' && last === 'convert')) return [...LINKED];

@@ -8,14 +8,19 @@
 
 import { apiWithFallback, authFetch, authFetchJson, ensureOk, type RequestOptions } from './apiClient';
 import { createMockStore, demoPatch, mockId } from './mockStore';
+import { getCatalog, tierNamed } from './catalog';
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export type MemberTier = 'Bronze' | 'Silver' | 'Gold' | 'Platinum';
+/**
+ * The name of one of the club's membership tiers. A club sets its own in the price
+ * catalogue (api/catalog), so any name; the four below are the ones every club starts with.
+ */
+export type MemberTier = string;
 export type MemberStatus = 'Pending' | 'Active' | 'Lapsed' | 'Cancelled';
-export type DuesFrequency = 'Monthly' | 'Quarterly' | 'Annual';
+export type DuesFrequency = 'Monthly' | 'Quarterly' | 'SemiAnnual' | 'Annual';
 
 export interface Member {
   id: string;
@@ -31,18 +36,14 @@ export interface Member {
   duesFrequency: DuesFrequency;
   houseAccountBalance: number;
   notes?: string;
+  /** When the club's billing lapsed the member for a charge left unpaid; null otherwise. */
+  billingLapsedAtUtc?: string | null;
 }
 
+/** The tiers every club starts with, in order: what demo data and a club with no catalogue yet show. */
 export const MEMBER_TIERS: MemberTier[] = ['Bronze', 'Silver', 'Gold', 'Platinum'];
 export const MEMBER_STATUSES: MemberStatus[] = ['Pending', 'Active', 'Lapsed', 'Cancelled'];
-export const DUES_FREQUENCIES: DuesFrequency[] = ['Monthly', 'Quarterly', 'Annual'];
-
-export const TIER_DUES: Record<MemberTier, number> = {
-  Bronze: 49,
-  Silver: 129,
-  Gold: 299,
-  Platinum: 599,
-};
+export const DUES_FREQUENCIES: DuesFrequency[] = ['Monthly', 'Quarterly', 'SemiAnnual', 'Annual'];
 
 const day = 86_400_000;
 const seed: Member[] = [
@@ -150,8 +151,15 @@ export async function getMembers(req?: RequestOptions): Promise<Member[]> {
   );
 }
 
-export type MemberInput = Omit<Member, 'id' | 'houseAccountBalance'> & {
+export type MemberInput = Omit<Member, 'id' | 'houseAccountBalance' | 'duesAmount' | 'duesFrequency'> & {
   houseAccountBalance?: number;
+  /** Left out, the member's tier's dues and cadence from the catalogue. */
+  duesAmount?: number;
+  duesFrequency?: DuesFrequency;
+  /** Start the member's dues subscription today (money.manage). */
+  startDues?: boolean;
+  /** Charge the tier's initiation fee (money.manage). */
+  chargeInitiationFee?: boolean;
 };
 
 export async function createMember(input: MemberInput): Promise<Member | null> {
@@ -159,10 +167,15 @@ export async function createMember(input: MemberInput): Promise<Member | null> {
     () => authFetchJson<Member>('/api/members', { method: 'POST', body: JSON.stringify(input) }),
     async () => {
       await delay(160);
+      const { startDues: _startDues, chargeInitiationFee: _chargeFee, ...fields } = input;
+      // As the server does: dues left out are the tier's, from the catalogue.
+      const tier = tierNamed(await getCatalog('Membership'), fields.tier);
       return memberStore.add({
         id: mockId('mem'),
         houseAccountBalance: 0,
-        ...input,
+        ...fields,
+        duesAmount: fields.duesAmount ?? tier?.price ?? 0,
+        duesFrequency: fields.duesFrequency ?? tier?.cadence ?? 'Monthly',
       });
     },
   );
@@ -230,7 +243,9 @@ export function computeMemberStats(members: Member[]): MemberStats {
           ? m.duesAmount
           : m.duesFrequency === 'Quarterly'
             ? m.duesAmount / 3
-            : m.duesAmount / 12;
+            : m.duesFrequency === 'SemiAnnual'
+              ? m.duesAmount / 6
+              : m.duesAmount / 12;
       mrr += monthly;
     }
     if (m.status === 'Active' && Date.parse(m.renewsAtUtc) <= soonThreshold) {

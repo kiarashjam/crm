@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import type { Member } from '@/app/api/members';
+import { withQueries } from '@/test/queryWrapper';
 
 const membersApi = vi.hoisted(() => ({ getMembers: vi.fn(), createMember: vi.fn(), updateMember: vi.fn(), deleteMember: vi.fn() }));
 vi.mock('@/app/api/members', async () => ({
@@ -35,7 +36,8 @@ beforeEach(() => {
 });
 
 const openEdit = async () => {
-  render(<MemoryRouter><Members /></MemoryRouter>);
+  // Under the app's cache: the tiers on offer are read from the price catalogue.
+  render(withQueries(<MemoryRouter><Members /></MemoryRouter>));
   fireEvent.click((await screen.findAllByRole('button', { name: 'Edit member' }))[0]!);
   return screen.findByLabelText('Phone');
 };

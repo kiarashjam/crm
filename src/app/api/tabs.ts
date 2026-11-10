@@ -157,6 +157,8 @@ export interface AddItemInput {
   name: string;
   quantity: number;
   unitPrice: number;
+  /** A menu item or product from the catalogue: the server rings it up at its own name, price and VAT rate. */
+  catalogItemId?: string;
 }
 
 // Adding, removing and closing go to the server, which owns the tab and its total.
@@ -165,7 +167,12 @@ export async function addItemToTab(input: AddItemInput): Promise<OpenTab | null>
   if (!servesDemoData()) {
     return authFetchJson<OpenTab>(`/api/tabs/${input.tabId}/items`, {
       method: 'POST',
-      body: JSON.stringify({ name: input.name, quantity: input.quantity, unitPrice: input.unitPrice }),
+      body: JSON.stringify({
+        name: input.name,
+        quantity: input.quantity,
+        unitPrice: input.unitPrice,
+        ...(input.catalogItemId ? { catalogItemId: input.catalogItemId } : {}),
+      }),
     });
   }
   const tab = tabStore.byId(input.tabId);
@@ -217,7 +224,7 @@ export async function closeTab(tabId: string): Promise<OpenTab | null> {
     });
   }
   // 10 points / $ × tier multiplier.
-  const points = Math.floor(total * 10 * TIER_MULTIPLIERS[tab.memberTier]);
+  const points = Math.floor(total * 10 * (TIER_MULTIPLIERS[tab.memberTier] ?? 1));
   if (points > 0) {
     await addLoyaltyEntry({
       memberId: tab.memberId,

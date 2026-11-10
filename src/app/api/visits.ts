@@ -1,10 +1,12 @@
 // Visits / check-ins.
 //
 // Every time a member enters the club (or attends an event), staff logs a
-// visit. A visit can earn loyalty points automatically — the staff check-in
-// flow records both at once.
+// visit. A visit can earn loyalty points automatically: the server works them out from
+// the club's settings (the venue's points times the member's tier multiplier) and writes
+// them with the visit. This used to be worked out here, from a table of our own, and
+// written to the loyalty ledger in a second request that could fail on its own.
 
-import { apiWithFallback, authFetch, authFetchJson, ensureOk, type RequestOptions } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson, ensureOk, servesDemoData, type RequestOptions } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import { addLoyaltyEntry, TIER_MULTIPLIERS } from './loyalty';
 import { getMembers, type MemberTier } from './members';
@@ -155,6 +157,19 @@ export interface VisitInput {
 }
 
 export async function checkIn(input: VisitInput): Promise<Visit | null> {
+  // The server works out the points and writes them with the visit, in one request.
+  if (!servesDemoData()) {
+    return authFetchJson<Visit>('/api/visits', {
+      method: 'POST',
+      body: JSON.stringify({
+        memberId: input.memberId,
+        venue: input.venue,
+        guestCount: input.guestCount ?? 0,
+        notes: input.notes,
+        awardPoints: input.awardPoints !== false,
+      }),
+    });
+  }
   const members = await getMembers();
   const member = members.find((m) => m.id === input.memberId);
   if (!member) return null;
@@ -162,29 +177,20 @@ export async function checkIn(input: VisitInput): Promise<Visit | null> {
   const basePoints = BASE_POINTS_BY_VENUE[input.venue];
   const points = input.awardPoints === false
     ? 0
-    : Math.floor(basePoints * TIER_MULTIPLIERS[member.tier]);
+    : Math.floor(basePoints * (TIER_MULTIPLIERS[member.tier] ?? 1));
 
-  const created = await apiWithFallback(
-    () =>
-      authFetchJson<Visit>('/api/visits', {
-        method: 'POST',
-        body: JSON.stringify({ ...input, guestCount, pointsAwarded: points }),
-      }),
-    async () => {
-      await delay(140);
-      return visitStore.add({
-        id: mockId('vis'),
-        memberId: member.id,
-        memberName: `${member.firstName} ${member.lastName}`,
-        memberTier: member.tier,
-        venue: input.venue,
-        visitedAtUtc: new Date().toISOString(),
-        guestCount,
-        pointsAwarded: points,
-        notes: input.notes,
-      });
-    },
-  );
+  await delay(140);
+  const created = visitStore.add({
+    id: mockId('vis'),
+    memberId: member.id,
+    memberName: `${member.firstName} ${member.lastName}`,
+    memberTier: member.tier,
+    venue: input.venue,
+    visitedAtUtc: new Date().toISOString(),
+    guestCount,
+    pointsAwarded: points,
+    notes: input.notes,
+  });
   if (created && points > 0) {
     await addLoyaltyEntry({
       memberId: member.id,

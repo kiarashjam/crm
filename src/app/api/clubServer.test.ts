@@ -98,7 +98,9 @@ describe('on the server', () => {
 
     const settings = await resetHospitalitySettings();
 
-    expect(Array.isArray(settings.tiers)).toBe(true);
+    expect(settings.basePointsPerDollar).toBe(10);
+    expect(settings.billing.automaticBilling).toBe(false);
+    expect(settings.billing.reminderDays).toEqual([3, 14, 30]);
   });
 
   it("leaves a new household's primary link to the server", async () => {

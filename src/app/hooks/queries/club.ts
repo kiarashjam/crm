@@ -22,6 +22,9 @@ import {
 } from '@/app/api/campaigns';
 import { getCommunications } from '@/app/api/communications';
 import { getMemberConsent } from '@/app/api/consent';
+import { getCatalog, type CatalogKind } from '@/app/api/catalog';
+import { getHospitalitySettings } from '@/app/api/hospitalitySettings';
+import { getBillingPreview, getBillingRuns } from '@/app/api/billing';
 import { queryKeys, workspacePrefix, type WorkspaceScope } from './queryKeys';
 import { timed } from './queryClient';
 import { useWorkspaceScope } from './useWorkspaceScope';
@@ -83,6 +86,44 @@ export function useMemberStatement(memberId: string | null, fromUtc: string, toU
     queryKey: queryKeys.club.statement(ws, memberId ?? '', fromUtc, toUtc),
     queryFn: ({ signal }) => timed(signal, (s) => getMemberStatement(memberId!, fromUtc, toUtc, { signal: s })),
     enabled: !!memberId,
+  });
+}
+
+/** The price catalogue, of one kind or all, items taken off sale included. */
+export function useClubCatalog(kind: CatalogKind | null = null) {
+  const ws = useWorkspaceScope();
+  return useQuery({
+    queryKey: queryKeys.club.catalog(ws, kind),
+    queryFn: ({ signal }) => timed(signal, (s) => getCatalog(kind ?? undefined, { signal: s })),
+  });
+}
+
+/** The hospitality settings as the server applies them. */
+export function useHospitalitySettings() {
+  const ws = useWorkspaceScope();
+  return useQuery({
+    queryKey: queryKeys.club.settings(ws),
+    queryFn: ({ signal }) => timed(signal, (s) => getHospitalitySettings({ signal: s })),
+  });
+}
+
+/** The latest billing runs. Off for someone who may not see them. */
+export function useBillingRuns(enabled = true) {
+  const ws = useWorkspaceScope();
+  return useQuery({
+    queryKey: queryKeys.club.billingRuns(ws),
+    queryFn: ({ signal }) => timed(signal, (s) => getBillingRuns({ signal: s })),
+    enabled,
+  });
+}
+
+/** What billing now would post. Off for someone who may not see it. */
+export function useBillingPreview(enabled = true) {
+  const ws = useWorkspaceScope();
+  return useQuery({
+    queryKey: queryKeys.club.billingPreview(ws),
+    queryFn: ({ signal }) => timed(signal, (s) => getBillingPreview({ signal: s })),
+    enabled,
   });
 }
 

@@ -198,12 +198,6 @@ export async function approveApplication(
   if (!application) return null;
   // Approving twice (a retry after a failed update) must not add the member twice.
   if (application.status === 'Approved') return application;
-  const monthlyByTier: Record<MemberTier, number> = {
-    Bronze: 49,
-    Silver: 129,
-    Gold: 299,
-    Platinum: 599,
-  };
   const yearFromNow = new Date(Date.now() + 365 * day).toISOString();
   await createMember({
     firstName: application.firstName,
@@ -212,8 +206,8 @@ export async function approveApplication(
     phone: application.phone,
     tier: application.requestedTier,
     status: 'Pending',
-    duesAmount: monthlyByTier[application.requestedTier],
-    duesFrequency: 'Monthly',
+    // The tier's dues and their cadence, from the price catalogue: left out, the server
+    // fills both in. (A cadence sent alone would bill the tier's price on that cadence.)
     joinedAtUtc: new Date().toISOString(),
     renewsAtUtc: yearFromNow,
     notes: application.reasonForJoining,

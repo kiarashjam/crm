@@ -87,7 +87,8 @@ describe('what a write changes', () => {
   });
 
   it('a club write changes only its own records, whatever the query string', () => {
-    expect(resourcesChangedBy('POST', 'https://api.example.com/api/visits?memberId=m-1')).toEqual(['visits']);
+    // A check-in writes the points it earns with the visit, so the loyalty ledger moves too.
+    expect(resourcesChangedBy('POST', 'https://api.example.com/api/visits?memberId=m-1')).toEqual(['visits', 'loyalty']);
   });
 
   it("the club's money is one ledger: a charge, a payment or a tab moves balances and statements", () => {

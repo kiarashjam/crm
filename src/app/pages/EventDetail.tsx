@@ -238,7 +238,7 @@ export default function EventDetail() {
     if (a.memberId) {
       const member = members.find((m) => m.id === a.memberId);
       if (member) {
-        const points = Math.floor(50 * TIER_MULTIPLIERS[member.tier]);
+        const points = Math.floor(50 * (TIER_MULTIPLIERS[member.tier] ?? 1));
         await addLoyaltyEntry({
           memberId: member.id,
           memberName: `${member.firstName} ${member.lastName}`,

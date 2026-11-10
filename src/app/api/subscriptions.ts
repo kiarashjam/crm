@@ -1,10 +1,13 @@
 // Subscriptions / recurring billing.
 //
 // A subscription is a recurring charge schedule — typically a member's dues
-// but also extras like locker rental, fitness add-ons, parking. When a cycle
-// comes due, the billing run drops a charge onto the member's house account.
+// but also extras like locker rental, fitness add-ons, parking. Dues are billed in
+// advance, once per calendar period (a month, a quarter, half a year or a year from the
+// day it started): the server's billing run posts each period's charge onto the member's
+// house account, by itself every day when the club turns automatic billing on, or when
+// someone asks (api/billing).
 
-import { apiWithFallback, authFetch, authFetchJson, ensureOk, servesDemoData, type RequestOptions } from './apiClient';
+import { ApiError, apiWithFallback, authFetch, authFetchJson, ensureOk, servesDemoData, type RequestOptions } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import { createCharge } from './charges';
 
@@ -27,6 +30,8 @@ export interface Subscription {
   startedAtUtc: string;
   lastChargedAtUtc?: string;
   notes?: string;
+  /** The tier or dues item of the price catalogue it was started from. */
+  catalogItemId?: string;
 }
 
 export const SUBSCRIPTION_CADENCES: SubscriptionCadence[] = [
@@ -42,14 +47,34 @@ export const SUBSCRIPTION_STATUSES: SubscriptionStatus[] = [
   'PastDue',
 ];
 
-export const CADENCE_DAYS: Record<SubscriptionCadence, number> = {
-  Monthly: 30,
-  Quarterly: 91,
-  SemiAnnual: 182,
-  Annual: 365,
+/** The calendar months in each cadence's period. */
+export const CADENCE_MONTHS: Record<SubscriptionCadence, number> = {
+  Monthly: 1,
+  Quarterly: 3,
+  SemiAnnual: 6,
+  Annual: 12,
 };
 
 const day = 86_400_000;
+
+/**
+ * The start of the period after the one starting at `iso`: the same day of the month,
+ * or the month's last day when it is shorter (the 31st of January, then the 28th of
+ * February). As the server reckons it; it used to be thirty days on, whatever the month.
+ */
+export function nextPeriodStart(iso: string, cadence: SubscriptionCadence, anchorDay?: number): string {
+  const from = new Date(iso);
+  const anchor = anchorDay ?? from.getUTCDate();
+  const months = from.getUTCMonth() + (CADENCE_MONTHS[cadence] ?? 1);
+  const lastDay = new Date(Date.UTC(from.getUTCFullYear(), months + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(from.getUTCFullYear(), months, Math.min(anchor, lastDay))).toISOString();
+}
+
+/** Today at midnight UTC: the day a subscription started today first bills. */
+function todayUtc(): string {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
+}
 
 const seed: Subscription[] = [
   {
@@ -153,8 +178,11 @@ export interface SubscriptionInput {
   name: string;
   amount: number;
   cadence: SubscriptionCadence;
+  /** The first period's start, billed on that day; left out, today. */
   nextChargeAtUtc?: string;
   notes?: string;
+  /** Started from a tier or dues item of the catalogue: its name, price and cadence unless these are sent. */
+  catalogItemId?: string;
 }
 
 export async function createSubscription(input: SubscriptionInput): Promise<Subscription | null> {
@@ -162,12 +190,13 @@ export async function createSubscription(input: SubscriptionInput): Promise<Subs
     () => authFetchJson<Subscription>('/api/subscriptions', { method: 'POST', body: JSON.stringify(input) }),
     async () => {
       await delay(160);
+      // Billed in advance, as the server does: the first period starts today unless told otherwise.
       return subStore.add({
         id: mockId('sub'),
         startedAtUtc: new Date().toISOString(),
         status: 'Active',
-        nextChargeAtUtc: input.nextChargeAtUtc ?? new Date(Date.now() + CADENCE_DAYS[input.cadence] * day).toISOString(),
         ...input,
+        nextChargeAtUtc: input.nextChargeAtUtc ? new Date(input.nextChargeAtUtc).toISOString() : todayUtc(),
       });
     },
   );
@@ -200,19 +229,36 @@ export async function deleteSubscription(id: string): Promise<boolean> {
   );
 }
 
+/** The server's code for billing a period that has not started: billing it early is asked for apart. */
+export const NOT_DUE_CODE = 'Subscription.NotDue.Conflict';
+
+/** Whether a refusal says the next period has not started, so it can be billed early instead. */
+export function isNotDue(err: unknown): err is ApiError {
+  return err instanceof ApiError && err.code === NOT_DUE_CODE;
+}
+
 /**
- * Manually run the billing cycle for a subscription: drop a charge on the
- * member's account and advance `nextChargeAtUtc`. Real billing runs would
- * happen as a scheduled job; this is the staff-triggered version.
+ * Bills a subscription's period by hand: the server posts the charge and moves the next
+ * date on, once per period. A period that has not started is refused (see `isNotDue`)
+ * unless `early` asks to bill it now, one period ahead at most.
  */
-export async function runBillingCycle(id: string): Promise<Subscription | null> {
+export async function runBillingCycle(id: string, options: { early?: boolean } = {}): Promise<Subscription | null> {
   // The server posts the charge, moves the balance and the next date itself.
   if (!servesDemoData()) {
-    return authFetchJson<Subscription>(`/api/subscriptions/${id}/bill`, { method: 'POST' });
+    return authFetchJson<Subscription>(`/api/subscriptions/${id}/bill`, {
+      method: 'POST',
+      ...(options.early ? { body: JSON.stringify({ early: true }) } : {}),
+    });
   }
   const sub = subStore.byId(id);
   if (!sub) return null;
   if (sub.status === 'Cancelled' || sub.status === 'Paused') return sub;
+  if (!options.early && Date.parse(sub.nextChargeAtUtc) > Date.now()) {
+    const starts = new Date(sub.nextChargeAtUtc).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+    throw new ApiError(
+      `This subscription's next period starts on ${starts}, so nothing was billed. Bill it early to charge that period now.`,
+      409, `/api/subscriptions/${id}/bill`, true, NOT_DUE_CODE);
+  }
 
   await createCharge({
     memberId: sub.memberId,
@@ -223,9 +269,7 @@ export async function runBillingCycle(id: string): Promise<Subscription | null> 
     dueAtUtc: new Date(Date.now() + 14 * day).toISOString(),
   });
 
-  const nextChargeAtUtc = new Date(
-    Date.parse(sub.nextChargeAtUtc) + CADENCE_DAYS[sub.cadence] * day,
-  ).toISOString();
+  const nextChargeAtUtc = nextPeriodStart(sub.nextChargeAtUtc, sub.cadence, new Date(sub.startedAtUtc).getUTCDate());
   return subStore.update(id, {
     lastChargedAtUtc: new Date().toISOString(),
     nextChargeAtUtc,
@@ -234,8 +278,9 @@ export async function runBillingCycle(id: string): Promise<Subscription | null> 
 }
 
 /**
- * Convenience: run billing cycles for all subscriptions whose next-charge
- * date is in the past. Returns the number of charges created.
+ * Demo data's billing run (api/billing's runBillingNow): bills each subscription whose
+ * period has started. Returns the number of charges created. Against the server, the
+ * server's own run bills, once per period, in one request.
  */
 export async function runDueBillingCycles(): Promise<number> {
   const now = Date.now();

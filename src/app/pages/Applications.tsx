@@ -49,7 +49,9 @@ import {
   type Application,
   type ApplicationStatus,
 } from '@/app/api/applications';
-import { MEMBER_TIERS, TIER_DUES, type MemberTier } from '@/app/api/members';
+import { MEMBER_TIERS, type MemberTier } from '@/app/api/members';
+import { CADENCE_LABEL, tiersOnSale } from '@/app/api/catalog';
+import { useClubCatalog } from '@/app/hooks/queries';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
@@ -115,6 +117,9 @@ function formatDate(iso: string): string {
 
 export default function Applications() {
   const { format: formatCurrency } = useClubMoney();
+  // The club's tiers on sale and their dues, from the price catalogue.
+  const catalog = useClubCatalog('Membership').data;
+  const tierOptions = useMemo(() => tiersOnSale(catalog ?? []), [catalog]);
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
   usePageLoading(loading);
@@ -565,9 +570,9 @@ export default function Applications() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {MEMBER_TIERS.map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {t} — {formatCurrency(TIER_DUES[t])}/mo
+                  {(tierOptions.length > 0 ? tierOptions : MEMBER_TIERS.map((name) => ({ name, price: undefined, cadence: undefined }))).map((t) => (
+                    <SelectItem key={t.name} value={t.name}>
+                      {t.price !== undefined && t.cadence ? `${t.name} — ${formatCurrency(t.price)}/${CADENCE_LABEL[t.cadence]}` : t.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

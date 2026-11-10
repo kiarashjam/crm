@@ -64,6 +64,10 @@ export const REASON_LABELS: Record<LoyaltyReason, string> = {
   GiftCardRedemption: 'Gift card',
 };
 
+/**
+ * The multipliers of the tiers every club starts with: demo data's, and the browser's own
+ * reckoning where it still makes one. The server applies each tier's own, from the catalogue.
+ */
 export const TIER_MULTIPLIERS: Record<MemberTier, number> = {
   Bronze: 1.0,
   Silver: 1.25,
@@ -274,5 +278,5 @@ export function computeLoyaltyStats(entries: LoyaltyEntry[]): LoyaltyStats {
 
 export function pointsForPurchase(amountDollars: number, tier: MemberTier): number {
   const base = Math.floor(amountDollars * 10); // 10 base points per $1
-  return Math.floor(base * TIER_MULTIPLIERS[tier]);
+  return Math.floor(base * (TIER_MULTIPLIERS[tier] ?? 1));
 }

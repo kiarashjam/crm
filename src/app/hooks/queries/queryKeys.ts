@@ -122,5 +122,11 @@ export const queryKeys = {
     loyalty: (s: WorkspaceScope) => key(s, 'loyalty', 'ledger'),
     visits: (s: WorkspaceScope) => key(s, 'visits', 'all'),
     statement: (s: WorkspaceScope, memberId: string, fromUtc: string, toUtc: string) => key(s, 'statements', memberId, fromUtc, toUtc),
+    // The price catalogue (tiers, dues, fees, products, tickets, menu items), the settings
+    // the server applies, and the billing runs and what billing now would post.
+    catalog: (s: WorkspaceScope, kind: string | null) => key(s, 'catalog', kind ?? 'all'),
+    settings: (s: WorkspaceScope) => key(s, 'hospitality', 'settings'),
+    billingRuns: (s: WorkspaceScope) => key(s, 'billing', 'runs'),
+    billingPreview: (s: WorkspaceScope) => key(s, 'billing', 'preview'),
   },
 } as const;
