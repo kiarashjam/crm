@@ -178,6 +178,9 @@ public sealed class ClubPaymentSettingsService : IClubPaymentSettings
         }
 
         var now = DateTime.UtcNow;
+        // Going live after trying things out: Stripe keeps test mode and live mode apart, so the
+        // customers, cards and mandates made with the test key do not exist for the live one.
+        var goingLive = newKey != null && ModeOf(newKey) == "live" && ModeOf(row?.StripeKeyHint) == "test";
         if (row == null)
         {
             row = new ClubPaymentSettings
@@ -219,6 +222,7 @@ public sealed class ClubPaymentSettingsService : IClubPaymentSettings
         row.UpdatedAtUtc = now;
         row.UpdatedByUserId = userId;
         row.UpdatedByName = string.IsNullOrWhiteSpace(_user.UserName) ? null : _user.UserName.Trim()[..Math.Min(200, _user.UserName.Trim().Length)];
+        if (goingLive) await ForgetTestModeAsync(organizationId, now, ct);
         try
         {
             await _db.SaveChangesAsync(ct);
@@ -233,6 +237,33 @@ public sealed class ClubPaymentSettingsService : IClubPaymentSettings
             return DomainErrors.Payments.SettingsChanged;
         }
         return await GetAsync(organizationId, ct);
+    }
+
+    /// <summary>
+    /// Forgets what Stripe's test mode left on members' profiles, as the live key is saved: kept,
+    /// a member tried out in test mode had every pay link refused ("No such customer"), and dues
+    /// charged to a test card. Their customer, card and agreement for dues on it go (a live card
+    /// is saved again from a link), and pages and charges still open in test mode are cancelled.
+    /// Nothing made with a live key is touched, and the ledger keeps the payments test mode
+    /// recorded, for staff to void.
+    /// </summary>
+    private async Task ForgetTestModeAsync(Guid organizationId, DateTime now, CancellationToken ct)
+    {
+        foreach (var profile in await _db.ClubPaymentProfiles
+                     .Where(p => p.OrganizationId == organizationId && p.Provider == PaymentProviders.Stripe && (p.CustomerId != null || p.PaymentMethodId != null))
+                     .ToListAsync(ct))
+        {
+            profile.CustomerId = null;
+            ClubPaymentsService.ClearCard(profile);
+        }
+        foreach (var attempt in await _db.ClubOnlinePayments
+                     .Where(p => p.OrganizationId == organizationId && (p.Status == OnlinePaymentStatuses.Open || p.Status == OnlinePaymentStatuses.Processing))
+                     .ToListAsync(ct))
+        {
+            attempt.Status = OnlinePaymentStatuses.Canceled;
+            attempt.FailureMessage = "Made in Stripe's test mode; the club now takes payments live.";
+            attempt.UpdatedAtUtc = now;
+        }
     }
 
     /// <summary>The workspace's settings as the services use them, the secrets decrypted.</summary>

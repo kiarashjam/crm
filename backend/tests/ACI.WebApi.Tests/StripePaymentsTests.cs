@@ -557,6 +557,46 @@ public class StripePaymentsTests
     }
 
     [Fact]
+    public async Task GoingLiveForgetsTheCardsAndCustomersOfStripesTestMode_SoMembersCanPayWithTheLiveKey()
+    {
+        await using var app = new PaymentsApp();
+        var club = await ClubAsync(app);
+        // The club tried things out in test mode: a member saved a test card, dues on it, and a
+        // pay link was left open.
+        var (tester, _) = await SavedCardAsync(app, club, autoPay: true);
+        await ChargeAsync(club.Owner, tester, 299m);
+        var link = await Json(await club.Owner.PostAsync($"/api/members/{tester}/pay-link", Body(new { purpose = "account" })), "a pay link in test mode");
+        await Json(await PayAsync(app.CreateClient(), TokenOf(link.GetProperty("url").GetString()!)), "press Pay in test mode");
+
+        // Stripe accepts the live key too; then the club pastes it.
+        app.Stripe.On("GET", "/v1/customers", _ => (HttpStatusCode.OK, new { @object = "list", data = Array.Empty<object>() }));
+        await Json(await club.Owner.PutAsync("/api/payment-settings", Body(new { stripeSecretKey = "sk_live_good_4242424242abcd" })), "go live");
+
+        var profile = await Json(await club.Owner.GetAsync($"/api/members/{tester}/payment-profile"), "the member's profile");
+        profile.TryGetProperty("card", out _).Should().BeFalse("a card saved in test mode cannot be charged with the live key");
+        profile.GetProperty("autoPayDues").GetBoolean().Should().BeFalse("nothing is charged to it");
+        (await app.Services.Read(db => db.ClubPaymentProfiles.IgnoreQueryFilters().Single(p => p.MemberId == tester).CustomerId)).Should().BeNull();
+        profile.GetProperty("payments").EnumerateArray().Should().NotContain(p => p.GetProperty("status").GetString() == "open",
+            "a test page left open will never be paid");
+
+        // The member's next payment is made with a live customer, not the test one Stripe's live
+        // mode has never heard of.
+        var customers = app.Stripe.Sent("POST", "/v1/customers").Count;
+        await Json(await PayAsync(app.CreateClient(), TokenOf(link.GetProperty("url").GetString()!)), "press Pay after going live");
+        app.Stripe.Sent("POST", "/v1/customers").Should().HaveCount(customers + 1);
+        var checkout = app.Stripe.Sent("POST", "/v1/checkout/sessions").Last();
+        checkout.Authorization.Should().Be("Bearer sk_live_good_4242424242abcd");
+        checkout.Form["customer"].Should().NotBe("cus_1");
+
+        // A live card saved since stays when the club rolls its live key: only test mode's go.
+        var (liveMember, _) = await SavedCardAsync(app, club, autoPay: true);
+        await Json(await club.Owner.PutAsync("/api/payment-settings", Body(new { stripeSecretKey = "sk_live_good_rolled_9999abcd" })), "roll the live key");
+        var kept = await Json(await club.Owner.GetAsync($"/api/members/{liveMember}/payment-profile"), "the live member's profile");
+        kept.GetProperty("card").GetProperty("last4").GetString().Should().Be("4242");
+        kept.GetProperty("autoPayDues").GetBoolean().Should().BeTrue();
+    }
+
+    [Fact]
     public async Task OnlyMoneyPeopleSendPayLinksOrChargeCards_AndOnlyThoseWhoVoidRefund()
     {
         await using var app = new PaymentsApp();

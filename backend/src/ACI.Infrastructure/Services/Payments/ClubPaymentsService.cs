@@ -607,7 +607,7 @@ public sealed partial class ClubPaymentsService : IClubPayments
         return profile;
     }
 
-    private static void ClearCard(ClubPaymentProfile profile)
+    internal static void ClearCard(ClubPaymentProfile profile)
     {
         profile.PaymentMethodId = null;
         profile.PaymentMethodType = null;
