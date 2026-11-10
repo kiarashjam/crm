@@ -129,6 +129,34 @@ describe('what a write changes', () => {
       expect.arrayContaining(['members', 'campaigns', 'communications', 'duplicates', 'charges', 'visits']),
     );
   });
+
+  it("a change to an event's list refreshes the money and messages it can touch", () => {
+    // A registration posts a ticket, a cancellation takes it back (a payment for it becoming
+    // credit) and emails the next in line, and a check-in gives the member points.
+    for (const path of [
+      '/api/events/e-1/attendees',
+      '/api/events/e-1/attendees/walk-in',
+      '/api/events/e-1/attendees/a-1',
+      '/api/events/e-1',
+    ]) {
+      expect(resourcesChangedBy('POST', path)).toEqual(
+        expect.arrayContaining(['events', 'charges', 'payments', 'members', 'statements', 'loyalty', 'communications']),
+      );
+    }
+    expect(resourcesChangedBy('PUT', '/api/events/e-1/attendees/a-1')).not.toContain('leads');
+  });
+
+  it("a booking refreshes the money its deposit and fee touch, and a resource's settings its bookings", () => {
+    expect(resourcesChangedBy('POST', '/api/reservations')).toEqual(
+      expect.arrayContaining(['reservations', 'charges', 'payments', 'members', 'statements']),
+    );
+    expect(resourcesChangedBy('PUT', '/api/resources/r-1')).toEqual(['resources', 'reservations']);
+    expect(resourcesChangedBy('POST', '/api/resources/defaults')).toEqual(['resources', 'reservations']);
+  });
+
+  it("a club member's merge moves their registrations too", () => {
+    expect(resourcesChangedBy('POST', '/api/members/m-1/merge')).toEqual(expect.arrayContaining(['events', 'reservations']));
+  });
 });
 
 describe('what the signal carries', () => {

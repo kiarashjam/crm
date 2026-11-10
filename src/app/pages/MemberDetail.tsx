@@ -37,7 +37,8 @@ import {
 } from '@/app/api/members';
 import { isSale, type Charge, type Payment } from '@/app/api/charges';
 import type { Visit } from '@/app/api/visits';
-import { getReservations, type Reservation } from '@/app/api/reservations';
+import type { Reservation } from '@/app/api/reservations';
+import type { EventAttendee } from '@/app/api/eventAttendees';
 import { type LoyaltyEntry, REASON_LABELS } from '@/app/api/loyalty';
 import { commStatusLabel, getCommunications, type Communication } from '@/app/api/communications';
 import type { GiftCard } from '@/app/api/giftCards';
@@ -45,6 +46,7 @@ import { usePageLoading } from '@/app/components/LoadingOverlay';
 import { ClubReadState } from '@/app/components/ClubReadState';
 import {
   NONE, useClubCharges, useClubMembers, useClubPayments, useClubReads, useClubVisits, useGiftCards, useLoyaltyLedger,
+  useMemberRegistrations, useReservations,
 } from '@/app/hooks/queries';
 import PageHero, { heroSecondary } from '@/app/components/PageHero';
 import { RecordAvatar } from '@/app/components/RecordCard';
@@ -105,7 +107,14 @@ export default function MemberDetail() {
   const visitsQuery = useClubVisits();
   const loyaltyQuery = useLoyaltyLedger();
   const giftCardsQuery = useGiftCards();
-  const reads = useClubReads(membersQuery, chargesQuery, paymentsQuery, visitsQuery, loyaltyQuery, giftCardsQuery);
+  // Their bookings and their places on event lists, asked of the server by member id: a
+  // booking used to be found by matching the member's email text, so one made without an
+  // email, or with it in another case, never showed here, and a merge left it behind.
+  const reservationsQuery = useReservations(id ?? null);
+  const registrationsQuery = useMemberRegistrations(id ?? '');
+  const reads = useClubReads(
+    membersQuery, chargesQuery, paymentsQuery, visitsQuery, loyaltyQuery, giftCardsQuery, reservationsQuery, registrationsQuery,
+  );
   const allMembers: Member[] = membersQuery.data ?? NONE;
   const member = allMembers.find((x) => x.id === id) ?? null;
   const charges: Charge[] = chargesQuery.data ?? NONE;
@@ -113,7 +122,8 @@ export default function MemberDetail() {
   const visits: Visit[] = visitsQuery.data ?? NONE;
   const ledger: LoyaltyEntry[] = loyaltyQuery.data ?? NONE;
   const giftCards: GiftCard[] = giftCardsQuery.data ?? NONE;
-  const [reservations, setReservations] = useState<Reservation[]>([]);
+  const memberReservations: Reservation[] = reservationsQuery.data ?? NONE;
+  const registrations: EventAttendee[] = registrationsQuery.data ?? NONE;
   const [comms, setComms] = useState<Communication[]>([]);
   const [sideLoading, setSideLoading] = useState(true);
   const loading = reads.loading || sideLoading;
@@ -121,18 +131,15 @@ export default function MemberDetail() {
   const [deleting, setDeleting] = useState(false);
   const [emailing, setEmailing] = useState(false);
 
-  // Reservations and messages are not money and keep their own read; the messages are
-  // this member's, asked of the server by member.
+  // Messages keep their own read, of this member's, asked of the server by member.
   useEffect(() => {
     let live = true;
-    Promise.all([getReservations(), getCommunications(id ? { memberId: id } : {})])
-      .then(([r, comm]) => {
-        if (!live) return;
-        setReservations(r);
-        setComms(comm);
+    getCommunications(id ? { memberId: id } : {})
+      .then((comm) => {
+        if (live) setComms(comm);
       })
       .catch(() => {
-        if (live) toast.error('Could not load this member\'s reservations and messages');
+        if (live) toast.error('Could not load this member\'s messages');
       })
       .finally(() => {
         if (live) setSideLoading(false);
@@ -151,10 +158,6 @@ export default function MemberDetail() {
     [payments, id],
   );
   const memberVisits = useMemo(() => visits.filter((v) => v.memberId === id), [visits, id]);
-  const memberReservations = useMemo(
-    () => reservations.filter((r) => r.memberEmail === member?.email),
-    [reservations, member?.email],
-  );
   const memberLedger = useMemo(() => ledger.filter((l) => l.memberId === id), [ledger, id]);
   const memberComms = useMemo(() => comms.filter((c) => c.memberId === id), [comms, id]);
   const memberGiftCards = useMemo(
@@ -186,6 +189,15 @@ export default function MemberDetail() {
         (r) => Date.parse(r.startAtUtc) > Date.now() && r.status !== 'Cancelled',
       ),
     [memberReservations],
+  );
+
+  // Events they have a seat or a place in line for, theirs or a guest's they bring.
+  const upcomingEvents = useMemo(
+    () =>
+      registrations.filter(
+        (r) => r.eventStartAtUtc && Date.parse(r.eventStartAtUtc) > Date.now() && (r.status === 'Reserved' || r.status === 'Waitlisted'),
+      ),
+    [registrations],
   );
 
   const remove = async () => {
@@ -365,6 +377,26 @@ export default function MemberDetail() {
                   href="/reservations"
                   hrefLabel="All reservations"
                 >
+                  {upcomingEvents.length > 0 && (
+                    <ul className="mb-3 space-y-2 text-sm">
+                      {upcomingEvents.slice(0, 4).map((r) => (
+                        <li key={r.id} className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <Link to={`/events/${r.eventId}`} className="font-medium text-slate-900 truncate hover:text-indigo-600">
+                              {r.eventName}
+                            </Link>
+                            <p className="text-xs text-slate-500">
+                              {r.eventStartAtUtc ? formatDateTime(r.eventStartAtUtc) : ''}
+                              {r.memberId !== id ? ` · bringing ${r.memberName}` : ''}
+                            </p>
+                          </div>
+                          <span className="text-xs text-slate-500">
+                            {r.status === 'Waitlisted' ? `Waitlist #${r.waitlistPosition ?? '?'}` : 'Seat'}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                   {upcomingReservations.length === 0 ? (
                     <p className="text-sm text-slate-500">No upcoming reservations.</p>
                   ) : (

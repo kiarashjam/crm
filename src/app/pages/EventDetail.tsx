@@ -16,8 +16,10 @@ import {
   Loader2,
   AlertCircle,
   UserCheck,
+  UserX,
   Mail,
   UploadCloud,
+  DoorOpen,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -26,16 +28,6 @@ import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import EmptyState from '@/app/components/EmptyState';
 import { Button } from '@/app/components/ui/button';
-import { Input } from '@/app/components/ui/input';
-import { Label } from '@/app/components/ui/label';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogDescription,
-} from '@/app/components/ui/dialog';
 import {
   Tabs,
   TabsList,
@@ -43,31 +35,29 @@ import {
   TabsContent,
 } from '@/app/components/ui/tabs';
 import {
-  getEvents,
   updateEvent,
   deleteEvent,
   VISIBILITY_LABELS,
-  type ClubEvent,
   type EventStatus,
 } from '@/app/api/events';
 import {
-  addEventAttendee,
-  getEventAttendees,
   localAttendeesToUpload,
   removeEventAttendee,
   setAttendeeStatus,
   uploadLocalAttendees,
   type EventAttendee as Attendee,
 } from '@/app/api/eventAttendees';
-import { getMembers, type Member } from '@/app/api/members';
-import { addLoyaltyEntry, TIER_MULTIPLIERS } from '@/app/api/loyalty';
+import { ApiError } from '@/app/api/apiClient';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { ClubReadState } from '@/app/components/ClubReadState';
+import { NONE, useClubEvent, useClubMembers, useClubReads, useEventAttendees } from '@/app/hooks/queries';
 import PageHero, { heroPrimary, heroSecondary } from '@/app/components/PageHero';
 import { motion } from 'motion/react';
 import { useMotionPreference } from '@/app/hooks/useMotionPreference';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { PERMISSION } from '@/app/api/organizations';
+import RegisterDialog, { errorText } from '@/app/pages/events/RegisterDialog';
 
 const STATUS_BADGE: Record<EventStatus, string> = {
   Draft: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
@@ -81,6 +71,15 @@ const ATTENDEE_STATUS_BADGE: Record<Attendee['status'], string> = {
   CheckedIn: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
   Cancelled: 'bg-slate-100 text-slate-500 ring-1 ring-slate-200',
   Waitlisted: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
+  NoShow: 'bg-rose-50 text-rose-700 ring-1 ring-rose-200',
+};
+
+const STATUS_WORDS: Record<Attendee['status'], string> = {
+  Reserved: 'Expected',
+  CheckedIn: 'Checked in',
+  Cancelled: 'Cancelled',
+  Waitlisted: 'Waitlist',
+  NoShow: 'No-show',
 };
 
 function formatDateTime(iso: string): string {
@@ -97,204 +96,120 @@ function formatDateTime(iso: string): string {
   }
 }
 
+/** Where someone's ticket stands on the ledger, in the words the desk needs. */
+function ticketWords(a: Attendee, money: (n: number) => string): string | null {
+  const price = a.ticketPrice ?? 0;
+  switch (a.chargeState) {
+    case 'charged': return `Ticket ${money(price)} on ${a.ticketTier === 'Guest' ? `${a.hostName ?? 'the host'}'s` : 'their'} account`;
+    case 'reversed': return 'Ticket taken back';
+    case 'waiting': return price > 0 ? `${money(price)} when a seat comes` : null;
+    case 'to-collect': return `${money(price)} to collect at the door`;
+    case 'not-charged': return 'Registered before tickets were charged';
+    default: return null;
+  }
+}
+
 export default function EventDetail() {
   const { format: money } = useClubMoney();
   const formatCurrency = (n: number) => (n === 0 ? 'Free' : money(n));
-  const { id } = useParams<{ id: string }>();
+  const { id = '' } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const reduce = useMotionPreference();
-  const [event, setEvent] = useState<ClubEvent | null>(null);
-  const [attendees, setAttendees] = useState<Attendee[]>([]);
-  const [members, setMembers] = useState<Member[]>([]);
-  const [loading, setLoading] = useState(true);
-  usePageLoading(loading);
-  const [addDialog, setAddDialog] = useState(false);
-  const [addForm, setAddForm] = useState({
-    memberId: '',
-    guestName: '',
-    guestEmail: '',
-    ticketTier: 'Member' as Attendee['ticketTier'],
-  });
-  const [busy, setBusy] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  // The event, its list and the members, through the app's cache: the door host's iPad and the
+  // events manager's laptop read the same list from the server, and a failed read says so
+  // instead of showing an empty one.
+  const eventQuery = useClubEvent(id);
+  const attendeesQuery = useEventAttendees(id);
+  const membersQuery = useClubMembers();
+  const reads = useClubReads(eventQuery, attendeesQuery, membersQuery);
+  const event = eventQuery.data ?? null;
+  const attendees: Attendee[] = attendeesQuery.data ?? NONE;
+  const members = membersQuery.data ?? NONE;
+  usePageLoading(reads.loading);
+  const reload = reads.reload;
+  const [dialog, setDialog] = useState<'add' | 'walk-in' | null>(null);
+  // The person being changed, so a second press of a slow button cannot send it twice.
+  const [actingOn, setActingOn] = useState<string | null>(null);
   // Attendees this browser kept before the list moved to the server.
   const [toUpload, setToUpload] = useState<Attendee[]>([]);
   const [uploading, setUploading] = useState(false);
 
-  const load = async () => {
-    try {
-      const [allEvents, allMembers] = await Promise.all([getEvents(), getMembers()]);
-      const found = allEvents.find((e) => e.id === id) ?? null;
-      setEvent(found);
-      setMembers(allMembers);
-      setAttendees(found ? await getEventAttendees(found.id) : []);
-      setToUpload(found ? localAttendeesToUpload(found.id) : []);
-    } catch {
-      toast.error('Failed to load event');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    void load();
+    setToUpload(id ? localAttendeesToUpload(id) : []);
   }, [id]);
 
-  const reserved = useMemo(
-    () => attendees.filter((a) => a.status === 'Reserved' || a.status === 'CheckedIn'),
-    [attendees],
-  );
-  const waitlisted = useMemo(
-    () => attendees.filter((a) => a.status === 'Waitlisted'),
-    [attendees],
-  );
-  const cancelled = useMemo(
-    () => attendees.filter((a) => a.status === 'Cancelled'),
-    [attendees],
-  );
-  const checkedInCount = useMemo(
-    () => attendees.filter((a) => a.status === 'CheckedIn').length,
-    [attendees],
-  );
+  const byStatus = useMemo(() => {
+    const of = (status: Attendee['status']) => attendees.filter((a) => a.status === status);
+    return {
+      expected: of('Reserved'),
+      came: of('CheckedIn'),
+      waiting: of('Waitlisted').sort((a, b) => (a.waitlistPosition ?? 0) - (b.waitlistPosition ?? 0)),
+      noShows: of('NoShow'),
+      cancelled: of('Cancelled'),
+    };
+  }, [attendees]);
 
-  // Seats taken: the people on the list, or the event's count when that is higher,
-  // because an RSVP from the events list adds to the count without a name, and so did
-  // every name a browser kept before the list moved here, until it is uploaded.
-  const seatsTaken = event ? Math.max(reserved.length, event.registeredCount) : 0;
-  const unnamedRsvps = event ? Math.max(0, event.registeredCount - reserved.length) : 0;
-  const isFull = !!event && event.capacity > 0 && seatsTaken >= event.capacity;
+  // A 404 that explains itself is no such event; a bare one is a server without the route,
+  // which the read state says as such.
+  const notFound = (eventQuery.isError && eventQuery.error instanceof ApiError && eventQuery.error.status === 404 && eventQuery.error.hasBody)
+    || (eventQuery.isSuccess && eventQuery.data === null);
 
-  /** A refusal from the server (the event filled up meanwhile, say) is said, not swallowed. */
-  const failed = (fallback: string) => (err: unknown) => {
-    toast.error(err instanceof Error && err.message ? err.message : fallback);
-  };
-
-  const revenue = useMemo(() => {
-    if (!event) return 0;
-    return reserved.reduce(
-      (sum, a) => sum + (a.ticketTier === 'Member' ? event.memberPrice : event.guestPrice),
-      0,
-    );
-  }, [event, reserved]);
-
-  const openAdd = () => {
-    setAddForm({
-      memberId: members[0]?.id ?? '',
-      guestName: '',
-      guestEmail: '',
-      ticketTier: 'Member',
-    });
-    setAddDialog(true);
-  };
-
-  const addAttendee = async () => {
-    if (!event) return;
-    const tier = addForm.ticketTier;
-    let memberName: string;
-    let email: string | undefined;
-    let memberId: string | undefined;
-    if (tier === 'Member') {
-      const member = members.find((m) => m.id === addForm.memberId);
-      if (!member) {
-        toast.error('Pick a member');
-        return;
-      }
-      memberName = `${member.firstName} ${member.lastName}`;
-      email = member.email;
-      memberId = member.id;
-    } else {
-      if (!addForm.guestName.trim()) {
-        toast.error('Guest name is required');
-        return;
-      }
-      memberName = addForm.guestName.trim();
-      email = addForm.guestEmail.trim() || undefined;
-    }
-    setBusy(true);
+  /** Runs one change to someone on the list, says how it went, and reads the list again. */
+  const act = async (a: Attendee, work: () => Promise<string | null>, failure: string) => {
+    if (actingOn) return;
+    setActingOn(a.id);
     try {
-      // The server decides reserved or waitlisted, against the seats it knows are taken.
-      const added = await addEventAttendee(event, { memberId, memberName, email, ticketTier: tier });
-      toast.success(added.status === 'Waitlisted' ? 'Added to waitlist' : 'Attendee added');
-      setAddDialog(false);
-      await load();
+      const said = await work();
+      if (said) toast.success(said);
     } catch (err) {
-      failed('Failed to add')(err);
+      // Refused, say because another door host already checked them in or the event filled
+      // up: the list is read again so this screen stops offering what is no longer there.
+      toast.error(errorText(err, failure));
     } finally {
-      setBusy(false);
+      setActingOn(null);
+      await reload();
     }
   };
 
-  const checkInAttendee = async (a: Attendee) => {
-    if (!event) return;
-    try {
-      await setAttendeeStatus(event, a, 'CheckedIn');
-    } catch (err) {
-      // Refused, e.g. because another door host already checked them in: no points, and
-      // the list is read again so this screen stops offering the check-in.
-      failed('Failed to check in')(err);
-      await load();
-      return;
-    }
-    if (a.memberId) {
-      const member = members.find((m) => m.id === a.memberId);
-      if (member) {
-        const points = Math.floor(50 * TIER_MULTIPLIERS[member.tier]);
-        await addLoyaltyEntry({
-          memberId: member.id,
-          memberName: `${member.firstName} ${member.lastName}`,
-          kind: 'Earned',
-          reason: 'EventAttendance',
-          points,
-          note: event.name,
-        });
-        toast.success(`Checked in · +${points} loyalty points`);
-      } else {
-        toast.success('Checked in');
-      }
-    } else {
-      toast.success('Checked in');
-    }
-    await load();
+  const checkIn = (a: Attendee) => act(a, async () => {
+    const row = await setAttendeeStatus(event!, a, 'CheckedIn');
+    // The points are the server's, given once with the check-in.
+    return row?.pointsAwarded ? `Checked in · +${row.pointsAwarded} loyalty points` : 'Checked in';
+  }, 'Failed to check in');
+
+  const markNoShow = (a: Attendee) => {
+    const fee = event?.noShowFee ?? 0;
+    const payer = a.ticketTier === 'Guest' ? a.hostName : a.memberName;
+    const words = fee > 0 && payer ? ` A no-show fee of ${money(fee)} goes on ${payer}'s account.` : '';
+    if (!confirm(`Mark ${a.memberName} a no-show? Their ticket stands.${words}`)) return;
+    void act(a, async () => {
+      await setAttendeeStatus(event!, a, 'NoShow');
+      return `${a.memberName} marked a no-show`;
+    }, 'Failed to mark a no-show');
   };
 
-  const promoteFromWaitlist = async (a: Attendee) => {
-    if (!event) return;
-    if (isFull) {
-      toast.error('Event is full — cancel a reservation first');
-      return;
-    }
-    try {
-      await setAttendeeStatus(event, a, 'Reserved');
-      toast.success(`${a.memberName} moved off the waitlist`);
-    } catch (err) {
-      failed('Failed to move off the waitlist')(err);
-    }
-    await load();
+  const cancel = (a: Attendee) => {
+    const reason = prompt(`Why is ${a.memberName}'s registration cancelled? It stays on the record.`, '');
+    if (reason === null) return;
+    void act(a, async () => {
+      await setAttendeeStatus(event!, a, 'Cancelled', reason.trim() || undefined);
+      const taken = a.chargeState === 'charged' ? ' Their ticket is taken off the account.' : '';
+      const seat = a.status === 'Reserved' && byStatus.waiting.length > 0 ? ' The first on the waitlist gets the seat and is emailed.' : '';
+      return `Cancelled.${taken}${seat}`;
+    }, 'Failed to cancel');
   };
 
-  const cancelAttendee = async (a: Attendee) => {
-    if (!event) return;
-    try {
-      await setAttendeeStatus(event, a, 'Cancelled');
-      toast.success('Cancelled');
-    } catch (err) {
-      failed('Failed to cancel')(err);
-    }
-    await load();
-  };
+  const promote = (a: Attendee) => act(a, async () => {
+    await setAttendeeStatus(event!, a, 'Reserved');
+    return `${a.memberName} has a seat and is emailed`;
+  }, 'Failed to give them a seat');
 
-  const removeAttendee = async (a: Attendee) => {
-    if (!event) return;
+  const remove = (a: Attendee) => {
     if (!confirm(`Remove ${a.memberName} from this event entirely?`)) return;
-    setDeletingId(a.id);
-    try {
-      await removeEventAttendee(event, a);
-    } catch (err) {
-      failed('Failed to remove')(err);
-    } finally {
-      setDeletingId(null);
-    }
-    await load();
+    void act(a, async () => {
+      await removeEventAttendee(event!, a);
+      return 'Removed from the list';
+    }, 'Failed to remove');
   };
 
   const uploadFromThisBrowser = async () => {
@@ -306,26 +221,48 @@ export default function EventDetail() {
       if (uploaded > 0) toast.success(`${uploaded} attendee${uploaded === 1 ? '' : 's'} uploaded for the whole team`);
     } finally {
       setUploading(false);
+      setToUpload(localAttendeesToUpload(event.id));
     }
-    await load();
+    await reload();
   };
 
   const changeStatus = async (status: EventStatus) => {
     if (!event) return;
-    await updateEvent(event.id, { status });
-    toast.success(`Event ${status.toLowerCase()}`);
-    await load();
+    if (status === 'Cancelled' && !confirm(`Cancel "${event.name}"? Everyone on its list is cancelled, their tickets are taken off their accounts, and they are emailed.`)) return;
+    try {
+      await updateEvent(event.id, { status, version: event.version });
+      toast.success(`Event ${status.toLowerCase()}`);
+    } catch (err) {
+      toast.error(errorText(err, 'Could not change the event'));
+    }
+    await reload();
+  };
+
+  const releaseUnnamed = async () => {
+    if (!event) return;
+    try {
+      await updateEvent(event.id, { unnamedSeats: 0, unnamedWaitlist: 0, version: event.version });
+      toast.success('Released: the seats go to whoever is waiting');
+    } catch (err) {
+      toast.error(errorText(err, 'Could not release the seats'));
+    }
+    await reload();
   };
 
   const removeEvent = async () => {
     if (!event) return;
     if (!confirm(`Delete "${event.name}"?`)) return;
-    await deleteEvent(event.id);
-    toast.success('Event deleted');
-    navigate('/events');
+    try {
+      await deleteEvent(event.id);
+      toast.success('Event deleted');
+      navigate('/events');
+    } catch (err) {
+      // One with tickets on members' accounts is cancelled instead: the server says so.
+      toast.error(errorText(err, 'Could not delete the event'));
+    }
   };
 
-  if (loading) {
+  if (reads.loading) {
     return (
       <div className="min-h-screen flex flex-col bg-gradient-subtle">
         <AppHeader />
@@ -336,8 +273,7 @@ export default function EventDetail() {
     );
   }
 
-
-  if (!event) {
+  if (notFound || (!event && !reads.failed)) {
     return (
       <div className="min-h-screen bg-gradient-subtle">
         <AppHeader />
@@ -354,8 +290,52 @@ export default function EventDetail() {
     );
   }
 
+  if (!event) {
+    return (
+      <div className="min-h-screen bg-gradient-subtle">
+        <AppHeader />
+        <main id={MAIN_CONTENT_ID} className="px-[var(--page-padding)] py-12" tabIndex={-1}>
+          <ClubReadState reads={reads} what="This event">{null}</ClubReadState>
+        </main>
+      </div>
+    );
+  }
+
+  const started = Date.parse(event.startAtUtc) <= Date.now();
+  const open = event.status !== 'Cancelled' && event.status !== 'Completed';
+  const seatsTaken = event.registeredCount;
+  const isFull = event.capacity > 0 && (event.seatsLeft ?? event.capacity - seatsTaken) <= 0;
   const capacityPct = event.capacity > 0 ? (seatsTaken / event.capacity) * 100 : 0;
-  const atCapacity = isFull;
+  const unnamed = event.unnamedSeats ?? 0;
+  const revenue = event.ticketRevenue ?? 0;
+
+  const renderPerson = (a: Attendee) => (
+    <div className="min-w-0 flex-1">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="font-medium text-slate-900 truncate">{a.memberName}</p>
+        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ATTENDEE_STATUS_BADGE[a.status]}`}>
+          {a.status === 'Waitlisted' && a.waitlistPosition ? `Waitlist #${a.waitlistPosition}` : STATUS_WORDS[a.status]}
+        </span>
+        <span className="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{a.ticketTier}</span>
+        {a.walkIn && <span className="text-xs px-1.5 py-0.5 rounded bg-teal-50 text-teal-700">Walk-in</span>}
+      </div>
+      <p className="text-xs text-slate-500 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+        {a.email && <span className="inline-flex items-center gap-1"><Mail className="w-3 h-3" /> {a.email}</span>}
+        {a.hostName && <span>Guest of {a.hostName}</span>}
+        {ticketWords(a, money) && <span>{ticketWords(a, money)}</span>}
+        {a.noShowFeeState === 'charged' && a.noShowFee ? <span className="text-rose-700">No-show fee {money(a.noShowFee)}</span> : null}
+        {a.noShowFeeState === 'reversed' && <span>No-show fee taken back</span>}
+        {a.status === 'CheckedIn' && a.checkedInAtUtc && (
+          <span className="text-emerald-700 inline-flex items-center gap-1">
+            <Check className="w-3 h-3" /> Checked in {formatDateTime(a.checkedInAtUtc)}{a.checkedInByName ? ` by ${a.checkedInByName}` : ''}
+          </span>
+        )}
+        {a.status === 'Cancelled' && a.cancelReason && <span>{a.cancelReason}</span>}
+      </p>
+    </div>
+  );
+
+  const busy = (a: Attendee) => actingOn === a.id;
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
@@ -366,6 +346,7 @@ export default function EventDetail() {
           className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]"
           tabIndex={-1}
         >
+          <ClubReadState reads={reads} what="This event's list">
           <PageHero
             icon={CalendarHeart}
             avatar={
@@ -390,6 +371,7 @@ export default function EventDetail() {
                   <DollarSign className="w-3.5 h-3.5" aria-hidden />
                   {formatCurrency(event.memberPrice)} member
                   {event.visibility !== 'MembersOnly' && event.guestPrice > 0 && <> · {formatCurrency(event.guestPrice)} guest</>}
+                  {(event.noShowFee ?? 0) > 0 && <> · no-show fee {money(event.noShowFee ?? 0)}</>}
                 </span>
               </span>
             }
@@ -405,7 +387,7 @@ export default function EventDetail() {
                     <Button onClick={() => changeStatus('Completed')} className={heroPrimary('pink')}>Mark completed</Button>
                   </WriteOnly>
                 )}
-                {event.status !== 'Cancelled' && event.status !== 'Completed' && (
+                {open && (
                   <WriteOnly permission={PERMISSION.ClubMembers}>
                     <Button
                       variant="outline"
@@ -436,10 +418,10 @@ export default function EventDetail() {
               </>
             }
             stats={[
-              { label: 'Reserved', value: reserved.length, icon: Ticket, tone: 'pink', hint: `of ${event.capacity}` },
-              { label: 'Checked in', value: checkedInCount, icon: UserCheck, tone: 'emerald' },
-              { label: 'Waitlist', value: waitlisted.length, icon: Users, tone: 'amber' },
-              { label: 'Revenue', value: revenue, icon: DollarSign, tone: 'violet', format: formatCurrency },
+              { label: 'Expected', value: byStatus.expected.length, icon: Ticket, tone: 'pink', hint: event.capacity > 0 ? `of ${event.capacity}` : 'no limit' },
+              { label: 'Checked in', value: byStatus.came.length, icon: UserCheck, tone: 'emerald', hint: `${event.walkInCount ?? 0} walk-in${(event.walkInCount ?? 0) === 1 ? '' : 's'}` },
+              { label: 'Waitlist', value: event.waitlistCount, icon: Users, tone: 'amber' },
+              { label: 'Tickets on accounts', value: revenue, icon: DollarSign, tone: 'violet', format: formatCurrency },
             ]}
           >
             {event.description && <p className="mb-3 text-sm text-slate-600">{event.description}</p>}
@@ -447,22 +429,16 @@ export default function EventDetail() {
             <div>
               <div className="mb-1.5 flex items-center justify-between text-sm text-slate-600">
                 <span>
-                  <strong>{seatsTaken}</strong> / {event.capacity > 0 ? event.capacity : 'no limit'} registered ·{' '}
-                  <strong>{checkedInCount}</strong> checked in
-                  {unnamedRsvps > 0 && (
-                    <>
-                      {' '}· {unnamedRsvps} seat{unnamedRsvps === 1 ? '' : 's'} counted with no name on this list (an
-                      RSVP from the events list, or a name still saved in another browser)
-                    </>
-                  )}
+                  <strong>{seatsTaken}</strong> / {event.capacity > 0 ? event.capacity : 'no limit'} seats taken ·{' '}
+                  <strong>{byStatus.came.length}</strong> checked in
                 </span>
-                {waitlisted.length > 0 && (
-                  <span className="font-medium text-amber-700">{waitlisted.length} on waitlist</span>
+                {event.waitlistCount > 0 && (
+                  <span className="font-medium text-amber-700">{event.waitlistCount} on waitlist</span>
                 )}
               </div>
               <div className="h-2 overflow-hidden rounded-full bg-white/80 ring-1 ring-slate-200/70">
                 <motion.div
-                  className={`h-full rounded-full ${atCapacity ? 'bg-gradient-to-r from-amber-400 to-orange-500' : 'bg-gradient-to-r from-pink-500 to-fuchsia-500'}`}
+                  className={`h-full rounded-full ${isFull ? 'bg-gradient-to-r from-amber-400 to-orange-500' : 'bg-gradient-to-r from-pink-500 to-fuchsia-500'}`}
                   initial={reduce ? false : { width: 0 }}
                   animate={{ width: `${Math.min(100, capacityPct)}%` }}
                   transition={{ duration: reduce ? 0 : 0.8, ease: [0.16, 1, 0.3, 1], delay: 0.2 }}
@@ -470,6 +446,20 @@ export default function EventDetail() {
               </div>
             </div>
           </PageHero>
+
+          {unnamed > 0 && (
+            <div role="status" className="mb-4 flex flex-col gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 md:flex-row md:items-center md:justify-between">
+              <p>
+                {unnamed} seat{unnamed === 1 ? ' was' : 's were'} counted with no name on this list (an RSVP from the events list
+                before names were kept, or a name still saved in another browser). {unnamed === 1 ? 'It still takes' : 'They still take'} a seat.
+              </p>
+              <WriteOnly permission={PERMISSION.ClubMembers}>
+                <Button size="sm" variant="outline" onClick={releaseUnnamed} className="shrink-0">
+                  Release {unnamed === 1 ? 'it' : 'them'}
+                </Button>
+              </WriteOnly>
+            </div>
+          )}
 
           {toUpload.length > 0 && (
             <div
@@ -494,167 +484,123 @@ export default function EventDetail() {
             </div>
           )}
 
-          {/* Attendee tabs. The guest list is kept by whoever runs the club's members or the door. */}
-          <div className="flex items-center justify-between mb-3">
+          {/* The list and the door, kept by whoever runs the club's members or the front desk. */}
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
             <h2 className="font-semibold text-slate-900 inline-flex items-center gap-2">
-              <CalendarHeart className="w-4 h-4" /> Attendees
+              <CalendarHeart className="w-4 h-4" /> Who is coming
             </h2>
-            <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.FrontDesk]}>
-              <Button onClick={openAdd} size="sm">
-                <Plus className="w-4 h-4 mr-1" /> Add attendee
-              </Button>
-            </WriteOnly>
+            {open && (
+              <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.FrontDesk]}>
+                <div className="flex gap-2">
+                  {started && (
+                    <Button onClick={() => setDialog('walk-in')} size="sm" variant="outline" disabled={isFull}>
+                      <DoorOpen className="w-4 h-4 mr-1" /> Walk-in
+                    </Button>
+                  )}
+                  <Button onClick={() => setDialog('add')} size="sm">
+                    <Plus className="w-4 h-4 mr-1" /> Add attendee
+                  </Button>
+                </div>
+              </WriteOnly>
+            )}
           </div>
 
-          <Tabs defaultValue="reserved">
-            <TabsList className="mb-4">
-              <TabsTrigger value="reserved">Reserved ({reserved.length})</TabsTrigger>
-              <TabsTrigger value="waitlist">Waitlist ({waitlisted.length})</TabsTrigger>
-              <TabsTrigger value="cancelled">Cancelled ({cancelled.length})</TabsTrigger>
+          <Tabs defaultValue="expected">
+            <TabsList className="mb-4 flex-wrap h-auto">
+              <TabsTrigger value="expected">Expected ({byStatus.expected.length})</TabsTrigger>
+              <TabsTrigger value="came">Came ({byStatus.came.length})</TabsTrigger>
+              <TabsTrigger value="waitlist">Waitlist ({byStatus.waiting.length})</TabsTrigger>
+              <TabsTrigger value="noshow">No-shows ({byStatus.noShows.length})</TabsTrigger>
+              <TabsTrigger value="cancelled">Cancelled ({byStatus.cancelled.length})</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="reserved">
+            <TabsContent value="expected">
               <AttendeeList
-                attendees={reserved}
-                emptyText="No attendees reserved yet."
-                renderActions={(a) => (
-                  <>
-                    {a.status === 'Reserved' && (
-                      <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.FrontDesk]}>
-                        <Button size="sm" variant="outline" onClick={() => checkInAttendee(a)}>
-                          <UserCheck className="w-3.5 h-3.5 mr-1" /> Check in
-                        </Button>
-                      </WriteOnly>
-                    )}
-                    {a.status === 'CheckedIn' && a.checkedInAtUtc && (
-                      <span className="text-xs text-emerald-700 inline-flex items-center gap-1">
-                        <Check className="w-3 h-3" /> Checked in {formatDateTime(a.checkedInAtUtc)}
-                      </span>
-                    )}
-                    <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.FrontDesk]}>
-                      <Button size="sm" variant="ghost" onClick={() => cancelAttendee(a)}>
-                        <X className="w-3.5 h-3.5" />
-                      </Button>
-                    </WriteOnly>
-                  </>
-                )}
-                deletingId={deletingId}
-                onRemove={removeAttendee}
-              />
-            </TabsContent>
-
-            <TabsContent value="waitlist">
-              <AttendeeList
-                attendees={waitlisted}
-                emptyText="Waitlist is empty."
+                attendees={byStatus.expected}
+                emptyText="Nobody is expected yet."
+                renderPerson={renderPerson}
                 renderActions={(a) => (
                   <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.FrontDesk]}>
-                    <Button size="sm" variant="outline" onClick={() => promoteFromWaitlist(a)}>
-                      <ChevronUp className="w-3.5 h-3.5 mr-1" /> Promote
+                    <Button size="sm" variant="outline" onClick={() => checkIn(a)} disabled={busy(a) || event.status === 'Cancelled'}>
+                      {busy(a) ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <UserCheck className="w-3.5 h-3.5 mr-1" />} Check in
                     </Button>
-                    <Button size="sm" variant="ghost" onClick={() => cancelAttendee(a)}>
+                    {started && (
+                      <Button size="sm" variant="ghost" onClick={() => markNoShow(a)} disabled={busy(a)} aria-label={`Mark ${a.memberName} a no-show`}>
+                        <UserX className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
+                    <Button size="sm" variant="ghost" onClick={() => cancel(a)} disabled={busy(a)} aria-label={`Cancel ${a.memberName}`}>
                       <X className="w-3.5 h-3.5" />
                     </Button>
                   </WriteOnly>
                 )}
-                deletingId={deletingId}
-                onRemove={removeAttendee}
+                onRemove={remove}
+                busy={busy}
+              />
+            </TabsContent>
+
+            <TabsContent value="came">
+              <AttendeeList attendees={byStatus.came} emptyText="Nobody has been checked in yet." renderPerson={renderPerson} renderActions={() => null} busy={busy} />
+            </TabsContent>
+
+            <TabsContent value="waitlist">
+              <AttendeeList
+                attendees={byStatus.waiting}
+                emptyText="The waitlist is empty."
+                renderPerson={renderPerson}
+                renderActions={(a) => (
+                  <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.FrontDesk]}>
+                    <Button size="sm" variant="outline" onClick={() => promote(a)} disabled={busy(a) || isFull || !open}>
+                      <ChevronUp className="w-3.5 h-3.5 mr-1" /> Give a seat
+                    </Button>
+                    {started && !isFull && (
+                      <Button size="sm" variant="ghost" onClick={() => checkIn(a)} disabled={busy(a)} aria-label={`Check ${a.memberName} in`}>
+                        <UserCheck className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
+                    <Button size="sm" variant="ghost" onClick={() => cancel(a)} disabled={busy(a)} aria-label={`Cancel ${a.memberName}`}>
+                      <X className="w-3.5 h-3.5" />
+                    </Button>
+                  </WriteOnly>
+                )}
+                onRemove={remove}
+                busy={busy}
+              />
+            </TabsContent>
+
+            <TabsContent value="noshow">
+              <AttendeeList
+                attendees={byStatus.noShows}
+                emptyText="No no-shows."
+                renderPerson={renderPerson}
+                renderActions={(a) => (
+                  <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.FrontDesk]}>
+                    <Button size="sm" variant="outline" onClick={() => checkIn(a)} disabled={busy(a) || isFull}>
+                      <UserCheck className="w-3.5 h-3.5 mr-1" /> Came after all
+                    </Button>
+                  </WriteOnly>
+                )}
+                busy={busy}
               />
             </TabsContent>
 
             <TabsContent value="cancelled">
-              <AttendeeList
-                attendees={cancelled}
-                emptyText="No cancellations."
-                renderActions={() => null}
-                deletingId={deletingId}
-                onRemove={removeAttendee}
-              />
+              <AttendeeList attendees={byStatus.cancelled} emptyText="No cancellations." renderPerson={renderPerson} renderActions={() => null} onRemove={remove} busy={busy} />
             </TabsContent>
           </Tabs>
+          </ClubReadState>
         </main>
       </PageTransition>
 
-      <Dialog open={addDialog} onOpenChange={setAddDialog}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Add attendee</DialogTitle>
-            <DialogDescription>
-              {atCapacity
-                ? 'Event is at capacity — new attendees go on the waitlist.'
-                : 'Add a member or guest to the reservation list.'}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="flex gap-2">
-              {(['Member', 'Guest'] as const).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setAddForm({ ...addForm, ticketTier: t })}
-                  className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition ${
-                    addForm.ticketTier === t
-                      ? 'bg-pink-100 text-pink-800 ring-2 ring-pink-400'
-                      : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  {t} · {formatCurrency(t === 'Member' ? event.memberPrice : event.guestPrice)}
-                </button>
-              ))}
-            </div>
-            {addForm.ticketTier === 'Member' ? (
-              <div>
-                <Label>Member</Label>
-                <select
-                  value={addForm.memberId}
-                  onChange={(e) => setAddForm({ ...addForm, memberId: e.target.value })}
-                  className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
-                >
-                  {members.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.firstName} {m.lastName} — {m.tier}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ) : (
-              <>
-                <div>
-                  <Label>Guest name</Label>
-                  <Input aria-label="Guest name"
-                    value={addForm.guestName}
-                    onChange={(e) => setAddForm({ ...addForm, guestName: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <Label>Guest email</Label>
-                  <Input aria-label="Guest email"
-                    type="email"
-                    value={addForm.guestEmail}
-                    onChange={(e) => setAddForm({ ...addForm, guestEmail: e.target.value })}
-                  />
-                </div>
-              </>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAddDialog(false)} disabled={busy}>
-              Cancel
-            </Button>
-            <Button onClick={addAttendee} disabled={busy}>
-              {busy ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Adding
-                </>
-              ) : atCapacity ? (
-                'Add to waitlist'
-              ) : (
-                'Add attendee'
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <RegisterDialog
+        event={event}
+        members={members}
+        open={dialog !== null}
+        walkIn={dialog === 'walk-in'}
+        onOpenChange={(next) => !next && setDialog(null)}
+        onDone={() => reload()}
+        money={money}
+      />
     </div>
   );
 }
@@ -662,15 +608,18 @@ export default function EventDetail() {
 function AttendeeList({
   attendees,
   emptyText,
+  renderPerson,
   renderActions,
-  deletingId,
   onRemove,
+  busy,
 }: {
   attendees: Attendee[];
   emptyText: string;
+  renderPerson: (a: Attendee) => React.ReactNode;
   renderActions: (a: Attendee) => React.ReactNode;
-  deletingId: string | null;
-  onRemove: (a: Attendee) => void;
+  /** Only for someone whose ticket is not on an account and who has not come; the server refuses the rest. */
+  onRemove?: (a: Attendee) => void;
+  busy: (a: Attendee) => boolean;
 }) {
   if (attendees.length === 0) {
     return <EmptyState icon={CalendarHeart} title={emptyText} variant="orange" />;
@@ -687,39 +636,22 @@ function AttendeeList({
               .slice(0, 2)
               .toUpperCase()}
           </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="font-medium text-slate-900 truncate">{a.memberName}</p>
-              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ATTENDEE_STATUS_BADGE[a.status]}`}>
-                {a.status === 'CheckedIn' ? 'Checked in' : a.status}
-              </span>
-              <span className="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
-                {a.ticketTier}
-              </span>
-            </div>
-            {a.email && (
-              <p className="text-xs text-slate-500 inline-flex items-center gap-1">
-                <Mail className="w-3 h-3" /> {a.email}
-              </p>
-            )}
-          </div>
+          {renderPerson(a)}
           <div className="flex items-center gap-1.5 shrink-0">
             {renderActions(a)}
-            <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.FrontDesk]}>
-              <button
-                type="button"
-                onClick={() => onRemove(a)}
-                disabled={deletingId === a.id}
-                className="rounded p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
-                aria-label="Remove from event"
-              >
-                {deletingId === a.id ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
+            {onRemove && !a.chargeId && !a.noShowChargeId && a.status !== 'CheckedIn' && (
+              <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.FrontDesk]}>
+                <button
+                  type="button"
+                  onClick={() => onRemove(a)}
+                  disabled={busy(a)}
+                  className="rounded p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+                  aria-label="Remove from event"
+                >
                   <Trash2 className="h-4 w-4" />
-                )}
-              </button>
-            </WriteOnly>
+                </button>
+              </WriteOnly>
+            )}
           </div>
         </div>
       ))}

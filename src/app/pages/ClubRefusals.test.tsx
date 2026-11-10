@@ -52,6 +52,7 @@ vi.mock('@/app/api/visits', async (importOriginal) => ({ ...(await importOrigina
 vi.mock('@/app/api/loyalty', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/app/api/loyalty')>()), getLoyaltyLedger: async () => [] }));
 vi.mock('@/app/api/giftCards', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/app/api/giftCards')>()), getGiftCards: async () => [] }));
 vi.mock('@/app/api/reservations', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/app/api/reservations')>()), getReservations: async () => [] }));
+vi.mock('@/app/api/eventAttendees', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/app/api/eventAttendees')>()), getMemberRegistrations: async () => [] }));
 vi.mock('@/app/api/communications', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/app/api/communications')>()), getCommunications: async () => [] }));
 
 const DUES: Subscription = {

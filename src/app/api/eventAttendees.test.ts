@@ -12,8 +12,8 @@ import { resetLocalOnly } from './localOnly';
 import { NOT_ON_SERVER_MESSAGE } from './apiClient';
 import type { ClubEvent } from './events';
 import {
-  addEventAttendee, getEventAttendees, localAttendeesToUpload, setAttendeeStatus, uploadLocalAttendees,
-  type EventAttendee,
+  addEventAttendee, addWalkIn, getEventAttendees, getMemberRegistrations, localAttendeesToUpload, setAttendeeStatus,
+  uploadLocalAttendees, type EventAttendee,
 } from './eventAttendees';
 
 const BASE = 'http://api.test';
@@ -69,6 +69,37 @@ describe('event attendees', () => {
     expect(body).toEqual({ memberName: 'Bruno', ticketTier: 'Guest' });
     // The page used to PUT "the count I last read, plus one" to the event.
     expect(requests).toEqual([`POST /api/events/${EVENT_ID}/attendees`]);
+  });
+
+  it('checks a walk-in in at the door through its own route, refused by the server when the event is full', async () => {
+    server.use(http.post(`${BASE}/api/events/${EVENT_ID}/attendees/walk-in`, () => HttpResponse.json(
+      { title: 'Conflict', status: 409, detail: 'Wine night is full: all 40 seats are taken.' }, { status: 409 },
+    )));
+
+    await expect(addWalkIn(EVENT, { memberName: 'Bruno', ticketTier: 'Guest' })).rejects.toThrow('Wine night is full: all 40 seats are taken.');
+    expect(requests).toEqual([`POST /api/events/${EVENT_ID}/attendees/walk-in`]);
+  });
+
+  it('sends a cancellation with its reason, and leaves the seat and the ticket to the server', async () => {
+    let body: unknown;
+    server.use(http.put(`${BASE}/api/events/${EVENT_ID}/attendees/a-1`, async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ ...ON_SERVER, status: 'Cancelled', chargeState: 'reversed' });
+    }));
+
+    const row = await setAttendeeStatus(EVENT, ON_SERVER, 'Cancelled', 'Ill');
+
+    expect(body).toEqual({ status: 'Cancelled', reason: 'Ill' });
+    expect(row?.chargeState).toBe('reversed');
+    // Nothing else: the page used to PUT the event's counts after it.
+    expect(requests).toEqual([`PUT /api/events/${EVENT_ID}/attendees/a-1`]);
+  });
+
+  it("reads a member's registrations across events by their id", async () => {
+    server.use(http.get(`${BASE}/api/events/registrations`, ({ request }) =>
+      HttpResponse.json(new URL(request.url).searchParams.get('memberId') === 'm-1' ? [ON_SERVER] : [])));
+
+    expect(await getMemberRegistrations('m-1')).toEqual([ON_SERVER]);
   });
 
   it('uploads a list this browser kept before the move, once, as it was', async () => {

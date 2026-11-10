@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   CalendarHeart,
@@ -39,11 +39,9 @@ import {
   SelectValue,
 } from '@/app/components/ui/select';
 import {
-  getEvents,
   createEvent,
   updateEvent,
   deleteEvent,
-  rsvpToEvent,
   computeEventStats,
   EVENT_STATUSES,
   EVENT_VISIBILITIES,
@@ -53,6 +51,9 @@ import {
   type EventVisibility,
 } from '@/app/api/events';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { ClubReadState } from '@/app/components/ClubReadState';
+import { NONE, useClubEvents, useClubMembers, useClubReads } from '@/app/hooks/queries';
+import RegisterDialog, { errorText } from '@/app/pages/events/RegisterDialog';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import {
@@ -81,6 +82,7 @@ interface FormState {
   capacity: string;
   memberPrice: string;
   guestPrice: string;
+  noShowFee: string;
   visibility: EventVisibility;
   status: EventStatus;
   coverEmoji: string;
@@ -99,6 +101,7 @@ function newForm(): FormState {
     capacity: '50',
     memberPrice: '0',
     guestPrice: '0',
+    noShowFee: '0',
     visibility: 'MembersAndGuests',
     status: 'Draft',
     coverEmoji: '🎉',
@@ -128,9 +131,17 @@ function formatDateTime(iso: string): string {
 export default function Events() {
   const { format: money, currency } = useClubMoney();
   const formatCurrency = (n: number) => (n === 0 ? 'Free' : money(n));
-  const [events, setEvents] = useState<ClubEvent[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Read through the app's cache, keyed by workspace: a failed read says so with a way to try
+  // again rather than looking like there are no events, and a registration on the event page
+  // refreshes the counts here.
+  const eventsQuery = useClubEvents();
+  const membersQuery = useClubMembers();
+  const reads = useClubReads(eventsQuery, membersQuery);
+  const events: ClubEvent[] = eventsQuery.data ?? NONE;
+  const members = membersQuery.data ?? NONE;
+  const loading = reads.loading;
   usePageLoading(loading);
+  const load = reads.reload;
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | EventStatus>('All');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -138,22 +149,8 @@ export default function Events() {
   const [form, setForm] = useState<FormState>(newForm());
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [rsvpId, setRsvpId] = useState<string | null>(null);
-
-  const load = async () => {
-    try {
-      const list = await getEvents();
-      setEvents(list);
-    } catch {
-      toast.error('Failed to load events');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void load();
-  }, []);
+  // The event someone is being registered for, from the list's button.
+  const [registering, setRegistering] = useState<ClubEvent | null>(null);
 
   const stats = useMemo(() => computeEventStats(events), [events]);
 
@@ -183,6 +180,7 @@ export default function Events() {
       capacity: String(e.capacity),
       memberPrice: String(e.memberPrice),
       guestPrice: String(e.guestPrice),
+      noShowFee: String(e.noShowFee ?? 0),
       visibility: e.visibility,
       status: e.status,
       coverEmoji: e.coverEmoji,
@@ -199,23 +197,33 @@ export default function Events() {
       toast.error('End time must be after start time');
       return;
     }
+    // Cancelling an event cancels everyone on its list on the server, takes their tickets off
+    // their accounts and emails them, so it is asked first, as on the event's own page.
+    if (editing && form.status === 'Cancelled' && editing.status !== 'Cancelled'
+      && !confirm(`Cancel "${editing.name}"? Everyone on its list is cancelled, their tickets are taken off their accounts, and they are emailed.`)) {
+      return;
+    }
     setSaving(true);
     try {
+      // Text left empty is sent empty, which clears it: left out, it was kept.
       const payload = {
         name: form.name.trim(),
-        description: form.description.trim() || undefined,
-        location: form.location.trim() || undefined,
+        description: form.description.trim(),
+        location: form.location.trim(),
         startAtUtc: new Date(form.startAtUtc).toISOString(),
         endAtUtc: new Date(form.endAtUtc).toISOString(),
         capacity: Number(form.capacity) || 0,
         memberPrice: Number(form.memberPrice) || 0,
         guestPrice: Number(form.guestPrice) || 0,
+        noShowFee: Number(form.noShowFee) || 0,
         visibility: form.visibility,
         status: form.status,
         coverEmoji: form.coverEmoji,
       };
       if (editing) {
-        await updateEvent(editing.id, payload);
+        // From the copy the dialog opened with: someone else's edit since is refused (409),
+        // and a registration since is not an edit.
+        await updateEvent(editing.id, { ...payload, version: editing.version });
         toast.success('Event updated');
       } else {
         await createEvent(payload);
@@ -223,8 +231,8 @@ export default function Events() {
       }
       setDialogOpen(false);
       await load();
-    } catch {
-      toast.error('Failed to save event');
+    } catch (err) {
+      toast.error(errorText(err, 'Failed to save event'));
     } finally {
       setSaving(false);
     }
@@ -241,51 +249,33 @@ export default function Events() {
       } else {
         toast.error('Failed to delete');
       }
+    } catch (err) {
+      // An event with tickets on members' accounts is cancelled, not deleted: the server says so.
+      toast.error(errorText(err, 'Failed to delete'));
     } finally {
       setDeletingId(null);
-    }
-  };
-
-  const rsvp = async (e: ClubEvent) => {
-    setRsvpId(e.id);
-    try {
-      const updated = await rsvpToEvent(e.id);
-      if (updated) {
-        const wasWaitlisted = updated.registeredCount === e.registeredCount;
-        toast.success(wasWaitlisted ? 'Added to waitlist' : 'RSVP recorded');
-        await load();
-      } else {
-        toast.error('Failed to record RSVP');
-      }
-    } finally {
-      setRsvpId(null);
     }
   };
 
   // How this person likes events shown: cards, a list or a table, saved for them.
   const view = useViewPreference('events', { layouts: ['grid', 'list', 'table'] });
 
-  /** RSVP, edit and delete: the same on a card, a row and a table line. */
+  /** Register, edit and delete: the same on a card, a row and a table line. */
   const eventActions = (e: ClubEvent, inCard = false) => {
-    const atCapacity = e.registeredCount >= e.capacity;
+    const atCapacity = isFull(e);
     return (
       <div className={`flex items-center ${inCard ? 'gap-2' : 'gap-1'}`}>
-        {/* Whoever runs the club's members or the front desk takes bookings. */}
+        {/* Whoever runs the club's members or the front desk takes bookings. An RSVP used to
+            add a seat with nobody's name on it; now it puts a member or a guest on the list. */}
         <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.FrontDesk]}>
           <Button
             variant="outline"
             size="sm"
-            onClick={() => rsvp(e)}
-            disabled={rsvpId === e.id || e.status !== 'Published'}
+            onClick={() => setRegistering(e)}
+            disabled={e.status !== 'Published'}
             className={inCard ? 'flex-1' : 'h-8'}
           >
-            {rsvpId === e.id ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : atCapacity ? (
-              'Join waitlist'
-            ) : (
-              'RSVP'
-            )}
+            {atCapacity ? 'Join waitlist' : 'Register'}
           </Button>
         </WriteOnly>
         <WriteOnly permission={PERMISSION.ClubMembers}>
@@ -334,7 +324,7 @@ export default function Events() {
     { id: 'when', label: 'When', cell: (e) => formatDateTime(e.startAtUtc) },
     { id: 'status', label: 'Status', cell: (e) => <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[e.status]}`}>{e.status}</span> },
     { id: 'location', label: 'Location', cell: (e) => e.location || '—' },
-    { id: 'registered', label: 'Registered', numeric: true, cell: (e) => `${e.registeredCount} / ${e.capacity}` },
+    { id: 'registered', label: 'Registered', numeric: true, cell: (e) => `${e.registeredCount} / ${capacityText(e)}` },
     { id: 'waitlist', label: 'Waitlist', numeric: true, byDefault: false, cell: (e) => e.waitlistCount || '—' },
     { id: 'price', label: 'Member price', numeric: true, cell: (e) => formatCurrency(e.memberPrice) },
     { id: 'guestPrice', label: 'Guest price', numeric: true, byDefault: false, cell: (e) => (e.visibility === 'MembersOnly' ? '—' : formatCurrency(e.guestPrice)) },
@@ -406,6 +396,7 @@ export default function Events() {
           </div>
 
           {/* List */}
+          <ClubReadState reads={reads} what="Events">
           {loading ? (
             <div className="flex items-center justify-center py-20 text-slate-500">
               <Loader2 className="h-6 w-6 animate-spin" />
@@ -456,7 +447,7 @@ export default function Events() {
             <div className={`grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 ${gridDensity(view, 'gap-5', 'gap-3 2xl:grid-cols-4')}`}>
               {filtered.map((e, index) => {
                 const capacityPct = e.capacity > 0 ? Math.min(100, (e.registeredCount / e.capacity) * 100) : 0;
-                const atCapacity = e.registeredCount >= e.capacity;
+                const atCapacity = isFull(e);
                 return (
                   <StaggerItem
                     as="article"
@@ -515,7 +506,7 @@ export default function Events() {
                       <div className="mb-3">
                         <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
                           <span>
-                            {e.registeredCount} / {e.capacity} registered
+                            {e.registeredCount} / {capacityText(e)} registered
                           </span>
                           {e.waitlistCount > 0 && (
                             <span className="font-medium text-amber-700">+{e.waitlistCount} waitlist</span>
@@ -537,6 +528,7 @@ export default function Events() {
             )}
             </ViewTransition>
           )}
+          </ClubReadState>
         </main>
       </PageTransition>
 
@@ -611,11 +603,11 @@ export default function Events() {
               />
             </div>
             <div>
-              <Label htmlFor="evt-cap">Capacity</Label>
+              <Label htmlFor="evt-cap">Capacity (0 for no limit)</Label>
               <Input
                 id="evt-cap"
                 type="number"
-                min="1"
+                min="0"
                 value={form.capacity}
                 onChange={(e) => setForm({ ...form, capacity: e.target.value })}
               />
@@ -661,6 +653,18 @@ export default function Events() {
               />
             </div>
             <div>
+              <Label htmlFor="evt-noshow">No-show fee ({currency})</Label>
+              <Input
+                id="evt-noshow"
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.noShowFee}
+                onChange={(e) => setForm({ ...form, noShowFee: e.target.value })}
+              />
+              <p className="mt-1 text-xs text-slate-500">Posted to the member's account when the door marks them a no-show; 0 is none.</p>
+            </div>
+            <div>
               <Label>Status</Label>
               <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v as EventStatus })}>
                 <SelectTrigger aria-label="Status">
@@ -694,6 +698,26 @@ export default function Events() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {registering && (
+        <RegisterDialog
+          event={registering}
+          members={members}
+          open={registering !== null}
+          onOpenChange={(open) => !open && setRegistering(null)}
+          onDone={() => load()}
+          money={money}
+        />
+      )}
     </div>
   );
+}
+
+/** A capacity of 0 is no limit. */
+function capacityText(e: ClubEvent): string {
+  return e.capacity > 0 ? String(e.capacity) : 'no limit';
+}
+
+function isFull(e: ClubEvent): boolean {
+  return e.capacity > 0 && (e.seatsLeft ?? e.capacity - e.registeredCount) <= 0;
 }

@@ -93,7 +93,7 @@ const LINKED = ['leads', 'contacts', 'companies', 'deals', 'tasks', 'activities'
  */
 const MEMBER_MERGE = [
   'members', 'campaigns', 'communications', 'duplicates', 'visits', 'loyalty', 'charges', 'payments', 'statements',
-  'tabs', 'reservations', 'gift-cards', 'donations', 'subscriptions', 'households', 'household-members',
+  'tabs', 'reservations', 'events', 'gift-cards', 'donations', 'subscriptions', 'households', 'household-members',
 ];
 
 /**
@@ -118,6 +118,10 @@ const MEMBER_MERGE = [
  *   the member's balance (on the members list) and their statement, a payment settles
  *   charges, and closing a tab earns loyalty points. A balance set by hand on a member
  *   is an entry too, and a member's merge moves the duplicate's entries.
+ * - A change to an event's list can post a ticket or a no-show fee, take one back (a
+ *   payment for it becoming credit), give a member their check-in points, and email the
+ *   next in line (logged in their communications). A booking can post or give back a
+ *   deposit and a no-show fee; a resource's settings show on its bookings.
  *
  * A base not listed changes only its own records (the club's visits, gift cards,
  * donations…), which is why checking someone in no longer reloads the sales lists.
@@ -151,6 +155,9 @@ const CHANGES: Readonly<Record<string, readonly string[]>> = {
   payments: ['payments', 'charges', 'members', 'statements'],
   tabs: ['tabs', 'charges', 'members', 'loyalty', 'statements'],
   subscriptions: ['subscriptions', 'charges', 'members', 'statements'],
+  events: ['events', 'charges', 'payments', 'members', 'statements', 'loyalty', 'communications'],
+  reservations: ['reservations', 'charges', 'payments', 'members', 'statements'],
+  resources: ['resources', 'reservations'],
   // Sending a campaign writes a message per member into the communications log.
   campaigns: ['campaigns', 'communications'],
 };

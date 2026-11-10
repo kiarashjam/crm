@@ -22,6 +22,9 @@ import {
 } from '@/app/api/campaigns';
 import { getCommunications } from '@/app/api/communications';
 import { getMemberConsent } from '@/app/api/consent';
+import { getEvent, getEvents } from '@/app/api/events';
+import { getEventAttendees, getMemberRegistrations } from '@/app/api/eventAttendees';
+import { getReservations, getResources } from '@/app/api/reservations';
 import { queryKeys, workspacePrefix, type WorkspaceScope } from './queryKeys';
 import { timed } from './queryClient';
 import { useWorkspaceScope } from './useWorkspaceScope';
@@ -74,6 +77,59 @@ export function useLoyaltyLedger() {
 export function useClubVisits() {
   const ws = useWorkspaceScope();
   return useQuery({ queryKey: queryKeys.club.visits(ws), queryFn: ({ signal }) => timed(signal, (s) => getVisits({ signal: s })) });
+}
+
+// Events and bookings, kept by the server (a seat or the waitlist, tickets on the ledger, the
+// door; clashes and deposits). The pages read them here so a failed read shows as a failure
+// with a retry, not as an empty list, and a save on one screen refreshes the others.
+
+export function useClubEvents() {
+  const ws = useWorkspaceScope();
+  return useQuery({ queryKey: queryKeys.club.events(ws), queryFn: ({ signal }) => timed(signal, (s) => getEvents({ signal: s })) });
+}
+
+/** One event as the server keeps it now. Off while `id` is empty. */
+export function useClubEvent(id: string) {
+  const ws = useWorkspaceScope();
+  return useQuery({
+    queryKey: queryKeys.club.event(ws, id),
+    queryFn: ({ signal }) => timed(signal, (s) => getEvent(id, { signal: s })),
+    enabled: id.length > 0,
+  });
+}
+
+/** Who is on an event's list, in the order they joined it. Off while `eventId` is empty. */
+export function useEventAttendees(eventId: string) {
+  const ws = useWorkspaceScope();
+  return useQuery({
+    queryKey: queryKeys.club.attendees(ws, eventId),
+    queryFn: ({ signal }) => timed(signal, (s) => getEventAttendees(eventId, { signal: s })),
+    enabled: eventId.length > 0,
+  });
+}
+
+/** A member's registrations across events. Off while `memberId` is empty. */
+export function useMemberRegistrations(memberId: string) {
+  const ws = useWorkspaceScope();
+  return useQuery({
+    queryKey: queryKeys.club.memberRegistrations(ws, memberId),
+    queryFn: ({ signal }) => timed(signal, (s) => getMemberRegistrations(memberId, { signal: s })),
+    enabled: memberId.length > 0,
+  });
+}
+
+export function useClubResources() {
+  const ws = useWorkspaceScope();
+  return useQuery({ queryKey: queryKeys.club.resources(ws), queryFn: ({ signal }) => timed(signal, (s) => getResources({ signal: s })) });
+}
+
+/** Bookings: the club's, or one member's (asked of the server by member id, not matched by email). */
+export function useReservations(memberId: string | null = null) {
+  const ws = useWorkspaceScope();
+  return useQuery({
+    queryKey: queryKeys.club.reservations(ws, memberId),
+    queryFn: ({ signal }) => timed(signal, (s) => getReservations({ signal: s, memberId: memberId ?? undefined })),
+  });
 }
 
 /** A member's statement for [fromUtc, toUtc), from the server's ledger. Off until a member is picked. */
