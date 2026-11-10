@@ -293,6 +293,11 @@ export default function Members() {
       } else {
         toast.error('Failed to remove member');
       }
+    } catch (err) {
+      // A member who still owes the club, is owed by it, or has a tab or a subscription
+      // running is refused, and the server says what to do instead. Uncaught, the refusal
+      // went nowhere and the button seemed to do nothing.
+      toast.error(err instanceof Error && err.message ? err.message : 'Failed to remove member');
     } finally {
       setDeletingId(null);
     }

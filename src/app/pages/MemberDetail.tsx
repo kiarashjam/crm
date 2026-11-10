@@ -194,6 +194,10 @@ export default function MemberDetail() {
         toast.success('Member removed');
         navigate('/members');
       }
+    } catch (err) {
+      // Refused while the member still has money with the club: the server's sentence says
+      // what to do instead, where the button used to seem to do nothing.
+      toast.error(err instanceof Error && err.message ? err.message : 'Failed to remove member');
     } finally {
       setDeleting(false);
     }

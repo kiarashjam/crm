@@ -157,25 +157,44 @@ export default function Subscriptions() {
     }
   };
 
+  // A refusal carries the server's sentence (changed somewhere else at the same moment,
+  // or billed already and so cancelled rather than deleted). Uncaught, it went nowhere and
+  // the button seemed to do nothing.
+  const refused = (err: unknown, fallback: string) =>
+    toast.error(err instanceof Error && err.message ? err.message : fallback);
+
   const togglePause = async (s: Subscription) => {
     const newStatus: SubscriptionStatus = s.status === 'Paused' ? 'Active' : 'Paused';
-    await updateSubscription(s.id, { status: newStatus });
-    toast.success(`Subscription ${newStatus.toLowerCase()}`);
-    await load();
+    try {
+      await updateSubscription(s.id, { status: newStatus });
+      toast.success(`Subscription ${newStatus.toLowerCase()}`);
+      await load();
+    } catch (err) {
+      refused(err, 'Could not change the subscription');
+    }
   };
 
   const cancel = async (s: Subscription) => {
     if (!confirm(`Cancel ${s.name} for ${s.memberName}?`)) return;
-    await updateSubscription(s.id, { status: 'Cancelled' });
-    toast.success('Cancelled');
-    await load();
+    try {
+      await updateSubscription(s.id, { status: 'Cancelled' });
+      toast.success('Cancelled');
+      await load();
+    } catch (err) {
+      refused(err, 'Could not cancel the subscription');
+    }
   };
 
+  // One that has billed a charge is cancelled instead: its charges name it.
   const remove = async (s: Subscription) => {
     if (!confirm(`Delete ${s.name} for ${s.memberName}?`)) return;
-    await deleteSubscription(s.id);
-    toast.success('Deleted');
-    await load();
+    try {
+      await deleteSubscription(s.id);
+      toast.success('Deleted');
+      await load();
+    } catch (err) {
+      refused(err, 'Could not delete the subscription');
+    }
   };
 
   const charge = async (s: Subscription) => {
