@@ -13,10 +13,11 @@ public static class PlainTextEmail
     /// tracking image, which belongs in the HTML part only (a plain-text part would
     /// show the tag literally), and the unsubscribe footer.
     /// </summary>
-    public static string ToHtml(string text, string? trackingUrl = null, string? workspaceName = null, IReadOnlyList<UnsubscribeLink>? unsubscribe = null)
+    /// <param name="question">The footer's question, when it is not "Don't want emails from …?".</param>
+    public static string ToHtml(string text, string? trackingUrl = null, string? workspaceName = null, IReadOnlyList<UnsubscribeLink>? unsubscribe = null, string? question = null)
     {
         var paragraphs = WebUtility.HtmlEncode(text).Replace("\r\n", "\n").Replace("\n", "<br>\n");
-        var footer = unsubscribe is { Count: > 0 } ? HtmlFooter(workspaceName, unsubscribe) : "";
+        var footer = unsubscribe is { Count: > 0 } ? HtmlFooter(workspaceName, unsubscribe, question) : "";
         var pixel = trackingUrl == null
             ? ""
             : $"\n<img src=\"{WebUtility.HtmlEncode(trackingUrl)}\" width=\"1\" height=\"1\" alt=\"\" style=\"display:block;border:0\">";
@@ -28,24 +29,27 @@ public static class PlainTextEmail
     /// address when a message went to several people, each named, so nobody has to
     /// guess which is theirs.
     /// </summary>
-    public static string TextFooter(string? workspaceName, IReadOnlyList<UnsubscribeLink> unsubscribe)
+    public static string TextFooter(string? workspaceName, IReadOnlyList<UnsubscribeLink> unsubscribe, string? question = null)
     {
         if (unsubscribe.Count == 0) return "";
-        var lead = $"Don't want emails from {Who(workspaceName)}?";
+        var lead = question ?? $"Don't want emails from {Who(workspaceName)}?";
         if (unsubscribe.Count == 1) return $"\n\n--\n{lead} Unsubscribe: {unsubscribe[0].Url}\n";
         var lines = string.Join("\n", unsubscribe.Select(link => $"{link.Address}: {link.Url}"));
         return $"\n\n--\n{lead} Unsubscribe:\n{lines}\n";
     }
 
-    private static string HtmlFooter(string? workspaceName, IReadOnlyList<UnsubscribeLink> unsubscribe)
+    private static string HtmlFooter(string? workspaceName, IReadOnlyList<UnsubscribeLink> unsubscribe, string? question)
     {
-        var lead = WebUtility.HtmlEncode($"Don't want emails from {Who(workspaceName)}?");
+        var lead = WebUtility.HtmlEncode(question ?? $"Don't want emails from {Who(workspaceName)}?");
         var links = unsubscribe.Count == 1
             ? $"<a href=\"{WebUtility.HtmlEncode(unsubscribe[0].Url)}\">Unsubscribe</a>"
             : "Unsubscribe " + string.Join(" · ", unsubscribe.Select(link =>
                 $"<a href=\"{WebUtility.HtmlEncode(link.Url)}\">{WebUtility.HtmlEncode(link.Address)}</a>"));
         return $"\n<p style=\"font-family:sans-serif;font-size:12px;line-height:1.5;color:#6b7280;margin-top:24px\">{lead} {links}</p>";
     }
+
+    /// <summary>The footer's question in a marketing email to a member: the link stops news and offers, not their statements.</summary>
+    public static string MarketingQuestion(string? workspaceName) => $"Don't want news and offers from {Who(workspaceName)} by email?";
 
     private static string Who(string? workspaceName) =>
         string.IsNullOrWhiteSpace(workspaceName) ? "us" : workspaceName.Trim();

@@ -49,6 +49,10 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
                 foreach (var dispatcher in services.Where(d => d.ImplementationType == typeof(ACI.WebApi.Services.OutboxDispatcherBackgroundService)).ToList())
                     services.Remove(dispatcher);
             }
+            // Likewise the campaign scheduler: a test runs what is due when it chooses
+            // (ICampaignService.RunDueAsync), not whenever a loop wakes mid-test.
+            foreach (var scheduler in services.Where(d => d.ImplementationType == typeof(ACI.WebApi.Services.CampaignSchedulerBackgroundService)).ToList())
+                services.Remove(scheduler);
 
             // Remove existing DbContext registration
             var descriptor = services.SingleOrDefault(

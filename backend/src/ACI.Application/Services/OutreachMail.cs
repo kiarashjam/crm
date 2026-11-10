@@ -18,10 +18,11 @@ public sealed record OutreachSender(string? WorkspaceName, string? ReplyTo, stri
 
 /// <summary>The two parts of a workspace's email as they go out, footer included.</summary>
 /// <param name="UnsubscribeUrl">
-/// The one unsubscribe link when the message is for one address, for the
-/// List-Unsubscribe header; null otherwise.
+/// For the List-Unsubscribe header when the message is for one address: the one-click
+/// address when <paramref name="OneClick"/>, otherwise the unsubscribe page; null otherwise.
 /// </param>
-public sealed record OutreachBody(string Text, string Html, string? UnsubscribeUrl);
+/// <param name="OneClick">Whether <paramref name="UnsubscribeUrl"/> takes the one-click POST of RFC 8058.</param>
+public sealed record OutreachBody(string Text, string Html, string? UnsubscribeUrl, bool OneClick = false);
 
 /// <summary>
 /// The sending side of email that leaves on a workspace's behalf, which the outbox
@@ -42,6 +43,13 @@ public interface IOutreachMail
     /// part when one is given.
     /// </summary>
     OutreachBody Body(Guid? organizationId, string? workspaceName, string text, IReadOnlyList<string> addresses, string? trackingUrl = null);
+
+    /// <summary>
+    /// The two parts of an email to one club member. Marketing carries a link that withdraws
+    /// the member's consent to marketing by email; a service message (a statement, a
+    /// booking) carries none, since the member's choices do not stop it.
+    /// </summary>
+    OutreachBody MemberBody(Guid organizationId, string? workspaceName, string text, Guid memberId, string address, bool marketing);
 
     /// <summary>The email-open image for a lead, or null when this API has no public address to give.</summary>
     string? TrackingUrl(Guid leadId);
@@ -137,10 +145,48 @@ public sealed class OutreachMail : IOutreachMail
             }
         }
 
+        // One person: their mail app's own Unsubscribe button can stop it in one click.
+        var oneClick = links.Count == 1 && organizationId is Guid only
+            ? OneClickUrl(_links.CreateToken(only, links[0].Address))
+            : null;
         return new OutreachBody(
             text + PlainTextEmail.TextFooter(workspaceName, links),
             PlainTextEmail.ToHtml(text, trackingUrl, workspaceName, links),
-            links.Count == 1 ? links[0].Url : null);
+            oneClick ?? (links.Count == 1 ? links[0].Url : null),
+            oneClick != null);
+    }
+
+    public OutreachBody MemberBody(Guid organizationId, string? workspaceName, string text, Guid memberId, string address, bool marketing)
+    {
+        if (!marketing)
+            return new OutreachBody(text, PlainTextEmail.ToHtml(text, null, workspaceName), null);
+
+        var token = _links.CreateMemberToken(organizationId, memberId, address);
+        var links = new List<UnsubscribeLink>();
+        if (TryPageBase(out var page))
+            links.Add(new UnsubscribeLink(address, $"{page}/unsubscribe/{Uri.EscapeDataString(token)}"));
+        else
+            _logger.LogWarning("No unsubscribe link in a marketing email for organization {OrganizationId}: Email:FrontendBaseUrl is not an absolute http(s) URL", organizationId);
+        var question = PlainTextEmail.MarketingQuestion(workspaceName);
+        var oneClick = OneClickUrl(token);
+        return new OutreachBody(
+            text + PlainTextEmail.TextFooter(workspaceName, links, question),
+            PlainTextEmail.ToHtml(text, null, workspaceName, links, question),
+            oneClick ?? links.FirstOrDefault()?.Url,
+            oneClick != null);
+    }
+
+    /// <summary>
+    /// The API's one-click unsubscribe address for a token (RFC 8058), or null when this API
+    /// has no public https address to give (Email:ApiBaseUrl). A mail app POSTs to it from
+    /// its own Unsubscribe button, so it has to be https and reachable from outside; with
+    /// the localhost default the page link is given instead.
+    /// </summary>
+    private string? OneClickUrl(string token)
+    {
+        if (!Uri.TryCreate((_settings.ApiBaseUrl ?? "").Trim(), UriKind.Absolute, out var api)) return null;
+        if (api.IsLoopback || api.Scheme != Uri.UriSchemeHttps) return null;
+        return $"{api.GetLeftPart(UriPartial.Authority)}{api.AbsolutePath.TrimEnd('/')}/api/public/unsubscribe/{Uri.EscapeDataString(token)}/one-click";
     }
 
     /// <summary>The app's own address, where the unsubscribe page is — the same rule as password reset links.</summary>

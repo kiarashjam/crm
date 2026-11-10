@@ -51,6 +51,8 @@ import { RecordAvatar } from '@/app/components/RecordCard';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { PERMISSION } from '@/app/api/organizations';
+import MemberConsentPanel from '@/app/pages/members/MemberConsentPanel';
+import EmailMemberDialog from '@/app/pages/members/EmailMemberDialog';
 
 const TIER_BADGE: Record<MemberTier, string> = {
   Bronze: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
@@ -117,11 +119,13 @@ export default function MemberDetail() {
   const loading = reads.loading || sideLoading;
   usePageLoading(loading);
   const [deleting, setDeleting] = useState(false);
+  const [emailing, setEmailing] = useState(false);
 
-  // Reservations and messages are not money and keep their own read.
+  // Reservations and messages are not money and keep their own read; the messages are
+  // this member's, asked of the server by member.
   useEffect(() => {
     let live = true;
-    Promise.all([getReservations(), getCommunications()])
+    Promise.all([getReservations(), getCommunications(id ? { memberId: id } : {})])
       .then(([r, comm]) => {
         if (!live) return;
         setReservations(r);
@@ -136,7 +140,7 @@ export default function MemberDetail() {
     return () => {
       live = false;
     };
-  }, []);
+  }, [id]);
 
   const memberCharges = useMemo(
     () => charges.filter((c) => c.memberId === id),
@@ -330,6 +334,7 @@ export default function MemberDetail() {
               </TabsTrigger>
               <TabsTrigger value="loyalty">Loyalty ({memberLedger.length})</TabsTrigger>
               <TabsTrigger value="comms">Communications ({memberComms.length})</TabsTrigger>
+              <TabsTrigger value="consent">Consent</TabsTrigger>
               <TabsTrigger value="giftcards">
                 Gift cards ({memberGiftCards.length})
               </TabsTrigger>
@@ -564,10 +569,17 @@ export default function MemberDetail() {
             </TabsContent>
 
             <TabsContent value="comms">
+              <WriteOnly permission={PERMISSION.ClubMembers}>
+                <div className="mb-3 flex justify-end">
+                  <Button size="sm" onClick={() => setEmailing(true)}>
+                    <Mail className="mr-1.5 h-4 w-4" /> Email {member.firstName}
+                  </Button>
+                </div>
+              </WriteOnly>
               {memberComms.length === 0 ? (
                 <EmptyMini
                   icon={<MessageSquareText className="w-6 h-6" />}
-                  text="No messages logged for this member yet."
+                  text="No messages to this member yet."
                 />
               ) : (
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm divide-y divide-slate-100">
@@ -579,15 +591,28 @@ export default function MemberDetail() {
                           {commStatusLabel(c.status)}
                         </span>
                       </div>
-                      <p className="text-sm text-slate-500 mt-1 line-clamp-2">{c.preview}</p>
+                      {c.preview && <p className="text-sm text-slate-500 mt-1 line-clamp-2">{c.preview}</p>}
+                      {c.reason && <p className="text-xs text-rose-700 mt-1">{c.reason}</p>}
                       <p className="text-xs text-slate-500 mt-1">
-                        {c.channel} · {c.category} · {formatDateTime(c.sentAtUtc)}
+                        {c.channel} · {c.category}
+                        {c.campaignName ? ` · ${c.campaignName}` : ''} · {formatDateTime(c.sentAtUtc ?? c.createdAtUtc)}
                       </p>
                     </div>
                   ))}
                 </div>
               )}
             </TabsContent>
+
+            <TabsContent value="consent">
+              <MemberConsentPanel memberId={member.id} />
+            </TabsContent>
+            {emailing && (
+              <EmailMemberDialog
+                member={member}
+                onClose={() => setEmailing(false)}
+                onSent={(message) => setComms((prev) => [message, ...prev])}
+              />
+            )}
 
             <TabsContent value="giftcards">
               {memberGiftCards.length === 0 ? (

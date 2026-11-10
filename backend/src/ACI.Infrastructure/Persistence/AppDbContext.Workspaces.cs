@@ -124,6 +124,10 @@ public partial class AppDbContext
         Scope<ClubTab>(model, e => e.OrganizationId);
         Scope<ClubTabItem>(model, e => e.OrganizationId);
         Scope<ClubDonation>(model, e => e.OrganizationId);
+        // Member communications and consent: club records, so an organization's alone.
+        Scope<ConsentRecord>(model, e => e.OrganizationId);
+        Scope<Campaign>(model, e => e.OrganizationId);
+        Scope<MemberMessage>(model, e => e.OrganizationId);
 
         // Copy templates follow a person rather than a workspace (TemplateRepository): the
         // system's templates are everyone's, a person's own go with them, and a team's

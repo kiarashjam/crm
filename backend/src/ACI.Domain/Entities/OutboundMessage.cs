@@ -92,8 +92,26 @@ public class OutboundMessage : Common.BaseEntity
     /// <summary>The HTML part exactly as sent.</summary>
     public string? HtmlBody { get; set; }
 
-    /// <summary>For the List-Unsubscribe header, when the message is for one address.</summary>
+    /// <summary>
+    /// For the List-Unsubscribe header, when the message is for one address: the one-click
+    /// address of RFC 8058 when this API has a public https address
+    /// (<see cref="OneClickUnsubscribe"/>), otherwise the unsubscribe page.
+    /// </summary>
     public string? UnsubscribeUrl { get; set; }
+
+    /// <summary>
+    /// Whether <see cref="UnsubscribeUrl"/> takes the one-click POST a mail app sends for its
+    /// own Unsubscribe button, so the message also says List-Unsubscribe-Post.
+    /// </summary>
+    public bool OneClickUnsubscribe { get; set; }
+
+    /// <summary>
+    /// What a message to a club member is for (<see cref="ConsentPurposes"/>): marketing goes
+    /// only to a member who agreed to it by email and has not withdrawn; a service message
+    /// (a statement, a booking, a receipt) goes whatever they said. Null for the sales
+    /// outreach the outbox carried before, whose rules are unchanged.
+    /// </summary>
+    public string? Purpose { get; set; }
 
     /// <summary>
     /// The Message-ID header, angle brackets included. A reply names it in In-Reply-To
@@ -185,7 +203,14 @@ public static class OutboundSources
     public const string Assistant = "assistant";
     public const string Sequence = "sequence";
     public const string Automation = "automation";
-    /// <summary>A club mailing. Nothing queues these yet; the outbox carries them when campaigns send.</summary>
+    /// <summary>A campaign's email to one of its members; <see cref="OutboundMessage.SourceId"/> is the campaign.</summary>
     public const string Campaign = "campaign";
+    /// <summary>
+    /// A campaign sent to the person who pressed "Send a test to me", marked as a test and
+    /// counted in none of the campaign's figures.
+    /// </summary>
+    public const string CampaignTest = "campaign_test";
+    /// <summary>A message staff wrote to one member, from the Communications page or the member's own.</summary>
+    public const string Member = "member";
     public const string Webhook = "webhook";
 }

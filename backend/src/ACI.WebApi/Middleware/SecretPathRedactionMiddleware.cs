@@ -59,6 +59,10 @@ public sealed class SecretPathRedactionMiddleware
         // replies and delivery reports there, and the secret is all that lets it in.
         new(@"^(?<keep>/api/public/email/(inbound|events)/)(?<secret>[^/?]+)(?<rest>.*)$",
             RegexOptions.Compiled | RegexOptions.IgnoreCase),
+        // /api/public/unsubscribe/{token}[/one-click]: the token alone unsubscribes the person
+        // it was made for, and a mail app's one-click POST to it lands in this log too.
+        new(@"^(?<keep>/api/public/unsubscribe/)(?<secret>[^/?]+)(?<rest>.*)$",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase),
     };
 
     private readonly RequestDelegate _next;

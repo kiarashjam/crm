@@ -106,6 +106,14 @@ describe('what a write changes', () => {
     expect(changed).toEqual(expect.arrayContaining(['members', 'charges', 'payments']));
     expect(changed).not.toContain('leads');
   });
+
+  it("sending a campaign fills the communications log, and a member's consent or merge refreshes what campaigns reach", () => {
+    expect(resourcesChangedBy('POST', '/api/campaigns/c-1/send')).toEqual(['campaigns', 'communications']);
+    expect(resourcesChangedBy('POST', '/api/members/m-1/consent')).toEqual(['members', 'campaigns']);
+    expect(resourcesChangedBy('POST', '/api/members/m-1/merge')).toEqual(
+      expect.arrayContaining(['members', 'campaigns', 'communications', 'duplicates', 'charges', 'visits']),
+    );
+  });
 });
 
 describe('what the signal carries', () => {

@@ -113,6 +113,7 @@ public class OrganizationCloneTests
         var definition = new CustomFieldDefinition { Id = Guid.NewGuid(), OrganizationId = org.Id, OwnerUserId = owner, EntityType = "deal", Key = "board_seat", Label = "Board seat", Type = "checkbox", CreatedAtUtc = now };
         var spouse = new Contact { Id = Guid.NewGuid(), UserId = owner, OrganizationId = org.Id, Name = "Marie Dupont", Email = $"marie@{name}.ch", CreatedAtUtc = now };
         var sentEmailId = Guid.NewGuid();
+        var sentCampaignId = Guid.NewGuid();
         var sentEmail = new OutboundMessage
         {
             Id = sentEmailId, OrganizationId = org.Id, Channel = OutboundChannels.Email, Source = OutboundSources.Composer, Status = OutboundStatuses.Sent,
@@ -154,6 +155,28 @@ public class OrganizationCloneTests
             new InboundEmail { Id = Guid.NewGuid(), OrganizationId = org.Id, OutboundMessageId = sentEmail.Id, MessageIdHeader = $"<reply-{name}@example.ch>", FromAddress = $"jean@{name}.ch", MatchedBy = "token", ReceivedAtUtc = now },
             new ClubVisit { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, MemberName = "Ana Silva", MemberTier = "Gold", Venue = "Lounge", VisitedAtUtc = now },
             new LoyaltyLedgerEntry { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, MemberName = "Ana Silva", Points = 450, CreatedAtUtc = now },
+            new ConsentRecord
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, SubjectType = ConsentSubjects.Member, SubjectId = member.Id, Channel = ConsentChannels.Email,
+                Purpose = ConsentPurposes.Marketing, Granted = true, Source = ConsentSources.Form, Address = $"ana@{name}.ch", RecordedAtUtc = now,
+                RecordedByUserId = owner, IsCurrent = true,
+            },
+            new Campaign
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, Name = "Autumn gala", Subject = "Join us", Body = "Hello", Status = CampaignStatuses.Scheduled,
+                ScheduledAtUtc = now.AddDays(2), SentByUserId = owner, CreatedByUserId = owner, CreatedAtUtc = now, UpdatedAtUtc = now,
+            },
+            new Campaign
+            {
+                Id = sentCampaignId, OrganizationId = org.Id, Name = "Spring news", Subject = "Spring", Body = "Hello", Status = CampaignStatuses.Sent,
+                SendingStartedAtUtc = now, SentAtUtc = now, RecipientCount = 1, SentByUserId = owner, CreatedByUserId = owner, CreatedAtUtc = now, UpdatedAtUtc = now,
+            },
+            new MemberMessage
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, MemberName = "Ana Silva", Email = $"ana@{name}.ch", CampaignId = sentCampaignId,
+                CampaignName = "Spring news", Subject = "Spring", Purpose = ConsentPurposes.Marketing, Status = MemberMessageStatuses.Queued,
+                OutboundMessageId = sentEmailId, CreatedByUserId = owner, CreatedAtUtc = now,
+            },
             new ClubDocument { Id = Guid.NewGuid(), OrganizationId = org.Id, Kind = "tabs", UpdatedAtUtc = now, Payload = JsonSerializer.Serialize(new { memberId = member.Id.ToString().ToUpperInvariant(), venue = "Bar" }) });
         // The club's money ledger: a tab that posted a charge, part paid; a subscription that
         // billed one; a gift card part spent; a donation. Each row points at others the copy
@@ -308,6 +331,15 @@ public class OrganizationCloneTests
         (await db.Attachments.IgnoreQueryFilters().SingleAsync(a => a.OrganizationId == report.CopyId)).Content.Should().Equal("%PDF"u8.ToArray());
 
         var member = await db.ClubMembers.IgnoreQueryFilters().SingleAsync(m => m.OrganizationId == report.CopyId);
+        (await db.ConsentRecords.IgnoreQueryFilters().SingleAsync(c => c.OrganizationId == report.CopyId)).SubjectId
+            .Should().Be(member.Id, "a consent answer belongs to the copied member, not the original");
+        var copiedCampaigns = await db.Campaigns.IgnoreQueryFilters().Where(c => c.OrganizationId == report.CopyId).ToListAsync();
+        copiedCampaigns.Single(c => c.Name == "Autumn gala").Should().Match<Campaign>(c => c.Status == CampaignStatuses.Draft && c.ScheduledAtUtc == null,
+            "the members are the same people: a scheduled campaign goes out once, from the original");
+        var copiedMessage = await db.MemberMessages.IgnoreQueryFilters().SingleAsync(m => m.OrganizationId == report.CopyId);
+        copiedMessage.MemberId.Should().Be(member.Id);
+        copiedMessage.CampaignId.Should().Be(copiedCampaigns.Single(c => c.Name == "Spring news").Id);
+        (await db.OutboundMessages.IgnoreQueryFilters().SingleAsync(m => m.Id == copiedMessage.OutboundMessageId)).OrganizationId.Should().Be(report.CopyId);
         (await db.ClubDocuments.IgnoreQueryFilters().SingleAsync(d => d.OrganizationId == report.CopyId)).Payload
             .Should().Contain(member.Id.ToString().ToUpperInvariant(), "an id kept in JSON is the copy's, in the same case");
         var sequence = await db.OutreachSequences.IgnoreQueryFilters().SingleAsync(s => s.OrganizationId == report.CopyId);

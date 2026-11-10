@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using ACI.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.SqlServer.TransactSql.ScriptDom;
 
 namespace ACI.WebApi.Tests;
@@ -106,14 +107,24 @@ public class ClubSchemaTests
         return File.ReadAllText(Path.Combine(dir!.FullName, "backend", "src", "ACI.WebApi", "Program.cs"));
     }
 
-    /// <summary>What EF itself would write for this model, with no database involved.</summary>
+    /// <summary>
+    /// What EF itself writes for the schema as the baseline migration makes it, with no
+    /// database involved.
+    /// </summary>
+    /// <remarks>
+    /// The baseline's, not the model's as it is now: the start-up DDL stopped growing at the
+    /// baseline and only brings an old database up to it, and a column a later migration adds
+    /// is made by that migration. Compared with the current model, the first such column
+    /// would have had to go into the DDL, which nothing may be added to any more.
+    /// </remarks>
     internal static string EfCreateScript()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseSqlServer("Server=not-connected;Database=none;Trusted_Connection=True;")
             .Options;
         using var db = new AppDbContext(options);
-        return db.Database.GenerateCreateScript();
+        return db.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>()
+            .GenerateScript(Microsoft.EntityFrameworkCore.Migrations.Migration.InitialDatabase, SchemaBaseline.MigrationId);
     }
 
     internal static string Between(string text, string start, string end)

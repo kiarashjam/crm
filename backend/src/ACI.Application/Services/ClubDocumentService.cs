@@ -13,7 +13,6 @@ public interface IClubDocumentService
     Task<Result<JsonObject>> UpdateAsync(Guid? organizationId, string kind, Guid id, JsonObject patch, CancellationToken ct = default);
     Task<bool> DeleteAsync(Guid? organizationId, string kind, Guid id, CancellationToken ct = default);
     Task<JsonObject?> RsvpAsync(Guid? organizationId, Guid id, CancellationToken ct = default);
-    Task<JsonObject?> SendCampaignAsync(Guid? organizationId, Guid id, CancellationToken ct = default);
     Task<JsonObject> GetSettingsAsync(Guid? organizationId, CancellationToken ct = default);
     Task<JsonObject> SaveSettingsAsync(Guid? organizationId, JsonObject patch, CancellationToken ct = default);
     Task<JsonObject> ResetSettingsAsync(Guid? organizationId, CancellationToken ct = default);
@@ -35,12 +34,12 @@ public sealed class ClubDocumentService : IClubDocumentService
     };
 
     private readonly IClubDocumentRepository _docs;
-    private readonly IClubRepository _club;
 
-    public ClubDocumentService(IClubDocumentRepository docs, IClubRepository club)
+    // The member list was only read to send a campaign and to keep a member's balance; both
+    // moved out (CampaignService, IClubLedger), so the documents need nothing but their own store.
+    public ClubDocumentService(IClubDocumentRepository docs)
     {
         _docs = docs;
-        _club = club;
     }
 
     public async Task<JsonArray> ListAsync(Guid? organizationId, string kind, CancellationToken ct = default)
@@ -122,34 +121,6 @@ public sealed class ClubDocumentService : IClubDocumentService
             ev["registeredCount"] = registered + 1;
         await Save(organizationId, "events", id, ev, ct);
         return ev;
-    }
-
-    public async Task<JsonObject?> SendCampaignAsync(Guid? organizationId, Guid id, CancellationToken ct = default)
-    {
-        var campaign = await Load(organizationId, "campaigns", id, ct);
-        if (campaign == null) return null;
-        var members = await _club.MembersAsync(organizationId, ct);
-        var count = 0;
-        foreach (var member in members)
-        {
-            if (!Matches(campaign["segment"] as JsonObject, member)) continue;
-            count++;
-            await CreateAsync(organizationId, "communications", new JsonObject
-            {
-                ["memberId"] = member.Id.ToString(),
-                ["memberName"] = $"{member.FirstName} {member.LastName}".Trim(),
-                ["channel"] = Text(campaign, "channel"),
-                ["category"] = Text(campaign, "category"),
-                ["subject"] = Text(campaign, "subject"),
-                ["preview"] = Preview(Text(campaign, "body")),
-                ["campaignName"] = Text(campaign, "name"),
-            }, ct);
-        }
-        campaign["status"] = "Sent";
-        campaign["sentAtUtc"] = DateTime.UtcNow.ToString("o");
-        campaign["recipientCount"] = count;
-        await Save(organizationId, "campaigns", id, campaign, ct);
-        return campaign;
     }
 
     public async Task<JsonObject> GetSettingsAsync(Guid? organizationId, CancellationToken ct = default)
@@ -242,15 +213,6 @@ public sealed class ClubDocumentService : IClubDocumentService
                 Set(obj, "status", "Pending");
                 await NameResourceAsync(organizationId, obj, ct);
                 break;
-            case "communications":
-                Set(obj, "sentAtUtc", now);
-                Set(obj, "status", "Sent");
-                break;
-            case "campaigns":
-                Set(obj, "createdAtUtc", now);
-                Set(obj, "status", string.IsNullOrWhiteSpace(Text(obj, "scheduledAtUtc")) ? "Draft" : "Scheduled");
-                Set(obj, "recipientCount", 0);
-                break;
             case "households":
                 Set(obj, "createdAtUtc", now);
                 break;
@@ -301,18 +263,6 @@ public sealed class ClubDocumentService : IClubDocumentService
         {
             return conflict ?? DomainErrors.Club.Changed;
         }
-    }
-
-    private static string Preview(string body) => body.Length <= 140 ? body : body[..140];
-
-    private static bool Matches(JsonObject? segment, ClubMember member)
-    {
-        if (segment == null) return true;
-        if (segment["tiers"] is JsonArray tiers && tiers.Count > 0 && !tiers.Any(t => t?.ToString() == member.Tier))
-            return false;
-        if (segment["statuses"] is JsonArray statuses && statuses.Count > 0 && !statuses.Any(s => s?.ToString() == member.Status))
-            return false;
-        return true;
     }
 
     /// <summary>A money kind asked for here is a bug in the caller: those routes answer from the ledger.</summary>

@@ -116,6 +116,32 @@ public class SchemaCoverageTests
     };
 
     [Fact]
+    public void AnOldDatabaseIsRecordedAtTheBaselineAgainstWhatTheBaselineMakes()
+    {
+        // A database made before the baseline is checked for the baseline's tables and
+        // columns before it is recorded there; a later migration's are made by that
+        // migration, which only runs afterwards. Checked against the model as it is now,
+        // the first migration after the baseline made every such database fail the check,
+        // and none of them could ever be migrated again.
+        using var db = NewContext();
+        var migrations = db.GetService<IMigrationsAssembly>();
+        var provider = db.Database.ProviderName!;
+        var operations = migrations.Migrations
+            .Select(m => (m.Key, Up: migrations.CreateMigration(m.Value, provider).UpOperations))
+            .ToList();
+        var madeByBaseline = operations.Single(m => m.Key == SchemaBaseline.MigrationId).Up
+            .OfType<CreateTableOperation>().Select(t => t.Name).ToHashSet(StringComparer.Ordinal);
+        var addedLater = operations.Where(m => m.Key != SchemaBaseline.MigrationId).SelectMany(m => m.Up).ToList();
+
+        var baseline = SchemaBaseline.BaselineModel(db).GetRelationalModel();
+        baseline.Tables.Select(t => t.Name).Should().BeEquivalentTo(madeByBaseline,
+            "the check asks an old database for what the baseline makes, and nothing else");
+        foreach (var column in addedLater.OfType<AddColumnOperation>())
+            baseline.FindTable(column.Table, column.Schema)?.FindColumn(column.Name).Should().BeNull(
+                $"{column.Table}.{column.Name} is added by a migration after the baseline");
+    }
+
+    [Fact]
     public void EveryTableTheModelMapsIsCreatedByTheMigrations()
     {
         // The SQL MigrateAsync would run on an empty database, from EF's own discovery: an

@@ -86,6 +86,17 @@ export function changesRecords(method: string | undefined, path: string): boolea
 const LINKED = ['leads', 'contacts', 'companies', 'deals', 'tasks', 'activities', 'sequences', 'duplicates', 'work-queue', 'reports'];
 
 /**
+ * What merging two club members changes: every record that carried the duplicate's id
+ * (visits, points, the ledger's charges, payments and tabs, bookings, gift cards,
+ * consent, messages…) is the kept member's now, so is their statement, and the pair
+ * leaves the duplicates list.
+ */
+const MEMBER_MERGE = [
+  'members', 'campaigns', 'communications', 'duplicates', 'visits', 'loyalty', 'charges', 'payments', 'statements',
+  'tabs', 'reservations', 'gift-cards', 'donations', 'subscriptions', 'households', 'household-members',
+];
+
+/**
  * What a write under /api/<base> may change, beyond its own records. The server
  * does more than store the row it is sent, and a list showing any of these would
  * otherwise go on showing the old figures:
@@ -133,11 +144,15 @@ const CHANGES: Readonly<Record<string, readonly string[]>> = {
   joinrequests: ['team'],
   teams: ['team', 'reports'],
   duplicates: ['duplicates'],
-  members: ['members', 'charges', 'payments', 'statements'],
+  // A balance set by hand on a member is an entry on the ledger, and a member's tier or
+  // status changes who a campaign reaches.
+  members: ['members', 'charges', 'payments', 'statements', 'campaigns'],
   charges: ['charges', 'members', 'statements'],
   payments: ['payments', 'charges', 'members', 'statements'],
   tabs: ['tabs', 'charges', 'members', 'loyalty', 'statements'],
   subscriptions: ['subscriptions', 'charges', 'members', 'statements'],
+  // Sending a campaign writes a message per member into the communications log.
+  campaigns: ['campaigns', 'communications'],
 };
 
 /** Which records an activity is about, from the body it was saved with. */
@@ -166,10 +181,13 @@ export function resourcesChangedBy(method: string | undefined, path: string, bod
   if (segments[0] === 'api') segments.shift();
   const base = segments[0] ?? '';
   const last = segments[segments.length - 1] ?? '';
+  if (base === 'members' && last === 'merge') return [...MEMBER_MERGE];
+  // A consent answer changes who a marketing campaign reaches, and nothing on the
+  // member's account, so it leaves the money lists alone.
+  if (base === 'members' && last === 'consent') return ['members', 'campaigns'];
   // A merge moves everything linked to the record merged away; a conversion makes
-  // a contact, a company and a deal from the lead. A club member's merge moves club
-  // records, which its own entry below names.
-  if ((last === 'merge' && base !== 'members') || (base === 'leads' && last === 'convert')) return [...LINKED];
+  // a contact, a company and a deal from the lead.
+  if (last === 'merge' || (base === 'leads' && last === 'convert')) return [...LINKED];
   if (base === 'activities' && (method ?? 'GET').toUpperCase() === 'POST') {
     const links = activityLinks(body);
     if (links) return [...new Set(['activities', ...links, 'work-queue', 'reports'])];
