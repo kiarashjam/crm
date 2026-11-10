@@ -322,6 +322,33 @@ public class ClubApplicationsTests
         (await Read(factory, db => db.ClubMembers.Count())).Should().Be(0);
     }
 
+    [Fact]
+    public async Task APaidDeposit_ApprovesTheApplicationOnce_RecordingThePaymentThatDidIt()
+    {
+        // The hook Phase 3's online payments call when an applicant's deposit is paid.
+        using var factory = new CustomWebApplicationFactory();
+        var (client, userId, org) = await ClubAsync(factory);
+        var id = (await ApplyAsync(client)).GetProperty("id").GetGuid();
+        var payment = Guid.NewGuid();
+
+        using var scope = factory.Services.CreateScope();
+        var admissions = scope.ServiceProvider.GetRequiredService<ACI.Application.Services.IClubApplications>();
+        using (scope.ServiceProvider.GetRequiredService<ACI.Application.Interfaces.ITenantContext>().ActFor(org, userId))
+        {
+            var first = await admissions.AdmitForDepositAsync(org, id, userId, payment);
+            first.IsSuccess.Should().BeTrue(first.IsSuccess ? "" : first.Error.Description);
+            (first.Value.Approved, first.Value.MemberCreated, first.Value.FeeCharged).Should().Be((true, true, true));
+            // The provider's webhook delivered twice.
+            var again = await admissions.AdmitForDepositAsync(org, id, userId, payment);
+            (again.Value.Approved, again.Value.MemberId).Should().Be((false, first.Value.MemberId));
+        }
+
+        var application = await Read(factory, db => db.ClubApplications.Single(a => a.Id == id));
+        (application.ApprovalTrigger, application.DepositPaymentId).Should().Be((ApprovalTriggers.Deposit, payment));
+        (await Read(factory, db => db.ClubMembers.Count())).Should().Be(1);
+        (await Read(factory, db => db.ClubCharges.Count())).Should().Be(1, "one initiation fee");
+    }
+
     // ── the public form ──────────────────────────────────────────────────────
 
     [Fact]

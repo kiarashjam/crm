@@ -4,6 +4,7 @@ using System.Text.Json;
 using ACI.Domain.Entities;
 using ACI.Domain.Enums;
 using ACI.WebApi.Tests.Helpers;
+using Microsoft.Extensions.DependencyInjection;
 using static ACI.WebApi.Tests.Helpers.Workspaces;
 
 namespace ACI.WebApi.Tests;
@@ -229,6 +230,38 @@ public class ClubHouseholdsTests
 
         (await BalanceAsync(client, peter)).Should().Be(-100m, "what was posted stays on his account");
         (await BalanceAsync(client, anna)).Should().Be(-30m);
+    }
+
+    [Fact]
+    public async Task ABillLeftUnpaidLapsesAndRemindsTheAccountThatOwesIt_ThePrimary_NotTheSpouseWhoRanItUp()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, org) = await ClubAsync(factory);
+        var (_, peter, anna, kit, _) = await MeiersAsync(client);
+        await Json(await client.PostAsync("/api/charges", Body(new
+        {
+            memberId = anna, kind = "Spa", description = "Massage", amount = 180, dueAtUtc = DateTime.UtcNow.AddDays(-45).ToString("o"),
+        })), "Anna's spa, long overdue");
+        await Json(await client.PutAsync("/api/hospitality/settings", Body(new
+        {
+            billing = new { remindersEnabled = true, reminderDays = new[] { 3 }, lapseEnabled = true, gracePeriodDays = 30 },
+        })), "turn on reminders and lapsing");
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            // The daily run, as the background job does it, after 03:00 in the club's time zone.
+            var zone = ACI.Application.Common.RegionalSettings.ZoneOf(ACI.Application.Common.RegionalSettings.DefaultTimeZone);
+            var local = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, zone);
+            var at = local.TimeOfDay >= TimeSpan.FromHours(3) ? DateTime.UtcNow : DateTime.UtcNow.Add(TimeSpan.FromHours(3) - local.TimeOfDay + TimeSpan.FromMinutes(1));
+            await scope.ServiceProvider.GetRequiredService<ACI.Application.Services.IClubBilling>().RunScheduledAsync(at);
+        }
+
+        var members = await Json(await client.GetAsync("/api/members"), "members");
+        string StatusOf(Guid id) => members.EnumerateArray().Single(m => m.GetProperty("id").GetGuid() == id).GetProperty("status").GetString()!;
+        (StatusOf(peter), StatusOf(anna), StatusOf(kit)).Should().Be(("Lapsed", "Active", "Active"),
+            "the bill is on Peter's account: he owes it, so he lapses, and the spouse who ran it up is not locked out for it");
+        var reminders = await factory.Services.Read(db => db.OutboundMessages.Where(m => m.OrganizationId == org && m.Source == OutboundSources.PaymentReminder).Select(m => m.To).ToList());
+        reminders.Should().Equal("peter@example.ch");
     }
 
     [Fact]
