@@ -7,8 +7,8 @@
 // forgotten and every cached read is dropped, or the account signing in would open
 // on the last one's workspace and be shown the last one's records from the cache.
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { http, HttpResponse } from 'msw';
@@ -47,6 +47,17 @@ beforeEach(() => {
       });
     }),
   );
+});
+
+// The code boxes (input-otp) keep the caret in step with timers at 0, 10 and 50 ms after
+// each digit typed, and never clear them. The sign-in after the last digit is quick here,
+// so the test can end within those 50 ms; a timer that then fires after this file's DOM
+// is gone throws "window is not defined", and Vitest fails the whole run although every
+// test passed. So the page is unmounted and those timers are let run out while there is
+// still a DOM; on an unmounted page they do nothing.
+afterEach(async () => {
+  cleanup();
+  await new Promise((resolve) => setTimeout(resolve, 100));
 });
 
 describe('signing in with 2FA on', () => {
