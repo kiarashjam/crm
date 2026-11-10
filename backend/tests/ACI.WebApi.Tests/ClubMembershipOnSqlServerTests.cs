@@ -136,6 +136,44 @@ public class ClubMembershipOnSqlServerTests
             "one primary in each household");
     });
 
+    [SqlServerFact]
+    public Task DeletingTheContactWhoHeadsAHousehold_HandsItToTheNextPerson_OrRemovesItWhenNobodyIsLeft() => RunAsync(async (client, _, org, database) =>
+    {
+        // A couple recorded between two contacts is a household headed by a contact. Deleting
+        // that contact took their place out and left a household with no primary. On SQL Server
+        // (deleting a contact clears its links in SQL the in-memory test database cannot run), and
+        // in one save, so the one-primary index sees the old primary go before the next is made one.
+        async Task<Guid> Contact(string name) => (await Json(await client.PostAsync("/api/contacts", Body(new
+        {
+            name, email = $"{name.Split(' ')[0].ToLowerInvariant()}@example.ch",
+        })), name)).GetProperty("id").GetGuid();
+        async Task Delete(Guid contact)
+        {
+            var res = await client.DeleteAsync($"/api/contacts/{contact}");
+            res.StatusCode.Should().Be(HttpStatusCode.NoContent, await res.Content.ReadAsStringAsync());
+        }
+        var claire = await Contact("Claire Martin");
+        var marc = await Contact("Marc Martin");
+        var lou = await Contact("Lou Martin");
+        await Json(await client.PostAsync($"/api/contacts/{claire}/relationships", Body(new { relatedContactId = marc, type = "spouse" })), "a couple");
+        var martin = (await Json(await client.GetAsync("/api/households"), "the household")).EnumerateArray().Single().GetProperty("id").GetGuid();
+        await Json(await client.PostAsync($"/api/households/{martin}/members", Body(new { contactId = lou, role = "Child" })), "Lou joins");
+
+        await Delete(claire);
+
+        (await Value(database, $"SELECT COUNT(*) FROM [ClubHouseholdMembers] WHERE [HouseholdId] = '{martin}' AND [IsPrimary] = 1")).Should().Be(1,
+            "a household has one primary");
+        (await Value(database, $"SELECT [ContactId] FROM [ClubHouseholdMembers] WHERE [HouseholdId] = '{martin}' AND [IsPrimary] = 1")).Should().Be(marc,
+            "the next to join heads it");
+        (await Value(database, $"SELECT [Role] FROM [ClubHouseholdMembers] WHERE [ContactId] = '{marc}'")).Should().Be("Primary");
+
+        await Delete(marc);
+        (await Value(database, $"SELECT [ContactId] FROM [ClubHouseholdMembers] WHERE [HouseholdId] = '{martin}' AND [IsPrimary] = 1")).Should().Be(lou);
+        await Delete(lou);
+        (await Value(database, $"SELECT COUNT(*) FROM [ClubHouseholds] WHERE [OrganizationId] = '{org}'")).Should().Be(0, "a household nobody is left in goes");
+        (await Value(database, $"SELECT COUNT(*) FROM [ClubHouseholdMembers] WHERE [OrganizationId] = '{org}'")).Should().Be(0);
+    });
+
     // ── the migration ────────────────────────────────────────────────────────
 
     private sealed class Seed
