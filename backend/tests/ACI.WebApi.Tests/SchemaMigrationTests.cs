@@ -213,6 +213,30 @@ public class SchemaMigrationTests
         }
     }
 
+    [SqlServerFact]
+    public async Task TwoInstancesStartingTogetherSetUpANewDatabaseOnce()
+    {
+        // A scale-out or a slot swap starts two at once. Both found the database empty and
+        // both ran the migrations, and the second failed part-way through.
+        await SqlServerApp.WaitForServerAsync();
+        var database = await SqlServerApp.NewDatabaseAsync();
+        var apps = new List<SqlServerApp>();
+        try
+        {
+            var starts = Enumerable.Range(0, 2).Select(_ => Task.Run(() => SqlServerApp.Start(database))).ToArray();
+            apps.AddRange(await Task.WhenAll(starts));
+            foreach (var app in apps)
+                await ShouldWorkAsync(app);
+
+            (await SqlServerSchema.HistoryAsync(database)).Should().Equal(SqlServerSchema.AllMigrationIds());
+        }
+        finally
+        {
+            foreach (var app in apps) app.Dispose();
+            await SqlServerApp.DropDatabaseAsync(database);
+        }
+    }
+
     private static async Task ShouldWorkAsync(SqlServerApp app)
     {
         var client = app.CreateClient();

@@ -512,6 +512,11 @@ try
                 await databaseCreator.CreateAsync();
             }
 
+            // One instance at a time from here to the end of the schema work and seeding
+            // (see SchemaLock): two starting together both ran the same migrations.
+            await using var schemaLock = await ACI.WebApi.SchemaLock.AcquireAsync(
+                db.Database.GetConnectionString()!, TimeSpan.FromMinutes(10));
+
             if (!await databaseCreator.HasTablesAsync())
             {
                 Log.Information("Empty database: creating it from the migrations...");
