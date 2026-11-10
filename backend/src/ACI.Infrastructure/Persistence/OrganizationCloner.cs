@@ -498,6 +498,22 @@ public sealed class OrganizationCloner
                     m.MessageIdHeader = $"<{m.Id:N}{header[(header.IndexOf('@') is var at and >= 0 ? at : header.Length - 1)..]}";
                 m.ReplyToken = null;
                 return "Outbox messages still queued are sent from the original only, and copies get their own Message-ID";
+            case Campaign c when c.Status is CampaignStatuses.Scheduled or CampaignStatuses.Sending:
+                // The members are the same people in both organizations: a campaign waiting
+                // for its time, or still being sent, goes out once, from the original. The copy
+                // keeps it as a draft, or as sent with the messages it had when copied.
+                if (c.Status == CampaignStatuses.Scheduled)
+                {
+                    c.Status = CampaignStatuses.Draft;
+                    c.ScheduledAtUtc = null;
+                }
+                else
+                {
+                    c.Status = CampaignStatuses.Sent;
+                    c.SentAtUtc ??= DateTime.UtcNow;
+                }
+                c.ClaimedUntilUtc = null;
+                return "Campaigns waiting to be sent, or being sent, are sent from the original only";
             case Notification n when n.SourceKey != null && n.SourceKey == ((Notification)source).SourceKey:
                 // The key stops a person being told the same thing twice, and is unique per
                 // person. One with no copied record's id in it would be the original's exactly.

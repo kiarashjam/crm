@@ -35,4 +35,33 @@ internal static class MemberCommunications
 
         foreach (var row in rows.Where(r => r.SubjectId == dropId)) row.SubjectId = keepId;
     }
+
+    /// <summary>
+    /// Moves the dropped member's messages, and the outbox messages behind them, to the member
+    /// kept: their log is one person's log, and an email still waiting goes to them rather than
+    /// being cancelled as if they had been removed.
+    /// </summary>
+    /// <remarks>
+    /// A campaign that reached both records keeps the duplicate's message where it was: a
+    /// campaign holds one message per member, and both did go out. It stays in the log under
+    /// the name it was sent to.
+    /// </remarks>
+    public static async Task MoveMessagesToKeptMemberAsync(AppDbContext db, Guid keepId, Guid dropId, Guid? organizationId, string keptName, CancellationToken ct)
+    {
+        if (organizationId is not Guid org) return;
+        var keptCampaigns = await db.MemberMessages
+            .Where(m => m.OrganizationId == org && m.MemberId == keepId && m.CampaignId != null)
+            .Select(m => m.CampaignId!.Value)
+            .ToListAsync(ct);
+        var moving = await db.MemberMessages
+            .Where(m => m.OrganizationId == org && m.MemberId == dropId)
+            .ToListAsync(ct);
+        foreach (var message in moving.Where(m => m.CampaignId is not Guid campaign || !keptCampaigns.Contains(campaign)))
+        {
+            message.MemberId = keepId;
+            message.MemberName = keptName;
+        }
+        foreach (var outbound in await db.OutboundMessages.Where(m => m.OrganizationId == org && m.MemberId == dropId).ToListAsync(ct))
+            outbound.MemberId = keepId;
+    }
 }

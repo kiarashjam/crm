@@ -60,6 +60,13 @@ public sealed record OutboundEmailRequest
     /// </summary>
     public string? Purpose { get; init; }
 
+    /// <summary>
+    /// For someone in the workspace itself, such as a campaign's test copy for the person who
+    /// pressed "Send a test to me": nobody there is unsubscribing from anything, so it
+    /// carries no unsubscribe link.
+    /// </summary>
+    public bool ForOwnTeam { get; init; }
+
     /// <summary>A person wrote it, so its timeline entry is their response (see <see cref="OutboundMessage.CountsAsResponse"/>).</summary>
     public bool CountsAsResponse { get; init; }
 
@@ -256,9 +263,11 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
         // A member's marketing carries a link that withdraws their consent to it, and a
         // service message none: their choices do not stop their statements.
         var tracking = request.TrackOpens && request.LeadId is Guid leadId ? _outreach.TrackingUrl(leadId) : null;
-        var mail = purpose != null && request.MemberId is Guid memberId
-            ? _outreach.MemberBody(organizationId, sender.WorkspaceName, body, memberId, to[0], purpose == ConsentPurposes.Marketing)
-            : _outreach.Body(organizationId, sender.WorkspaceName, body, to.Concat(cc).ToList(), tracking);
+        var mail = request.ForOwnTeam
+            ? new OutreachBody(body, PlainTextEmail.ToHtml(body, null, sender.WorkspaceName), null)
+            : purpose != null && request.MemberId is Guid memberId
+                ? _outreach.MemberBody(organizationId, sender.WorkspaceName, body, memberId, to[0], purpose == ConsentPurposes.Marketing)
+                : _outreach.Body(organizationId, sender.WorkspaceName, body, to.Concat(cc).ToList(), tracking);
 
         var id = Guid.NewGuid();
         var replyDomain = _settings.CapturesReplies ? _settings.ReplyDomain() : null;

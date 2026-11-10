@@ -33,23 +33,7 @@ file static class ClubDocs
         result.IsSuccess ? new OkObjectResult(result.Value) : result.Error.ToProblemResult();
 }
 
-[ApiController]
-[Route("api/campaigns")]
-[Authorize]
-[WorkspaceRequired]
-[Requires(MemberPermissions.ClubMembers, WritesOnly = true)]
-public class CampaignsController : ControllerBase
-{
-    private readonly IClubDocumentService _docs;
-    private readonly ICurrentUserService _user;
-    public CampaignsController(IClubDocumentService docs, ICurrentUserService user) { _docs = docs; _user = user; }
-
-    [HttpGet] public async Task<IActionResult> List(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.ListAsync(org, "campaigns", ct)); }
-    [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.CreateAsync(org, "campaigns", await ClubDocs.Body(Request, ct), ct)); }
-    [HttpPut("{id:guid}")] public async Task<IActionResult> Update(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.UpdateAsync(org, "campaigns", id, await ClubDocs.Body(Request, ct), ct)); }
-    [HttpDelete("{id:guid}")][Requires(MemberPermissions.DeleteRecords)] public async Task<IActionResult> Delete(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return await _docs.DeleteAsync(org, "campaigns", id, ct) ? NoContent() : NotFound(); }
-    [HttpPost("{id:guid}/send")] public async Task<IActionResult> Send(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); var row = await _docs.SendCampaignAsync(org, id, ct); return row == null ? NotFound() : Ok(row); }
-}
+// Campaigns and communications are typed now: CommunicationsControllers.cs.
 
 [ApiController]
 [Route("api/events")]
@@ -83,22 +67,6 @@ public class DonationsController : ControllerBase
     [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.CreateAsync(org, "donations", await ClubDocs.Body(Request, ct), ct)); }
     [HttpPost("{id:guid}/acknowledge")] public async Task<IActionResult> Acknowledge(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); var row = await _docs.AcknowledgeDonationAsync(org, id, ct); return row == null ? NotFound() : Ok(row); }
     [HttpDelete("{id:guid}")][Requires(MemberPermissions.DeleteRecords)] public async Task<IActionResult> Delete(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return await _docs.DeleteAsync(org, "donations", id, ct) ? NoContent() : NotFound(); }
-}
-
-[ApiController]
-[Route("api/communications")]
-[Authorize]
-[WorkspaceRequired]
-[Requires(MemberPermissions.ClubMembers, WritesOnly = true)]
-public class CommunicationsController : ControllerBase
-{
-    private readonly IClubDocumentService _docs;
-    private readonly ICurrentUserService _user;
-    public CommunicationsController(IClubDocumentService docs, ICurrentUserService user) { _docs = docs; _user = user; }
-
-    [HttpGet] public async Task<IActionResult> List(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.ListAsync(org, "communications", ct)); }
-    [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.CreateAsync(org, "communications", await ClubDocs.Body(Request, ct), ct)); }
-    [HttpDelete("{id:guid}")][Requires(MemberPermissions.DeleteRecords)] public async Task<IActionResult> Delete(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return await _docs.DeleteAsync(org, "communications", id, ct) ? NoContent() : NotFound(); }
 }
 
 [ApiController]

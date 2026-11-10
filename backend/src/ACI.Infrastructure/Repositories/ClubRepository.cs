@@ -98,6 +98,7 @@ public sealed class ClubRepository : IClubRepository
 
             // Consent answers and messages are the person's, so they move too.
             await MemberCommunications.MoveToKeptMemberAsync(_db, keepId, dropId, organizationId, ct);
+            await MemberCommunications.MoveMessagesToKeptMemberAsync(_db, keepId, dropId, organizationId, name, ct);
 
             keep.Phone = RecordMerge.Fill(keep.Phone, drop.Phone);
             keep.Notes = string.IsNullOrWhiteSpace(drop.Notes) || keep.Notes?.Contains(drop.Notes.Trim()) == true

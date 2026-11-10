@@ -197,8 +197,10 @@ public class ClubWorkspaceTests
         })), "reserve");
         reservation.GetProperty("resourceName").GetString().Should().Be(resource.GetProperty("name").GetString());
 
+        // Logging a message records it and sends nothing, and says so: it used to be stamped
+        // "Sent", and staff told members "we emailed you" on the strength of it.
         var note = await Json(await client.PostAsync("/api/communications", Body(new { memberId, channel = "Email", subject = "Welcome" })), "log message");
-        note.GetProperty("status").GetString().Should().Be("Sent");
+        note.GetProperty("status").GetString().Should().Be("logged");
     }
 
     [Fact]

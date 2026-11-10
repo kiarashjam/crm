@@ -27,7 +27,6 @@ public interface IClubDocumentService
     Task<Result<JsonObject>> CloseTabAsync(Guid? organizationId, Guid id, CancellationToken ct = default);
     Task<Result<JsonObject>> VoidTabAsync(Guid? organizationId, Guid id, JsonObject body, CancellationToken ct = default);
     Task<Result<JsonObject>> BillSubscriptionAsync(Guid? organizationId, Guid id, CancellationToken ct = default);
-    Task<JsonObject?> SendCampaignAsync(Guid? organizationId, Guid id, CancellationToken ct = default);
     Task<JsonObject> GetSettingsAsync(Guid? organizationId, CancellationToken ct = default);
     Task<JsonObject> SaveSettingsAsync(Guid? organizationId, JsonObject patch, CancellationToken ct = default);
     Task<JsonObject> ResetSettingsAsync(Guid? organizationId, CancellationToken ct = default);
@@ -511,34 +510,6 @@ public sealed class ClubDocumentService : IClubDocumentService
         }, ct);
     }
 
-    public async Task<JsonObject?> SendCampaignAsync(Guid? organizationId, Guid id, CancellationToken ct = default)
-    {
-        var campaign = await Load(organizationId, "campaigns", id, ct);
-        if (campaign == null) return null;
-        var members = await _club.MembersAsync(organizationId, ct);
-        var count = 0;
-        foreach (var member in members)
-        {
-            if (!Matches(campaign["segment"] as JsonObject, member)) continue;
-            count++;
-            await CreateAsync(organizationId, "communications", new JsonObject
-            {
-                ["memberId"] = member.Id.ToString(),
-                ["memberName"] = $"{member.FirstName} {member.LastName}".Trim(),
-                ["channel"] = Text(campaign, "channel"),
-                ["category"] = Text(campaign, "category"),
-                ["subject"] = Text(campaign, "subject"),
-                ["preview"] = Preview(Text(campaign, "body")),
-                ["campaignName"] = Text(campaign, "name"),
-            }, ct);
-        }
-        campaign["status"] = "Sent";
-        campaign["sentAtUtc"] = DateTime.UtcNow.ToString("o");
-        campaign["recipientCount"] = count;
-        await Save(organizationId, "campaigns", id, campaign, ct);
-        return campaign;
-    }
-
     public async Task<JsonObject> GetSettingsAsync(Guid? organizationId, CancellationToken ct = default)
     {
         var rows = await _docs.ListAsync(organizationId, SettingsKind, ct);
@@ -702,16 +673,6 @@ public sealed class ClubDocumentService : IClubDocumentService
                 Set(obj, "nextChargeAtUtc", DateTime.UtcNow.AddDays(CadenceDays(Text(obj, "cadence"))).ToString("o"));
                 Drop(obj, "lastChargedAtUtc");
                 break;
-            case "communications":
-                Set(obj, "sentAtUtc", now);
-                Set(obj, "status", "Sent");
-                break;
-            case "campaigns":
-                Set(obj, "createdAtUtc", now);
-                Set(obj, "status", string.IsNullOrWhiteSpace(Text(obj, "scheduledAtUtc")) ? "Draft" : "Scheduled");
-                Set(obj, "recipientCount", 0);
-                break;
-
             case "gift-cards":
             {
                 if (Amount(obj, "faceValue") is not { } face) return DomainErrors.Club.AmountInvalid;
@@ -888,18 +849,6 @@ public sealed class ClubDocumentService : IClubDocumentService
         "PoolDeck" => "Pool Deck",
         _ => venue,
     };
-
-    private static string Preview(string body) => body.Length <= 140 ? body : body[..140];
-
-    private static bool Matches(JsonObject? segment, ClubMember member)
-    {
-        if (segment == null) return true;
-        if (segment["tiers"] is JsonArray tiers && tiers.Count > 0 && !tiers.Any(t => t?.ToString() == member.Tier))
-            return false;
-        if (segment["statuses"] is JsonArray statuses && statuses.Count > 0 && !statuses.Any(s => s?.ToString() == member.Status))
-            return false;
-        return true;
-    }
 
     private async Task<JsonObject?> Load(Guid? organizationId, string kind, Guid id, CancellationToken ct)
     {

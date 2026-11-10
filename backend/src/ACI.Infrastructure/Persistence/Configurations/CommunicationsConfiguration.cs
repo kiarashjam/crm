@@ -32,3 +32,54 @@ internal sealed class ConsentRecordConfiguration : IEntityTypeConfiguration<Cons
             .HasDatabaseName("IX_ConsentRecords_Address");
     }
 }
+
+internal sealed class CampaignConfiguration : IEntityTypeConfiguration<Campaign>
+{
+    public void Configure(EntityTypeBuilder<Campaign> builder)
+    {
+        builder.ToTable("Campaigns");
+        builder.HasKey(e => e.Id);
+        builder.Property(e => e.Name).HasMaxLength(200).IsRequired();
+        builder.Property(e => e.Channel).HasMaxLength(16).IsRequired();
+        builder.Property(e => e.Category).HasMaxLength(32).IsRequired();
+        builder.Property(e => e.Purpose).HasMaxLength(16).IsRequired();
+        builder.Property(e => e.Subject).HasMaxLength(300).IsRequired();
+        builder.Property(e => e.Body).IsRequired();
+        builder.Property(e => e.Segment).IsRequired();
+        builder.Property(e => e.Status).HasMaxLength(16).IsRequired();
+        builder.Property(e => e.Version).IsConcurrencyToken();
+
+        // A workspace's campaigns, newest first.
+        builder.HasIndex(e => new { e.OrganizationId, e.CreatedAtUtc }).HasDatabaseName("IX_Campaigns_OrganizationId_CreatedAtUtc");
+        // The scheduler's question, every half minute: which campaigns are due, or stalled?
+        builder.HasIndex(e => new { e.Status, e.ScheduledAtUtc }).HasDatabaseName("IX_Campaigns_Status_ScheduledAtUtc");
+    }
+}
+
+internal sealed class MemberMessageConfiguration : IEntityTypeConfiguration<MemberMessage>
+{
+    public void Configure(EntityTypeBuilder<MemberMessage> builder)
+    {
+        builder.ToTable("MemberMessages");
+        builder.HasKey(e => e.Id);
+        builder.Property(e => e.MemberName).HasMaxLength(200).IsRequired();
+        builder.Property(e => e.Email).HasMaxLength(256);
+        builder.Property(e => e.CampaignName).HasMaxLength(200);
+        builder.Property(e => e.Channel).HasMaxLength(16).IsRequired();
+        builder.Property(e => e.Category).HasMaxLength(32).IsRequired();
+        builder.Property(e => e.Purpose).HasMaxLength(16);
+        builder.Property(e => e.Subject).HasMaxLength(300).IsRequired();
+        builder.Property(e => e.Preview).HasMaxLength(500);
+        builder.Property(e => e.Status).HasMaxLength(16).IsRequired();
+        builder.Property(e => e.Reason).HasMaxLength(500);
+
+        // One message per member per campaign: a sending taken up again after it died, or
+        // two senders at once, cannot write a second, and so cannot email a member twice.
+        builder.HasIndex(e => new { e.CampaignId, e.MemberId }).IsUnique().HasFilter("[CampaignId] IS NOT NULL")
+            .HasDatabaseName("IX_MemberMessages_CampaignId_MemberId");
+        // The communications log, newest first, for the club and for one member.
+        builder.HasIndex(e => new { e.OrganizationId, e.CreatedAtUtc }).HasDatabaseName("IX_MemberMessages_OrganizationId_CreatedAtUtc");
+        builder.HasIndex(e => new { e.OrganizationId, e.MemberId, e.CreatedAtUtc }).HasDatabaseName("IX_MemberMessages_OrganizationId_MemberId_CreatedAtUtc");
+        builder.HasIndex(e => e.OutboundMessageId).HasDatabaseName("IX_MemberMessages_OutboundMessageId");
+    }
+}

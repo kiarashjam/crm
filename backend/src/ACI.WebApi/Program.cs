@@ -296,6 +296,9 @@ try
     builder.Services.AddScoped<ConsentService>();
     builder.Services.AddScoped<IConsentService>(sp => sp.GetRequiredService<ConsentService>());
     builder.Services.AddScoped<IMemberMailRules>(sp => sp.GetRequiredService<ConsentService>());
+    // Campaigns and the communications log, delivered through the outbox.
+    builder.Services.AddScoped<ICampaignService, CampaignService>();
+    builder.Services.AddScoped<IMemberMessageService, MemberMessageService>();
     builder.Services.AddScoped<ITaskService, TaskService>();
     builder.Services.AddScoped<IActivityService, ActivityService>();
     builder.Services.AddScoped<INotificationService, NotificationService>();
@@ -336,6 +339,7 @@ try
     builder.Services.AddHostedService<ACI.WebApi.Services.LeadFollowUpBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.WeeklyDigestBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.PersonContactBackfillBackgroundService>();
+    builder.Services.AddHostedService<ACI.WebApi.Services.CampaignSchedulerBackgroundService>();
 
     // HTTP Context accessor for current user service
     builder.Services.AddHttpContextAccessor();

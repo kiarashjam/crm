@@ -84,6 +84,8 @@ public partial class AppDbContext : DbContext
 
     // Member communications and consent.
     public DbSet<ConsentRecord> ConsentRecords => Set<ConsentRecord>();
+    public DbSet<Campaign> Campaigns => Set<Campaign>();
+    public DbSet<MemberMessage> MemberMessages => Set<MemberMessage>();
 
     /// <summary>
     /// Whether saving writes audit lines. Off only while an organization is copied: its
