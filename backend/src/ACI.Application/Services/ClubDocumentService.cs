@@ -140,7 +140,18 @@ public sealed class ClubDocumentService : IClubDocumentService
         if (ClubSettings.Validate(patch) is { } invalid) return invalid;
         var current = await StoredSettingsAsync(organizationId, ct) ?? new JsonObject();
         foreach (var pair in ClubSettings.Clean(patch))
+        {
+            // The billing switches and the points per venue are sets whose values are each
+            // checked on their own: a save that sends some of them keeps the rest. Replaced
+            // whole, a save of one switch turned automatic billing back off.
+            if (pair.Key is ClubSettings.Billing or ClubSettings.VisitPoints
+                && pair.Value is JsonObject sent && current[pair.Key] is JsonObject kept)
+            {
+                foreach (var (key, value) in sent) kept[key] = value?.DeepClone();
+                continue;
+            }
             current[pair.Key] = pair.Value?.DeepClone();
+        }
         var rows = await _docs.ListAsync(organizationId, SettingsKind, ct);
         var id = rows.Count == 0 ? Guid.NewGuid() : rows[0].Id;
         await Save(organizationId, SettingsKind, id, current, ct);

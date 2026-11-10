@@ -391,4 +391,29 @@ public class ClubCatalogTests
         saved.GetProperty("billing").GetProperty("paymentTermsDays").GetInt32().Should().Be(30);
         (await Json(await client.GetAsync("/api/catalog?kind=Membership"), "tiers")).GetArrayLength().Should().Be(4, "an old page sending tiers changes no tier");
     }
+
+    [Fact]
+    public async Task ASaveThatSendsSomeBillingSettingsOrVenues_KeepsTheOthersAsTheyWere()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await ClubAsync(factory);
+        await Json(await client.PutAsync("/api/hospitality/settings", Body(new
+        {
+            billing = new { automaticBilling = true, paymentTermsDays = 30 },
+            visitPointsByVenue = new { Spa = 90 },
+        })), "turn on automatic billing, 30 days to pay, 90 points at the spa");
+
+        // A later save of one switch, or one venue, changes that one: each is checked on its
+        // own, so one left out is kept rather than put back to its default.
+        var saved = await Json(await client.PutAsync("/api/hospitality/settings", Body(new
+        {
+            billing = new { remindersEnabled = true },
+            visitPointsByVenue = new { Bar = 15 },
+        })), "turn on reminders, 15 points at the bar");
+        var billing = saved.GetProperty("billing");
+        (billing.GetProperty("automaticBilling").GetBoolean(), billing.GetProperty("paymentTermsDays").GetInt32(), billing.GetProperty("remindersEnabled").GetBoolean())
+            .Should().Be((true, 30, true), "automatic billing stays on");
+        var venues = (await Json(await client.GetAsync("/api/hospitality/settings"), "read the settings")).GetProperty("visitPointsByVenue");
+        (venues.GetProperty("Spa").GetInt32(), venues.GetProperty("Bar").GetInt32()).Should().Be((90, 15));
+    }
 }
