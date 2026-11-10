@@ -58,6 +58,9 @@ public sealed record ClubReportQuery(DateTime? FromUtc, DateTime? ToUtc, string?
 /// <param name="Points">The loyalty points members hold, and what they are worth at the redemption rate.</param>
 /// <param name="Mrr">What running subscriptions bring in each month, per currency.</param>
 /// <param name="Events">How full the period's events were, and how many who had a seat did not come.</param>
+/// <param name="TopSpenders">The members whose charges in the period came to most (accrual, voids taken off), per currency.</param>
+/// <param name="Members">Who the club's members are now, and who joined in the period.</param>
+/// <param name="Visits">Check-ins in the period, by venue.</param>
 public sealed record ClubReportDto(
     string Currency,
     string TimeZone,
@@ -73,7 +76,26 @@ public sealed record ClubReportDto(
     IReadOnlyList<ClubGiftCardsOutstandingDto> GiftCards,
     ClubPointsOutstandingDto Points,
     IReadOnlyList<ClubMrrDto> Mrr,
-    ClubEventRatesDto Events);
+    ClubEventRatesDto Events,
+    IReadOnlyList<ClubSpenderDto> TopSpenders,
+    ClubMembershipFiguresDto Members,
+    ClubVisitFiguresDto Visits);
+
+/// <summary>A member and what their charges in the period came to.</summary>
+public sealed record ClubSpenderDto(Guid MemberId, string MemberName, string Currency, decimal Amount);
+
+/// <param name="Active">Members active now.</param>
+/// <param name="Lapsed">Members lapsed now.</param>
+/// <param name="ActiveByTier">Active members per tier, most first.</param>
+/// <param name="Joined">Members who joined in the period.</param>
+/// <param name="JoinedByPeriod">The same per period, in the order of the report's periods.</param>
+public sealed record ClubMembershipFiguresDto(int Active, int Lapsed, IReadOnlyList<ClubCountDto> ActiveByTier, int Joined, IReadOnlyList<int> JoinedByPeriod);
+
+/// <param name="CheckIns">Check-ins in the period.</param>
+/// <param name="ByVenue">The same per venue, most first.</param>
+public sealed record ClubVisitFiguresDto(int CheckIns, IReadOnlyList<ClubCountDto> ByVenue);
+
+public sealed record ClubCountDto(string Name, int Count);
 
 /// <summary>One day, week or month of a report.</summary>
 /// <param name="Start">Its first day on the workspace's calendar, yyyy-MM-dd.</param>

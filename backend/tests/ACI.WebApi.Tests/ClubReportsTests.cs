@@ -287,6 +287,57 @@ public class ClubReportsTests
     }
 
     [Fact]
+    public async Task MembersVisitsAndTopSpenders_AreCountedOnTheServer()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var club = await ClubAsync(factory);
+        Guid anna = Guid.NewGuid(), bruno = Guid.NewGuid(), spouse = Guid.NewGuid();
+        await Seed(factory, db =>
+        {
+            ClubMember Member(string first, string tier, string status, DateTime joined) => new()
+            {
+                Id = Guid.NewGuid(), OrganizationId = club.Org, OwnerUserId = club.OwnerId, FirstName = first, LastName = "Keller",
+                Email = $"{first.ToLowerInvariant()}@example.ch", Tier = tier, Status = status, JoinedAtUtc = joined,
+            };
+            db.ClubMembers.AddRange(
+                Member("Anna", "Gold", "Active", Zurich(2023, 5, 1)), Member("Bea", "Gold", "Active", Zurich(2025, 2, 10)),
+                Member("Carl", "Silver", "Active", Zurich(2024, 5, 1)), Member("Dora", "Gold", "Lapsed", Zurich(2025, 3, 3)));
+            ClubVisit Visit(string venue, DateTime at) => new() { Id = Guid.NewGuid(), OrganizationId = club.Org, MemberId = anna, MemberName = "Anna", Venue = venue, VisitedAtUtc = at };
+            db.ClubVisits.AddRange(Visit("Bar", Zurich(2025, 1, 5)), Visit("Bar", Zurich(2025, 2, 5)), Visit("Spa", Zurich(2025, 3, 5)), Visit("Spa", Zurich(2024, 12, 5)));
+            var bar = Charge(club.Org, bruno, "Bar", 100m, Zurich(2025, 1, 8));
+            bar.MemberName = "Bruno Meier";
+            var dues = Charge(club.Org, anna, "Dues", 300m, Zurich(2025, 1, 9));
+            // The spouse's massage, billed to Anna's account because the household rolls up.
+            var massage = Charge(club.Org, anna, "Spa", 150m, Zurich(2025, 2, 9));
+            massage.IncurredByMemberId = spouse;
+            massage.IncurredByName = "Sam Keller";
+            var voided = Charge(club.Org, bruno, "Bar", 90m, Zurich(2025, 2, 1));
+            voided.MemberName = "Bruno Meier";
+            var voidOf = Charge(club.Org, bruno, "Bar", -90m, Zurich(2025, 2, 2), entryType: ClubEntryTypes.Void, reverses: voided.Id);
+            voidOf.MemberName = "Bruno Meier";
+            db.ClubCharges.AddRange(bar, dues, massage, voided, voidOf);
+        });
+
+        var report = await Json(await club.Owner.GetAsync(Range()), "the report");
+        var members = report.GetProperty("members");
+        members.GetProperty("active").GetInt32().Should().Be(3);
+        members.GetProperty("lapsed").GetInt32().Should().Be(1);
+        members.GetProperty("activeByTier").EnumerateArray().Select(t => (t.GetProperty("name").GetString(), t.GetProperty("count").GetInt32()))
+            .Should().Equal(("Gold", 2), ("Silver", 1));
+        members.GetProperty("joined").GetInt32().Should().Be(2);
+        members.GetProperty("joinedByPeriod").EnumerateArray().Select(n => n.GetInt32()).Should().Equal(0, 1, 1);
+
+        var visits = report.GetProperty("visits");
+        visits.GetProperty("checkIns").GetInt32().Should().Be(3, "December's is before the period");
+        visits.GetProperty("byVenue").EnumerateArray().Select(v => (v.GetProperty("name").GetString(), v.GetProperty("count").GetInt32()))
+            .Should().Equal(("Bar", 2), ("Spa", 1));
+
+        report.GetProperty("topSpenders").EnumerateArray().Select(s => (s.GetProperty("memberName").GetString(), s.GetProperty("amount").GetDecimal()))
+            .Should().Equal(new[] { ("Anna Keller", 300m), ("Sam Keller", 150m), ("Bruno Meier", 100m) },
+                "a rolled-up charge is the spend of who ran it up, and a voided bill is no spend");
+    }
+
+    [Fact]
     public async Task MoneyIsNeverAddedAcrossCurrencies_AndADayBeginsAtTheWorkspacesMidnight()
     {
         using var factory = new CustomWebApplicationFactory();

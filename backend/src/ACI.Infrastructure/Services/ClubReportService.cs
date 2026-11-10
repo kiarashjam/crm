@@ -67,9 +67,81 @@ public sealed class ClubReportService : IClubReports
         var points = await PointsAsync(organizationId, asOf, org.Currency, ct);
         var mrr = Ordered(await MrrAsync(organizationId, ct), org.Currency, m => m.Currency);
         var events = await EventRatesAsync(organizationId, fromUtc, toUtc, now, ct);
+        var spenders = await TopSpendersAsync(organizationId, fromUtc, toUtc, org.Currency, ct);
+        var members = await MembershipAsync(organizationId, fromUtc, toUtc, periods, ct);
+        var visits = await VisitsAsync(organizationId, fromUtc, toUtc, ct);
 
         return new ClubReportDto(org.Currency, zone.Id, fromUtc, toUtc, asOf, grain, periods,
-            cash, accrual, byKind, receivables, giftCards, points, mrr, events);
+            cash, accrual, byKind, receivables, giftCards, points, mrr, events, spenders, members, visits);
+    }
+
+    private const int SpendersShown = 8;
+
+    /// <summary>The members whose sales in the period came to most, voids taken off: in the workspace's currency, else in the period's main one.</summary>
+    private async Task<List<ClubSpenderDto>> TopSpendersAsync(Guid organizationId, DateTime fromUtc, DateTime toUtc, string workspaceCurrency, CancellationToken ct)
+    {
+        var rows = await _db.ClubCharges.AsNoTracking()
+            .Where(c => c.OrganizationId == organizationId && c.PostedAtUtc >= fromUtc && c.PostedAtUtc < toUtc
+                && (c.EntryType == ClubEntryTypes.Charge
+                    || (c.EntryType == ClubEntryTypes.Void
+                        && _db.ClubCharges.Any(o => o.Id == c.ReversesChargeId && o.EntryType == ClubEntryTypes.Charge))))
+            // A charge rolled up to a household's primary is still the spend of who ran it up.
+            .GroupBy(c => new { MemberId = c.IncurredByMemberId ?? c.MemberId, c.Currency })
+            .Select(g => new
+            {
+                g.Key.MemberId,
+                g.Key.Currency,
+                Name = g.Max(c => c.IncurredByMemberId != null ? c.IncurredByName : c.MemberName),
+                Amount = g.Sum(c => c.Amount),
+            })
+            .Where(r => r.Amount > 0)
+            .OrderByDescending(r => r.Amount)
+            .Take(SpendersShown * 4)
+            .ToListAsync(ct);
+        var currency = rows.Any(r => r.Currency == workspaceCurrency) ? workspaceCurrency : rows.FirstOrDefault()?.Currency;
+        return rows.Where(r => r.Currency == currency).Take(SpendersShown)
+            .Select(r => new ClubSpenderDto(r.MemberId, r.Name ?? "", r.Currency, r.Amount))
+            .ToList();
+    }
+
+    /// <summary>Who the members are now (active, lapsed, active by tier), and who joined in the period.</summary>
+    private async Task<ClubMembershipFiguresDto> MembershipAsync(Guid organizationId, DateTime fromUtc, DateTime toUtc,
+        IReadOnlyList<ClubReportPeriodDto> periods, CancellationToken ct)
+    {
+        var members = _db.ClubMembers.AsNoTracking().Where(m => m.OrganizationId == organizationId);
+        var byStatus = await members.GroupBy(m => m.Status).Select(g => new { Status = g.Key, Count = g.Count() }).ToListAsync(ct);
+        var byTier = await members.Where(m => m.Status == "Active")
+            .GroupBy(m => m.Tier).Select(g => new ClubCountDto(g.Key, g.Count())).ToListAsync(ct);
+        var joined = await members.Where(m => m.JoinedAtUtc >= fromUtc && m.JoinedAtUtc < toUtc)
+            .GroupBy(m => new { Day = m.JoinedAtUtc.Date, m.JoinedAtUtc.Hour })
+            .Select(g => new { g.Key.Day, g.Key.Hour, Count = g.Count() })
+            .ToListAsync(ct);
+        var starts = periods.Select(p => p.StartUtc).ToArray();
+        var perPeriod = new int[periods.Count];
+        foreach (var row in joined)
+        {
+            var i = Array.BinarySearch(starts, DateTime.SpecifyKind(row.Day, DateTimeKind.Utc).AddHours(row.Hour));
+            if (i < 0) i = ~i - 1;
+            perPeriod[Math.Clamp(i, 0, periods.Count - 1)] += row.Count;
+        }
+        return new ClubMembershipFiguresDto(
+            byStatus.Where(s => s.Status == "Active").Sum(s => s.Count),
+            byStatus.Where(s => s.Status == "Lapsed").Sum(s => s.Count),
+            byTier.OrderByDescending(t => t.Count).ThenBy(t => t.Name, StringComparer.Ordinal).ToList(),
+            perPeriod.Sum(),
+            perPeriod);
+    }
+
+    /// <summary>Check-ins in the period, by venue.</summary>
+    private async Task<ClubVisitFiguresDto> VisitsAsync(Guid organizationId, DateTime fromUtc, DateTime toUtc, CancellationToken ct)
+    {
+        var byVenue = await _db.ClubVisits.AsNoTracking()
+            .Where(v => v.OrganizationId == organizationId && v.VisitedAtUtc >= fromUtc && v.VisitedAtUtc < toUtc)
+            .GroupBy(v => v.Venue)
+            .Select(g => new ClubCountDto(g.Key, g.Count()))
+            .ToListAsync(ct);
+        return new ClubVisitFiguresDto(byVenue.Sum(v => v.Count),
+            byVenue.OrderByDescending(v => v.Count).ThenBy(v => v.Name, StringComparer.Ordinal).ToList());
     }
 
     /// <summary>
