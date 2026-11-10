@@ -185,6 +185,19 @@ public sealed class ClubService : IClubService
         var duesFrequency = string.IsNullOrWhiteSpace(request.DuesFrequency) ? tier?.Cadence ?? "Monthly" : request.DuesFrequency.Trim();
         var rules = startDues || chargeFee ? await _rules.ReadAsync(organizationId, ct) : null;
 
+        // What joining costs goes on an account kept in the workspace's currency, and a tier
+        // priced in another (the workspace changed its currency after the tier was made)
+        // can't be billed to it. Found out after the member and their fee were saved, the
+        // refusal left both behind, for a retry to add again: so it is asked first.
+        var feeToCharge = chargeFee && tier?.InitiationFee is > 0;
+        var duesToStart = startDues && (request.DuesAmount ?? tier?.Price ?? 0) > 0;
+        if (tier != null && (feeToCharge || duesToStart))
+        {
+            var currency = await _catalog.CurrencyAsync(organizationId, ct);
+            if (!string.Equals(tier.Currency, currency, StringComparison.OrdinalIgnoreCase))
+                return DomainErrors.Club.CurrencyMismatch(tier.Currency, currency);
+        }
+
         var row = new ClubMember
         {
             Id = Guid.NewGuid(),

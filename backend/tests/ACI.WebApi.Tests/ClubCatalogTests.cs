@@ -177,6 +177,28 @@ public class ClubCatalogTests
             "a membership director adding a member");
     }
 
+    [Fact]
+    public async Task AMemberWhoseTierIsPricedInAnotherCurrency_IsNotBilledOnJoining_AndNothingIsSavedForARetryToRepeat()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, org) = await ClubAsync(factory);
+        (await TierAsync(client, "Gold")).GetProperty("currency").GetString().Should().Be("CHF", "the tiers were given in the club's francs");
+        await Json(await client.PutAsync($"/api/organizations/{org}/settings", Body(new { currency = "EUR" })), "keep the accounts in euros from now on");
+
+        var refusal = await Refused(await client.PostAsync("/api/members", Body(new
+        {
+            firstName = "Marc", lastName = "Weber", email = "marc@example.ch", tier = "Gold", startDues = true, chargeInitiationFee = true,
+        })), HttpStatusCode.BadRequest, "billing a tier priced in francs to an account kept in euros");
+        refusal.Should().Contain("CHF").And.Contain("EUR");
+        (await Json(await client.GetAsync("/api/members"), "members")).GetArrayLength()
+            .Should().Be(0, "the refusal comes before the member is saved: a retry would have added them, and their fee, twice");
+        (await Json(await client.GetAsync("/api/charges"), "charges")).GetArrayLength().Should().Be(0, "no fee was posted");
+        (await Json(await client.GetAsync("/api/subscriptions"), "subscriptions")).GetArrayLength().Should().Be(0);
+
+        await Json(await client.PostAsync("/api/members", Body(new { firstName = "Marc", lastName = "Weber", email = "marc@example.ch", tier = "Gold" })),
+            "the member is added without billing them");
+    }
+
     // ── prices the server takes from the catalogue ───────────────────────────
 
     [Fact]

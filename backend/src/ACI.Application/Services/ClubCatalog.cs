@@ -50,6 +50,12 @@ public interface IClubCatalog
     Task<CatalogItemDto?> TierAsync(Guid? organizationId, string? name, CancellationToken ct = default);
 
     /// <summary>
+    /// The currency the workspace keeps a new member's house account in, and prices a new
+    /// item in when none is given: its own (Organization.Currency), CHF by default.
+    /// </summary>
+    Task<string> CurrencyAsync(Guid? organizationId, CancellationToken ct = default);
+
+    /// <summary>
     /// One item to charge from: on sale, of one of <paramref name="kinds"/>. A refusal says
     /// why it can't be used for <paramref name="use"/> ("a tab", "a charge").
     /// </summary>

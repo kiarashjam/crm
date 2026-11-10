@@ -70,6 +70,9 @@ public sealed class ClubCatalogService : IClubCatalog
         return (await TiersAsync(organizationId, ct)).FirstOrDefault(t => string.Equals(t.Name, wanted, StringComparison.OrdinalIgnoreCase));
     }
 
+    public Task<string> CurrencyAsync(Guid? organizationId, CancellationToken ct = default) =>
+        WorkspaceCurrencyAsync(organizationId, ct);
+
     public async Task<Result<CatalogItemDto>> ChargeableAsync(Guid? organizationId, Guid id, IReadOnlyCollection<string> kinds, string use, CancellationToken ct = default)
     {
         var found = await GetAsync(organizationId, id, ct);
