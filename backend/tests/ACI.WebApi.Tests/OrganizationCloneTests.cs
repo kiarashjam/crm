@@ -154,6 +154,12 @@ public class OrganizationCloneTests
             new InboundEmail { Id = Guid.NewGuid(), OrganizationId = org.Id, OutboundMessageId = sentEmail.Id, MessageIdHeader = $"<reply-{name}@example.ch>", FromAddress = $"jean@{name}.ch", MatchedBy = "token", ReceivedAtUtc = now },
             new ClubVisit { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, MemberName = "Ana Silva", MemberTier = "Gold", Venue = "Lounge", VisitedAtUtc = now },
             new LoyaltyLedgerEntry { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, MemberName = "Ana Silva", Points = 450, CreatedAtUtc = now },
+            new ConsentRecord
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, SubjectType = ConsentSubjects.Member, SubjectId = member.Id, Channel = ConsentChannels.Email,
+                Purpose = ConsentPurposes.Marketing, Granted = true, Source = ConsentSources.Form, Address = $"ana@{name}.ch", RecordedAtUtc = now,
+                RecordedByUserId = owner, IsCurrent = true,
+            },
             new ClubDocument { Id = Guid.NewGuid(), OrganizationId = org.Id, Kind = "tabs", UpdatedAtUtc = now, Payload = JsonSerializer.Serialize(new { memberId = member.Id.ToString().ToUpperInvariant(), venue = "Bar" }) },
             new LeadStatusEvent { Id = Guid.NewGuid(), LeadId = lead.Id, OrganizationId = org.Id, ToStatus = "Qualified", ChangedByUserId = rep, ChangedAtUtc = now },
             new LeadScoringRule { Id = Guid.NewGuid(), OrganizationId = org.Id, Field = "source", MatchValue = "Website", Points = 10, IsActive = true },
@@ -291,6 +297,8 @@ public class OrganizationCloneTests
         (await db.Attachments.IgnoreQueryFilters().SingleAsync(a => a.OrganizationId == report.CopyId)).Content.Should().Equal("%PDF"u8.ToArray());
 
         var member = await db.ClubMembers.IgnoreQueryFilters().SingleAsync(m => m.OrganizationId == report.CopyId);
+        (await db.ConsentRecords.IgnoreQueryFilters().SingleAsync(c => c.OrganizationId == report.CopyId)).SubjectId
+            .Should().Be(member.Id, "a consent answer belongs to the copied member, not the original");
         (await db.ClubDocuments.IgnoreQueryFilters().SingleAsync(d => d.OrganizationId == report.CopyId)).Payload
             .Should().Contain(member.Id.ToString().ToUpperInvariant(), "an id kept in JSON is the copy's, in the same case");
         var sequence = await db.OutreachSequences.IgnoreQueryFilters().SingleAsync(s => s.OrganizationId == report.CopyId);

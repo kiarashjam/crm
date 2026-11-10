@@ -82,6 +82,9 @@ public partial class AppDbContext : DbContext
     public DbSet<ImportBatch> ImportBatches => Set<ImportBatch>();
     public DbSet<DuplicateDecision> DuplicateDecisions => Set<DuplicateDecision>();
 
+    // Member communications and consent.
+    public DbSet<ConsentRecord> ConsentRecords => Set<ConsentRecord>();
+
     /// <summary>
     /// Whether saving writes audit lines. Off only while an organization is copied: its
     /// history is copied with it, and each copied record would otherwise get a new
