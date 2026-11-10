@@ -67,7 +67,7 @@ public interface ICampaignRepository
 
     /// <summary>
     /// Adds a member message. False when its campaign already has one for that member: the
-    /// unique index refused it, and nothing of it is kept.
+    /// unique index refused it, and nothing of it is kept. Any other failure to save throws.
     /// </summary>
     Task<bool> AddMessageAsync(MemberMessage message, CancellationToken ct = default);
 

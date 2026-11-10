@@ -212,10 +212,17 @@ public sealed class CampaignRepository : ICampaignRepository
         }
         catch (DbUpdateException)
         {
-            // The campaign already has a message for this member (IX_MemberMessages_CampaignId_MemberId):
-            // another sender wrote it first. Left in the unit of work, it would fail every later save.
+            // Left in the unit of work, it would fail every later save.
             _db.Entry(message).State = EntityState.Detached;
-            return false;
+            // The campaign already has a message for this member (IX_MemberMessages_CampaignId_MemberId):
+            // another sender wrote it first. Any other failure (a deadlock, a value the column
+            // cannot hold) is the caller's to hear: read as "already there", the member was left
+            // out of the campaign without a trace, and a message staff wrote was answered as
+            // queued, or logged, with nothing saved.
+            if (message.CampaignId is Guid campaign
+                && await _db.MemberMessages.AsNoTracking().AnyAsync(m => m.CampaignId == campaign && m.MemberId == message.MemberId, ct))
+                return false;
+            throw;
         }
     }
 

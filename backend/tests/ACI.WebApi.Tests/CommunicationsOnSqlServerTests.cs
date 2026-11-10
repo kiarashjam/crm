@@ -180,6 +180,43 @@ public class CommunicationsOnSqlServerTests
     }
 
     [SqlServerFact]
+    public async Task AMessageThatCannotBeSavedIsAFailureNotOneAlreadyThere()
+    {
+        await SqlServerApp.WaitForServerAsync();
+        var database = await SqlServerApp.NewDatabaseAsync();
+        try
+        {
+            using var app = SqlServerApp.Start(database);
+            var org = Guid.NewGuid();
+            var campaign = Guid.NewGuid();
+            using var scope = app.Services.CreateScope();
+            using var acting = scope.ServiceProvider.GetRequiredService<ITenantContext>().ActFor(org, null);
+            var repository = scope.ServiceProvider.GetRequiredService<ICampaignRepository>();
+            MemberMessage Message(Guid? campaignId, string subject) => new()
+            {
+                Id = Guid.NewGuid(), OrganizationId = org, MemberId = Guid.NewGuid(), MemberName = "Anna Dupont", CampaignId = campaignId,
+                Subject = subject, Status = MemberMessageStatuses.Queued, CreatedAtUtc = DateTime.UtcNow,
+            };
+
+            // Refused for something other than the campaign already having the member's message
+            // (here a subject longer than the column): taken for "already there", the member was
+            // left out of the campaign without a trace, and a message staff wrote was answered
+            // as queued with nothing saved.
+            var tooLong = new string('x', 400);
+            await FluentActions.Awaiting(() => repository.AddMessageAsync(Message(campaign, tooLong))).Should().ThrowAsync<DbUpdateException>();
+            await FluentActions.Awaiting(() => repository.AddMessageAsync(Message(null, tooLong))).Should().ThrowAsync<DbUpdateException>();
+
+            // Nothing of them is left in the unit of work to fail the next save.
+            (await repository.AddMessageAsync(Message(campaign, "Gala"))).Should().BeTrue();
+            (await SqlServerApp.ScalarAsync(database, "SELECT COUNT(*) FROM [MemberMessages]")).Should().Be(1);
+        }
+        finally
+        {
+            await SqlServerApp.DropDatabaseAsync(database);
+        }
+    }
+
+    [SqlServerFact]
     public async Task OneConsentAnswerStandsWhenTwoAreRecordedAtOnce()
     {
         await SqlServerApp.WaitForServerAsync();
