@@ -295,7 +295,7 @@ export default function TaskDetail() {
                 <Button variant="outline" onClick={() => setEditing(true)} className={heroSecondary}>
                   <Pencil className="h-4 w-4" /> Edit
                 </Button>
-                <WriteOnly permission={PERMISSION.DeleteRecords}>
+                <WriteOnly permission={[PERMISSION.EditRecords, PERMISSION.DeleteRecords]} all>
                   <Button
                     variant="outline"
                     onClick={() => setDeleteOpen(true)}

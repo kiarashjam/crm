@@ -284,18 +284,21 @@ export default function Reservations() {
   /** Status, edit and delete: the same on a row, a card and a table line. */
   const reservationActions = (r: Reservation) => (
     <div className="flex items-center gap-2">
-      <Select value={r.status} onValueChange={(v) => setStatus(r, v as ReservationStatus)}>
-        <SelectTrigger className="h-9 w-36 text-xs" aria-label={`Status of ${r.memberName}'s booking`}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {RESERVATION_STATUSES.map((s) => (
-            <SelectItem key={s} value={s}>
-              {s}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      {/* Changing a booking's status is the front desk's; everyone else reads it on the badge. */}
+      <WriteOnly permission={PERMISSION.FrontDesk}>
+        <Select value={r.status} onValueChange={(v) => setStatus(r, v as ReservationStatus)}>
+          <SelectTrigger className="h-9 w-36 text-xs" aria-label={`Status of ${r.memberName}'s booking`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {RESERVATION_STATUSES.map((s) => (
+              <SelectItem key={s} value={s}>
+                {s}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </WriteOnly>
       <WriteOnly permission={PERMISSION.FrontDesk}>
         <button
           type="button"
@@ -306,7 +309,7 @@ export default function Reservations() {
           <Pencil className="h-4 w-4" />
         </button>
       </WriteOnly>
-      <WriteOnly permission={PERMISSION.DeleteRecords}>
+      <WriteOnly permission={[PERMISSION.FrontDesk, PERMISSION.DeleteRecords]} all>
         <button
           type="button"
           onClick={() => remove(r)}

@@ -459,7 +459,7 @@ export default function Contacts() {
             )}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <WriteOnly permission={PERMISSION.DeleteRecords}>
+          <WriteOnly permission={[PERMISSION.EditRecords, PERMISSION.DeleteRecords]} all>
             <DropdownMenuItem
               onClick={() => setDeleteConfirmContact(contact)}
               className="text-red-600 focus:text-red-600"

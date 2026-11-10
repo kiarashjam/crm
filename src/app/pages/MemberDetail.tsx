@@ -277,7 +277,7 @@ export default function MemberDetail() {
                     </Link>
                   </Button>
                 </WriteOnly>
-                <WriteOnly permission={PERMISSION.DeleteRecords}>
+                <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.DeleteRecords]} all>
                   <Button
                     variant="outline"
                     onClick={remove}

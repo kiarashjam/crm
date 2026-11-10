@@ -231,7 +231,7 @@ export default function Loyalty() {
 
   /** Delete, the same in every layout. */
   const entryActions = (e: LoyaltyEntry) => (
-    <WriteOnly permission={PERMISSION.DeleteRecords}>
+    <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.DeleteRecords]} all>
       <button
         type="button"
         onClick={() => remove(e)}

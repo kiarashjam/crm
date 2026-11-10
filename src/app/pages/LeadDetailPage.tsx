@@ -943,7 +943,7 @@ export default function LeadDetailPage() {
                         Convert
                       </Button>
                     )}
-                    <WriteOnly permission={PERMISSION.DeleteRecords}>
+                    <WriteOnly permission={[PERMISSION.EditRecords, PERMISSION.DeleteRecords]} all>
                       <Button
                         type="button"
                         variant="outline"
@@ -1265,7 +1265,7 @@ export default function LeadDetailPage() {
                                     ? 'bg-amber-100 text-amber-700'
                                     : 'bg-sky-50 text-sky-600',
                               )}>{t.priority}</span>
-                              <WriteOnly permission={PERMISSION.DeleteRecords}>
+                              <WriteOnly permission={[PERMISSION.EditRecords, PERMISSION.DeleteRecords]} all>
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteTask(t)}

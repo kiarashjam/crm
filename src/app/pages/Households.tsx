@@ -212,15 +212,17 @@ export default function Households() {
   /** Add a member and delete, the same in every layout. */
   const householdActions = (r: HouseholdRollup) => (
     <>
-      <button
-        type="button"
-        onClick={() => openAddMember(r.household.id)}
-        className="rounded p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-        aria-label="Add member"
-      >
-        <UserPlus className="w-4 h-4" />
-      </button>
-      <WriteOnly permission={PERMISSION.DeleteRecords}>
+      <WriteOnly permission={PERMISSION.ClubMembers}>
+        <button
+          type="button"
+          onClick={() => openAddMember(r.household.id)}
+          className="rounded p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+          aria-label="Add member"
+        >
+          <UserPlus className="w-4 h-4" />
+        </button>
+      </WriteOnly>
+      <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.DeleteRecords]} all>
         <button
           type="button"
           onClick={() => removeHousehold(r.household.id, r.household.name)}

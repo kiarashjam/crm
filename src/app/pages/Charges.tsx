@@ -127,9 +127,11 @@ export default function Charges() {
   });
   const [saving, setSaving] = useState(false);
   const [voidingId, setVoidingId] = useState<string | null>(null);
-  // Voiding money is an owner's or a manager's call; the server refuses anyone else.
+  // Voiding takes money.void and, like every change to the club's money, money.manage:
+  // the server refuses anyone without both.
   const org = useOrgOptional();
-  const canVoid = servesDemoData() || (Boolean(org?.currentOrg) && orgCan(org?.currentOrg, PERMISSION.VoidMoney));
+  const canVoid = servesDemoData()
+    || (Boolean(org?.currentOrg) && orgCan(org?.currentOrg, PERMISSION.ManageMoney) && orgCan(org?.currentOrg, PERMISSION.VoidMoney));
 
   const load = async () => {
     try {
@@ -325,9 +327,11 @@ export default function Charges() {
   const chargeActions = (c: Charge) => (
     <div className="flex items-center justify-end gap-1">
       {(c.status === 'Pending' || c.status === 'PartiallyPaid' || c.status === 'Overdue') && (
-        <Button size="sm" variant="outline" onClick={() => openPaymentDialog(c)}>
-          <CreditCard className="w-3.5 h-3.5 mr-1" /> Pay
-        </Button>
+        <WriteOnly permission={PERMISSION.ManageMoney}>
+          <Button size="sm" variant="outline" onClick={() => openPaymentDialog(c)}>
+            <CreditCard className="w-3.5 h-3.5 mr-1" /> Pay
+          </Button>
+        </WriteOnly>
       )}
       {/* A charge with payments against it is voided after them, so no paid money drops out of the balance. */}
       {canVoid && c.status !== 'Voided' && c.paidAmount === 0 && (

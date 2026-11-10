@@ -195,7 +195,7 @@ export default function Visits() {
 
   /** Delete: the same on a row, a card and a table line. */
   const visitActions = (v: Visit) => (
-    <WriteOnly permission={PERMISSION.DeleteRecords}>
+    <WriteOnly permission={[PERMISSION.FrontDesk, PERMISSION.DeleteRecords]} all>
       <button
         type="button"
         onClick={() => remove(v)}

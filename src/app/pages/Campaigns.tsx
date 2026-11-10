@@ -217,17 +217,19 @@ export default function Campaigns() {
   const campaignActions = (c: Campaign) => (
     <div className="flex items-center gap-1.5 shrink-0">
       {c.status !== 'Sent' && c.status !== 'Sending' && (
-        <Button size="sm" onClick={() => send(c)} disabled={sendingId === c.id}>
-          {sendingId === c.id ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          ) : (
-            <>
-              <NotebookPen className="w-3.5 h-3.5 mr-1" /> Log as sent
-            </>
-          )}
-        </Button>
+        <WriteOnly permission={PERMISSION.ClubMembers}>
+          <Button size="sm" onClick={() => send(c)} disabled={sendingId === c.id}>
+            {sendingId === c.id ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <>
+                <NotebookPen className="w-3.5 h-3.5 mr-1" /> Log as sent
+              </>
+            )}
+          </Button>
+        </WriteOnly>
       )}
-      <WriteOnly permission={PERMISSION.DeleteRecords}>
+      <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.DeleteRecords]} all>
         <button
           type="button"
           onClick={() => remove(c)}

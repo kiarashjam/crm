@@ -111,9 +111,11 @@ export default function GiftCards() {
   });
   const [saving, setSaving] = useState(false);
   const [voidingId, setVoidingId] = useState<string | null>(null);
-  // Writing off a card is an owner's or a manager's call; the server refuses anyone else.
+  // Writing off a card takes money.void and money.manage, as voiding a charge does: the
+  // server refuses anyone without both.
   const org = useOrgOptional();
-  const canVoid = servesDemoData() || (Boolean(org?.currentOrg) && orgCan(org?.currentOrg, PERMISSION.VoidMoney));
+  const canVoid = servesDemoData()
+    || (Boolean(org?.currentOrg) && orgCan(org?.currentOrg, PERMISSION.ManageMoney) && orgCan(org?.currentOrg, PERMISSION.VoidMoney));
 
   const load = async () => {
     try {
@@ -302,9 +304,12 @@ export default function GiftCards() {
   const cardActions = (c: GiftCard) =>
     c.status === 'Active' ? (
       <>
-        <Button size="sm" variant="outline" onClick={() => openRedeemDialog(c)}>
-          <CreditCard className="w-3.5 h-3.5 mr-1" /> Redeem
-        </Button>
+        {/* Redeeming is the front desk's or money's; the server refuses anyone else. */}
+        <WriteOnly permission={[PERMISSION.ManageMoney, PERMISSION.FrontDesk]}>
+          <Button size="sm" variant="outline" onClick={() => openRedeemDialog(c)}>
+            <CreditCard className="w-3.5 h-3.5 mr-1" /> Redeem
+          </Button>
+        </WriteOnly>
         {canVoid && <Button
           size="sm"
           variant="outline"
@@ -519,9 +524,11 @@ export default function GiftCards() {
                           <div className="flex gap-2 mt-4">
                             {c.status === 'Active' && (
                               <>
-                                <Button size="sm" variant="outline" onClick={() => openRedeemDialog(c)} className="flex-1">
-                                  <CreditCard className="w-3.5 h-3.5 mr-1" /> Redeem
-                                </Button>
+                                <WriteOnly permission={[PERMISSION.ManageMoney, PERMISSION.FrontDesk]}>
+                                  <Button size="sm" variant="outline" onClick={() => openRedeemDialog(c)} className="flex-1">
+                                    <CreditCard className="w-3.5 h-3.5 mr-1" /> Redeem
+                                  </Button>
+                                </WriteOnly>
                                 {canVoid && <Button
                                   size="sm"
                                   variant="outline"

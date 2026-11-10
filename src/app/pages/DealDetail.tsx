@@ -337,7 +337,7 @@ export default function DealDetail() {
                     </WriteOnly>
                   </>
                 )}
-                <WriteOnly permission={PERMISSION.DeleteRecords}>
+                <WriteOnly permission={[PERMISSION.EditRecords, PERMISSION.DeleteRecords]} all>
                   <Button
                     variant="outline"
                     aria-label="Delete deal"

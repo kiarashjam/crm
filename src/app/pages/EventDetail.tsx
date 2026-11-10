@@ -423,7 +423,7 @@ export default function EventDetail() {
                     </Link>
                   </Button>
                 </WriteOnly>
-                <WriteOnly permission={PERMISSION.DeleteRecords}>
+                <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.DeleteRecords]} all>
                   <Button
                     variant="outline"
                     onClick={removeEvent}
@@ -481,25 +481,29 @@ export default function EventDetail() {
                 browser, before the list moved to the server. Nobody else can see {toUpload.length === 1 ? 'it' : 'them'}{' '}
                 until uploaded.
               </p>
-              <Button size="sm" onClick={uploadFromThisBrowser} disabled={uploading} className="shrink-0">
-                {uploading ? (
-                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                ) : (
-                  <UploadCloud className="w-4 h-4 mr-1" />
-                )}
-                Upload to the server
-              </Button>
+              <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.FrontDesk]}>
+                <Button size="sm" onClick={uploadFromThisBrowser} disabled={uploading} className="shrink-0">
+                  {uploading ? (
+                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                  ) : (
+                    <UploadCloud className="w-4 h-4 mr-1" />
+                  )}
+                  Upload to the server
+                </Button>
+              </WriteOnly>
             </div>
           )}
 
-          {/* Attendee tabs */}
+          {/* Attendee tabs. The guest list is kept by whoever runs the club's members or the door. */}
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-slate-900 inline-flex items-center gap-2">
               <CalendarHeart className="w-4 h-4" /> Attendees
             </h2>
-            <Button onClick={openAdd} size="sm">
-              <Plus className="w-4 h-4 mr-1" /> Add attendee
-            </Button>
+            <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.FrontDesk]}>
+              <Button onClick={openAdd} size="sm">
+                <Plus className="w-4 h-4 mr-1" /> Add attendee
+              </Button>
+            </WriteOnly>
           </div>
 
           <Tabs defaultValue="reserved">
@@ -516,18 +520,22 @@ export default function EventDetail() {
                 renderActions={(a) => (
                   <>
                     {a.status === 'Reserved' && (
-                      <Button size="sm" variant="outline" onClick={() => checkInAttendee(a)}>
-                        <UserCheck className="w-3.5 h-3.5 mr-1" /> Check in
-                      </Button>
+                      <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.FrontDesk]}>
+                        <Button size="sm" variant="outline" onClick={() => checkInAttendee(a)}>
+                          <UserCheck className="w-3.5 h-3.5 mr-1" /> Check in
+                        </Button>
+                      </WriteOnly>
                     )}
                     {a.status === 'CheckedIn' && a.checkedInAtUtc && (
                       <span className="text-xs text-emerald-700 inline-flex items-center gap-1">
                         <Check className="w-3 h-3" /> Checked in {formatDateTime(a.checkedInAtUtc)}
                       </span>
                     )}
-                    <Button size="sm" variant="ghost" onClick={() => cancelAttendee(a)}>
-                      <X className="w-3.5 h-3.5" />
-                    </Button>
+                    <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.FrontDesk]}>
+                      <Button size="sm" variant="ghost" onClick={() => cancelAttendee(a)}>
+                        <X className="w-3.5 h-3.5" />
+                      </Button>
+                    </WriteOnly>
                   </>
                 )}
                 deletingId={deletingId}
@@ -540,14 +548,14 @@ export default function EventDetail() {
                 attendees={waitlisted}
                 emptyText="Waitlist is empty."
                 renderActions={(a) => (
-                  <>
+                  <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.FrontDesk]}>
                     <Button size="sm" variant="outline" onClick={() => promoteFromWaitlist(a)}>
                       <ChevronUp className="w-3.5 h-3.5 mr-1" /> Promote
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => cancelAttendee(a)}>
                       <X className="w-3.5 h-3.5" />
                     </Button>
-                  </>
+                  </WriteOnly>
                 )}
                 deletingId={deletingId}
                 onRemove={removeAttendee}

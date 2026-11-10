@@ -213,7 +213,7 @@ export default function Communications() {
    * invisible icon, so the button was there but could not be seen.
    */
   const communicationActions = (c: Communication) => (
-    <WriteOnly permission={PERMISSION.DeleteRecords}>
+    <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.DeleteRecords]} all>
       <button
         type="button"
         onClick={() => remove(c)}

@@ -191,7 +191,7 @@ export default function Members() {
           <Pencil className="h-4 w-4" />
         </button>
       </WriteOnly>
-      <WriteOnly permission={PERMISSION.DeleteRecords}>
+      <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.DeleteRecords]} all>
         <button
           type="button"
           onClick={() => remove(m)}

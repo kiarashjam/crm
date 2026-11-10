@@ -190,11 +190,13 @@ export default function Donations() {
   const donationActions = (d: Donation) => (
     <>
       {!d.acknowledged && (
-        <Button size="sm" variant="outline" onClick={() => acknowledge(d)}>
-          Acknowledge
-        </Button>
+        <WriteOnly permission={PERMISSION.ManageMoney}>
+          <Button size="sm" variant="outline" onClick={() => acknowledge(d)}>
+            Acknowledge
+          </Button>
+        </WriteOnly>
       )}
-      <WriteOnly permission={PERMISSION.DeleteRecords}>
+      <WriteOnly permission={[PERMISSION.ManageMoney, PERMISSION.DeleteRecords]} all>
         <button
           type="button"
           onClick={() => remove(d)}

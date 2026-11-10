@@ -45,6 +45,19 @@ describe('WriteOnly', () => {
     expect(screen.queryByRole('button', { name: 'Remove guest' })).toBeNull();
   });
 
+  it('with all, needs every one of the list: deleting a club record takes the club area and the delete', () => {
+    // The owner let a sales rep delete; the club's members are still not theirs to change.
+    as([PERMISSION.EditRecords, PERMISSION.DeleteRecords]);
+    const { rerender } = render(
+      <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.DeleteRecords]} all><button type="button">Remove member</button></WriteOnly>,
+    );
+    expect(screen.queryByRole('button', { name: 'Remove member' })).toBeNull();
+
+    as([PERMISSION.ClubMembers, PERMISSION.DeleteRecords]);
+    rerender(<WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.DeleteRecords]} all><button type="button">Remove member</button></WriteOnly>);
+    expect(screen.getByRole('button', { name: 'Remove member' })).toBeInTheDocument();
+  });
+
   it('shows everything outside a workspace provider, and in a personal workspace', () => {
     org.current = null;
     const { rerender } = render(<WriteOnly permission={PERMISSION.VoidMoney}><button type="button">Void</button></WriteOnly>);

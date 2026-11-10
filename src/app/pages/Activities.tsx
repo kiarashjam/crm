@@ -528,7 +528,7 @@ export default function Activities() {
             <Pencil className="w-4 h-4" />
           </Button>
         </WriteOnly>
-        <WriteOnly permission={PERMISSION.DeleteRecords}>
+        <WriteOnly permission={[PERMISSION.EditRecords, PERMISSION.DeleteRecords]} all>
           <Button
             variant="ghost"
             size="sm"

@@ -798,7 +798,7 @@ export default function Pipeline() {
       >
         <Pencil className="h-4 w-4" />
       </Button>
-      <WriteOnly permission={PERMISSION.DeleteRecords}>
+      <WriteOnly permission={[PERMISSION.EditRecords, PERMISSION.DeleteRecords]} all>
         <Button
           variant="ghost"
           size="icon"
@@ -1577,7 +1577,7 @@ export default function Pipeline() {
                       </Button>
                     </>
                   )}
-                  <WriteOnly permission={PERMISSION.DeleteRecords}>
+                  <WriteOnly permission={[PERMISSION.EditRecords, PERMISSION.DeleteRecords]} all>
                     <Button
                       variant="outline"
                       size="sm"

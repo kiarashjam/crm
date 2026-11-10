@@ -158,7 +158,7 @@ function KindCard<T extends { id: string }>({ index, spec, found }: { index: num
           </button>
         ) : <span />}
         {groups.length > 0 && (
-          <WriteOnly permission={PERMISSION.DeleteRecords}>
+          <WriteOnly permission={[PERMISSION.EditRecords, PERMISSION.DeleteRecords]} all>
             <Button size="sm" onClick={() => setOpen(true)} className="bg-gradient-to-r from-orange-500 to-pink-500 text-white hover:from-orange-600 hover:to-pink-600">
               Review & merge
               <ArrowRight />

@@ -351,7 +351,7 @@ export default function ContactDetail() {
                     {contact.isArchived ? 'Unarchive' : 'Archive'}
                   </Button>
                 </WriteOnly>
-                <WriteOnly permission={PERMISSION.DeleteRecords}>
+                <WriteOnly permission={[PERMISSION.EditRecords, PERMISSION.DeleteRecords]} all>
                   <Button
                     variant="outline"
                     onClick={() => setDeleteOpen(true)}

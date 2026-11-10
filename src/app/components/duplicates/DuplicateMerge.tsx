@@ -48,8 +48,11 @@ interface Props<T extends { id: string }> {
 }
 
 export function DuplicateMerge<T extends { id: string }>({ spec, onMerged, className }: Props<T>) {
+  // A merge removes one of the two, so it takes records.delete on top of changing that
+  // kind of record: the club's members and households are club.members', the rest records.edit.
+  const area = spec.kind === 'members' || spec.kind === 'households' ? PERMISSION.ClubMembers : PERMISSION.EditRecords;
   return (
-    <WriteOnly permission={PERMISSION.DeleteRecords}>
+    <WriteOnly permission={[area, PERMISSION.DeleteRecords]} all>
       <DuplicateMergeInner spec={spec} onMerged={onMerged} className={className} />
     </WriteOnly>
   );

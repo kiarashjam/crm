@@ -259,8 +259,9 @@ export default function Applications() {
             : 'flex flex-wrap items-center justify-end gap-1.5'
       }
     >
+      {/* Reviewing applications is for whoever manages the club's members. */}
       {(a.status === 'Submitted' || a.status === 'UnderReview') && (
-        <>
+        <WriteOnly permission={PERMISSION.ClubMembers}>
           <Button
             size="sm"
             onClick={() => startReview(a, 'approve')}
@@ -289,26 +290,30 @@ export default function Applications() {
               <X className="w-3.5 h-3.5" />
             </Button>
           </div>
-        </>
+        </WriteOnly>
       )}
       {a.status === 'Submitted' && (
-        <button
-          type="button"
-          onClick={() => setStatus(a, 'UnderReview')}
-          className="text-xs text-blue-600 hover:underline inline-flex items-center gap-0.5"
-        >
-          Move to review <ChevronRight className="w-3 h-3" />
-        </button>
+        <WriteOnly permission={PERMISSION.ClubMembers}>
+          <button
+            type="button"
+            onClick={() => setStatus(a, 'UnderReview')}
+            className="text-xs text-blue-600 hover:underline inline-flex items-center gap-0.5"
+          >
+            Move to review <ChevronRight className="w-3 h-3" />
+          </button>
+        </WriteOnly>
       )}
       {(a.status === 'Rejected' || a.status === 'Approved' || a.status === 'Waitlisted') && (
-        <button
-          type="button"
-          onClick={() => remove(a)}
-          disabled={busyId === a.id}
-          className="text-xs text-slate-500 hover:text-rose-600 disabled:opacity-50"
-        >
-          Delete record
-        </button>
+        <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.DeleteRecords]} all>
+          <button
+            type="button"
+            onClick={() => remove(a)}
+            disabled={busyId === a.id}
+            className="text-xs text-slate-500 hover:text-rose-600 disabled:opacity-50"
+          >
+            Delete record
+          </button>
+        </WriteOnly>
       )}
     </div>
   );

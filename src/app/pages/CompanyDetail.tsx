@@ -248,7 +248,7 @@ export default function CompanyDetail() {
                     <Pencil className="h-4 w-4" /> Edit
                   </Button>
                 </WriteOnly>
-                <WriteOnly permission={PERMISSION.DeleteRecords}>
+                <WriteOnly permission={[PERMISSION.EditRecords, PERMISSION.DeleteRecords]} all>
                   <Button
                     variant="outline"
                     onClick={() => setDeleteOpen(true)}

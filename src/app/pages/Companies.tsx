@@ -450,7 +450,7 @@ export default function Companies() {
             </DropdownMenuItem>
           )}
           <DropdownMenuSeparator />
-          <WriteOnly permission={PERMISSION.DeleteRecords}>
+          <WriteOnly permission={[PERMISSION.EditRecords, PERMISSION.DeleteRecords]} all>
             <DropdownMenuItem
               onClick={() => setDeleteConfirmCompany(company)}
               className="text-red-600 focus:text-red-600"

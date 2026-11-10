@@ -270,21 +270,24 @@ export default function Events() {
     const atCapacity = e.registeredCount >= e.capacity;
     return (
       <div className={`flex items-center ${inCard ? 'gap-2' : 'gap-1'}`}>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => rsvp(e)}
-          disabled={rsvpId === e.id || e.status !== 'Published'}
-          className={inCard ? 'flex-1' : 'h-8'}
-        >
-          {rsvpId === e.id ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          ) : atCapacity ? (
-            'Join waitlist'
-          ) : (
-            'RSVP'
-          )}
-        </Button>
+        {/* Whoever runs the club's members or the front desk takes bookings. */}
+        <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.FrontDesk]}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => rsvp(e)}
+            disabled={rsvpId === e.id || e.status !== 'Published'}
+            className={inCard ? 'flex-1' : 'h-8'}
+          >
+            {rsvpId === e.id ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : atCapacity ? (
+              'Join waitlist'
+            ) : (
+              'RSVP'
+            )}
+          </Button>
+        </WriteOnly>
         <WriteOnly permission={PERMISSION.ClubMembers}>
           <button
             type="button"
@@ -295,7 +298,7 @@ export default function Events() {
             <Pencil className="h-4 w-4" />
           </button>
         </WriteOnly>
-        <WriteOnly permission={PERMISSION.DeleteRecords}>
+        <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.DeleteRecords]} all>
           <button
             type="button"
             onClick={() => remove(e)}

@@ -192,7 +192,7 @@ export function KanbanTaskCard({
                 </DropdownMenuSub>
               )}
               <DropdownMenuSeparator />
-              <WriteOnly permission={PERMISSION.DeleteRecords}>
+              <WriteOnly permission={[PERMISSION.EditRecords, PERMISSION.DeleteRecords]} all>
                 <DropdownMenuItem onClick={() => handleDelete(task)} className="text-red-600">
                   <Trash2 className="w-4 h-4 mr-2" />
                   Delete
