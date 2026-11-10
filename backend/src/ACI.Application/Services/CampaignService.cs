@@ -563,5 +563,5 @@ public sealed class CampaignService : ICampaignService
     private static readonly Error Changed = new("Campaign.Changed.Conflict", "Someone else changed this campaign at the same moment, so nothing was done. Reload and try again.");
 
     private static Error ChannelUnavailable(string channel) => new("Campaign.ChannelUnavailable",
-        $"{channel} is not available: Cadence has no {(string.Equals(channel, CampaignChannels.Push, StringComparison.OrdinalIgnoreCase) ? "push" : "SMS")} provider. Campaigns go by email.");
+        $"{channel} is not available: CadenceE has no {(string.Equals(channel, CampaignChannels.Push, StringComparison.OrdinalIgnoreCase) ? "push" : "SMS")} provider. Campaigns go by email.");
 }

@@ -220,7 +220,7 @@ public sealed class MemberMessageService : IMemberMessageService
         var row = await _messages.GetMessageAsync(organizationId, id, ct);
         if (row == null) return new Error("MemberMessage.NotFound", "That message was not found.");
         if (row.Status != MemberMessageStatuses.Logged)
-            return new Error("MemberMessage.Kept.Conflict", "Messages Cadence sent, or did not send for a reason, are kept as the record of what went to whom.");
+            return new Error("MemberMessage.Kept.Conflict", "Messages CadenceE sent, or did not send for a reason, are kept as the record of what went to whom.");
         await _messages.RemoveMessageAsync(row, ct);
         return Result.Success();
     }
