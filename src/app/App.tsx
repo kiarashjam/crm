@@ -81,6 +81,7 @@ const ClubPayments = lazy(() => import('@/app/pages/ClubPayments'));
 const HospitalityReports = lazy(() => import('@/app/pages/HospitalityReports'));
 const TabsPage = lazy(() => import('@/app/pages/Tabs'));
 const PosTerminal = lazy(() => import('@/app/pages/PosTerminal'));
+const PosTickets = lazy(() => import('@/app/pages/PosTickets'));
 const HospitalitySettings = lazy(() => import('@/app/pages/HospitalitySettings'));
 const HospitalityDashboard = lazy(() => import('@/app/pages/HospitalityDashboard'));
 const MemberImport = lazy(() => import('@/app/pages/MemberImport'));
@@ -238,6 +239,7 @@ export default function App() {
                     <Route path="/club-reports" element={<HospitalityReports />} />
                     <Route path="/tabs" element={<TabsPage />} />
                     <Route path="/pos" element={<PosTerminal />} />
+                    <Route path="/pos-tickets" element={<PosTickets />} />
                     <Route path="/hospitality-settings" element={<HospitalitySettings />} />
                     <Route path="/hospitality" element={<HospitalityDashboard />} />
                     <Route path="/settings" element={<Settings />} />

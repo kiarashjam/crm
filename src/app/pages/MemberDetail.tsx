@@ -57,6 +57,7 @@ import { PERMISSION } from '@/app/api/organizations';
 import MemberConsentPanel from '@/app/pages/members/MemberConsentPanel';
 import EmailMemberDialog from '@/app/pages/members/EmailMemberDialog';
 import { MemberPaymentsCard } from '@/app/components/payments/MemberPaymentsCard';
+import { MemberCodesCard } from '@/app/components/pos/MemberCodesCard';
 
 const TIER_BADGE: Record<MemberTier, string> = {
   Bronze: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
@@ -380,6 +381,9 @@ export default function MemberDetail() {
 
                 {/* Their lead and contact on the sales side, how they joined, and their household. */}
                 <MemberLinksCard memberId={member.id} />
+
+                {/* What names them on a POS ticket: a member number, their card's code, a POS customer. */}
+                <MemberCodesCard memberId={member.id} />
 
                 <SectionCard
                   title="Upcoming"
