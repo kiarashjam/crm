@@ -11,7 +11,12 @@ import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { ContentSkeleton } from '@/app/components/PageSkeleton';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { getActivities, getActivitiesPaged, createActivity, updateActivity, deleteActivity, getContacts, getDeals, getLeads, getActivitiesByContact, getActivitiesByDeal, getActivitiesByLead, messages } from '@/app/api';
+import { getActivities, createActivity, updateActivity, deleteActivity, messages } from '@/app/api';
+import {
+  activitiesPageKey, recordActivitiesKey, useActivitiesPage, useAllContacts, useAllDeals, useAllLeads, useCacheWriter,
+  useRecordActivities, useWorkspaceScope,
+} from '@/app/hooks/queries';
+import { LoadFailed } from '@/app/components/LoadFailed';
 import type { Activity, Contact, Deal, Lead, PagedResult } from '@/app/api/types';
 import { downloadCsv } from '@/app/lib/exportCsv';
 import { activityCsvColumns, printActivitiesPdf, activityTypeLabel } from '@/app/lib/exportActivities';
@@ -90,15 +95,14 @@ const EMPTY_FORM: {
   facts: ActivityFactsDraft;
 } = { type: 'note', subject: '', body: '', contactId: '', dealId: '', participants: '', facts: EMPTY_FACTS };
 
+const NO_ACTIVITIES: Activity[] = [];
+const NO_CONTACTS: Contact[] = [];
+const NO_DEALS: Deal[] = [];
+const NO_LEADS: Lead[] = [];
+
 export default function Activities() {
   const money = useMoney();
   const navigate = useNavigate();
-  const [activities, setActivities] = useState<Activity[]>([]);
-  const [contacts, setContacts] = useState<Contact[]>([]);
-  const [deals, setDeals] = useState<Deal[]>([]);
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [loading, setLoading] = useState(true);
-  usePageLoading(loading);
   const [filter, setFilter] = useState<ActivityFilter>('all');
   const [filterContactId, setFilterContactId] = useState('');
   const [filterDealId, setFilterDealId] = useState('');
@@ -117,7 +121,6 @@ export default function Activities() {
   // Pagination state
   const [page, setPage] = useState(1);
   const [pageSize] = useState(20);
-  const [pagedResult, setPagedResult] = useState<PagedResult<Activity> | null>(null);
 
   // Debounce search query
   useEffect(() => {
@@ -133,113 +136,43 @@ export default function Activities() {
     setPage(1);
   }, [filterType]);
 
-  const loadData = () => {
-    setLoading(true);
-    if (filter === 'contact' && filterContactId) {
-      getActivitiesByContact(filterContactId)
-        .then(data => {
-          setActivities(data);
-          setPagedResult(null);
-        })
-        .catch(() => toast.error(messages.errors.loadFailed))
-        .finally(() => setLoading(false));
-    } else if (filter === 'deal' && filterDealId) {
-      getActivitiesByDeal(filterDealId)
-        .then(data => {
-          setActivities(data);
-          setPagedResult(null);
-        })
-        .catch(() => toast.error(messages.errors.loadFailed))
-        .finally(() => setLoading(false));
-    } else if (filter === 'lead' && filterLeadId) {
-      getActivitiesByLead(filterLeadId)
-        .then(data => {
-          setActivities(data);
-          setPagedResult(null);
-        })
-        .catch(() => toast.error(messages.errors.loadFailed))
-        .finally(() => setLoading(false));
+  // One read at a time: a record's activities when the list is narrowed to one, else a
+  // page of everyone's. Each through the shared cache, cancelled when the filter or page
+  // moves on (an older answer used to be able to land over a newer one's list).
+  const recordKind = filter === 'contact' && filterContactId ? 'contact'
+    : filter === 'deal' && filterDealId ? 'deal'
+      : filter === 'lead' && filterLeadId ? 'lead'
+        : null;
+  const recordId = recordKind === 'contact' ? filterContactId : recordKind === 'deal' ? filterDealId : recordKind === 'lead' ? filterLeadId : '';
+  const pageParams = useMemo(() => ({
+    page, pageSize, search: debouncedSearch || undefined, type: filterType !== 'all' ? filterType : undefined,
+  }), [page, pageSize, debouncedSearch, filterType]);
+  const recordQuery = useRecordActivities(recordKind ?? 'lead', recordKind ? recordId : null);
+  const pageQuery = useActivitiesPage(pageParams, !recordKind);
+  const listQuery = recordKind ? recordQuery : pageQuery;
+  const pagedResult: PagedResult<Activity> | null = recordKind ? null : pageQuery.data ?? null;
+  const activities: Activity[] = useMemo(
+    () => (recordKind ? recordQuery.data : pageQuery.data?.items) ?? NO_ACTIVITIES,
+    [recordKind, recordQuery.data, pageQuery.data],
+  );
+  const loading = listQuery.isPending;
+  usePageLoading(loading);
+
+  const ws = useWorkspaceScope();
+  const writeCache = useCacheWriter();
+  /** Show a change in the list at once; the read after the save confirms it. */
+  const setActivities = (update: (prev: Activity[]) => Activity[]) => {
+    if (recordKind) {
+      writeCache<Activity[]>(recordActivitiesKey(ws, recordKind, recordId), (current) => update(current ?? []));
     } else {
-      getActivitiesPaged({ 
-        page, 
-        pageSize, 
-        search: debouncedSearch || undefined,
-        type: filterType !== 'all' ? filterType : undefined
-      })
-        .then(result => {
-          setActivities(result.items);
-          setPagedResult(result);
-        })
-        .catch(() => toast.error(messages.errors.loadFailed))
-        .finally(() => setLoading(false));
+      writeCache<PagedResult<Activity>>(activitiesPageKey(ws, pageParams), (current) => current && { ...current, items: update(current.items) });
     }
   };
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    
-    if (filter === 'contact' && filterContactId) {
-      getActivitiesByContact(filterContactId)
-        .then((data) => { 
-          if (!cancelled) {
-            setActivities(data);
-            setPagedResult(null);
-          }
-        })
-        .catch(() => { if (!cancelled) toast.error(messages.errors.loadFailed); })
-        .finally(() => { if (!cancelled) setLoading(false); });
-    } else if (filter === 'deal' && filterDealId) {
-      getActivitiesByDeal(filterDealId)
-        .then((data) => { 
-          if (!cancelled) {
-            setActivities(data);
-            setPagedResult(null);
-          }
-        })
-        .catch(() => { if (!cancelled) toast.error(messages.errors.loadFailed); })
-        .finally(() => { if (!cancelled) setLoading(false); });
-    } else if (filter === 'lead' && filterLeadId) {
-      getActivitiesByLead(filterLeadId)
-        .then((data) => { 
-          if (!cancelled) {
-            setActivities(data);
-            setPagedResult(null);
-          }
-        })
-        .catch(() => { if (!cancelled) toast.error(messages.errors.loadFailed); })
-        .finally(() => { if (!cancelled) setLoading(false); });
-    } else {
-      getActivitiesPaged({ 
-        page, 
-        pageSize, 
-        search: debouncedSearch || undefined,
-        type: filterType !== 'all' ? filterType : undefined
-      })
-        .then((result) => { 
-          if (!cancelled) {
-            setActivities(result.items);
-            setPagedResult(result);
-          }
-        })
-        .catch(() => { if (!cancelled) toast.error(messages.errors.loadFailed); })
-        .finally(() => { if (!cancelled) setLoading(false); });
-    }
-    
-    return () => { cancelled = true; };
-  }, [filter, filterContactId, filterDealId, filterLeadId, page, pageSize, debouncedSearch, filterType]);
-
-  useEffect(() => {
-    let cancelled = false;
-    Promise.all([getContacts(), getDeals(), getLeads()]).then(([c, d, l]) => {
-      if (!cancelled) {
-        setContacts(c);
-        setDeals(d);
-        setLeads(l);
-      }
-    });
-    return () => { cancelled = true; };
-  }, []);
+  // The pickers in the log dialog. Each fails on its own and leaves its picker empty.
+  const contacts: Contact[] = useAllContacts().data ?? NO_CONTACTS;
+  const deals: Deal[] = useAllDeals().data ?? NO_DEALS;
+  const leads: Lead[] = useAllLeads().data ?? NO_LEADS;
 
   // Calculate activity statistics
   const activityStats = useMemo(() => {
@@ -359,7 +292,6 @@ export default function Activities() {
           toast.success(messages.success.activityLogged);
           setDialogOpen(false);
           setForm(EMPTY_FORM);
-          if (filter !== 'all') loadData();
         } else {
           toast.error(messages.errors.generic);
         }
@@ -947,6 +879,13 @@ export default function Activities() {
 
         {loading ? (
           <ContentSkeleton rows={6} />
+        ) : listQuery.isError && !listQuery.data ? (
+          <LoadFailed
+            what="Activities"
+            error={listQuery.error}
+            onRetry={() => { void listQuery.refetch(); }}
+            retrying={listQuery.isFetching}
+          />
         ) : activities.length === 0 ? (
           /* Enhanced Empty State */
           <div className="w-full">
