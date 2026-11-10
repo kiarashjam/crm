@@ -880,6 +880,9 @@ export default function Activities() {
           )}
         </div>
 
+        {!loading && listQuery.isError && listQuery.data !== undefined && (
+          <LoadFailed stale what="Activities" error={listQuery.error} onRetry={() => { void listQuery.refetch(); }} retrying={listQuery.isFetching} className="mb-4" />
+        )}
         {loading ? (
           <ContentSkeleton rows={6} />
         ) : listQuery.isError && !listQuery.data ? (
