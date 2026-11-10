@@ -149,6 +149,8 @@ public class PrivateDealsTests
             db.Activities.Add(new Activity { Id = Guid.NewGuid(), UserId = owner.Id, OrganizationId = org.Id, Type = "call", DealId = dealId, CreatedAtUtc = now });
         }
         await db.SaveChangesAsync();
+        // As the requests do: they read as the organization.
+        using var acting = db.ActFor(org.Id, rep.Id);
         var tasks = new TaskRepository(db);
         var activities = new ActivityRepository(db);
 

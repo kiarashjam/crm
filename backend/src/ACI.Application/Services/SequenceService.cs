@@ -66,19 +66,22 @@ public sealed class SequenceService : ISequenceService
     private readonly IActivityService _activities;
     private readonly ITaskService _tasks;
     private readonly ILogger<SequenceService> _logger;
+    private readonly ITenantContext? _tenant;
 
     public SequenceService(
         ISequenceRepository sequences,
         IOutbox outbox,
         IActivityService activities,
         ITaskService tasks,
-        ILogger<SequenceService> logger)
+        ILogger<SequenceService> logger,
+        ITenantContext? tenant = null)
     {
         _sequences = sequences;
         _outbox = outbox;
         _activities = activities;
         _tasks = tasks;
         _logger = logger;
+        _tenant = tenant;
     }
 
     public async Task<IReadOnlyList<SequenceDto>> ListAsync(Guid? organizationId, CancellationToken ct = default) =>
@@ -201,6 +204,10 @@ public sealed class SequenceService : ISequenceService
         foreach (var enrollment in due)
         {
             if (enrollment.NextActionAtUtc is not { } dueAt) continue;
+            // The runner works for every workspace and starts in none. Each step reads and
+            // writes as its enrollment's workspace: acting for none, the sequence would read
+            // as gone and the enrollment would be stopped.
+            using var acting = _tenant?.ActFor(enrollment.OrganizationId, enrollment.EnrolledByUserId);
             // Exactly one runner gets each step. Another instance that read the same
             // row moves on; so does this one, if it lost.
             var claimedUntil = now.Add(ClaimFor);

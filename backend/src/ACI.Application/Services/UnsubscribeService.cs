@@ -35,19 +35,22 @@ public sealed class UnsubscribeService : IUnsubscribeService
     private readonly IContactRepository _contacts;
     private readonly ISequenceRepository _sequences;
     private readonly ILogger<UnsubscribeService> _logger;
+    private readonly ITenantContext? _tenant;
 
     public UnsubscribeService(
         IUnsubscribeLinks links,
         IOrganizationRepository organizations,
         IContactRepository contacts,
         ISequenceRepository sequences,
-        ILogger<UnsubscribeService> logger)
+        ILogger<UnsubscribeService> logger,
+        ITenantContext? tenant = null)
     {
         _links = links;
         _organizations = organizations;
         _contacts = contacts;
         _sequences = sequences;
         _logger = logger;
+        _tenant = tenant;
     }
 
     public async Task<UnsubscribeDto?> PreviewAsync(string token, CancellationToken ct = default)
@@ -62,6 +65,8 @@ public sealed class UnsubscribeService : IUnsubscribeService
         if (!_links.TryRead(token, out var organizationId, out var email)) return null;
         var workspace = await _organizations.GetByIdAsync(organizationId, ct);
         if (workspace == null) return null;
+        // The person unsubscribing signs in to nothing; the signed link names the workspace.
+        using var acting = _tenant?.ActFor(organizationId, workspace.OwnerUserId);
 
         var marked = await _contacts.MarkDoNotContactAsync(organizationId, email, workspace.OwnerUserId, ct);
         // The runner would stop these at their next step anyway; stopping them now

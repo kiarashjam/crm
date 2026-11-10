@@ -26,7 +26,8 @@ public static class ContactMatchKeys
         var filled = 0;
         while (true)
         {
-            var rows = await db.Contacts.Where(c => c.NameKey == null).OrderBy(c => c.Id).Take(Batch).ToListAsync(ct);
+            // Every workspace's contacts: this runs at start-up, acting for none.
+            var rows = await db.Contacts.IgnoreQueryFilters().Where(c => c.NameKey == null).OrderBy(c => c.Id).Take(Batch).ToListAsync(ct);
             if (rows.Count == 0) return filled;
             foreach (var contact in rows)
             {

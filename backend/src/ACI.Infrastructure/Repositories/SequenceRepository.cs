@@ -123,8 +123,11 @@ public sealed class SequenceRepository : ISequenceRepository
         return open.Count;
     }
 
+    // Every workspace's due steps: one runner sends for all of them, acting for each
+    // enrollment's workspace as it runs its step (SequenceService.RunDueAsync).
     public async Task<IReadOnlyList<OutreachEnrollment>> DueAsync(DateTime utcNow, int take, CancellationToken ct = default) =>
         await _db.OutreachEnrollments
+            .IgnoreQueryFilters()
             .Where(e => e.Status == "active" && e.NextActionAtUtc != null && e.NextActionAtUtc <= utcNow)
             .OrderBy(e => e.NextActionAtUtc)
             .Take(take)

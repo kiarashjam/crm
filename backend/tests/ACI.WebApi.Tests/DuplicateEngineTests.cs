@@ -282,12 +282,13 @@ public class DuplicateEngineTests
             db.Contacts.Add(new Contact { Id = Guid.NewGuid(), UserId = user.Id, Name = $"Person {i}", Email = $"p{i}@example.ch", Phone = "+41 79 000 00 01", CreatedAtUtc = DateTime.UtcNow });
         await db.SaveChangesAsync();
         // As a database from before the columns, where no save had written them.
-        await db.Contacts.ExecuteUpdateAsync(s => s.SetProperty(c => c.NameKey, (string?)null).SetProperty(c => c.PhoneKey, (string?)null));
+        // Start-up acts for no workspace, so these go past the workspace filters as it does.
+        await db.Contacts.IgnoreQueryFilters().ExecuteUpdateAsync(s => s.SetProperty(c => c.NameKey, (string?)null).SetProperty(c => c.PhoneKey, (string?)null));
         db.ChangeTracker.Clear();
 
         (await ContactMatchKeys.FillMissingAsync(db)).Should().Be(1200);
         (await ContactMatchKeys.FillMissingAsync(db)).Should().Be(0, "the next start has nothing left to do");
-        (await db.Contacts.CountAsync(c => c.NameKey == null || c.PhoneKey != "790000001")).Should().Be(0);
+        (await db.Contacts.IgnoreQueryFilters().CountAsync(c => c.NameKey == null || c.PhoneKey != "790000001")).Should().Be(0);
     }
 
     [Fact]

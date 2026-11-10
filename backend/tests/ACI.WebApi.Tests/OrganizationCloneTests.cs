@@ -165,6 +165,11 @@ public class OrganizationCloneTests
         return new Seeded(org.Id, owner, manager, rep, lead.Id, deal.Id, contact.Id, member.Id, rule.Id, sequence.Id);
     }
 
+    /// <remarks>
+    /// The context is the app's, filtered to a workspace, and acts for none, as the clone
+    /// tool's does; so the cloner must read past the filters itself. What the tests check
+    /// afterwards they read across workspaces (IgnoreQueryFilters).
+    /// </remarks>
     private static async Task<(SqliteConnection Connection, AppDbContext Db, Seeded Original, Seeded Other, Guid Personal)> WorldAsync()
     {
         var connection = new SqliteConnection("DataSource=:memory:");
@@ -192,8 +197,8 @@ public class OrganizationCloneTests
 
     private static Task<int> CountOf<T>(AppDbContext db, Guid org) where T : class =>
         db.Model.FindEntityType(typeof(T))!.FindProperty("OrganizationId")!.IsNullable
-            ? db.Set<T>().CountAsync(r => EF.Property<Guid?>(r, "OrganizationId") == org)
-            : db.Set<T>().CountAsync(r => EF.Property<Guid>(r, "OrganizationId") == org);
+            ? db.Set<T>().IgnoreQueryFilters().CountAsync(r => EF.Property<Guid?>(r, "OrganizationId") == org)
+            : db.Set<T>().IgnoreQueryFilters().CountAsync(r => EF.Property<Guid>(r, "OrganizationId") == org);
 
     [Fact]
     public void EveryTableIsCopiedOrLeftOutOnPurpose()
@@ -227,7 +232,7 @@ public class OrganizationCloneTests
 
         (await cloner.VerifyAsync(report)).Should().BeEmpty();
         var copy = await CountsAsync(db, report.CopyId);
-        (await db.JoinRequests.CountAsync(r => r.OrganizationId == report.CopyId)).Should().Be(0, "requests to join the original stay with it");
+        (await db.JoinRequests.IgnoreQueryFilters().CountAsync(r => r.OrganizationId == report.CopyId)).Should().Be(0, "requests to join the original stay with it");
         report.RowsLeftOut["JoinRequests"].Should().Be(1);
         copy["Invites"].Should().Be(1, "only the pending invitation; the accepted one brought someone in already");
         copy.Where(c => c.Key != "Invites").Should().Equal(originalBefore.Where(c => c.Key != "Invites"));
@@ -236,7 +241,7 @@ public class OrganizationCloneTests
 
         (await CountsAsync(db, original.Org)).Should().Equal(originalBefore, "the original is not changed");
         (await CountsAsync(db, other.Org)).Should().Equal(otherBefore, "another organization is not touched");
-        (await db.Leads.CountAsync(l => l.OrganizationId == null)).Should().Be(1, "personal records stay personal");
+        (await db.Leads.IgnoreQueryFilters().CountAsync(l => l.OrganizationId == null)).Should().Be(1, "personal records stay personal");
     }
 
     [Fact]
@@ -248,14 +253,14 @@ public class OrganizationCloneTests
 
         var report = await new OrganizationCloner(db).CloneAsync(original.Org, "Pavillon 46 v2");
 
-        var org = await db.Organizations.SingleAsync(o => o.Id == report.CopyId);
+        var org = await db.Organizations.IgnoreQueryFilters().SingleAsync(o => o.Id == report.CopyId);
         org.Name.Should().Be("Pavillon 46 v2");
         org.OwnerUserId.Should().Be(original.Owner);
-        (await db.OrganizationMembers.Where(m => m.OrganizationId == report.CopyId).OrderBy(m => m.Role).Select(m => new { m.UserId, m.Role }).ToListAsync())
-            .Should().BeEquivalentTo(await db.OrganizationMembers.Where(m => m.OrganizationId == original.Org).OrderBy(m => m.Role).Select(m => new { m.UserId, m.Role }).ToListAsync());
-        var lead = await db.Leads.SingleAsync(l => l.OrganizationId == report.CopyId);
+        (await db.OrganizationMembers.IgnoreQueryFilters().Where(m => m.OrganizationId == report.CopyId).OrderBy(m => m.Role).Select(m => new { m.UserId, m.Role }).ToListAsync())
+            .Should().BeEquivalentTo(await db.OrganizationMembers.IgnoreQueryFilters().Where(m => m.OrganizationId == original.Org).OrderBy(m => m.Role).Select(m => new { m.UserId, m.Role }).ToListAsync());
+        var lead = await db.Leads.IgnoreQueryFilters().SingleAsync(l => l.OrganizationId == report.CopyId);
         lead.AssignedToUserId.Should().Be(original.Rep, "people are shared, not copied");
-        (await db.Users.CountAsync()).Should().Be(4);
+        (await db.Users.IgnoreQueryFilters().CountAsync()).Should().Be(4);
     }
 
     [Fact]
@@ -267,33 +272,33 @@ public class OrganizationCloneTests
 
         var report = await new OrganizationCloner(db).CloneAsync(original.Org, "Pavillon 46 v2");
 
-        var lead = await db.Leads.SingleAsync(l => l.OrganizationId == report.CopyId);
-        var deal = await db.Deals.SingleAsync(d => d.OrganizationId == report.CopyId);
-        var contact = await db.Contacts.SingleAsync(c => c.OrganizationId == report.CopyId && c.Name == "Jean Dupont");
+        var lead = await db.Leads.IgnoreQueryFilters().SingleAsync(l => l.OrganizationId == report.CopyId);
+        var deal = await db.Deals.IgnoreQueryFilters().SingleAsync(d => d.OrganizationId == report.CopyId);
+        var contact = await db.Contacts.IgnoreQueryFilters().SingleAsync(c => c.OrganizationId == report.CopyId && c.Name == "Jean Dupont");
         new[] { lead.Id, deal.Id, contact.Id }.Should().NotIntersectWith(new[] { original.Lead, original.Deal, original.Contact });
         lead.ConvertedToDealId.Should().Be(deal.Id, "the converted lead's loop is rebuilt between the copies");
         lead.ConvertedToContactId.Should().Be(contact.Id);
         deal.ContactId.Should().Be(contact.Id);
         contact.ConvertedFromLeadId.Should().Be(lead.Id);
-        var couple = await db.ContactRelationships.SingleAsync(r => r.OrganizationId == report.CopyId);
+        var couple = await db.ContactRelationships.IgnoreQueryFilters().SingleAsync(r => r.OrganizationId == report.CopyId);
         couple.ContactId.Should().Be(contact.Id, "a relationship links the copied people, not the originals");
-        (await db.Contacts.SingleAsync(c => c.Id == couple.RelatedContactId)).OrganizationId.Should().Be(report.CopyId);
+        (await db.Contacts.IgnoreQueryFilters().SingleAsync(c => c.Id == couple.RelatedContactId)).OrganizationId.Should().Be(report.CopyId);
         deal.IsPrivate.Should().BeTrue();
-        var stage = await db.DealStages.SingleAsync(s => s.Id == deal.DealStageId);
-        (await db.Pipelines.SingleAsync(p => p.Id == stage.PipelineId)).OrganizationId.Should().Be(report.CopyId);
-        (await db.DealLineItems.SingleAsync(i => i.DealId == deal.Id)).UnitPrice.Should().Be(12000);
-        (await db.Attachments.SingleAsync(a => a.OrganizationId == report.CopyId)).RecordId.Should().Be(deal.Id);
-        (await db.Attachments.SingleAsync(a => a.OrganizationId == report.CopyId)).Content.Should().Equal("%PDF"u8.ToArray());
+        var stage = await db.DealStages.IgnoreQueryFilters().SingleAsync(s => s.Id == deal.DealStageId);
+        (await db.Pipelines.IgnoreQueryFilters().SingleAsync(p => p.Id == stage.PipelineId)).OrganizationId.Should().Be(report.CopyId);
+        (await db.DealLineItems.IgnoreQueryFilters().SingleAsync(i => i.DealId == deal.Id)).UnitPrice.Should().Be(12000);
+        (await db.Attachments.IgnoreQueryFilters().SingleAsync(a => a.OrganizationId == report.CopyId)).RecordId.Should().Be(deal.Id);
+        (await db.Attachments.IgnoreQueryFilters().SingleAsync(a => a.OrganizationId == report.CopyId)).Content.Should().Equal("%PDF"u8.ToArray());
 
-        var member = await db.ClubMembers.SingleAsync(m => m.OrganizationId == report.CopyId);
-        (await db.ClubDocuments.SingleAsync(d => d.OrganizationId == report.CopyId)).Payload
+        var member = await db.ClubMembers.IgnoreQueryFilters().SingleAsync(m => m.OrganizationId == report.CopyId);
+        (await db.ClubDocuments.IgnoreQueryFilters().SingleAsync(d => d.OrganizationId == report.CopyId)).Payload
             .Should().Contain(member.Id.ToString().ToUpperInvariant(), "an id kept in JSON is the copy's, in the same case");
-        var sequence = await db.OutreachSequences.SingleAsync(s => s.OrganizationId == report.CopyId);
-        var rule = await db.AutomationRules.SingleAsync(r => r.OrganizationId == report.CopyId);
+        var sequence = await db.OutreachSequences.IgnoreQueryFilters().SingleAsync(s => s.OrganizationId == report.CopyId);
+        var rule = await db.AutomationRules.IgnoreQueryFilters().SingleAsync(r => r.OrganizationId == report.CopyId);
         rule.ActionsJson.Should().Contain(sequence.Id.ToString()).And.Contain(original.Rep.ToString(), "the person stays the same person");
-        (await db.AutomationFires.SingleAsync(f => f.RuleId == rule.Id)).SourceKey.Should().Be(lead.Id.ToString(), "what already fired for the lead counts as fired for its copy");
-        var task = await db.TaskItems.SingleAsync(t => t.OrganizationId == report.CopyId);
-        (await db.Notifications.Where(n => n.OrganizationId == report.CopyId).Select(n => n.Link).ToListAsync()).Should().Contain($"/tasks/{task.Id}");
+        (await db.AutomationFires.IgnoreQueryFilters().SingleAsync(f => f.RuleId == rule.Id)).SourceKey.Should().Be(lead.Id.ToString(), "what already fired for the lead counts as fired for its copy");
+        var task = await db.TaskItems.IgnoreQueryFilters().SingleAsync(t => t.OrganizationId == report.CopyId);
+        (await db.Notifications.IgnoreQueryFilters().Where(n => n.OrganizationId == report.CopyId).Select(n => n.Link).ToListAsync()).Should().Contain($"/tasks/{task.Id}");
     }
 
     [Fact]
@@ -305,12 +310,12 @@ public class OrganizationCloneTests
         var (connection, db, original, _, _) = await WorldAsync();
         using var _c = connection;
         await using var _d = db;
-        await db.Deals.Where(d => d.Id == original.Deal)
+        await db.Deals.IgnoreQueryFilters().Where(d => d.Id == original.Deal)
             .ExecuteUpdateAsync(set => set.SetProperty(d => d.Value, "CHF 12,000 + VAT").SetProperty(d => d.Amount, 12000m));
 
         var report = await new OrganizationCloner(db).CloneAsync(original.Org, "Pavillon 46 v2");
 
-        var copy = await db.Deals.AsNoTracking().SingleAsync(d => d.OrganizationId == report.CopyId);
+        var copy = await db.Deals.IgnoreQueryFilters().AsNoTracking().SingleAsync(d => d.OrganizationId == report.CopyId);
         copy.Value.Should().Be("CHF 12,000 + VAT");
         copy.Amount.Should().Be(12000m);
     }
@@ -321,37 +326,37 @@ public class OrganizationCloneTests
         var (connection, db, original, _, _) = await WorldAsync();
         using var _c = connection;
         await using var _d = db;
-        var originalOrg = await db.Organizations.AsNoTracking().SingleAsync(o => o.Id == original.Org);
+        var originalOrg = await db.Organizations.IgnoreQueryFilters().AsNoTracking().SingleAsync(o => o.Id == original.Org);
 
         var report = await new OrganizationCloner(db).CloneAsync(original.Org, "Pavillon 46 v2");
 
-        var org = await db.Organizations.SingleAsync(o => o.Id == report.CopyId);
+        var org = await db.Organizations.IgnoreQueryFilters().SingleAsync(o => o.Id == report.CopyId);
         new[] { org.WebhookApiKeyHash, org.WebhookPassword, org.OutboundWebhookUrl, org.OutboundWebhookSecret, org.McpApiKeyHash }
             .Should().OnlyContain(v => v == null, "a copied MCP key would open both workspaces, whichever the lookup found first");
         org.McpApiKeyCreatedAtUtc.Should().BeNull();
-        (await db.OutreachEnrollments.Where(e => e.OrganizationId == report.CopyId).Select(e => e.Status).ToListAsync())
+        (await db.OutreachEnrollments.IgnoreQueryFilters().Where(e => e.OrganizationId == report.CopyId).Select(e => e.Status).ToListAsync())
             .Should().BeEquivalentTo(["paused", "stopped"]);
-        var contract = await db.Set<Contract>().SingleAsync(c => c.OrganizationId == report.CopyId);
+        var contract = await db.Set<Contract>().IgnoreQueryFilters().SingleAsync(c => c.OrganizationId == report.CopyId);
         contract.SigningTokenHash.Should().BeNull("the signer's link opens the original");
         contract.ReminderSentAtUtc.Should().NotBeNull("the signer is not reminded a second time");
         contract.Body.Should().NotContain(original.Deal.ToString());
-        (await db.TaskItems.SingleAsync(t => t.OrganizationId == report.CopyId)).ReminderSentAtUtc.Should().NotBeNull();
-        (await db.LeadCaptureForms.Where(f => f.OrganizationId != null).Select(f => f.PublicToken).ToListAsync()).Should().OnlyHaveUniqueItems();
-        (await db.Notifications.Where(n => n.OrganizationId == report.CopyId).Select(n => n.SourceKey).ToListAsync()).Should().Contain((string?)null);
+        (await db.TaskItems.IgnoreQueryFilters().SingleAsync(t => t.OrganizationId == report.CopyId)).ReminderSentAtUtc.Should().NotBeNull();
+        (await db.LeadCaptureForms.IgnoreQueryFilters().Where(f => f.OrganizationId != null).Select(f => f.PublicToken).ToListAsync()).Should().OnlyHaveUniqueItems();
+        (await db.Notifications.IgnoreQueryFilters().Where(n => n.OrganizationId == report.CopyId).Select(n => n.SourceKey).ToListAsync()).Should().Contain((string?)null);
         // An event still queued in the original is posted once, from the original; replies
         // and delivery reports name the original's Message-ID and reply address.
-        var copiedMessages = await db.OutboundMessages.Where(m => m.OrganizationId == report.CopyId).ToListAsync();
+        var copiedMessages = await db.OutboundMessages.IgnoreQueryFilters().Where(m => m.OrganizationId == report.CopyId).ToListAsync();
         copiedMessages.Single(m => m.Channel == OutboundChannels.Webhook).Status.Should().Be(OutboundStatuses.Cancelled);
         var copiedEmail = copiedMessages.Single(m => m.Channel == OutboundChannels.Email);
         copiedEmail.MessageIdHeader.Should().Be($"<{copiedEmail.Id:N}@pavillon46.ch>");
         copiedEmail.ReplyToken.Should().BeNull();
-        (await db.OutboundMessages.CountAsync(m => m.OrganizationId == original.Org && m.Status == OutboundStatuses.Queued)).Should().Be(1);
+        (await db.OutboundMessages.IgnoreQueryFilters().CountAsync(m => m.OrganizationId == original.Org && m.Status == OutboundStatuses.Queued)).Should().Be(1);
 
         // The original is exactly as it was.
-        var after = await db.Organizations.AsNoTracking().SingleAsync(o => o.Id == original.Org);
+        var after = await db.Organizations.IgnoreQueryFilters().AsNoTracking().SingleAsync(o => o.Id == original.Org);
         after.Should().BeEquivalentTo(originalOrg);
-        (await db.OutreachEnrollments.CountAsync(e => e.OrganizationId == original.Org && e.Status == "active")).Should().Be(1);
-        (await db.Set<Contract>().SingleAsync(c => c.OrganizationId == original.Org)).SigningTokenHash.Should().NotBeNull();
+        (await db.OutreachEnrollments.IgnoreQueryFilters().CountAsync(e => e.OrganizationId == original.Org && e.Status == "active")).Should().Be(1);
+        (await db.Set<Contract>().IgnoreQueryFilters().SingleAsync(c => c.OrganizationId == original.Org)).SigningTokenHash.Should().NotBeNull();
     }
 
     [Fact]
@@ -362,13 +367,13 @@ public class OrganizationCloneTests
         var (connection, db, original, _, _) = await WorldAsync();
         using var _c = connection;
         await using var _d = db;
-        var organizations = await db.Organizations.CountAsync();
+        var organizations = await db.Organizations.IgnoreQueryFilters().CountAsync();
         var before = await CountsAsync(db, original.Org);
         var cloner = new OrganizationCloner(db);
 
         var plan = await cloner.PlanAsync(original.Org);
 
-        (await db.Organizations.CountAsync()).Should().Be(organizations, "planning makes no copy");
+        (await db.Organizations.IgnoreQueryFilters().CountAsync()).Should().Be(organizations, "planning makes no copy");
         (await CountsAsync(db, original.Org)).Should().Equal(before);
         db.ChangeTracker.Entries().Should().BeEmpty();
         plan.AttachmentBytes.Should().Be("%PDF"u8.Length);
@@ -386,11 +391,11 @@ public class OrganizationCloneTests
         var (connection, db, original, _, _) = await WorldAsync();
         using var _c = connection;
         await using var _d = db;
-        var before = await db.AuditEvents.CountAsync(e => e.OrganizationId == original.Org);
+        var before = await db.AuditEvents.IgnoreQueryFilters().CountAsync(e => e.OrganizationId == original.Org);
 
         var report = await new OrganizationCloner(db).CloneAsync(original.Org, "Pavillon 46 v2");
 
-        (await db.AuditEvents.CountAsync(e => e.OrganizationId == report.CopyId)).Should().Be(before);
+        (await db.AuditEvents.IgnoreQueryFilters().CountAsync(e => e.OrganizationId == report.CopyId)).Should().Be(before);
         db.RecordsAuditTrail.Should().BeTrue("the switch is back on for every save after the copy");
     }
 
@@ -403,7 +408,7 @@ public class OrganizationCloneTests
         var cloner = new OrganizationCloner(db);
         var report = await cloner.CloneAsync(original.Org, "Pavillon 46 v2");
 
-        var task = await db.TaskItems.SingleAsync(t => t.OrganizationId == report.CopyId);
+        var task = await db.TaskItems.IgnoreQueryFilters().SingleAsync(t => t.OrganizationId == report.CopyId);
         task.LeadId = original.Lead;
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
@@ -420,8 +425,8 @@ public class OrganizationCloneTests
         var cloner = new OrganizationCloner(db);
         var report = await cloner.CloneAsync(original.Org, "Pavillon 46 v2");
 
-        var deal = await db.Deals.SingleAsync(d => d.OrganizationId == report.CopyId);
-        db.DealLineItems.RemoveRange(db.DealLineItems.Where(i => i.DealId == deal.Id));
+        var deal = await db.Deals.IgnoreQueryFilters().SingleAsync(d => d.OrganizationId == report.CopyId);
+        db.DealLineItems.RemoveRange(db.DealLineItems.IgnoreQueryFilters().Where(i => i.DealId == deal.Id));
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 

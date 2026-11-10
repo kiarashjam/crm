@@ -126,7 +126,7 @@ public class SequenceOutreachTests
         // record does not take that back.
         using (var scope = app.Services.CreateScope())
         {
-            var db = scope.ServiceProvider.GetRequiredService<ACI.Infrastructure.Persistence.AppDbContext>();
+            using var db = scope.ServiceProvider.EveryWorkspace();
             db.Contacts.Add(new ACI.Domain.Entities.Contact
             {
                 Id = Guid.NewGuid(), UserId = ownerId, OrganizationId = org, Name = "J. Dupont", Email = " JEAN@example.ch",
@@ -214,7 +214,7 @@ public class SequenceOutreachTests
         await app.DispatchOutboxAsync();
         using (var scope = app.Services.CreateScope())
         {
-            var db = scope.ServiceProvider.GetRequiredService<ACI.Infrastructure.Persistence.AppDbContext>();
+            using var db = scope.ServiceProvider.EveryWorkspace();
             db.OutreachEnrollments.Single(e => e.Id == enrollmentId).NextActionAtUtc = DateTime.UtcNow.AddMinutes(-1);
             await db.SaveChangesAsync();
         }

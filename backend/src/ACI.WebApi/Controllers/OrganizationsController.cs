@@ -2,6 +2,7 @@ using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using ACI.Application.Services;
 using ACI.WebApi.Extensions;
+using ACI.WebApi.Filters;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -14,6 +15,7 @@ namespace ACI.WebApi.Controllers;
 [Route("api/[controller]")]
 [Authorize]
 [Produces("application/json")]
+[ActsForRouteOrganization("id")]
 public class OrganizationsController : ControllerBase
 {
     private readonly IOrganizationService _organizationService;

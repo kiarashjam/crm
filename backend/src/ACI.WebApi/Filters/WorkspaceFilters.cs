@@ -77,6 +77,41 @@ public sealed class ManagersOnlyAttribute : Attribute, IAsyncActionFilter
     }
 }
 
+/// <summary>
+/// The action works on the organization its route names (/api/organizations/{id}/…), which
+/// need not be the one in X-Organization-Id. When the caller belongs to it, the action
+/// reads as that organization, so what it reads is that organization's and nobody else's.
+/// </summary>
+/// <remarks>
+/// Reads are filtered to the request's workspace (AppDbContext), which is the header's.
+/// An owner looking at the webhook deliveries or the suppression list of one of their
+/// organizations from another one's tab would otherwise see an empty list. A caller who
+/// is not a member is left as they are, and the action's own check refuses them.
+/// </remarks>
+[AttributeUsage(AttributeTargets.Class | AttributeTargets.Method)]
+public sealed class ActsForRouteOrganizationAttribute : Attribute, IAsyncActionFilter
+{
+    /// <param name="routeKey">The route value that holds the organization's id.</param>
+    public ActsForRouteOrganizationAttribute(string routeKey) => RouteKey = routeKey;
+
+    public string RouteKey { get; }
+
+    public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
+    {
+        var services = context.HttpContext.RequestServices;
+        var user = services.GetRequiredService<ICurrentUserService>();
+        if (user.UserId is Guid userId
+            && Guid.TryParse(context.RouteData.Values[RouteKey]?.ToString(), out var organizationId)
+            && await services.GetRequiredService<IOrganizationRepository>().IsMemberAsync(userId, organizationId, context.HttpContext.RequestAborted))
+        {
+            using (services.GetRequiredService<ITenantContext>().ActFor(organizationId, userId))
+                await next();
+            return;
+        }
+        await next();
+    }
+}
+
 file static class WorkspaceProblem
 {
     // A sentence in `detail`, because the app shows it as the error toast.

@@ -35,6 +35,8 @@ public class PersonContactLifecycleTests
         var org = new Organization { Id = Guid.NewGuid(), Name = "Pavillon", OwnerUserId = user.Id, CreatedAtUtc = DateTime.UtcNow };
         db.AddRange(user, org);
         await db.SaveChangesAsync();
+        // A lead's save is a request in its organization, and reads as it.
+        db.ActFor(org.Id, user.Id);
         return new World(db, user, org);
     }
 
@@ -219,7 +221,7 @@ public class PersonContactLifecycleTests
         var linked = await new ContactRepository(db).BackfillPersonContactsAsync(500);
 
         linked.Should().Be(2);
-        var made = await db.Contacts.AsNoTracking().ToListAsync();
+        var made = await db.Contacts.AsNoTracking().IgnoreQueryFilters().ToListAsync();
         made.Select(c => c.Email).Should().BeEquivalentTo(new[] { "ada@example.ch", "grace@example.ch" });
         made.Single(c => c.Email == "grace@example.ch").Should().Match<Contact>(c => c.UserId == otherUser.Id && c.OrganizationId == null,
             "each contact is made in its lead's own workspace");

@@ -36,10 +36,17 @@ public sealed class OutboxRepository : IOutboxRepository
     public Task<OutboundMessage?> GetAsync(Guid id, CancellationToken ct = default) =>
         _db.OutboundMessages.FirstOrDefaultAsync(m => m.Id == id, ct);
 
+    // By id, across workspaces: the dispatcher and the mail service's reports know only
+    // the message, and act for its workspace once they have it.
+    public Task<OutboundMessage?> GetInAnyWorkspaceAsync(Guid id, CancellationToken ct = default) =>
+        _db.OutboundMessages.IgnoreQueryFilters().FirstOrDefaultAsync(m => m.Id == id, ct);
+
     public Task SaveAsync(CancellationToken ct = default) => _db.SaveChangesAsync(ct);
 
+    // One outbox sends for every workspace, so its queue is read across them; each message
+    // is then attempted acting for its own workspace (OutboxService.ProcessAsync).
     public async Task<IReadOnlyList<DueOutboundMessage>> DueAsync(DateTime utcNow, int take, CancellationToken ct = default) =>
-        await _db.OutboundMessages.AsNoTracking()
+        await _db.OutboundMessages.AsNoTracking().IgnoreQueryFilters()
             .Where(m => m.Status == OutboundStatuses.Queued
                 && m.NextAttemptAtUtc != null && m.NextAttemptAtUtc <= utcNow
                 && (m.ClaimedUntilUtc == null || m.ClaimedUntilUtc <= utcNow))
@@ -53,9 +60,10 @@ public sealed class OutboxRepository : IOutboxRepository
         // The dispatcher runs on every app instance. One conditional UPDATE is atomic on
         // the database: the row moves only if nobody has moved it since it was read, so
         // exactly one caller sees a row affected and sends it.
+        // By id, across workspaces: only the dispatcher claims, and it knows the message alone.
         if (_db.Database.IsRelational())
         {
-            var moved = await _db.OutboundMessages
+            var moved = await _db.OutboundMessages.IgnoreQueryFilters()
                 .Where(m => m.Id == id && m.Status == OutboundStatuses.Queued && m.Attempts == attempts
                     && m.NextAttemptAtUtc != null && m.NextAttemptAtUtc <= utcNow
                     && (m.ClaimedUntilUtc == null || m.ClaimedUntilUtc <= utcNow))
@@ -68,7 +76,7 @@ public sealed class OutboxRepository : IOutboxRepository
         await InMemoryClaims.WaitAsync(ct);
         try
         {
-            var row = await _db.OutboundMessages.FirstOrDefaultAsync(m => m.Id == id, ct);
+            var row = await _db.OutboundMessages.IgnoreQueryFilters().FirstOrDefaultAsync(m => m.Id == id, ct);
             if (row == null || row.Status != OutboundStatuses.Queued || row.Attempts != attempts
                 || row.NextAttemptAtUtc == null || row.NextAttemptAtUtc > utcNow
                 || (row.ClaimedUntilUtc != null && row.ClaimedUntilUtc > utcNow))
@@ -124,14 +132,16 @@ public sealed class OutboxRepository : IOutboxRepository
         var bare = (messageIdHeader ?? "").Trim().TrimStart('<').TrimEnd('>').Trim();
         if (bare.Length == 0) return Task.FromResult<OutboundMessage?>(null);
         var header = $"<{bare}>";
-        return _db.OutboundMessages.FirstOrDefaultAsync(m => m.MessageIdHeader == header, ct);
+        // Across workspaces: a reply or a report names the message, which names its workspace.
+        return _db.OutboundMessages.IgnoreQueryFilters().FirstOrDefaultAsync(m => m.MessageIdHeader == header, ct);
     }
 
     public Task<OutboundMessage?> FindByReplyTokenAsync(string token, CancellationToken ct = default)
     {
         var wanted = (token ?? "").Trim().ToLowerInvariant();
         if (wanted.Length == 0) return Task.FromResult<OutboundMessage?>(null);
-        return _db.OutboundMessages.FirstOrDefaultAsync(m => m.ReplyToken == wanted, ct);
+        // Across workspaces, as above: the reply address's token is the message's own.
+        return _db.OutboundMessages.IgnoreQueryFilters().FirstOrDefaultAsync(m => m.ReplyToken == wanted, ct);
     }
 
     public async Task<IReadOnlyList<OutboundMessage>> WebhookDeliveriesAsync(Guid organizationId, int take, CancellationToken ct = default) =>

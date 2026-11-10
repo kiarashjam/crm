@@ -4,6 +4,8 @@ using Microsoft.Extensions.DependencyInjection;
 using static ACI.WebApi.Tests.Helpers.ImportFiles;
 using static ACI.WebApi.Tests.Helpers.Workspaces;
 
+using ACI.WebApi.Tests.Helpers;
+
 namespace ACI.WebApi.Tests;
 
 /// <summary>
@@ -43,7 +45,7 @@ public class ContactCompanyImportTests
         Notes(result, 4).Should().Contain("Adds the company “Dubois Vins”");
 
         using var scope = factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        using var db = scope.ServiceProvider.EveryWorkspace();
         var batchId = result.GetProperty("batchId").GetGuid();
         var marc = await db.Contacts.SingleAsync(c => c.Email == "marc@dubois.example");
         marc.CompanyId.Should().Be(acme);

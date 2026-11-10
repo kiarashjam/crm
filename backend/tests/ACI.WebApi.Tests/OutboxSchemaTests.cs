@@ -106,14 +106,22 @@ public class OutboxSchemaTests
         try
         {
             using (SqlServerApp.Start(database)) { }
-            AppDbContext Db() => new(new DbContextOptionsBuilder<AppDbContext>().UseSqlServer(SqlServerApp.ConnectionString(database)).Options);
+            var org = Guid.NewGuid();
+            // Each context is a request or job in the message's workspace; the dispatcher's
+            // own reads (due, claim, by header) look across workspaces whatever it acts for.
+            AppDbContext Db()
+            {
+                var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseSqlServer(SqlServerApp.ConnectionString(database)).Options);
+                db.ActFor(org, null);
+                return db;
+            }
             var now = DateTime.UtcNow;
             var id = Guid.NewGuid();
             await using (var db = Db())
             {
                 db.OutboundMessages.Add(new OutboundMessage
                 {
-                    Id = id, OrganizationId = Guid.NewGuid(), Channel = OutboundChannels.Email, Source = OutboundSources.Automation,
+                    Id = id, OrganizationId = org, Channel = OutboundChannels.Email, Source = OutboundSources.Automation,
                     Status = OutboundStatuses.Queued, NextAttemptAtUtc = now.AddSeconds(-5), CreatedAtUtc = now, To = "jean@example.ch",
                     Subject = "Hello", MessageIdHeader = $"<{id:N}@pavillon46.ch>", ReplyToken = "abcdefghijklmnopqrstu",
                 });
@@ -151,8 +159,14 @@ public class OutboxSchemaTests
         try
         {
             using (SqlServerApp.Start(database)) { }
-            AppDbContext Db() => new(new DbContextOptionsBuilder<AppDbContext>().UseSqlServer(SqlServerApp.ConnectionString(database)).Options);
             var org = Guid.NewGuid();
+            // The mail service's reports are acted on in the workspace that sent the mail.
+            AppDbContext Db()
+            {
+                var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseSqlServer(SqlServerApp.ConnectionString(database)).Options);
+                db.ActFor(org, null);
+                return db;
+            }
             EmailSuppression Bounce() => new()
             {
                 Id = Guid.NewGuid(), OrganizationId = org, Email = " Jean@Example.ch ", Reason = EmailSuppressionReasons.Bounced, CreatedAtUtc = DateTime.UtcNow,

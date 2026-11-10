@@ -4,6 +4,7 @@ using System.Text.Json;
 using ACI.Domain.Entities;
 using ACI.Domain.Enums;
 using ACI.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -83,10 +84,18 @@ public static class Workspaces
         return client;
     }
 
+    /// <summary>
+    /// Look at what is saved, in every workspace: the app reads only the workspace a
+    /// request or job acts for, and a test checks what landed where.
+    /// </summary>
     public static async Task<T> Read<T>(this IServiceProvider services, Func<AppDbContext, T> read)
     {
         using var scope = services.CreateScope();
-        await Task.CompletedTask;
-        return read(scope.ServiceProvider.GetRequiredService<AppDbContext>());
+        await using var db = new EveryWorkspaceDbContext(scope.ServiceProvider.GetRequiredService<DbContextOptions<AppDbContext>>());
+        return read(db);
     }
+
+    /// <summary>A context over the test database that reads every workspace, for a test that keeps it open.</summary>
+    public static AppDbContext EveryWorkspace(this IServiceProvider services) =>
+        new EveryWorkspaceDbContext(services.GetRequiredService<DbContextOptions<AppDbContext>>());
 }

@@ -586,7 +586,7 @@ public class ClubMoneyTests
         // Time passes: the card's expiry is now behind it, and nothing has saved that.
         using (var scope = factory.Services.CreateScope())
         {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            using var db = scope.ServiceProvider.EveryWorkspace();
             var row = db.ClubDocuments.Single(d => d.Id == Guid.Parse(card));
             var payload = JsonNode.Parse(row.Payload)!.AsObject();
             payload["expiresAtUtc"] = DateTime.UtcNow.AddDays(-1).ToString("o");

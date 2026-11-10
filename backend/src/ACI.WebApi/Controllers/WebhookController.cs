@@ -6,6 +6,7 @@ using ACI.Application.Interfaces;
 using ACI.Application.Services;
 using ACI.Domain.Entities;
 using ACI.WebApi.Extensions;
+using ACI.WebApi.Filters;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -17,6 +18,7 @@ namespace ACI.WebApi.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Produces("application/json")]
+[ActsForRouteOrganization("organizationId")]
 public class WebhookController : ControllerBase
 {
     private readonly ILeadService _leadService;
@@ -25,6 +27,7 @@ public class WebhookController : ControllerBase
     private readonly ICurrentUserService _currentUser;
     private readonly ILeadOpsService _leadOps;
     private readonly AuthAttemptLimiter _attempts;
+    private readonly ITenantContext _tenant;
 
     /// <summary>
     /// Wrong webhook passwords allowed from one caller to one workspace in one window
@@ -50,7 +53,8 @@ public class WebhookController : ControllerBase
         IOrganizationService organizationService,
         ICurrentUserService currentUser,
         ILeadOpsService leadOps,
-        AuthAttemptLimiter attempts)
+        AuthAttemptLimiter attempts,
+        ITenantContext tenant)
     {
         _leadService = leadService;
         _companyService = companyService;
@@ -58,6 +62,7 @@ public class WebhookController : ControllerBase
         _currentUser = currentUser;
         _leadOps = leadOps;
         _attempts = attempts;
+        _tenant = tenant;
     }
 
     /// <summary>
@@ -171,6 +176,10 @@ public class WebhookController : ControllerBase
 
         if (!request.Email.Contains('@') || request.Email.Length < 3)
             return BadRequest(new { error = "Invalid email format" });
+
+        // Nobody signs in here: the key or password named the workspace, and the lead is
+        // written as its owner, so everything below reads and writes as that workspace.
+        using var acting = _tenant.ActFor(organization.Id, organization.OwnerUserId);
 
         // A returning prospect. Since #57 the lead service refuses a second open lead
         // with the same email, and this endpoint turned that refusal into a 500 —

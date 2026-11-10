@@ -142,6 +142,7 @@ public class LeadReferralTests
         db.AddRange(user, org, sam, lead);
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
+        using var acting = db.ActFor(org.Id, user.Id);
 
         (await new ContactRepository(db).DeleteAsync(sam.Id, user.Id, org.Id)).Should().BeTrue();
 

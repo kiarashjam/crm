@@ -179,7 +179,7 @@ public class OutboundWebhookDeliveryTests
         (await AddLeadAsync(owner)).StatusCode.Should().Be(HttpStatusCode.OK);
         using (var scope = app.Services.CreateScope())
         {
-            var db = scope.ServiceProvider.GetRequiredService<ACI.Infrastructure.Persistence.AppDbContext>();
+            using var db = scope.ServiceProvider.EveryWorkspace();
             var eventDue = db.OutboundMessages.Single().NextAttemptAtUtc!.Value;
             db.OutboundMessages.Add(new ACI.Domain.Entities.OutboundMessage
             {

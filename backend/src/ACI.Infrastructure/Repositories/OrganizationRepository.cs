@@ -85,6 +85,9 @@ public sealed class OrganizationRepository : IOrganizationRepository
 
     public async Task BackfillUserDataToOrganizationAsync(Guid userId, Guid organizationId, CancellationToken ct = default)
     {
+        // The rows that move are the person's own personal workspace's, whichever
+        // workspace the request creating the organization came from.
+        using var acting = _db.ActFor(null, userId);
         await _db.Companies.Where(c => c.UserId == userId && c.OrganizationId == null).ExecuteUpdateAsync(s => s.SetProperty(c => c.OrganizationId, organizationId), ct);
         await _db.Contacts.Where(c => c.UserId == userId && c.OrganizationId == null).ExecuteUpdateAsync(s => s.SetProperty(c => c.OrganizationId, organizationId), ct);
         await _db.ContactRelationships.Where(r => r.UserId == userId && r.OrganizationId == null).ExecuteUpdateAsync(s => s.SetProperty(r => r.OrganizationId, organizationId), ct);

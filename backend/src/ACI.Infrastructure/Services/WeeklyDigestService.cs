@@ -129,6 +129,8 @@ public sealed class WeeklyDigestService
             var sections = new List<DigestSection>();
             foreach (var workspace in workspaces)
             {
+                // The job runs in no workspace; each section is read as its own.
+                using var acting = _db.ActFor(workspace.Id, userId);
                 var summary = await _reporting.GetSummaryAsync(userId, workspace.Id, new ReportFilter
                 {
                     FromUtc = week.WeekStartUtc,

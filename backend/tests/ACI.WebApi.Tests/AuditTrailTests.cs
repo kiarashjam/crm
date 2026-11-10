@@ -134,7 +134,7 @@ public class AuditTrailTests
         // signed-in user behind them.
         using (var scope = factory.Services.CreateScope())
         {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            using var db = scope.ServiceProvider.EveryWorkspace();
             var lead = await db.Leads.SingleAsync(l => l.Id == id);
             lead.SlaBreached = true;
             lead.SlaNotifiedAtUtc = DateTime.UtcNow;
@@ -147,7 +147,7 @@ public class AuditTrailTests
         // A real edit from a job is recorded, and attributed to the system.
         using (var scope = factory.Services.CreateScope())
         {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            using var db = scope.ServiceProvider.EveryWorkspace();
             var lead = await db.Leads.SingleAsync(l => l.Id == id);
             lead.Industry = "Hospitality";
             await db.SaveChangesAsync();
@@ -166,7 +166,7 @@ public class AuditTrailTests
         Guid dealId, taskId;
         using (var scope = factory.Services.CreateScope())
         {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            using var db = scope.ServiceProvider.EveryWorkspace();
             var pipeline = new Pipeline { Id = Guid.NewGuid(), OrganizationId = org, Name = "Memberships" };
             var proposal = new DealStage { Id = Guid.NewGuid(), PipelineId = pipeline.Id, Name = "Proposal", DisplayOrder = 1 };
             var won = new DealStage { Id = Guid.NewGuid(), PipelineId = pipeline.Id, Name = "Won", DisplayOrder = 2, IsWon = true };

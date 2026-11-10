@@ -25,17 +25,20 @@ public sealed class McpController : ControllerBase
     private readonly CrmMcpTools _tools;
     private readonly IConfiguration _configuration;
     private readonly ILogger<McpController> _logger;
+    private readonly ITenantContext _tenant;
 
     public McpController(
         IOrganizationService organizations,
         CrmMcpTools tools,
         IConfiguration configuration,
-        ILogger<McpController> logger)
+        ILogger<McpController> logger,
+        ITenantContext tenant)
     {
         _organizations = organizations;
         _tools = tools;
         _configuration = configuration;
         _logger = logger;
+        _tenant = tenant;
     }
 
     /// <summary>JSON-RPC endpoint used by Cursor, Claude, VS Code, and other MCP clients.</summary>
@@ -58,6 +61,9 @@ public sealed class McpController : ControllerBase
         var organization = await _organizations.GetByMcpApiKeyAsync(apiKey, ct);
         if (organization == null)
             return Unauthorized(new { error = "Invalid API key." });
+        // The key names one organization, and the tools read it as its owner: nothing
+        // outside it is visible for the rest of this request.
+        using var acting = _tenant.ActFor(organization.Id, organization.OwnerUserId);
 
         string body;
         using (var reader = new StreamReader(Request.Body))

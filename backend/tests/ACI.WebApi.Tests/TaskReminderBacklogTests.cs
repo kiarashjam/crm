@@ -7,6 +7,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using static ACI.WebApi.Tests.Helpers.Workspaces;
 
+using ACI.WebApi.Tests.Helpers;
+
 namespace ACI.WebApi.Tests;
 
 /// <summary>
@@ -31,7 +33,7 @@ public class TaskReminderBacklogTests
         Guid recent;
         using (var scope = factory.Services.CreateScope())
         {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            using var db = scope.ServiceProvider.EveryWorkspace();
             for (var i = 0; i < 250; i++)
             {
                 db.TaskItems.Add(new TaskItem
@@ -56,7 +58,7 @@ public class TaskReminderBacklogTests
         await service.ProcessRemindersAsync(CancellationToken.None);
 
         using var check = factory.Services.CreateScope();
-        var notifications = check.ServiceProvider.GetRequiredService<AppDbContext>().Notifications.AsNoTracking();
+        var notifications = check.ServiceProvider.EveryWorkspace().Notifications.AsNoTracking();
         (await notifications.AnyAsync(n => n.SourceKey == $"task-overdue-{recent}"))
             .Should().BeTrue("the second pass must reach past the first 200 tasks");
         (await notifications.CountAsync(n => n.SourceKey!.StartsWith("task-overdue-")))

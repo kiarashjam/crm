@@ -20,6 +20,9 @@ internal sealed class FakeOutboxRepository : IOutboxRepository
     public Task<OutboundMessage?> GetAsync(Guid id, CancellationToken ct = default) =>
         Task.FromResult(Messages.FirstOrDefault(m => m.Id == id));
 
+    // One list, no workspaces: the same as GetAsync here.
+    public Task<OutboundMessage?> GetInAnyWorkspaceAsync(Guid id, CancellationToken ct = default) => GetAsync(id, ct);
+
     public Task SaveAsync(CancellationToken ct = default)
     {
         Saves++;

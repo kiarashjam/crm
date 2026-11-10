@@ -67,22 +67,24 @@ public class PersonalWorkspaceBackfillTests
 
         await new OrganizationRepository(db).BackfillUserDataToOrganizationAsync(me, org);
         db.ChangeTracker.Clear();
+        // Read back across workspaces, to see where everything went.
+        await using var check = SqliteDb.OpenEveryWorkspace(connection);
 
-        (await db.Deals.SingleAsync(d => d.Id == deal.Id)).OrganizationId.Should().Be(org);
-        (await db.AuditEvents.Where(e => e.OwnerUserId == me).Select(e => e.OrganizationId).ToListAsync())
+        (await check.Deals.SingleAsync(d => d.Id == deal.Id)).OrganizationId.Should().Be(org);
+        (await check.AuditEvents.Where(e => e.OwnerUserId == me).Select(e => e.OrganizationId).ToListAsync())
             .Should().NotBeEmpty().And.OnlyContain(o => o == org, "the deal's history goes with it");
-        (await db.Attachments.SingleAsync()).OrganizationId.Should().Be(org);
-        (await db.CustomFieldDefinitions.SingleAsync()).OrganizationId.Should().Be(org);
-        (await db.CustomFieldValues.SingleAsync()).OrganizationId.Should().Be(org);
-        (await db.Products.SingleAsync(p => p.OwnerUserId == me)).OrganizationId.Should().Be(org);
-        (await db.ForecastSnapshots.SingleAsync()).OrganizationId.Should().Be(org);
-        (await db.ClubMembers.SingleAsync()).OrganizationId.Should().Be(org);
-        (await db.AutomationRules.SingleAsync()).OrganizationId.Should().Be(org);
+        (await check.Attachments.SingleAsync()).OrganizationId.Should().Be(org);
+        (await check.CustomFieldDefinitions.SingleAsync()).OrganizationId.Should().Be(org);
+        (await check.CustomFieldValues.SingleAsync()).OrganizationId.Should().Be(org);
+        (await check.Products.SingleAsync(p => p.OwnerUserId == me)).OrganizationId.Should().Be(org);
+        (await check.ForecastSnapshots.SingleAsync()).OrganizationId.Should().Be(org);
+        (await check.ClubMembers.SingleAsync()).OrganizationId.Should().Be(org);
+        (await check.AutomationRules.SingleAsync()).OrganizationId.Should().Be(org);
 
         // Someone else's personal workspace is untouched.
-        (await db.Deals.SingleAsync(d => d.Id == theirs.Id)).OrganizationId.Should().BeNull();
-        (await db.Products.SingleAsync(p => p.OwnerUserId == someoneElse)).OrganizationId.Should().BeNull();
-        (await db.AuditEvents.Where(e => e.OwnerUserId == someoneElse).Select(e => e.OrganizationId).ToListAsync())
+        (await check.Deals.SingleAsync(d => d.Id == theirs.Id)).OrganizationId.Should().BeNull();
+        (await check.Products.SingleAsync(p => p.OwnerUserId == someoneElse)).OrganizationId.Should().BeNull();
+        (await check.AuditEvents.Where(e => e.OwnerUserId == someoneElse).Select(e => e.OrganizationId).ToListAsync())
             .Should().OnlyContain(o => o == null);
     }
 }

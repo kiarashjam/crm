@@ -34,7 +34,8 @@ public static class SeedData
             db.Users.Add(seedUser);
         }
 
-        if (await db.Templates.AnyAsync(ct))
+        // Whether the table holds anything at all, in any workspace: start-up acts for none.
+        if (await db.Templates.IgnoreQueryFilters().AnyAsync(ct))
         {
             await db.SaveChangesAsync(ct);
             return;

@@ -48,6 +48,7 @@ public sealed class LeadOpsService : ILeadOpsService
     private readonly IActivityService _activities;
     private readonly IOrganizationRepository? _organizations;
     private readonly ICollaborationNotifier? _collaboration;
+    private readonly ITenantContext? _tenant;
 
     public LeadOpsService(
         ILeadOpsRepository ops,
@@ -57,7 +58,8 @@ public sealed class LeadOpsService : ILeadOpsService
         ILeadAutomation automation,
         IActivityService activities,
         IOrganizationRepository? organizations = null,
-        ICollaborationNotifier? collaboration = null)
+        ICollaborationNotifier? collaboration = null,
+        ITenantContext? tenant = null)
     {
         _ops = ops;
         _leads = leads;
@@ -67,6 +69,7 @@ public sealed class LeadOpsService : ILeadOpsService
         _activities = activities;
         _organizations = organizations;
         _collaboration = collaboration;
+        _tenant = tenant;
     }
 
     public async Task<IReadOnlyList<ScoringRuleDto>> GetScoringRulesAsync(Guid? organizationId, CancellationToken ct = default)
@@ -230,6 +233,9 @@ public sealed class LeadOpsService : ILeadOpsService
     {
         var form = await _ops.GetFormByTokenAsync(token, ct);
         if (form == null) return DomainErrors.Lead.NotFound;
+        // Nobody signs in on a public form: its token names the workspace the lead goes
+        // to, and everything below reads and writes as that workspace.
+        using var acting = _tenant?.ActFor(form.OrganizationId, form.CreatedByUserId);
         var receipt = new PublicCaptureReceipt(string.IsNullOrWhiteSpace(form.SuccessMessage) ? "Thanks. We'll be in touch." : form.SuccessMessage);
 
         // The hidden honeypot field: a person never sees it, a bot fills it.
@@ -382,10 +388,12 @@ public sealed class LeadOpsService : ILeadOpsService
         var due = await _ops.OverdueFirstResponseAsync(DateTime.UtcNow, 100, ct);
         foreach (var lead in due)
         {
+            var recipient = lead.AssignedToUserId ?? lead.UserId;
+            // The job looks across workspaces; the notice is written in the lead's own.
+            using var acting = _tenant?.ActFor(lead.OrganizationId, recipient);
             lead.SlaBreached = true;
             lead.SlaNotifiedAtUtc = DateTime.UtcNow;
             await _ops.SaveLeadAsync(lead, ct);
-            var recipient = lead.AssignedToUserId ?? lead.UserId;
             await _notifications.CreateAsync(recipient, lead.OrganizationId, new CreateNotificationRequest(
                 "lead_sla",
                 "First response is late",

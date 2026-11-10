@@ -19,7 +19,8 @@ public class ImportBatchStampTests
     public async Task RecordsAddedDuringAnImportCarryItsIdAndRecordsChangedDoNot()
     {
         using var connection = new SqliteConnection("DataSource=:memory:");
-        await using var db = SqliteDb.Open(connection);
+        // Every workspace: this checks what a save stamps, wherever the rows belong.
+        await using var db = SqliteDb.OpenEveryWorkspace(connection);
         var user = new User { Id = Guid.NewGuid(), Name = "Kia", Email = "kia@example.ch", CreatedAtUtc = DateTime.UtcNow };
         var existing = new Company { Id = Guid.NewGuid(), UserId = user.Id, Name = "Already here", CreatedAtUtc = DateTime.UtcNow };
         db.AddRange(user, existing);

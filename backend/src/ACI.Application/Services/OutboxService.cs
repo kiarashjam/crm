@@ -168,6 +168,7 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
     private readonly IOutboxSignal _signal;
     private readonly EmailSettings _settings;
     private readonly ILogger<OutboxService> _logger;
+    private readonly ITenantContext? _tenant;
 
     public OutboxService(
         IOutboxRepository messages,
@@ -181,7 +182,8 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
         INotificationService notifications,
         IOutboxSignal signal,
         IOptions<EmailSettings> settings,
-        ILogger<OutboxService> logger)
+        ILogger<OutboxService> logger,
+        ITenantContext? tenant = null)
     {
         _messages = messages;
         _email = email;
@@ -195,6 +197,7 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
         _signal = signal;
         _settings = settings.Value;
         _logger = logger;
+        _tenant = tenant;
     }
 
     // ── Queueing ──────────────────────────────────────────────────────────────
@@ -326,8 +329,11 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
     {
         var now = DateTime.UtcNow;
         if (!await _messages.TryClaimAsync(due.Id, due.Attempts, now, now.Add(ClaimFor), ct)) return;
-        var message = await _messages.GetAsync(due.Id, ct);
+        var message = await _messages.GetInAnyWorkspaceAsync(due.Id, ct);
         if (message == null) return;
+        // The dispatcher sends for every workspace and starts in none. Everything this
+        // attempt reads (the suppression list, the lead, the enrollment) is the message's own.
+        using var acting = _tenant?.ActFor(message.OrganizationId, message.CreatedByUserId);
 
         try
         {

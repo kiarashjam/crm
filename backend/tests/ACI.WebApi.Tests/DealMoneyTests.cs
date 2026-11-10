@@ -34,7 +34,8 @@ public class DealMoneyTests
     private static async Task<Deal> Stored(CustomWebApplicationFactory factory, Guid id)
     {
         using var scope = factory.Services.CreateScope();
-        return await scope.ServiceProvider.GetRequiredService<AppDbContext>().Deals.AsNoTracking().SingleAsync(d => d.Id == id);
+        await using var db = scope.ServiceProvider.EveryWorkspace();
+        return await db.Deals.AsNoTracking().SingleAsync(d => d.Id == id);
     }
 
     [Fact]

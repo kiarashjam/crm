@@ -160,8 +160,10 @@ public static class DataFixes
             .SingleAsync(ct);
         if (applied > 0) return 0;
 
-        // Every row at once: a Guid and at most 64 characters each, read once ever.
+        // Every row at once: a Guid and at most 64 characters each, read once ever. Every
+        // workspace's: start-up acts for none, and the fix is recorded as done for all.
         var rows = await db.Deals.AsNoTracking()
+            .IgnoreQueryFilters()
             .Where(d => d.Amount == null)
             .Select(d => new { d.Id, d.Value })
             .ToListAsync(ct);
@@ -178,6 +180,7 @@ public static class DataFixes
             foreach (var chunk in byAmount.Select(r => r.Id).Chunk(500))
             {
                 filled += await db.Deals
+                    .IgnoreQueryFilters()
                     .Where(d => chunk.Contains(d.Id) && d.Amount == null)
                     .ExecuteUpdateAsync(set => set.SetProperty(d => d.Amount, amount), ct);
             }

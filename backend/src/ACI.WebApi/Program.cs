@@ -332,6 +332,9 @@ try
     // HTTP Context accessor for current user service
     builder.Services.AddHttpContextAccessor();
     builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
+    // The workspace every read is filtered to (AppDbContext's query filters): the
+    // request's, or whichever one a key, a token or a job says it acts for.
+    builder.Services.AddScoped<ITenantContext, ACI.WebApi.Services.TenantContext>();
 
     // JWT Authentication
     // The default below is in the repository, so anyone can sign a token with it for

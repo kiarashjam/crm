@@ -10,6 +10,10 @@ namespace ACI.WebApi.Tests.Helpers;
 /// </summary>
 public static class SqliteDb
 {
+    /// <summary>
+    /// The app's context, filtered to a workspace like the app's own: it reads none until
+    /// it acts for one (AppDbContext.ActFor), as a request or job does.
+    /// </summary>
     /// <remarks>Several contexts can share one connection, as concurrent requests share one database.</remarks>
     public static AppDbContext Open(SqliteConnection connection)
     {
@@ -19,7 +23,23 @@ public static class SqliteDb
         return db;
     }
 
-    /// <summary>The app's model, with SQL Server's nvarchar(max) as SQLite's TEXT. Nothing else differs.</summary>
+    /// <summary>A context on the same database that reads every workspace, to see what was saved where.</summary>
+    public static AppDbContext OpenEveryWorkspace(SqliteConnection connection)
+    {
+        if (connection.State != System.Data.ConnectionState.Open) connection.Open();
+        var db = new SqliteEveryWorkspaceDbContext(new DbContextOptionsBuilder<AppDbContext>().UseSqlite(connection).Options);
+        db.Database.EnsureCreated();
+        return db;
+    }
+
+    /// <summary>SQL Server's nvarchar(max) as SQLite's TEXT. Nothing else differs.</summary>
+    private static void AsSqlite(ModelBuilder modelBuilder)
+    {
+        foreach (var property in modelBuilder.Model.GetEntityTypes().SelectMany(t => t.GetProperties()))
+            if (property.GetColumnType() == "nvarchar(max)") property.SetColumnType("TEXT");
+    }
+
+    /// <summary>The app's model, on SQLite.</summary>
     private sealed class SqliteAppDbContext : AppDbContext
     {
         public SqliteAppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
@@ -27,8 +47,21 @@ public static class SqliteDb
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
-            foreach (var property in modelBuilder.Model.GetEntityTypes().SelectMany(t => t.GetProperties()))
-                if (property.GetColumnType() == "nvarchar(max)") property.SetColumnType("TEXT");
+            AsSqlite(modelBuilder);
+        }
+    }
+
+    /// <summary>The app's model on SQLite, without its workspace filters.</summary>
+    private sealed class SqliteEveryWorkspaceDbContext : AppDbContext
+    {
+        public SqliteEveryWorkspaceDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+            AsSqlite(modelBuilder);
+            foreach (var type in modelBuilder.Model.GetEntityTypes())
+                type.SetQueryFilter(null);
         }
     }
 }
