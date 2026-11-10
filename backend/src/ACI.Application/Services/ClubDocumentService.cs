@@ -18,7 +18,7 @@ public interface IClubDocumentService
     Task<JsonObject?> AcknowledgeDonationAsync(Guid? organizationId, Guid id, CancellationToken ct = default);
     /// <param name="idempotencyKey">From the Idempotency-Key header: a retry carrying the same key gets the first redemption back instead of spending the card again.</param>
     Task<Result<JsonObject>> RedeemGiftCardAsync(Guid? organizationId, Guid id, JsonObject body, string? idempotencyKey, CancellationToken ct = default);
-    // Money records are voided, with a reason, and kept; only an owner or a manager may (see the controllers).
+    // Money records are voided, with a reason, and kept; only a member allowed to void money may (MemberPermissions.VoidMoney, see the controllers).
     Task<Result<JsonObject>> VoidGiftCardAsync(Guid? organizationId, Guid id, JsonObject body, CancellationToken ct = default);
     Task<Result<JsonObject>> VoidChargeAsync(Guid? organizationId, Guid id, JsonObject body, CancellationToken ct = default);
     Task<Result<JsonObject>> VoidPaymentAsync(Guid? organizationId, Guid id, JsonObject body, CancellationToken ct = default);

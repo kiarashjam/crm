@@ -44,8 +44,10 @@ public class OutboxServiceTests
         _organizations.Setup(o => o.GetByIdAsync(Org, It.IsAny<CancellationToken>())).ReturnsAsync(() => _workspace);
         foreach (var (id, email, name) in new[] { (Owner, "owner@pavillon46.ch", "Olga Owner"), (Rep, "anna@pavillon46.ch", "Anna Muster") })
         {
-            _organizations.Setup(o => o.GetMemberRoleAsync(id, Org, It.IsAny<CancellationToken>()))
-                .ReturnsAsync(id == Owner ? OrgMemberRole.Owner : OrgMemberRole.Member);
+            var role = id == Owner ? OrgMemberRole.Owner : OrgMemberRole.Member;
+            _organizations.Setup(o => o.GetMemberRoleAsync(id, Org, It.IsAny<CancellationToken>())).ReturnsAsync(role);
+            _organizations.Setup(o => o.GetMemberAsync(Org, id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new OrganizationMember { OrganizationId = Org, UserId = id, Role = role });
             _users.Setup(u => u.GetByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(new User { Id = id, Email = email, Name = name });
         }
         _targets.Setup(t => t.TargetStateAsync("lead", Lead, Org, It.IsAny<CancellationToken>()))
@@ -492,6 +494,8 @@ public class OutboxServiceTests
         var message = (await service.QueueEmailAsync(Email())).Value;
         var stranger = Guid.NewGuid();
         _organizations.Setup(o => o.GetMemberRoleAsync(stranger, Org, It.IsAny<CancellationToken>())).ReturnsAsync(OrgMemberRole.Member);
+        _organizations.Setup(o => o.GetMemberAsync(Org, stranger, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OrganizationMember { OrganizationId = Org, UserId = stranger, Role = OrgMemberRole.Member });
 
         (await service.CancelAsync(message.Id, Org, stranger)).Error.Code.Should().Be("Email.NotOwner");
         (await service.CancelAsync(message.Id, Guid.NewGuid(), Rep)).Error.Code.Should().Be("Email.NotFound", "another workspace's message");
@@ -599,7 +603,7 @@ public class OutboxServiceTests
         await service.QueueAsync(Org, "lead.created", new { Id = Lead });
         await DispatchAsync(service);
 
-        (await service.WebhookDeliveriesAsync(Org, Rep)).Error.Code.Should().Be(DomainErrors.Organization.NotOwnerOrManager.Code);
+        (await service.WebhookDeliveriesAsync(Org, Rep)).Error.Code.Should().Be("Permission.settings.manage");
         var delivery = (await service.WebhookDeliveriesAsync(Org, Owner)).Value.Single();
         delivery.EventName.Should().Be("lead.created");
         delivery.Status.Should().Be("queued");

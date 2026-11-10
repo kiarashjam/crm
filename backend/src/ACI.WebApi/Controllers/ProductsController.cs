@@ -4,6 +4,8 @@ using ACI.Application.Services;
 using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ACI.Domain.Common;
+using ACI.WebApi.Filters;
 
 namespace ACI.WebApi.Controllers;
 
@@ -12,6 +14,7 @@ namespace ACI.WebApi.Controllers;
 [Route("api/products")]
 [Authorize]
 [Produces("application/json")]
+[Requires(MemberPermissions.EditRecords, WritesOnly = true)]
 public class ProductsController : ControllerBase
 {
     private readonly IProductService _products;
@@ -38,6 +41,7 @@ public class ProductsController : ControllerBase
         return result.ToActionResult();
     }
 
+    [Requires(MemberPermissions.DeleteRecords)]
     [HttpDelete("{id:guid}")]
     public async Task<ActionResult> Delete(Guid id, CancellationToken ct)
     {

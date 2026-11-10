@@ -102,12 +102,12 @@ public class OrganizationsController : ControllerBase
     /// <remarks>
     /// New deals are priced in the currency unless they name another; existing deals keep
     /// theirs, and nothing is converted. The time zone is where the workspace's days and
-    /// months begin for reports and forecasts. Owner or manager only. A field left out
-    /// keeps its value.
+    /// months begin for reports and forecasts. Takes managing the workspace's settings (the
+    /// owner and managers by default). A field left out keeps its value.
     /// </remarks>
     /// <response code="200">The workspace with its new settings.</response>
     /// <response code="400">Not a three-letter currency code, a known locale or an IANA time zone.</response>
-    /// <response code="403">The caller is not the owner or a manager.</response>
+    /// <response code="403">The caller's role does not let them manage the workspace's settings.</response>
     /// <response code="404">Organization not found.</response>
     [HttpPut("{id:guid}/settings")]
     [ProducesResponseType(typeof(OrganizationDto), StatusCodes.Status200OK)]
@@ -137,7 +137,7 @@ public class OrganizationsController : ControllerBase
         return (await email.GetAsync(id, userId.Value, ct)).ToActionResult();
     }
 
-    /// <summary>Sets or clears the workspace's own sending address (owner or manager).</summary>
+    /// <summary>Sets or clears the workspace's own sending address (takes managing settings).</summary>
     [HttpPut("{id:guid}/email")]
     public async Task<ActionResult<EmailSendingDto>> UpdateEmailSending(
         Guid id, [FromBody] UpdateEmailSendingRequest request, [FromServices] IEmailSendingService email, CancellationToken ct)
@@ -156,7 +156,7 @@ public class OrganizationsController : ControllerBase
         return (await email.SuppressionsAsync(id, userId.Value, ct)).ToActionResult();
     }
 
-    /// <summary>Takes an address off that list (owner or manager), so the workspace may email it again.</summary>
+    /// <summary>Takes an address off that list (takes managing settings), so the workspace may email it again.</summary>
     [HttpDelete("{id:guid}/email/suppressions/{suppressionId:guid}")]
     public async Task<ActionResult> LiftEmailSuppression(Guid id, Guid suppressionId, [FromServices] IEmailSendingService email, CancellationToken ct)
     {
@@ -191,7 +191,7 @@ public class OrganizationsController : ControllerBase
     /// Adds an existing registered user to the organization directly, with a role.
     /// </summary>
     /// <remarks>
-    /// For when waiting on an invitation email is not wanted. Owner or manager only.
+    /// For when waiting on an invitation email is not wanted. Takes managing the team.
     /// The person must already have an account — a membership has to point at a user —
     /// so if no account exists yet, send an invitation instead. Owner cannot be granted
     /// here; ownership is transferred separately.
@@ -203,7 +203,7 @@ public class OrganizationsController : ControllerBase
     /// <response code="200">Member added.</response>
     /// <response code="400">No account with that email, already a member, or Owner requested.</response>
     /// <response code="401">User is not authenticated.</response>
-    /// <response code="403">User is not an owner or manager.</response>
+    /// <response code="403">The caller's role does not let them manage the team.</response>
     /// <response code="404">Organization not found.</response>
     [HttpPost("{id:guid}/members")]
     [ProducesResponseType(typeof(OrgMemberDto), StatusCodes.Status200OK)]
@@ -216,8 +216,31 @@ public class OrganizationsController : ControllerBase
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
 
-        var result = await _organizationService.AddMemberByEmailAsync(id, userId.Value, request.Email, request.Role, ct);
+        var result = await _organizationService.AddMemberByEmailAsync(id, userId.Value, request.Email, request.Role, ct, request.Preset);
         return result.ToActionResult();
+    }
+
+    /// <summary>Every permission and preset a member can be given, for the Team page.</summary>
+    [HttpGet("{id:guid}/permission-sets")]
+    [ProducesResponseType(typeof(PermissionCatalogueDto), StatusCodes.Status200OK)]
+    public ActionResult<PermissionCatalogueDto> PermissionSets(Guid id) => Ok(_organizationService.GetPermissionCatalogue());
+
+    /// <summary>
+    /// Sets what a member may do: a preset, or (the owner only) a list of permissions of
+    /// their own. Whoever manages the team can pick presets up to what they can do themselves.
+    /// </summary>
+    /// <response code="200">The member as they now are.</response>
+    /// <response code="400">An unknown preset or permission.</response>
+    /// <response code="403">The caller may not manage the team, may not give that much, or the member is the owner.</response>
+    [HttpPut("{id:guid}/members/{memberUserId:guid}/permissions")]
+    [ProducesResponseType(typeof(OrgMemberDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<OrgMemberDto>> SetMemberPermissions(Guid id, Guid memberUserId, [FromBody] SetMemberPermissionsRequest request, CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        return (await _organizationService.SetMemberPermissionsAsync(id, userId.Value, memberUserId, request, ct)).ToActionResult();
     }
 
     /// <summary>
@@ -324,7 +347,7 @@ public class OrganizationsController : ControllerBase
     /// Generates a new webhook API key for the organization.
     /// </summary>
     /// <remarks>
-    /// Only the organization owner or manager can generate API keys.
+    /// Only members who manage the workspace's settings (owners and managers by default) can generate API keys.
     /// Generating a new key invalidates any previous key.
     /// </remarks>
     /// <param name="id">The organization ID.</param>
@@ -332,7 +355,7 @@ public class OrganizationsController : ControllerBase
     /// <returns>The new API key.</returns>
     /// <response code="200">Returns the new API key.</response>
     /// <response code="401">User is not authenticated.</response>
-    /// <response code="403">User is not owner or manager.</response>
+    /// <response code="403">The caller's role does not let them manage settings.</response>
     /// <response code="404">Organization not found.</response>
     [HttpPost("{id:guid}/webhook/regenerate")]
     [ProducesResponseType(typeof(string), StatusCodes.Status200OK)]

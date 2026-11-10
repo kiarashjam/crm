@@ -3,6 +3,8 @@ using ACI.Application.Interfaces;
 using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ACI.Domain.Common;
+using ACI.WebApi.Filters;
 
 namespace ACI.WebApi.Controllers;
 
@@ -13,6 +15,7 @@ namespace ACI.WebApi.Controllers;
 [Route("api/[controller]")]
 [Authorize]
 [Produces("application/json")]
+[Requires(MemberPermissions.EditRecords, WritesOnly = true)]
 public class TemplatesController : ControllerBase
 {
     private readonly ITemplateService _templateService;

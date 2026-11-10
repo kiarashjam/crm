@@ -643,9 +643,9 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
         var message = await _messages.GetAsync(id, ct);
         if (message == null || message.OrganizationId != organizationId || message.Channel != OutboundChannels.Email)
             return new Error("Email.NotFound", "That email does not exist.");
-        var role = await _organizations.GetMemberRoleAsync(userId, organizationId, ct);
-        if (message.CreatedByUserId != userId && role is not (OrgMemberRole.Owner or OrgMemberRole.Manager))
-            return new Error("Email.NotOwner", "Only whoever sent it, or a manager, can cancel it.");
+        if (message.CreatedByUserId != userId
+            && !await _organizations.HasPermissionAsync(userId, organizationId, Domain.Common.MemberPermissions.ManageSettings, ct))
+            return new Error("Email.NotOwner", "Only whoever sent it, or someone who manages the workspace's settings, can cancel it.");
         if (message.Status != OutboundStatuses.Queued)
             return new Error("Email.Conflict", message.Status == OutboundStatuses.Sent ? "It has already gone." : "It is no longer waiting to be sent.");
         if (!await _messages.TryCancelAsync(id, DateTime.UtcNow, ct))
@@ -656,8 +656,8 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
     public async Task<Result<IReadOnlyList<WebhookDeliveryDto>>> WebhookDeliveriesAsync(Guid organizationId, Guid userId, CancellationToken ct = default)
     {
         // The same people who may change where events go.
-        var role = await _organizations.GetMemberRoleAsync(userId, organizationId, ct);
-        if (role is not (OrgMemberRole.Owner or OrgMemberRole.Manager)) return DomainErrors.Organization.NotOwnerOrManager;
+        if (!await _organizations.HasPermissionAsync(userId, organizationId, Domain.Common.MemberPermissions.ManageSettings, ct))
+            return DomainErrors.Permission.Missing(Domain.Common.MemberPermissions.ManageSettings);
         var rows = await _messages.WebhookDeliveriesAsync(organizationId, 50, ct);
         return rows.Select(m => new WebhookDeliveryDto(
             m.Id, m.EventName ?? "", m.Status, m.Attempts, m.LastStatusCode, m.LastError, m.CreatedAtUtc, m.SentAtUtc,

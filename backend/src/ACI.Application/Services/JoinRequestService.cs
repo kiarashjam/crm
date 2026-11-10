@@ -1,6 +1,7 @@
 using ACI.Application.Common;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
+using ACI.Domain.Common;
 using ACI.Domain.Entities;
 using ACI.Domain.Enums;
 using Microsoft.Extensions.Logging;
@@ -91,11 +92,10 @@ public sealed class JoinRequestService : IJoinRequestService
             return Result.Failure<IReadOnlyList<JoinRequestDto>>(DomainErrors.Organization.NotFound);
         }
 
-        var requesterRole = await _organizationRepository.GetMemberRoleAsync(userId, organizationId, ct);
-        if (requesterRole != OrgMemberRole.Owner && requesterRole != OrgMemberRole.Manager)
+        if (!await _organizationRepository.HasPermissionAsync(userId, organizationId, MemberPermissions.ManageMembers, ct))
         {
-            _logger.LogWarning("User {UserId} is not owner or manager of organization {OrganizationId}", userId, organizationId);
-            return Result.Failure<IReadOnlyList<JoinRequestDto>>(DomainErrors.Organization.NotOwnerOrManager);
+            _logger.LogWarning("User {UserId} may not manage the members of organization {OrganizationId}", userId, organizationId);
+            return Result.Failure<IReadOnlyList<JoinRequestDto>>(DomainErrors.Permission.Missing(MemberPermissions.ManageMembers));
         }
 
         var list = await _joinRequestRepository.ListPendingByOrganizationIdAsync(organizationId, ct);
@@ -129,12 +129,14 @@ public sealed class JoinRequestService : IJoinRequestService
             return Result.Failure<JoinRequestDto>(DomainErrors.Organization.NotFound);
         }
 
-        var requesterRoleAccept = await _organizationRepository.GetMemberRoleAsync(userId, jr.OrganizationId, ct);
-        if (requesterRoleAccept != OrgMemberRole.Owner && requesterRoleAccept != OrgMemberRole.Manager)
+        if (!await _organizationRepository.HasPermissionAsync(userId, jr.OrganizationId, MemberPermissions.ManageMembers, ct))
         {
-            _logger.LogWarning("User {UserId} is not owner or manager of organization {OrganizationId}", userId, jr.OrganizationId);
-            return Result.Failure<JoinRequestDto>(DomainErrors.Organization.NotOwnerOrManager);
+            _logger.LogWarning("User {UserId} may not manage the members of organization {OrganizationId}", userId, jr.OrganizationId);
+            return Result.Failure<JoinRequestDto>(DomainErrors.Permission.Missing(MemberPermissions.ManageMembers));
         }
+        // They join as a Member, with what Members could always do.
+        if (!await _organizationRepository.HoldsAllAsync(userId, jr.OrganizationId, MemberPermissions.LegacyMember, ct))
+            return Result.Failure<JoinRequestDto>(DomainErrors.Permission.MoreThanYourOwn);
 
         await _organizationRepository.AddMemberAsync(jr.OrganizationId, jr.UserId, OrgMemberRole.Member, ct);
         jr.Status = JoinRequestStatus.Accepted;
@@ -170,11 +172,10 @@ public sealed class JoinRequestService : IJoinRequestService
             return Result.Failure<JoinRequestDto>(DomainErrors.Organization.NotFound);
         }
 
-        var requesterRoleReject = await _organizationRepository.GetMemberRoleAsync(userId, jr.OrganizationId, ct);
-        if (requesterRoleReject != OrgMemberRole.Owner && requesterRoleReject != OrgMemberRole.Manager)
+        if (!await _organizationRepository.HasPermissionAsync(userId, jr.OrganizationId, MemberPermissions.ManageMembers, ct))
         {
-            _logger.LogWarning("User {UserId} is not owner or manager of organization {OrganizationId}", userId, jr.OrganizationId);
-            return Result.Failure<JoinRequestDto>(DomainErrors.Organization.NotOwnerOrManager);
+            _logger.LogWarning("User {UserId} may not manage the members of organization {OrganizationId}", userId, jr.OrganizationId);
+            return Result.Failure<JoinRequestDto>(DomainErrors.Permission.Missing(MemberPermissions.ManageMembers));
         }
 
         jr.Status = JoinRequestStatus.Rejected;

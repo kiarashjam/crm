@@ -55,16 +55,25 @@ public interface IOrganizationService
     /// <returns>Success or failure result.</returns>
     /// <summary>
     /// Adds an existing registered user to the organization with the given role, without an
-    /// invitation. Owner/manager only. Lets an administrator bring somebody in directly when
+    /// invitation. Takes managing the team. Lets an administrator bring somebody in directly when
     /// waiting on an invitation email is not wanted — the person must already have an account,
     /// because a membership needs a user to point at.
     /// </summary>
-    Task<Result<OrgMemberDto>> AddMemberByEmailAsync(Guid organizationId, Guid requestingUserId, string email, OrgMemberRole role, CancellationToken ct = default);
+    Task<Result<OrgMemberDto>> AddMemberByEmailAsync(Guid organizationId, Guid requestingUserId, string email, OrgMemberRole role, CancellationToken ct = default, string? preset = null);
+
+    /// <summary>Every permission and preset, as the Team page offers them.</summary>
+    PermissionCatalogueDto GetPermissionCatalogue();
+
+    /// <summary>
+    /// Sets what a member may do: a preset (anyone who manages the team, up to what they
+    /// can do themselves), or their own list of permissions (the owner only).
+    /// </summary>
+    Task<Result<OrgMemberDto>> SetMemberPermissionsAsync(Guid organizationId, Guid requestingUserId, Guid memberUserId, SetMemberPermissionsRequest request, CancellationToken ct = default);
 
     Task<Result> UpdateMemberRoleAsync(Guid organizationId, Guid requestingUserId, Guid memberUserId, OrgMemberRole newRole, CancellationToken ct = default);
     
     /// <summary>
-    /// Removes a member from the organization (owner or manager), and hands their open
+    /// Removes a member from the organization (takes managing the team), and hands their open
     /// leads, deals and tasks to another member: <paramref name="handOverToUserId"/>, or
     /// the organization's owner when none is given.
     /// </summary>
@@ -91,20 +100,20 @@ public interface IOrganizationService
     Task<Result<WebhookInfoDto>> GetWebhookInfoAsync(Guid organizationId, Guid userId, CancellationToken ct = default);
 
     /// <summary>
-    /// Sets or clears the JSON webhook password (owner/manager only). Empty clears to the app default.
+    /// Sets or clears the JSON webhook password (takes managing settings). Empty clears to the app default.
     /// </summary>
     Task<Result> UpdateWebhookPasswordAsync(Guid organizationId, Guid userId, string? newPassword, CancellationToken ct = default);
     Task<Result> UpdateOutboundWebhookAsync(Guid organizationId, Guid userId, string? url, string? secret, CancellationToken ct = default);
 
     /// <summary>
-    /// Sets the workspace's currency, locale and time zone (owner or manager). A field
+    /// Sets the workspace's currency, locale and time zone (takes managing settings). A field
     /// left null keeps its value; one that is not a code, a locale or a zone this host
     /// knows is refused and nothing is changed.
     /// </summary>
     Task<Result<OrganizationDto>> UpdateSettingsAsync(Guid organizationId, Guid userId, UpdateOrganizationSettingsRequest request, CancellationToken ct = default);
 
     /// <summary>
-    /// Generates a new webhook API key (owner/manager only). Returned once; only its hash is kept.
+    /// Generates a new webhook API key (takes managing settings). Returned once; only its hash is kept.
     /// </summary>
     /// <param name="organizationId">The organization ID.</param>
     /// <param name="userId">The requesting user's ID.</param>
@@ -120,7 +129,7 @@ public interface IOrganizationService
     /// <returns>The organization if found.</returns>
     Task<Domain.Entities.Organization?> GetByApiKeyAsync(string apiKey, CancellationToken ct = default);
 
-    /// <summary>A new MCP key for the workspace (owner or manager). Returned once; only its hash is kept.</summary>
+    /// <summary>A new MCP key for the workspace (takes managing settings). Returned once; only its hash is kept.</summary>
     Task<Result<string>> GenerateMcpApiKeyAsync(Guid organizationId, Guid userId, CancellationToken ct = default);
 
     /// <summary>The workspace an MCP key belongs to, if any.</summary>

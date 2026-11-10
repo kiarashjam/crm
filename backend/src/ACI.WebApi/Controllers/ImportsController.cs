@@ -3,6 +3,8 @@ using ACI.Application.Interfaces;
 using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ACI.Domain.Common;
+using ACI.WebApi.Filters;
 
 namespace ACI.WebApi.Controllers;
 
@@ -19,6 +21,7 @@ namespace ACI.WebApi.Controllers;
 [Route("api/imports")]
 [Authorize]
 [Produces("application/json")]
+[Requires(MemberPermissions.EditRecords, WritesOnly = true)]
 public class ImportsController : ControllerBase
 {
     // The largest file, base64-encoded, with room for the rest of the request.
@@ -87,7 +90,7 @@ public class ImportsController : ControllerBase
 
     /// <summary>What undoing the import would remove, and what it would keep and why. Nothing is removed.</summary>
     /// <response code="200">The records it would remove, by kind, and the ones it keeps.</response>
-    /// <response code="403">Only whoever ran it, or the owner or a manager, can undo it.</response>
+    /// <response code="403">Only whoever ran it, or someone who manages the workspace's settings, can undo it; and it takes deleting records.</response>
     /// <response code="404">No such import in this workspace.</response>
     /// <response code="409">The import is still running.</response>
     [HttpGet("{id:guid}/undo")]
@@ -106,9 +109,10 @@ public class ImportsController : ControllerBase
     /// since. Changes it made to records that were already here stay.
     /// </summary>
     /// <response code="200">What was removed, and what was kept and why.</response>
-    /// <response code="403">Only whoever ran it, or the owner or a manager, can undo it.</response>
+    /// <response code="403">Only whoever ran it, or someone who manages the workspace's settings, can undo it; and it takes deleting records.</response>
     /// <response code="404">No such import in this workspace.</response>
     /// <response code="409">The import is still running: undoing it then would remove rows while later ones link to them.</response>
+    [Requires(MemberPermissions.DeleteRecords)]
     [HttpPost("{id:guid}/undo")]
     [ProducesResponseType(typeof(ImportUndoDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]

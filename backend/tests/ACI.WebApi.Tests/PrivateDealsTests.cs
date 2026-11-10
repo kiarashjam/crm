@@ -191,7 +191,7 @@ public class PrivateDealsTests
         (await team.Rep.GetAsync("/api/reporting/forecast-snapshots")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
         var refused = await team.Rep.GetAsync("/api/reporting/forecast-snapshot");
         refused.StatusCode.Should().Be(HttpStatusCode.Forbidden, "the saved rows carry the private deal's amount and owner");
-        (await refused.Content.ReadAsStringAsync()).Should().Contain("Only the owner or a manager can see saved forecasts.");
+        (await refused.Content.ReadAsStringAsync()).Should().Contain("Your role here does not let you see saved forecasts.");
     }
 
     [Fact]

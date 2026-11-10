@@ -4,6 +4,7 @@ using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using ACI.Infrastructure.Services;
 using ACI.WebApi.Extensions;
+using ACI.Domain.Common;
 using ACI.WebApi.Filters;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -187,7 +188,7 @@ public class ReportingController : ControllerBase
     /// midnight on the 1st in Zurich, UTC is still on the 31st.
     /// </remarks>
     [HttpPost("forecast-snapshot")]
-    [ManagersOnly("save the forecast")]
+    [Requires(MemberPermissions.SeeAllDeals, What = "save the forecast")]
     [ProducesResponseType(typeof(ForecastSnapshotSetDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<object>> SaveForecast([FromQuery] int? year, [FromQuery] int? month, CancellationToken ct)
     {
@@ -198,7 +199,7 @@ public class ReportingController : ControllerBase
 
     /// <summary>A month's saved forecasts: every save, one save's lines (the latest unless another is named), and what was won.</summary>
     [HttpGet("forecast-snapshots")]
-    [ManagersOnly("see saved forecasts")]
+    [Requires(MemberPermissions.SeeAllDeals, What = "see saved forecasts")]
     [ProducesResponseType(typeof(ForecastSnapshotSetDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<object>> ListForecastSaves(
         [FromQuery] int? year, [FromQuery] int? month, [FromQuery] Guid? snapshotId, CancellationToken ct)
@@ -211,7 +212,7 @@ public class ReportingController : ControllerBase
 
     /// <summary>The lines of a month's latest saved forecast, as this endpoint always returned them.</summary>
     [HttpGet("forecast-snapshot")]
-    [ManagersOnly("see saved forecasts")]
+    [Requires(MemberPermissions.SeeAllDeals, What = "see saved forecasts")]
     public async Task<ActionResult<object>> ListForecast([FromQuery] int? year, [FromQuery] int? month, CancellationToken ct)
     {
         if (_currentUser.UserId is not { } userId) return Unauthorized();

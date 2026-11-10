@@ -544,8 +544,8 @@ public class DealService : IDealService
         if (organizationId is not Guid org) return true;
         if (deal.UserId == userId || deal.AssigneeId == userId) return true;
         if (_organizations == null) return false;
-        var role = await _organizations.GetMemberRoleAsync(userId, org, ct);
-        return role is Domain.Enums.OrgMemberRole.Owner or Domain.Enums.OrgMemberRole.Manager;
+        // Whoever sees every deal decides about anyone's: the owner and managers by default.
+        return await _organizations.HasPermissionAsync(userId, org, Domain.Common.MemberPermissions.SeeAllDeals, ct);
     }
 
     /// <summary>After how many quiet days the workspace's deals are stale, unless their pipeline says otherwise.</summary>

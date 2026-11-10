@@ -4,6 +4,8 @@ using ACI.Application.Interfaces;
 using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ACI.Domain.Common;
+using ACI.WebApi.Filters;
 
 namespace ACI.WebApi.Controllers;
 
@@ -20,6 +22,7 @@ namespace ACI.WebApi.Controllers;
 [ApiController]
 [Authorize]
 [Produces("application/json")]
+[Requires(MemberPermissions.EditRecords, WritesOnly = true)]
 public class ContactRelationshipsController : ControllerBase
 {
     private readonly IContactRelationshipService _service;

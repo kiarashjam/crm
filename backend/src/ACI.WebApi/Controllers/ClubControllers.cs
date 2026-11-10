@@ -4,6 +4,7 @@ using ACI.WebApi.Extensions;
 using ACI.WebApi.Filters;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ACI.Domain.Common;
 
 namespace ACI.WebApi.Controllers;
 
@@ -12,6 +13,7 @@ namespace ACI.WebApi.Controllers;
 [Authorize]
 [WorkspaceRequired]
 [Produces("application/json")]
+[Requires(MemberPermissions.ClubMembers, WritesOnly = true)]
 public class MembersController : ControllerBase
 {
     private readonly IClubService _club;
@@ -43,6 +45,7 @@ public class MembersController : ControllerBase
         return (await _club.UpdateMemberAsync(id, _currentUser.CurrentOrganizationId, request, ct)).ToActionResult();
     }
 
+    [Requires(MemberPermissions.DeleteRecords)]
     [HttpDelete("{id:guid}")]
     public async Task<ActionResult> Delete(Guid id, CancellationToken ct)
     {
@@ -51,6 +54,7 @@ public class MembersController : ControllerBase
     }
 
     /// <summary>Keeps this member and folds the other one into it.</summary>
+    [Requires(MemberPermissions.DeleteRecords)]
     [HttpPost("{id:guid}/merge")]
     public async Task<ActionResult> Merge(Guid id, [FromBody] MergeMembersRequest request, CancellationToken ct)
     {
@@ -65,6 +69,7 @@ public class MembersController : ControllerBase
 [Authorize]
 [WorkspaceRequired]
 [Produces("application/json")]
+[Requires(MemberPermissions.FrontDesk, WritesOnly = true)]
 public class VisitsController : ControllerBase
 {
     private readonly IClubService _club;
@@ -89,6 +94,7 @@ public class VisitsController : ControllerBase
         return (await _club.CheckInAsync(_currentUser.CurrentOrganizationId, request, ct)).ToActionResult();
     }
 
+    [Requires(MemberPermissions.DeleteRecords)]
     [HttpDelete("{id:guid}")]
     public async Task<ActionResult> Delete(Guid id, CancellationToken ct)
     {
@@ -102,6 +108,7 @@ public class VisitsController : ControllerBase
 [Authorize]
 [WorkspaceRequired]
 [Produces("application/json")]
+[Requires(MemberPermissions.ClubMembers, WritesOnly = true)]
 public class LoyaltyController : ControllerBase
 {
     private readonly IClubService _club;
@@ -126,6 +133,7 @@ public class LoyaltyController : ControllerBase
         return (await _club.AddLedgerAsync(_currentUser.CurrentOrganizationId, request, ct)).ToActionResult();
     }
 
+    [Requires(MemberPermissions.DeleteRecords)]
     [HttpDelete("ledger/{id:guid}")]
     public async Task<ActionResult> Delete(Guid id, CancellationToken ct)
     {

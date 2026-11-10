@@ -6,6 +6,8 @@ using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Net.Http.Headers;
+using ACI.Domain.Common;
+using ACI.WebApi.Filters;
 
 namespace ACI.WebApi.Controllers;
 
@@ -16,6 +18,7 @@ namespace ACI.WebApi.Controllers;
 [Route("api/attachments")]
 [Authorize]
 [Produces("application/json")]
+[Requires(MemberPermissions.EditRecords, WritesOnly = true)]
 public class AttachmentsController : ControllerBase
 {
     // Types a browser can show without running anything. Everything else downloads.

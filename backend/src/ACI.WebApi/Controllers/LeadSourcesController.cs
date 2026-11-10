@@ -1,3 +1,5 @@
+using ACI.Domain.Common;
+using ACI.Application.Common;
 using System.ComponentModel.DataAnnotations;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
@@ -5,6 +7,7 @@ using ACI.Domain.Enums;
 using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ACI.WebApi.Filters;
 
 namespace ACI.WebApi.Controllers;
 
@@ -13,12 +16,13 @@ namespace ACI.WebApi.Controllers;
 /// </summary>
 /// <remarks>
 /// Lead sources track where leads originate from (e.g., Website, Referral, Trade Show).
-/// Only organization owners and managers can create, update, or delete sources.
+/// Only members who manage the workspace's settings (owners and managers by default) can create, update, or delete sources.
 /// </remarks>
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
 [Produces("application/json")]
+[Requires(MemberPermissions.ManageSettings, WritesOnly = true)]
 public class LeadSourcesController : ControllerBase
 {
     private readonly ILeadSourceService _leadSourceService;
@@ -41,8 +45,8 @@ public class LeadSourcesController : ControllerBase
         if (userId == null) return Unauthorized();
         var orgId = _currentUser.CurrentOrganizationId;
         if (orgId == null) return Problem(detail: "X-Organization-Id required", statusCode: StatusCodes.Status400BadRequest);
-        var role = await _organizationRepository.GetMemberRoleAsync(userId.Value, orgId.Value, ct);
-        if (role != OrgMemberRole.Owner && role != OrgMemberRole.Manager)
+        // The workspace's settings: the owner and managers by default (MemberPermissions).
+        if (!await _organizationRepository.HasPermissionAsync(userId.Value, orgId.Value, MemberPermissions.ManageSettings, ct))
             return Forbid();
         return null;
     }
@@ -94,7 +98,7 @@ public class LeadSourcesController : ControllerBase
     /// Creates a new lead source.
     /// </summary>
     /// <remarks>
-    /// Only organization owners and managers can create sources.
+    /// Only members who manage the workspace's settings (owners and managers by default) can create sources.
     /// </remarks>
     /// <param name="request">Source creation request.</param>
     /// <param name="ct">Cancellation token.</param>
@@ -102,7 +106,7 @@ public class LeadSourcesController : ControllerBase
     /// <response code="200">Source created successfully.</response>
     /// <response code="400">Invalid request or X-Organization-Id required.</response>
     /// <response code="401">User is not authenticated.</response>
-    /// <response code="403">User is not an owner or manager.</response>
+    /// <response code="403">The caller's role does not let them manage settings.</response>
     [HttpPost]
     [ProducesResponseType(typeof(LeadSourceDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -121,7 +125,7 @@ public class LeadSourcesController : ControllerBase
     /// Updates an existing lead source.
     /// </summary>
     /// <remarks>
-    /// Only organization owners and managers can update sources.
+    /// Only members who manage the workspace's settings (owners and managers by default) can update sources.
     /// </remarks>
     /// <param name="id">The source ID to update.</param>
     /// <param name="request">Source update request.</param>
@@ -130,7 +134,7 @@ public class LeadSourcesController : ControllerBase
     /// <response code="200">Source updated successfully.</response>
     /// <response code="400">X-Organization-Id header is required.</response>
     /// <response code="401">User is not authenticated.</response>
-    /// <response code="403">User is not an owner or manager.</response>
+    /// <response code="403">The caller's role does not let them manage settings.</response>
     /// <response code="404">Source not found.</response>
     [HttpPut("{id:guid}")]
     [ProducesResponseType(typeof(LeadSourceDto), StatusCodes.Status200OK)]
@@ -151,7 +155,7 @@ public class LeadSourcesController : ControllerBase
     /// Deletes a lead source.
     /// </summary>
     /// <remarks>
-    /// Only organization owners and managers can delete sources.
+    /// Only members who manage the workspace's settings (owners and managers by default) can delete sources.
     /// Sources with existing leads may need to be reassigned first.
     /// </remarks>
     /// <param name="id">The source ID to delete.</param>
@@ -160,7 +164,7 @@ public class LeadSourcesController : ControllerBase
     /// <response code="204">Source deleted successfully.</response>
     /// <response code="400">X-Organization-Id header is required.</response>
     /// <response code="401">User is not authenticated.</response>
-    /// <response code="403">User is not an owner or manager.</response>
+    /// <response code="403">The caller's role does not let them manage settings.</response>
     /// <response code="404">Source not found.</response>
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

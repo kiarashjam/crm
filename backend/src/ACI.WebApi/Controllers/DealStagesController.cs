@@ -1,3 +1,5 @@
+using ACI.Domain.Common;
+using ACI.Application.Common;
 using System.ComponentModel.DataAnnotations;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
@@ -5,6 +7,7 @@ using ACI.Domain.Enums;
 using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ACI.WebApi.Filters;
 
 namespace ACI.WebApi.Controllers;
 
@@ -13,13 +16,14 @@ namespace ACI.WebApi.Controllers;
 /// </summary>
 /// <remarks>
 /// Deal stages represent the steps in a sales process.
-/// Only owners and managers can create, update, or delete stages.
+/// Only members who manage the workspace's settings (owners and managers by default) can create, update, or delete stages.
 /// Each stage can be marked as "won" or "lost" for deal outcomes.
 /// </remarks>
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
 [Produces("application/json")]
+[Requires(MemberPermissions.ManageSettings, WritesOnly = true)]
 public class DealStagesController : ControllerBase
 {
     private readonly IDealStageService _dealStageService;
@@ -39,8 +43,8 @@ public class DealStagesController : ControllerBase
         if (userId == null) return Unauthorized();
         var orgId = _currentUser.CurrentOrganizationId;
         if (orgId == null) return BadRequest("X-Organization-Id required");
-        var role = await _organizationRepository.GetMemberRoleAsync(userId.Value, orgId.Value, ct);
-        if (role != OrgMemberRole.Owner && role != OrgMemberRole.Manager)
+        // The workspace's settings: the owner and managers by default (MemberPermissions).
+        if (!await _organizationRepository.HasPermissionAsync(userId.Value, orgId.Value, MemberPermissions.ManageSettings, ct))
             return Forbid();
         return null;
     }
@@ -95,7 +99,7 @@ public class DealStagesController : ControllerBase
     /// Creates a new deal stage in a pipeline.
     /// </summary>
     /// <remarks>
-    /// Only organization owners and managers can create stages.
+    /// Only members who manage the workspace's settings (owners and managers by default) can create stages.
     /// Stages can be marked as "won" or "lost" to represent deal outcomes.
     /// </remarks>
     /// <param name="request">Stage creation request.</param>
@@ -104,7 +108,7 @@ public class DealStagesController : ControllerBase
     /// <response code="200">Stage created successfully.</response>
     /// <response code="400">Invalid request data or X-Organization-Id required.</response>
     /// <response code="401">User is not authenticated.</response>
-    /// <response code="403">User is not an owner or manager.</response>
+    /// <response code="403">The caller's role does not let them manage settings.</response>
     /// <response code="404">Pipeline not found.</response>
     [HttpPost]
     [ProducesResponseType(typeof(DealStageDto), StatusCodes.Status200OK)]
@@ -125,7 +129,7 @@ public class DealStagesController : ControllerBase
     /// Updates an existing deal stage.
     /// </summary>
     /// <remarks>
-    /// Only organization owners and managers can update stages.
+    /// Only members who manage the workspace's settings (owners and managers by default) can update stages.
     /// </remarks>
     /// <param name="id">The stage ID.</param>
     /// <param name="request">Stage update request.</param>
@@ -134,7 +138,7 @@ public class DealStagesController : ControllerBase
     /// <response code="200">Stage updated successfully.</response>
     /// <response code="400">X-Organization-Id header is required.</response>
     /// <response code="401">User is not authenticated.</response>
-    /// <response code="403">User is not an owner or manager.</response>
+    /// <response code="403">The caller's role does not let them manage settings.</response>
     /// <response code="404">Stage not found.</response>
     [HttpPut("{id:guid}")]
     [ProducesResponseType(typeof(DealStageDto), StatusCodes.Status200OK)]
@@ -156,7 +160,7 @@ public class DealStagesController : ControllerBase
     /// Deletes a deal stage.
     /// </summary>
     /// <remarks>
-    /// Only organization owners and managers can delete stages.
+    /// Only members who manage the workspace's settings (owners and managers by default) can delete stages.
     /// Stages with existing deals may not be deletable.
     /// </remarks>
     /// <param name="id">The stage ID.</param>
@@ -165,7 +169,7 @@ public class DealStagesController : ControllerBase
     /// <response code="204">Stage deleted successfully.</response>
     /// <response code="400">X-Organization-Id header is required.</response>
     /// <response code="401">User is not authenticated.</response>
-    /// <response code="403">User is not an owner or manager.</response>
+    /// <response code="403">The caller's role does not let them manage settings.</response>
     /// <response code="404">Stage not found.</response>
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

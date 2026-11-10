@@ -1,5 +1,6 @@
+using ACI.Application.Common;
 using ACI.Application.Interfaces;
-using ACI.Domain.Enums;
+using ACI.Domain.Common;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 
@@ -38,23 +39,52 @@ public sealed class WorkspaceRequiredAttribute : Attribute, IAsyncActionFilter
 }
 
 /// <summary>
-/// In an organization, only its owner or a manager may do this. In a personal
-/// workspace everything is the caller's own, so it is theirs to do.
+/// In an organization, the caller must hold these permissions (see MemberPermissions);
+/// in a personal workspace everything is the caller's own, so it is theirs to do.
 /// </summary>
 /// <remarks>
-/// The same rule the pipeline, stage and lead-routing settings use. A Member could
-/// otherwise set up workspace-wide rules that reassign records and send mail.
+/// <para>
+/// Read fresh on every request from the membership, like the role before it, so a change
+/// an owner makes takes effect at once, whatever token the member holds.
+/// </para>
+/// <para>
+/// On a controller with <see cref="WritesOnly"/>, reads (GET, HEAD) pass and only changes
+/// are checked; on an action it applies to that action. Several on one action all apply.
+/// EndpointPermissionTests fails when an endpoint that changes something has no
+/// permission and is not on its list of self-service or anonymous endpoints.
+/// </para>
 /// </remarks>
-[AttributeUsage(AttributeTargets.Class | AttributeTargets.Method)]
-public sealed class ManagersOnlyAttribute : Attribute, IAsyncActionFilter
+[AttributeUsage(AttributeTargets.Class | AttributeTargets.Method, AllowMultiple = true)]
+public sealed class RequiresAttribute : Attribute, IAsyncActionFilter, IOrderedFilter
 {
-    /// <param name="what">Finishes "Only the owner or a manager can …".</param>
-    public ManagersOnlyAttribute(string what) => What = what;
+    /// <param name="permissions">The permissions needed: all of them, or with <see cref="Any"/> one.</param>
+    public RequiresAttribute(params string[] permissions) => Permissions = permissions;
 
-    public string What { get; }
+    /// <summary>
+    /// Before the check of the request's body (-2000), so someone who may not do this hears
+    /// that, not what was wrong with what they sent.
+    /// </summary>
+    public int Order => -3000;
+
+    public string[] Permissions { get; }
+
+    /// <summary>Any one of the permissions is enough.</summary>
+    public bool Any { get; init; }
+
+    /// <summary>Only requests that change something are checked; reads pass.</summary>
+    public bool WritesOnly { get; init; }
+
+    /// <summary>Finishes "Your role here does not let you …"; by default the first missing permission's own words.</summary>
+    public string? What { get; init; }
 
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
+        var method = context.HttpContext.Request.Method;
+        if (WritesOnly && (HttpMethods.IsGet(method) || HttpMethods.IsHead(method)))
+        {
+            await next();
+            return;
+        }
         var services = context.HttpContext.RequestServices;
         var user = services.GetRequiredService<ICurrentUserService>();
         if (user.UserId is not { } userId)
@@ -64,12 +94,13 @@ public sealed class ManagersOnlyAttribute : Attribute, IAsyncActionFilter
         }
         if (user.CurrentOrganizationId is { } organizationId)
         {
-            var role = await services.GetRequiredService<IOrganizationRepository>()
-                .GetMemberRoleAsync(userId, organizationId, context.HttpContext.RequestAborted);
-            if (role is not (OrgMemberRole.Owner or OrgMemberRole.Manager))
+            var held = await services.GetRequiredService<IPermissionService>()
+                .PermissionsAsync(userId, organizationId, context.HttpContext.RequestAborted);
+            var missing = Permissions.Where(p => !held.Contains(p)).ToList();
+            if (Any ? missing.Count == Permissions.Length : missing.Count > 0)
             {
-                context.Result = WorkspaceProblem.Result(StatusCodes.Status403Forbidden, "Owner or manager only",
-                    $"Only the owner or a manager can {What}.");
+                context.Result = WorkspaceProblem.Result(StatusCodes.Status403Forbidden, "Not allowed for your role",
+                    MemberPermissions.Refusal(What ?? MemberPermissions.Phrase(missing[0])), missing[0]);
                 return;
             }
         }
@@ -114,7 +145,16 @@ public sealed class ActsForRouteOrganizationAttribute : Attribute, IAsyncActionF
 
 file static class WorkspaceProblem
 {
-    // A sentence in `detail`, because the app shows it as the error toast.
-    public static ObjectResult Result(int status, string title, string detail) =>
-        new(new ProblemDetails { Status = status, Title = title, Detail = detail }) { StatusCode = status };
+    // A sentence in `detail`, because the app shows it as the error toast. A refusal for
+    // want of a permission also names it, so the app can say which one is missing.
+    public static ObjectResult Result(int status, string title, string detail, string? permission = null)
+    {
+        var problem = new ProblemDetails { Status = status, Title = title, Detail = detail };
+        if (permission != null)
+        {
+            problem.Extensions["errorCode"] = "Permission.Required";
+            problem.Extensions["permission"] = permission;
+        }
+        return new ObjectResult(problem) { StatusCode = status };
+    }
 }

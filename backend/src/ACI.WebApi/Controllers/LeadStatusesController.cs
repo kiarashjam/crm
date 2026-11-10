@@ -1,3 +1,5 @@
+using ACI.Domain.Common;
+using ACI.Application.Common;
 using System.ComponentModel.DataAnnotations;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
@@ -5,6 +7,7 @@ using ACI.Domain.Enums;
 using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ACI.WebApi.Filters;
 
 namespace ACI.WebApi.Controllers;
 
@@ -13,12 +16,13 @@ namespace ACI.WebApi.Controllers;
 /// </summary>
 /// <remarks>
 /// Lead statuses define the lifecycle stages of a lead (e.g., New, Contacted, Qualified).
-/// Only organization owners and managers can create, update, or delete statuses.
+/// Only members who manage the workspace's settings (owners and managers by default) can create, update, or delete statuses.
 /// </remarks>
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
 [Produces("application/json")]
+[Requires(MemberPermissions.ManageSettings, WritesOnly = true)]
 public class LeadStatusesController : ControllerBase
 {
     private readonly ILeadStatusService _leadStatusService;
@@ -41,8 +45,8 @@ public class LeadStatusesController : ControllerBase
         if (userId == null) return Unauthorized();
         var orgId = _currentUser.CurrentOrganizationId;
         if (orgId == null) return Problem(detail: "X-Organization-Id required", statusCode: StatusCodes.Status400BadRequest);
-        var role = await _organizationRepository.GetMemberRoleAsync(userId.Value, orgId.Value, ct);
-        if (role != OrgMemberRole.Owner && role != OrgMemberRole.Manager)
+        // The workspace's settings: the owner and managers by default (MemberPermissions).
+        if (!await _organizationRepository.HasPermissionAsync(userId.Value, orgId.Value, MemberPermissions.ManageSettings, ct))
             return Forbid();
         return null;
     }
@@ -104,7 +108,7 @@ public class LeadStatusesController : ControllerBase
     /// Creates a new lead status.
     /// </summary>
     /// <remarks>
-    /// Only organization owners and managers can create statuses.
+    /// Only members who manage the workspace's settings (owners and managers by default) can create statuses.
     /// </remarks>
     /// <param name="request">Status creation request.</param>
     /// <param name="ct">Cancellation token.</param>
@@ -112,7 +116,7 @@ public class LeadStatusesController : ControllerBase
     /// <response code="200">Status created successfully.</response>
     /// <response code="400">Invalid request or X-Organization-Id required.</response>
     /// <response code="401">User is not authenticated.</response>
-    /// <response code="403">User is not an owner or manager.</response>
+    /// <response code="403">The caller's role does not let them manage settings.</response>
     [HttpPost]
     [ProducesResponseType(typeof(LeadStatusDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -131,7 +135,7 @@ public class LeadStatusesController : ControllerBase
     /// Updates an existing lead status.
     /// </summary>
     /// <remarks>
-    /// Only organization owners and managers can update statuses.
+    /// Only members who manage the workspace's settings (owners and managers by default) can update statuses.
     /// </remarks>
     /// <param name="id">The status ID to update.</param>
     /// <param name="request">Status update request.</param>
@@ -140,7 +144,7 @@ public class LeadStatusesController : ControllerBase
     /// <response code="200">Status updated successfully.</response>
     /// <response code="400">X-Organization-Id header is required.</response>
     /// <response code="401">User is not authenticated.</response>
-    /// <response code="403">User is not an owner or manager.</response>
+    /// <response code="403">The caller's role does not let them manage settings.</response>
     /// <response code="404">Status not found.</response>
     [HttpPut("{id:guid}")]
     [ProducesResponseType(typeof(LeadStatusDto), StatusCodes.Status200OK)]
@@ -161,7 +165,7 @@ public class LeadStatusesController : ControllerBase
     /// Deletes a lead status.
     /// </summary>
     /// <remarks>
-    /// Only organization owners and managers can delete statuses.
+    /// Only members who manage the workspace's settings (owners and managers by default) can delete statuses.
     /// Statuses with existing leads may need to be reassigned first.
     /// </remarks>
     /// <param name="id">The status ID to delete.</param>
@@ -170,7 +174,7 @@ public class LeadStatusesController : ControllerBase
     /// <response code="204">Status deleted successfully.</response>
     /// <response code="400">X-Organization-Id header is required.</response>
     /// <response code="401">User is not authenticated.</response>
-    /// <response code="403">User is not an owner or manager.</response>
+    /// <response code="403">The caller's role does not let them manage settings.</response>
     /// <response code="404">Status not found.</response>
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

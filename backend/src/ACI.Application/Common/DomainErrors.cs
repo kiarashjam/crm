@@ -8,6 +8,28 @@ namespace ACI.Application.Common;
 public static class DomainErrors
 {
     /// <summary>
+    /// A member's role does not let them do this (see Domain.Common.MemberPermissions).
+    /// Answered 403, with the permission in the code ("Permission.records.delete").
+    /// </summary>
+    public static class Permission
+    {
+        /// <param name="permission">The permission that is missing.</param>
+        /// <param name="what">Finishes "Your role here does not let you …"; the permission's own words by default.</param>
+        public static Error Missing(string permission, string? what = null) => new(
+            $"Permission.{permission}",
+            Domain.Common.MemberPermissions.Refusal(what ?? Domain.Common.MemberPermissions.Phrase(permission)));
+
+        /// <summary>
+        /// Nobody hands out more than they can do themselves, or changes someone who can do
+        /// more. The owner and managers hold everything, so this only ever stops a member
+        /// the owner let manage the team with less.
+        /// </summary>
+        public static readonly Error MoreThanYourOwn = new(
+            $"Permission.{Domain.Common.MemberPermissions.ManageMembers}",
+            "You can only give a member what you can do yourself, and only change someone who can do no more than you.");
+    }
+
+    /// <summary>
     /// Deal line item errors.
     /// </summary>
     public static class DealLineItem
@@ -116,9 +138,10 @@ public static class DomainErrors
         public static readonly Error RecordNotFound = new(
             "CustomFieldRecord.NotFound", "The record was not found");
 
-        // "NotOwner" in the code is what maps this to 403 Forbidden.
+        // "NotOwner" in the code is what maps this to 403 Forbidden. It takes
+        // MemberPermissions.ManageSettings (the owner and managers by default).
         public static readonly Error NotOwnerOrManager = new(
-            "CustomField.NotOwnerOrManager", "Only the owner or a manager can change custom fields");
+            "CustomField.NotOwnerOrManager", "Your role here does not let you change custom fields");
 
         public static Error InvalidValue(string label, string expected) => new(
             "CustomField.InvalidValue", $"{label} {expected}");
@@ -320,7 +343,7 @@ public static class DomainErrors
 
         // "NotOwner" in the code is what maps this to 403 Forbidden.
         public static readonly Error NotOwnerOrManager = new(
-            "Import.NotOwnerOrManager", "Only whoever ran the import, or the workspace's owner or a manager, can undo it");
+            "Import.NotOwnerOrManager", "Only whoever ran the import, or someone who manages the workspace's settings, can undo it");
 
         // Codes ending ".Conflict" map to 409.
         public static readonly Error StillRunning = new(
@@ -653,10 +676,7 @@ public static class DomainErrors
         public static readonly Error NotOwner = new(
             "Organization.NotOwner", "Only the organization owner can perform this action");
         
-        public static readonly Error NotOwnerOrManager = new(
-            "Organization.NotOwnerOrManager", "Only the owner or a manager can perform this action");
-        
-        public static readonly Error AlreadyMember = new(
+public static readonly Error AlreadyMember = new(
             "Organization.AlreadyMember", "This user is already a member of the organization");
         
         public static readonly Error CannotRemoveOwner = new(
@@ -901,7 +921,7 @@ public static class DomainErrors
             "Club.ReasonRequired", "Say why this is being voided. The reason stays on the record.");
 
         public static readonly Error ChargeCannotDelete = new(
-            "Charge.CannotDelete", "A charge can't be deleted. An owner or manager can void it, with a reason, and the record stays.");
+            "Charge.CannotDelete", "A charge can't be deleted. Someone allowed to void money can void it, with a reason, and the record stays.");
 
         public static readonly Error ChargeHasPayments = new(
             "Charge.HasPayments.Conflict", "This charge has payments against it. Void those payments first, then the charge.");

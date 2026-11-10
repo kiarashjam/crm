@@ -295,7 +295,7 @@ public class WebhookController : ControllerBase
     }
 
     /// <summary>
-    /// Generates the workspace's MCP key (owner/manager only), replacing any earlier one.
+    /// Generates the workspace's MCP key (takes managing the workspace's settings), replacing any earlier one.
     /// It is returned once; only its hash is stored. The lead webhook key does not open /mcp.
     /// </summary>
     [HttpPost("organizations/{organizationId:guid}/generate-mcp-key")]
@@ -319,7 +319,7 @@ public class WebhookController : ControllerBase
     }
 
     /// <summary>
-    /// Sets or clears the shared JSON webhook password (owner/manager only). Empty body clears to the default.
+    /// Sets or clears the shared JSON webhook password (takes managing the workspace's settings). Empty body clears to the default.
     /// </summary>
     [HttpPut("organizations/{organizationId:guid}/webhook-password")]
     [Authorize]
@@ -346,7 +346,7 @@ public class WebhookController : ControllerBase
 
     /// <summary>
     /// The latest events posted, or still to be posted, to the workspace's address, with
-    /// what the receiver answered (owner/manager only). Delivery used to be one post with
+    /// what the receiver answered (takes managing the workspace's settings). Delivery used to be one post with
     /// no record; a failure was a log line and the event was gone.
     /// </summary>
     [HttpGet("organizations/{organizationId:guid}/deliveries")]

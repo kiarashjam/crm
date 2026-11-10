@@ -315,7 +315,7 @@ public class ClubMoneyTests
         (await Refused(await staff.DeleteAsync($"/api/charges/{charge}"), HttpStatusCode.BadRequest, "deleting a charge"))
             .Should().Contain("can't be deleted");
         (await Refused(await staff.PostAsync($"/api/charges/{charge}/void", Body(new { reason = "Comp" })), HttpStatusCode.Forbidden, "a bartender voiding a charge"))
-            .Should().Contain("Only the owner or a manager can void a charge.");
+            .Should().Contain("Your role here does not let you void a charge.");
         await Refused(await owner.PostAsync($"/api/charges/{charge}/void", Body(new { reason = "  " })), HttpStatusCode.BadRequest, "a void with no reason");
         (await BalanceAsync(owner, memberId)).Should().Be(-500, "nothing has been taken off yet");
 

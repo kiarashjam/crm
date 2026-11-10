@@ -94,6 +94,9 @@ public static class ResultExtensions
     {
         // Not Found errors
         var code when code.EndsWith(".NotFound") => StatusCodes.Status404NotFound,
+
+        // A member's role does not let them (DomainErrors.Permission)
+        var code when code.StartsWith("Permission.") => StatusCodes.Status403Forbidden,
         
         // Unauthorized/Authentication errors
         "Auth.InvalidCredentials" => StatusCodes.Status401Unauthorized,

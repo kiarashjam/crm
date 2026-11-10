@@ -40,15 +40,29 @@ public sealed class OrganizationRepository : IOrganizationRepository
         return organization;
     }
 
-    public async Task AddMemberAsync(Guid organizationId, Guid userId, OrgMemberRole role, CancellationToken ct = default)
+    public Task AddMemberAsync(Guid organizationId, Guid userId, OrgMemberRole role, CancellationToken ct = default) =>
+        AddMemberAsync(organizationId, userId, role, null, ct);
+
+    public async Task AddMemberAsync(Guid organizationId, Guid userId, OrgMemberRole role, string? permissionPreset, CancellationToken ct = default)
     {
         _db.OrganizationMembers.Add(new OrganizationMember
         {
             OrganizationId = organizationId,
             UserId = userId,
             Role = role,
+            PermissionPreset = permissionPreset,
             JoinedAtUtc = DateTime.UtcNow,
         });
+        await _db.SaveChangesAsync(ct);
+    }
+
+    public async Task UpdateMemberPermissionsAsync(Guid organizationId, Guid userId, OrgMemberRole role, string? permissionPreset, string? permissions, CancellationToken ct = default)
+    {
+        var member = await _db.OrganizationMembers.FirstOrDefaultAsync(m => m.OrganizationId == organizationId && m.UserId == userId, ct);
+        if (member == null) return;
+        member.Role = role;
+        member.PermissionPreset = permissionPreset;
+        member.Permissions = permissions;
         await _db.SaveChangesAsync(ct);
     }
 
@@ -69,7 +83,11 @@ public sealed class OrganizationRepository : IOrganizationRepository
         var member = await _db.OrganizationMembers.FirstOrDefaultAsync(m => m.OrganizationId == organizationId && m.UserId == userId, ct);
         if (member != null)
         {
+            // A role set this way means what it meant before presets: the preset and any
+            // permissions of the member's own give way to it.
             member.Role = role;
+            member.PermissionPreset = null;
+            member.Permissions = null;
             await _db.SaveChangesAsync(ct);
         }
     }

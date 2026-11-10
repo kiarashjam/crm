@@ -193,8 +193,7 @@ public sealed class CustomFieldService : ICustomFieldService
     {
         // A personal workspace is its owner's alone.
         if (organizationId is not { } orgId) return true;
-        var role = await _organizations.GetMemberRoleAsync(userId, orgId, ct);
-        return role is OrgMemberRole.Owner or OrgMemberRole.Manager;
+        return await _organizations.HasPermissionAsync(userId, orgId, Domain.Common.MemberPermissions.ManageSettings, ct);
     }
 
     /// <summary>A value checked against its field; strings that are empty become null.</summary>

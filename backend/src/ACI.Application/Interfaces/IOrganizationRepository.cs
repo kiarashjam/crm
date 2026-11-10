@@ -25,6 +25,12 @@ public interface IOrganizationRepository
     Task UpdateMemberRoleAsync(Guid organizationId, Guid userId, OrgMemberRole role, CancellationToken ct = default);
     Task RemoveMemberAsync(Guid organizationId, Guid userId, CancellationToken ct = default);
 
+    /// <summary>Adds a member with the preset their permissions start from.</summary>
+    Task AddMemberAsync(Guid organizationId, Guid userId, OrgMemberRole role, string? permissionPreset, CancellationToken ct = default);
+
+    /// <summary>Sets what a member may do: their role, preset, and own list of permissions (null to follow the preset).</summary>
+    Task UpdateMemberPermissionsAsync(Guid organizationId, Guid userId, OrgMemberRole role, string? permissionPreset, string? permissions, CancellationToken ct = default);
+
     /// <summary>
     /// Removes a member and, in the same transaction, hands their open work in the
     /// organization to <paramref name="handOverToUserId"/>: the open leads and deals they

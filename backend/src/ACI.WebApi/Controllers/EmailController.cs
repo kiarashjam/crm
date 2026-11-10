@@ -5,6 +5,8 @@ using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using ACI.Domain.Common;
+using ACI.WebApi.Filters;
 
 namespace ACI.WebApi.Controllers;
 
@@ -21,6 +23,7 @@ namespace ACI.WebApi.Controllers;
 [ApiController]
 [Authorize]
 [Route("api/email")]
+[Requires(MemberPermissions.EditRecords, WritesOnly = true)]
 public class EmailController : ControllerBase
 {
     private readonly IComposedEmailService _email;

@@ -1,6 +1,7 @@
 using ACI.Application.Interfaces;
 using ACI.Application.Services;
 using ACI.WebApi.Extensions;
+using ACI.Domain.Common;
 using ACI.WebApi.Filters;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -12,7 +13,7 @@ namespace ACI.WebApi.Controllers;
 /// </summary>
 /// <remarks>
 /// A rule can reassign records and send mail for the whole workspace, so changing one
-/// takes the owner or a manager, as lead routing does. Everyone can see them.
+/// takes managing the workspace's settings (the owner and managers by default), as lead routing does. Everyone can see them.
 /// </remarks>
 [ApiController]
 [Route("api/automations")]
@@ -38,7 +39,7 @@ public class AutomationsController : ControllerBase
     }
 
     [HttpPost]
-    [ManagersOnly("change automations")]
+    [Requires(MemberPermissions.ManageSettings, What = "change automations")]
     public async Task<ActionResult<AutomationRuleDto>> Create([FromBody] AutomationWriteRequest request, CancellationToken ct)
     {
         if (_currentUser.UserId is not { } userId) return Unauthorized();
@@ -46,7 +47,7 @@ public class AutomationsController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
-    [ManagersOnly("change automations")]
+    [Requires(MemberPermissions.ManageSettings, What = "change automations")]
     public async Task<ActionResult<AutomationRuleDto>> Update(Guid id, [FromBody] AutomationWriteRequest request, CancellationToken ct)
     {
         if (_currentUser.UserId == null) return Unauthorized();
@@ -54,7 +55,7 @@ public class AutomationsController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
-    [ManagersOnly("change automations")]
+    [Requires(MemberPermissions.ManageSettings, What = "change automations")]
     public async Task<ActionResult> Delete(Guid id, CancellationToken ct)
     {
         if (_currentUser.UserId == null) return Unauthorized();
