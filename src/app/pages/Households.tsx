@@ -265,16 +265,19 @@ export default function Households() {
           {busy === `pdf:${h.id}` ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
         </button>
       )}
-      <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.DeleteRecords]} all>
-        <button
-          type="button"
-          onClick={() => removeHousehold(h)}
-          className="rounded p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-600"
-          aria-label={`Delete the ${h.name} household`}
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
-      </WriteOnly>
+      {/* Deleting it bills whoever's bills roll up on their own account again: money. */}
+      {(canMoney || !h.people.some((p) => p.rollUpBilling)) && (
+        <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.DeleteRecords]} all>
+          <button
+            type="button"
+            onClick={() => removeHousehold(h)}
+            className="rounded p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-600"
+            aria-label={`Delete the ${h.name} household`}
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </WriteOnly>
+      )}
     </>
   );
 

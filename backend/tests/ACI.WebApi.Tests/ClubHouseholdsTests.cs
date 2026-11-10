@@ -156,6 +156,33 @@ public class ClubHouseholdsTests
     }
 
     [Fact]
+    public async Task DeletingOrMergingAwayAHouseholdWhoseBillsRollUp_NeedsMoneyManageToo()
+    {
+        // Someone who manages members and may delete records, but not handle money: deleting the
+        // household (or merging it into another) would move Anna's bills off Peter's account.
+        using var factory = new CustomWebApplicationFactory();
+        var (owner, _, org) = await ClubAsync(factory);
+        var (clerk, clerkId) = await SignInAsync(factory, "clerk@pavillon46.ch");
+        await AddMemberAsync(factory, org, clerkId, OrgMemberRole.Member);
+        await Json(await owner.PutAsync($"/api/organizations/{org}/members/{clerkId}/permissions", Body(new
+        {
+            preset = "membership_director", permissions = new[] { "records.edit", "records.delete", "club.members" },
+        })), "the clerk may delete records but not handle money");
+        clerk.In(org);
+        var (household, _, _, _, _) = await MeiersAsync(owner);
+        var other = (await Json(await owner.PostAsync("/api/households", Body(new { name = "Other", primaryMemberId = await MemberAsync(owner, "Zoe", "Other") })), "another"))
+            .GetProperty("id").GetGuid();
+
+        await Refused(await clerk.DeleteAsync($"/api/households/{household}"), HttpStatusCode.Forbidden, "the clerk deletes the Meier household");
+        await Refused(await clerk.PostAsync($"/api/households/{other}/merge", Body(new { duplicateIds = new[] { household } })), HttpStatusCode.Forbidden,
+            "the clerk merges it into another");
+        (await factory.Services.Read(db => db.ClubHouseholds.Count())).Should().Be(2);
+
+        // A household nobody's bills roll up in is theirs to delete.
+        (await clerk.DeleteAsync($"/api/households/{other}")).StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
+
+    [Fact]
     public async Task MakingSomeoneWhoIsNotAMemberThePrimary_StopsTheRollUp_RatherThanSayingBillsGoWhereTheyDoNot()
     {
         // Roll-up bills the primary only when the primary is a member: with a contact as primary

@@ -127,6 +127,18 @@ describe('households', () => {
     expect(screen.getByRole('button', { name: 'Take Kit Meier out of the household' })).toBeInTheDocument();
   });
 
+  it('offers to delete a household whose bills roll up only to someone who handles money', async () => {
+    as([PERMISSION.ClubMembers, PERMISSION.DeleteRecords]);
+    const { unmount } = show();
+    expect(await screen.findByText('Bills go to Peter Meier')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete the Meier household' })).toBeNull();
+    unmount();
+
+    as([PERMISSION.ClubMembers, PERMISSION.DeleteRecords, PERMISSION.ManageMoney]);
+    show();
+    expect(await screen.findByRole('button', { name: 'Delete the Meier household' })).toBeInTheDocument();
+  });
+
   it('offers the roll-up switch only to someone who also manages the club\'s members, as the server does', async () => {
     as([PERMISSION.ManageMoney]);
     show();

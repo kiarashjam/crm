@@ -147,8 +147,11 @@ public sealed class ClubHouseholdService : IClubHouseholds
         if (household == null) return DomainErrors.Household.NotFound;
         // The grouping goes; the members, the contacts and every entry posted stay. Charges a
         // member ran up on the primary's account stay there, saying who ran them up.
-        _db.ClubHouseholdMembers.RemoveRange(await _db.ClubHouseholdMembers
-            .Where(l => l.HouseholdId == householdId && l.OrganizationId == organizationId).ToListAsync(ct));
+        var links = await _db.ClubHouseholdMembers
+            .Where(l => l.HouseholdId == householdId && l.OrganizationId == organizationId).ToListAsync(ct);
+        // Whoever's bills rolled up is billed on their own account from then on: that is money.
+        if (links.Any(l => l.RollUpBilling) && await MayNotHandleMoneyAsync(organizationId, ct) is { } noMoney) return noMoney;
+        _db.ClubHouseholdMembers.RemoveRange(links);
         // An application still waiting to join it joins none: the household it named is gone.
         foreach (var application in await OpenApplicationsNamingAsync(organizationId, [householdId], ct))
         {
@@ -168,6 +171,12 @@ public sealed class ClubHouseholdService : IClubHouseholds
         var ids = duplicateIds.Where(id => id != householdId).Distinct().ToList();
         var duplicates = await _db.ClubHouseholds.Where(h => h.OrganizationId == organizationId && ids.Contains(h.Id)).ToListAsync(ct);
         if (duplicates.Count == 0) return (await BuildOneAsync(organizationId, householdId, ct))!;
+        // A duplicate's people whose bills roll up are billed to the kept household's primary from
+        // then on (or on their own, when it has no member primary): whose account, so money.
+        var merging = duplicates.Select(d => d.Id).ToList();
+        if (await _db.ClubHouseholdMembers.AnyAsync(l => l.OrganizationId == organizationId && merging.Contains(l.HouseholdId) && l.RollUpBilling, ct)
+            && await MayNotHandleMoneyAsync(organizationId, ct) is { } noMoney)
+            return noMoney;
         var kept = await LinksAsync(organizationId, householdId, ct, tracked: true);
         var keepPrimaryIsMember = kept.FirstOrDefault(l => l.IsPrimary)?.MemberId != null;
         var hasCouple = kept.Any(l => HouseholdRoles.IsCouple(l.Role));
