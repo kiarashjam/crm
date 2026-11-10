@@ -14,6 +14,7 @@ const REFUSED = 'The person you picked cannot see this private deal, so they cou
 const api = {
   getTasks: vi.fn(), getTaskStats: vi.fn(), getLeads: vi.fn(), getDeals: vi.fn(), getContacts: vi.fn(),
   getOrgMembers: vi.fn(), assignTask: vi.fn(), linkTaskToDeal: vi.fn(), linkTaskToLead: vi.fn(), createActivity: vi.fn(),
+  createTask: vi.fn(),
 };
 vi.mock('@/app/api', async () => {
   const actual = await vi.importActual<typeof import('@/app/api')>('@/app/api');
@@ -177,6 +178,24 @@ describe('when a read fails', () => {
 
     expect(await screen.findByRole('article', { name: 'Card Send the offer' })).toBeInTheDocument();
     expect(screen.queryByText('Your tasks could not be loaded.')).toBeNull();
+  });
+
+  it('still says so after a task is created, rather than showing that task as the whole list', async () => {
+    // A list that was never read is not a list. The new task used to be written into
+    // it, and the page showed a board of that one task, as fresh, and no word that
+    // every other task was missing.
+    api.getTasks.mockRejectedValue(new Error('The server is not answering.'));
+    api.createTask.mockResolvedValue({ ...TASK, id: 't-new', title: 'Call the Müllers' });
+    show();
+    expect(await screen.findByText('Your tasks could not be loaded.')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /New Task/ }));
+    await userEvent.type(screen.getByLabelText(/Task Title/), 'Call the Müllers');
+    await userEvent.click(screen.getByRole('button', { name: /Create Task/ }));
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+
+    expect(screen.getByText('Your tasks could not be loaded.')).toBeInTheDocument();
+    expect(screen.queryByRole('article', { name: 'Card Call the Müllers', hidden: true })).toBeNull();
   });
 
   it('still shows the tasks when a picker list fails', async () => {

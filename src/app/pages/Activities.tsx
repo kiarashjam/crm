@@ -160,10 +160,13 @@ export default function Activities() {
 
   const ws = useWorkspaceScope();
   const writeCache = useCacheWriter();
-  /** Show a change in the list at once; the read after the save confirms it. */
+  /**
+   * Show a change in the list at once; the read after the save confirms it. A list never
+   * read (still loading, or failed) is left alone, not replaced by the one change.
+   */
   const setActivities = (update: (prev: Activity[]) => Activity[]) => {
     if (recordKind) {
-      writeCache<Activity[]>(recordActivitiesKey(ws, recordKind, recordId), (current) => update(current ?? []));
+      writeCache<Activity[]>(recordActivitiesKey(ws, recordKind, recordId), (current) => current && update(current));
     } else {
       writeCache<PagedResult<Activity>>(activitiesPageKey(ws, pageParams), (current) => current && { ...current, items: update(current.items) });
     }

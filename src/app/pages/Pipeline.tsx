@@ -230,8 +230,9 @@ export default function Pipeline() {
 
   // HP-7 & HP-8: Tasks linked to deals
   const allTasks: TaskItemType[] = useTasksList().data ?? NO_TASKS;
+  // A list never read is left alone, not replaced by the one change (see Tasks.tsx).
   const setAllTasks = (update: (prev: TaskItemType[]) => TaskItemType[]) =>
-    writeCache<TaskItemType[]>(tasksKey(ws), (current) => update(current ?? []));
+    writeCache<TaskItemType[]>(tasksKey(ws), (current) => current && update(current));
   const [addTaskDealId, setAddTaskDealId] = useState<string | null>(null);
   const [addTaskTitle, setAddTaskTitle] = useState('');
   const [savingTask, setSavingTask] = useState(false);
@@ -253,7 +254,7 @@ export default function Pipeline() {
   const dealActivities: Activity[] = dealActivitiesQuery.data ?? NO_ACTIVITIES;
   const activitiesLoading = !!detailDeal && dealActivitiesQuery.isPending;
   const setDealActivities = (update: (prev: Activity[]) => Activity[]) => {
-    if (detailDeal) writeCache<Activity[]>(recordActivitiesKey(ws, 'deal', detailDeal.id), (current) => update(current ?? []));
+    if (detailDeal) writeCache<Activity[]>(recordActivitiesKey(ws, 'deal', detailDeal.id), (current) => current && update(current));
   };
   const [activityForm, setActivityForm] = useState<{ type: string; subject: string; body: string; facts?: ActivityFactsDraft }>({ type: 'note', subject: '', body: '' });
   const [savingActivity, setSavingActivity] = useState(false);

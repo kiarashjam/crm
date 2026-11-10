@@ -117,9 +117,13 @@ export default function Tasks() {
   const tasks = tasksQuery.data ?? NO_TASKS;
   const stats = statsQuery.data ?? null;
   const writeCache = useCacheWriter();
-  /** Show a change on the board at once; the read after the save confirms it. */
+  /**
+   * Show a change on the board at once; the read after the save confirms it. A list
+   * never read (still loading, or failed) is left alone: a task created then was written
+   * in as the whole list, shown as fresh, with no word that every other task was missing.
+   */
   const setTasks = useCallback((update: (prev: TaskItem[]) => TaskItem[]) => {
-    writeCache<TaskItem[]>(tasksKey(ws, { scope }), (current) => update(current ?? []));
+    writeCache<TaskItem[]>(tasksKey(ws, { scope }), (current) => current && update(current));
   }, [writeCache, ws, scope]);
   const loading = tasksQuery.isPending;
   usePageLoading(loading);
