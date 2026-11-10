@@ -35,6 +35,9 @@ public class ClubLedgerMoveTests
         public string Email { get; } = $"{Guid.NewGuid():N}@example.ch";
         public Guid OrgA { get; } = Guid.NewGuid();
         public Guid OrgB { get; } = Guid.NewGuid();
+        public Guid Jean { get; set; }
+        public Guid Marie { get; set; }
+        public Guid Paulo { get; set; }
         public Dictionary<Guid, decimal> Balances { get; } = new();
         public Dictionary<Guid, decimal> CardsLeft { get; } = new();
         public Dictionary<Guid, (string Status, decimal Paid)> Charges { get; } = new();
@@ -75,7 +78,7 @@ public class ClubLedgerMoveTests
         // a dinner paid, a bar tab part paid, an event voided, dues paid by a cheque that
         // bounced, a spa visit marked paid whose payment record is gone, and a dinner paid
         // with 100 where the old code kept 90 and dropped the rest.
-        var jean = s.Member(s.OrgA, "Jean", houseBalance: -790m, manualBalance: -500m);
+        var jean = s.Jean = s.Member(s.OrgA, "Jean", houseBalance: -790m, manualBalance: -500m);
         Guid Charge(Guid member, string kind, decimal amount, decimal paid, string status, object? extra = null)
         {
             var id = s.Doc(s.OrgA, "charges", new
@@ -110,7 +113,7 @@ public class ClubLedgerMoveTests
         Payment(jean, overpaid, 100m, method: "Wire");
 
         // Marie opened 50 in credit; her closed bar tab posted 30, of which she paid 15.
-        var marie = s.Member(s.OrgA, "Marie", houseBalance: 35m, manualBalance: 50m, tier: "Silver");
+        var marie = s.Marie = s.Member(s.OrgA, "Marie", houseBalance: 35m, manualBalance: 50m, tier: "Silver");
         var tabCharge = Guid.NewGuid();
         var closedTab = s.Doc(s.OrgA, "tabs", new
         {
@@ -148,7 +151,7 @@ public class ClubLedgerMoveTests
         // Luc has nothing; a payment against a charge someone deleted long ago is on a member
         // whose balance never counted it.
         s.Member(s.OrgA, "Luc", 0m, 0m, tier: "Bronze");
-        var paulo = s.Member(s.OrgA, "Paulo", 0m, 0m, tier: "Bronze");
+        var paulo = s.Paulo = s.Member(s.OrgA, "Paulo", 0m, 0m, tier: "Bronze");
         s.Doc(s.OrgA, "payments", new { memberId = paulo, memberName = "Paulo Dupont", amount = 40m, method = "Cash", chargeId = Guid.NewGuid() });
 
         s.Doc(s.OrgA, "subscriptions", new
@@ -253,6 +256,15 @@ public class ClubLedgerMoveTests
         return doc.RootElement.EnumerateArray().Select(e => e.Clone()).ToList();
     }
 
+    private static async Task<JsonElement> ReadOneAsync(HttpClient client, string path)
+    {
+        var res = await client.GetAsync(path);
+        var body = await res.Content.ReadAsStringAsync();
+        res.IsSuccessStatusCode.Should().BeTrue($"{path}: {body}");
+        using var doc = JsonDocument.Parse(body);
+        return doc.RootElement.Clone();
+    }
+
     private static async Task<decimal> CardValueAsync(string database, Guid cardId) =>
         (decimal)(await SqlServerApp.ScalarAsync(database,
             $"SELECT ISNULL(SUM([Amount]), 0) FROM [ClubGiftCardTransactions] WHERE [GiftCardId] = '{cardId}'"))!;
@@ -337,14 +349,25 @@ public class ClubLedgerMoveTests
                     charge.GetProperty("paidAmount").GetDecimal().Should().Be(paid);
                 }
                 // What was owed before the ledger is listed with the charges, to be paid like one.
+                // The adjustments for money the old records dropped (Jean's 10, Paulo's 40)
+                // are paid by that money: listed unpaid, they had the club chasing Paulo for
+                // 40 with a balance of 0, and the outstanding total counted it.
                 listed.Where(c => c.GetProperty("entryType").GetString() != "Charge")
                     .Select(c => (c.GetProperty("entryType").GetString(), c.GetProperty("amount").GetDecimal(), c.GetProperty("status").GetString()))
                     .Should().BeEquivalentTo(org == club.OrgA
-                        ? new[] { ("Opening", 500m, "Pending"), ("Adjustment", 10m, "Pending"), ("Adjustment", 40m, "Pending") }
+                        ? new[] { ("Opening", 500m, "Pending"), ("Adjustment", 10m, "Paid"), ("Adjustment", 40m, "Paid") }
                         : Array.Empty<(string, decimal, string)>());
             }
             client.DefaultRequestHeaders.Remove("X-Organization-Id");
             client.DefaultRequestHeaders.Add("X-Organization-Id", club.OrgA.ToString());
+            // What a member is shown owing and holding in credit, not only the balance they make:
+            // Jean owes his bar tab, his dues and his opening balance, and Paulo nothing.
+            foreach (var (member, owed, credit) in new[] { (club.Jean, 790m, 0m), (club.Paulo, 0m, 0m), (club.Marie, 15m, 50m) })
+            {
+                var balance = await ReadOneAsync(client, $"/api/members/{member}/balance");
+                balance.GetProperty("owed").GetDecimal().Should().Be(owed, $"member {member} owes {owed}");
+                balance.GetProperty("credit").GetDecimal().Should().Be(credit, $"member {member} holds {credit} of credit");
+            }
             var cards = await ReadAsync(client, "/api/gift-cards");
             cards.Select(c => c.GetProperty("id").GetGuid()).Should().BeEquivalentTo(club.CardsLeft.Keys);
             foreach (var card in cards)

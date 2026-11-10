@@ -22,7 +22,8 @@ namespace ACI.Infrastructure.Migrations
     /// opening or hand-corrected balance (ClubMembers.ManualBalance) becomes an opening
     /// entry; and anything still different from the house balance shown before the move (an
     /// overpayment the old records dropped, a payment against a deleted charge) is one
-    /// adjustment, so every member's balance after the move is the one they had before. A
+    /// adjustment, so every member's balance after the move is the one they had before; the
+    /// money the old records dropped pays that adjustment, so it is not listed as owed. A
     /// gift card's value comes over the same way: its issue, its redemptions, an adjustment
     /// for any difference from what the card said was left, and its void.
     /// </para>
@@ -480,6 +481,38 @@ FROM #LedgerDifferences d
 WHERE d.[Difference] < 0
   AND NOT EXISTS (SELECT 1 FROM [ClubPayments] x WHERE x.[Id] = {Derived("reconcile", "d.[Id]")})
   AND NOT EXISTS (SELECT 1 FROM [ClubCharges] x WHERE x.[Id] = {Derived("reconcile", "d.[Id]")});
+
+-- Entries that add up to more credit than the balance the club saw hold money the old
+-- records dropped: the part of an overpayment they did not keep, a payment against a
+-- charge since deleted. That money pays the adjustment just made, oldest payment first.
+-- Left unpaid, the adjustment listed the member as owing what they never owed (and the
+-- club's outstanding with it), beside credit their balance never had: the two only
+-- cancelled out in the balance.
+WITH reconcile AS (
+    SELECT d.[Id] AS [MemberId], d.[OrganizationId], {Derived("reconcile", "d.[Id]")} AS [ChargeId], -d.[Difference] AS [Amount]
+    FROM #LedgerDifferences d
+    WHERE d.[Difference] < 0
+), unspent AS (
+    SELECT p.[Id], p.[OrganizationId], p.[ReceivedAtUtc], r.[ChargeId],
+           r.[Amount] - ISNULL((SELECT SUM(a.[Amount]) FROM [ClubPaymentAllocations] a WHERE a.[ChargeId] = r.[ChargeId]), 0) AS [Owed],
+           p.[Amount] + ISNULL((SELECT SUM(v.[Amount]) FROM [ClubPayments] v WHERE v.[ReversesPaymentId] = p.[Id]), 0)
+         - ISNULL((SELECT SUM(a.[Amount]) FROM [ClubPaymentAllocations] a WHERE a.[PaymentId] = p.[Id]), 0) AS [Left]
+    FROM reconcile r
+    JOIN [ClubPayments] p ON p.[MemberId] = r.[MemberId]
+        AND (p.[OrganizationId] = r.[OrganizationId] OR (p.[OrganizationId] IS NULL AND r.[OrganizationId] IS NULL))
+    WHERE p.[EntryType] = N'Payment' AND p.[ReversesPaymentId] IS NULL
+      AND EXISTS (SELECT 1 FROM [ClubCharges] c WHERE c.[Id] = r.[ChargeId])
+), spendable AS (
+    SELECT u.*, SUM(u.[Left]) OVER (PARTITION BY u.[ChargeId] ORDER BY u.[ReceivedAtUtc], u.[Id] ROWS UNBOUNDED PRECEDING) - u.[Left] AS [Before]
+    FROM unspent u
+    WHERE u.[Left] > 0
+)
+INSERT INTO [ClubPaymentAllocations] ([Id], [OrganizationId], [PaymentId], [ChargeId], [Amount], [CreatedAtUtc])
+SELECT {Derived("reconciled", "s.[Id]")}, s.[OrganizationId], s.[Id], s.[ChargeId],
+       CASE WHEN s.[Left] < s.[Owed] - s.[Before] THEN s.[Left] ELSE s.[Owed] - s.[Before] END, @now
+FROM spendable s
+WHERE s.[Owed] - s.[Before] > 0
+  AND NOT EXISTS (SELECT 1 FROM [ClubPaymentAllocations] x WHERE x.[Id] = {Derived("reconciled", "s.[Id]")});
 
 DROP TABLE #LedgerDifferences;
 DROP TABLE #LedgerRedemptions;
