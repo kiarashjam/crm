@@ -241,7 +241,9 @@ export default function Reservations() {
   };
 
   const chosen = resourceOf(form.resourceId);
-  const depositAsked = !editing && (chosen?.depositAmount ?? 0) > 0;
+  // A booking made already checked in (taken at the door) asks no deposit: the server gives a
+  // deposit back on check-in, so there is nothing left for one to secure.
+  const depositAsked = !editing && form.status !== 'CheckedIn' && (chosen?.depositAmount ?? 0) > 0;
 
   const save = async () => {
     if (!form.resourceId) {

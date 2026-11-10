@@ -288,7 +288,11 @@ public sealed class ClubReservationService : IClubReservations
                 resource.BookingsChangedAtUtc = DateTime.UtcNow;
                 if (await ClashAsync(organizationId, resource, null, start, end, party, zone, ct) is { } clash) return Refuse(clash);
 
-                var deposit = resource.DepositAmount;
+                // A deposit holds a booking until the member comes, and is given back when they are
+                // checked in. A booking made already checked in (a table taken at the door) has
+                // nothing left to secure, and since only a later change of status gives a deposit
+                // back, one charged here stayed on the member's account.
+                var deposit = status == ReservationStatuses.CheckedIn ? 0m : resource.DepositAmount;
                 var waived = false;
                 if (deposit > 0)
                 {

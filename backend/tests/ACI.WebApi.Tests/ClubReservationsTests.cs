@@ -204,6 +204,30 @@ public class ClubReservationsTests
     }
 
     [Fact]
+    public async Task ABookingTakenAtTheDoorAsksNoDeposit()
+    {
+        // A deposit secures a booking until the member comes, and is given back when they are
+        // checked in. A booking made already checked in (the page offers it, for a table taken at
+        // the door) was charged the deposit all the same, and nothing ever gave it back.
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _) = await ClubAsync(factory);
+        var room = await ResourceAsync(client, "Private Dining Room", "Dining", 12, mode: "Exclusive", deposit: 100);
+        var jean = await MemberAsync(client, "Jean");
+
+        var atTheDoor = await Json(await client.PostAsync("/api/reservations", Body(new
+        {
+            resourceId = room.GetProperty("id").GetString(), memberId = jean, partySize = 4,
+            startAtUtc = DateTime.UtcNow.AddMinutes(-5), endAtUtc = DateTime.UtcNow.AddHours(2), status = "CheckedIn",
+        })), "a table taken at the door");
+
+        atTheDoor.GetProperty("status").GetString().Should().Be("CheckedIn");
+        atTheDoor.GetProperty("depositAmount").GetDecimal().Should().Be(0);
+        atTheDoor.GetProperty("depositState").GetString().Should().Be("none");
+        (await Json(await client.GetAsync("/api/charges"), "charges")).GetArrayLength().Should().Be(0);
+        (await BalanceAsync(client, jean)).Should().Be(0);
+    }
+
+    [Fact]
     public async Task ADepositPaidAtTheDeskTakesTheMoneyPermission_AndComesBackAsCreditOnACancellation()
     {
         using var factory = new CustomWebApplicationFactory();

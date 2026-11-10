@@ -37,6 +37,12 @@ const as = (permissions: Permission[]) => {
 
 const Reservations = (await import('./Reservations')).default;
 
+// Radix Select asks the browser about pointer capture and scrolling, which happy-dom lacks.
+const proto = Element.prototype as unknown as Record<string, unknown>;
+proto.hasPointerCapture ??= () => false;
+proto.releasePointerCapture ??= () => undefined;
+proto.scrollIntoView ??= () => undefined;
+
 const BASE = 'http://api.test';
 const COURT: Resource = {
   id: 'r-court', name: 'Tennis Court', kind: 'Court', capacity: 4, bookingMode: 'Exclusive',
@@ -172,6 +178,26 @@ describe('the bookings page', () => {
     await waitFor(() => expect(posted).toMatchObject({ deposit: 'paid', depositMethod: 'Cash' }));
     expect(posted).not.toHaveProperty('depositReason');
     expect(toast.success).toHaveBeenCalledWith(expect.stringMatching(/^Booked · deposit .*200.* paid$/));
+  });
+
+  it('asks no deposit of a booking made already checked in, as the server takes none', async () => {
+    // The server gives a deposit back on check-in, so one asked of a table taken at the door
+    // had nothing to secure; it was charged and never given back.
+    resources = [PRIVATE_DINING, COURT];
+    const user = userEvent.setup();
+    show();
+
+    await user.click(await screen.findByRole('button', { name: /New booking/ }));
+    const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findByRole('radiogroup', { name: 'Deposit' })).toBeInTheDocument();
+
+    await user.click(within(dialog).getByLabelText('Status'));
+    await user.click(await screen.findByRole('option', { name: 'Checked in' }));
+
+    expect(within(dialog).queryByRole('radiogroup', { name: 'Deposit' })).toBeNull();
+    await user.click(within(dialog).getByRole('button', { name: 'Book' }));
+    await waitFor(() => expect(posted).toMatchObject({ resourceId: PRIVATE_DINING.id, status: 'CheckedIn' }));
+    expect(posted).not.toHaveProperty('deposit');
   });
 
   it('offers to add the usual spaces to a club with none, to whoever runs the members', async () => {
