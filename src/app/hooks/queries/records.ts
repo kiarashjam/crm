@@ -10,7 +10,7 @@ import { useCallback } from 'react';
 // Through the API's front door, as the pages import it, so what a page's test puts in
 // place of a read is what its queries call.
 import {
-  getActivitiesByContact, getActivitiesByDeal, getActivitiesByLead, getActivitiesByLeadIds, getActivitiesPaged,
+  getActivitiesByContact, getActivitiesByDeal, getActivitiesByLead, getActivitiesPaged,
   getCompanies, getCompaniesPaged, getCompanySummary, getContactStats, getContacts, getContactsPaged,
   getDealBoard, getDeals, getDealsPaged, getLeadSources, getLeadStatuses, getLeadStats, getLeads, getLeadsPaged,
   getOrgMembers, getPipelines, getTaskStats, getTasks,
@@ -264,18 +264,6 @@ export function useRecordActivities(kind: RecordKind, id: string | null | undefi
     queryKey: recordActivitiesKey(ws, kind, id ?? ''),
     queryFn: ({ signal }) => timed(signal, (s) => activitiesOf(kind, id!, { signal: s })),
     enabled: !!id,
-  });
-}
-
-/** The activities of the leads on one page, read together. */
-export function useActivitiesForLeads(leadIds: readonly string[]) {
-  const ws = useWorkspaceScope();
-  const key = queryKeys.activities.forLeads(ws, leadIds);
-  return useQuery<Awaited<ReturnType<typeof getActivitiesByLeadIds>>>({
-    queryKey: key,
-    queryFn: ({ signal }) => timed(signal, (s) => getActivitiesByLeadIds([...leadIds], { signal: s })),
-    enabled: leadIds.length > 0,
-    placeholderData: keepPreviousInWorkspace<Awaited<ReturnType<typeof getActivitiesByLeadIds>>>(key),
   });
 }
 

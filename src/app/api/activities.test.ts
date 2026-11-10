@@ -65,3 +65,37 @@ describe('activities in demo mode', () => {
     expect(created).toMatchObject({ occurredAt: '2026-11-01T10:00:00.000Z', outcome: 'busy' });
   });
 });
+
+describe('activities of many leads at once', () => {
+  it('passes on a read that was cancelled or timed out, rather than answering "no activities"', async () => {
+    const controller = new AbortController();
+    client.json.mockImplementation(async () => {
+      controller.abort();
+      throw new DOMException('The operation was aborted.', 'AbortError');
+    });
+
+    await expect(api.getActivitiesByLeadIds(['l1', 'l2'], { signal: controller.signal })).rejects.toThrow(/aborted/);
+    // Not asked lead by lead either: the read was called off.
+    expect(client.json).toHaveBeenCalledTimes(1);
+  });
+
+  it('passes on a refusal or a server error', async () => {
+    const { ApiError } = await import('./apiClient');
+    client.json.mockRejectedValue(new ApiError('Something broke', 500, '/api/activities/by-leads'));
+
+    await expect(api.getActivitiesByLeadIds(['l1'])).rejects.toThrow('Something broke');
+  });
+
+  it('asks lead by lead a server without the batch route', async () => {
+    const { ApiError } = await import('./apiClient');
+    client.json.mockImplementation(async (path: string) => {
+      if (path.startsWith('/api/activities/by-leads')) throw new ApiError('Not Found', 404, path);
+      const leadId = path.split('/').pop();
+      return [{ id: `a-${leadId}`, type: 'note', createdAtUtc: '2026-11-09T20:00:00Z', leadId }];
+    });
+
+    const list = await api.getActivitiesByLeadIds(['l1', 'l2']);
+
+    expect(list.map((a) => a.id).sort()).toEqual(['a-l1', 'a-l2']);
+  });
+});

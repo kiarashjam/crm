@@ -74,7 +74,6 @@ export const queryKeys = {
   activities: {
     page: (s: WorkspaceScope, params: object) => key(s, 'activities', 'page', params),
     forRecord: (s: WorkspaceScope, kind: 'lead' | 'deal' | 'contact', id: string) => key(s, 'activities', kind, id),
-    forLeads: (s: WorkspaceScope, leadIds: readonly string[]) => key(s, 'activities', 'leads', leadIds),
   },
   pipelines: {
     all: (s: WorkspaceScope) => key(s, 'pipelines', 'all'),
