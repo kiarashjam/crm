@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'rea
 import { Toaster } from 'sonner';
 import SkipLink from '@/app/components/SkipLink';
 import RequireAuth from '@/app/components/RequireAuth';
+import { WorkspaceOutlet } from '@/app/components/WorkspaceOutlet';
 import { ErrorBoundary } from '@/app/components/ErrorBoundary';
 import { PageLoader } from '@/app/components/PageLoader';
 import PageHelp from '@/app/components/PageHelp';
@@ -96,12 +97,12 @@ function RequireOrgLayout() {
   const location = useLocation();
   const org = useOrgOptional();
   const isOrgPage = location.pathname === '/organizations';
-  if (servesDemoData()) return <Outlet />;
-  if (!org) return <Outlet />;
+  if (servesDemoData()) return <WorkspaceOutlet />;
+  if (!org) return <WorkspaceOutlet />;
   if (org.hasFetched && !org.currentOrgId && !isOrgPage) {
     return <Navigate to="/organizations" replace state={{ from: location.pathname }} />;
   }
-  return <Outlet />;
+  return <WorkspaceOutlet />;
 }
 
 export default function App() {
