@@ -10,6 +10,10 @@ namespace ACI.Application.Common.Pdf;
 /// <param name="VatRate">The VAT rate in percent the amount includes, when known.</param>
 /// <param name="GeneratedAtUtc">When it was made, printed on it; passed in so the same invoice gives the same bytes.</param>
 /// <param name="PaymentSlip">The Swiss QR-bill for what is still owed, with the charge's reference; none prints no slip.</param>
+/// <param name="IncurredBy">
+/// Who in the household ran it up, when it is on the household primary's account because their
+/// bills roll up; none for the account holder's own charge.
+/// </param>
 public sealed record ChargeInvoicePdfRequest(
     string ClubName,
     string MemberName,
@@ -28,7 +32,8 @@ public sealed record ChargeInvoicePdfRequest(
     string Locale,
     string TimeZone,
     DateTime GeneratedAtUtc,
-    Payments.QrBill? PaymentSlip = null);
+    Payments.QrBill? PaymentSlip = null,
+    string? IncurredBy = null);
 
 /// <summary>
 /// Sets an invoice for one charge on an A4 page: what it was for, when it was posted and is
@@ -99,7 +104,10 @@ public static class ChargeInvoicePdf
         page.Text(Left, y, PdfFont.Helvetica, 10, StatementPdf.Fit(r.Description, PdfFont.Helvetica, 10, DateRight - 80 - Left), Ink);
         page.Text(DateRight, y, PdfFont.Helvetica, 9, Date(r.PostedAtUtc), Muted, align: PdfAlign.Right);
         page.Text(Right, y, PdfFont.Helvetica, 10, Money(r.Amount), Ink, align: PdfAlign.Right);
-        page.Text(Left, y + 12, PdfFont.HelveticaOblique, 7.5, r.Kind, Muted);
+        // A household member's bill on the primary's account says whose it was, as the
+        // statement's lines do; the invoice is addressed to the primary who pays it.
+        var detail = string.IsNullOrWhiteSpace(r.IncurredBy) ? r.Kind : $"Incurred by {r.IncurredBy.Trim()} · {r.Kind}";
+        page.Text(Left, y + 12, PdfFont.HelveticaOblique, 7.5, StatementPdf.Fit(detail, PdfFont.HelveticaOblique, 7.5, DateRight - 80 - Left), Muted);
         y += 30;
         page.Rule(Left, y - 8, Right, 0.4, Hairline);
 

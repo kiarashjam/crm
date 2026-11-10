@@ -9,13 +9,15 @@ namespace ACI.WebApi.Tests;
 
 /// <summary>
 /// Where households meet the money that comes from outside: a spouse's bill rolled up to the
-/// household's primary is on the primary's account, so the primary's QR-bills ask for it and a
-/// transfer quoting them pays it.
+/// household's primary is on the primary's account, so the primary's QR-bills ask for it, a
+/// transfer quoting them pays it, and the papers the primary gets say whose it was.
 /// </summary>
 /// <remarks>
-/// The household statement was built beside the QR-bill and missed it: it asked for the
+/// The household statement and roll-up billing were built beside the QR-bill and the
+/// per-charge invoice, and each pair missed the other: the household statement asked for the
 /// household's bills with no QR-bill to pay them by, while the primary's own statement for the
-/// same account carried one.
+/// same account carried one, and the invoice for a spouse's spa visit was addressed to the
+/// primary without a word of whose it was, which every statement line says.
 /// </remarks>
 public class HouseholdPaymentsTests
 {
@@ -93,5 +95,40 @@ public class HouseholdPaymentsTests
         (await Json(await owner.GetAsync($"/api/members/{peter}/balance"), "Peter's balance")).GetProperty("balance").GetDecimal().Should().Be(0m);
         (await Json(await owner.GetAsync($"/api/members/{anna}/balance"), "Anna's balance")).GetProperty("balance").GetDecimal()
             .Should().Be(0m, "nothing was ever on Anna's own account, and the transfer did not land there");
+    }
+
+    [Fact]
+    public async Task TheInvoiceForARolledUpBillIsThePrimarys_SaysWhoseItWas_AndItsQrBillPaysThePrimarysAccount()
+    {
+        await using var app = new PaymentsApp();
+        var (owner, org) = await BankFileTests.ClubAsync(app);
+        var (_, peter, anna) = await MeiersAsync(owner);
+        var massage = await AnnasMassageAsync(owner, peter, anna);
+
+        var text = await PdfTextAsync(owner, $"/api/charges/{massage}/invoice.pdf");
+
+        text.Should().Contain("Invoice").And.Contain("Massage").And.Contain("Peter Meier", "the invoice goes to the account it is billed to");
+        text.Should().Contain("Incurred by Anna Meier", "the primary sees whose bill it is, as on the statement");
+        var reference = await app.Services.Read(db => db.ClubPaymentReferences.IgnoreQueryFilters().Single(r => r.OrganizationId == org));
+        (reference.MemberId, reference.ChargeId, reference.Purpose).Should().Be((peter, massage, "charge"));
+
+        var imported = await Json(await BankFileTests.ImportAsync(owner, BankFileTests.Camt054(("TX-INVOICE", 120m, reference.QrReference))), "import the transfer");
+        imported.GetProperty("matched").GetInt32().Should().Be(1);
+        (await Json(await owner.GetAsync($"/api/charges?memberId={peter}"), "Peter's charges")).EnumerateArray()
+            .Single(c => c.GetProperty("id").GetGuid() == massage).GetProperty("status").GetString().Should().Be("Paid");
+    }
+
+    [Fact]
+    public async Task AnInvoiceForSomeonesOwnBill_SaysNothingOfAnyoneElse()
+    {
+        await using var app = new PaymentsApp();
+        var (owner, _) = await BankFileTests.ClubAsync(app);
+        var (_, peter, _) = await MeiersAsync(owner);
+        var dinner = (await Json(await owner.PostAsync("/api/charges", Body(new { memberId = peter, kind = "Dining", description = "Dinner", amount = 80 })), "Peter's dinner"))
+            .GetProperty("id").GetGuid();
+
+        var text = await PdfTextAsync(owner, $"/api/charges/{dinner}/invoice.pdf");
+
+        text.Should().Contain("Dinner").And.Contain("Dining").And.NotContain("Incurred by");
     }
 }

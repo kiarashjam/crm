@@ -772,7 +772,8 @@ public sealed class ClubBillingService : IClubBilling
             workspace.Locale,
             workspace.TimeZone,
             DateTime.UtcNow,
-            slip));
+            slip,
+            charge.IncurredByName));
         return new InvoiceFile("invoice-" + number + ".pdf", bytes, amountDue);
     }
 

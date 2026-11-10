@@ -48,7 +48,9 @@ public interface IClubBilling
 
     /// <summary>
     /// An invoice for one charge as a PDF: what it was for, its VAT, what has been paid and what
-    /// is owed, with a Swiss QR-bill for that amount whose reference pays this charge first.
+    /// is owed, with a Swiss QR-bill for that amount whose reference pays this charge first. It
+    /// goes to the account the charge is billed to, and a household member's bill rolled up to
+    /// the primary says whose it was.
     /// </summary>
     Task<Result<InvoiceFile>> ChargeInvoicePdfAsync(Guid organizationId, Guid chargeId, CancellationToken ct = default);
 
