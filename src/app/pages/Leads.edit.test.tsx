@@ -5,6 +5,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { withQueries } from '@/test/queryWrapper';
 import type { Lead } from '@/app/api/types';
 import { ApiError } from '@/app/api/apiClient';
 
@@ -57,11 +58,11 @@ beforeEach(() => {
 
 // The lead page hands over with ?edit=, which opens the dialog for that lead.
 async function openEdit() {
-  render(
+  render(withQueries(
     <MemoryRouter initialEntries={['/leads?edit=l1']}>
       <Leads />
     </MemoryRouter>,
-  );
+  ));
   return screen.findByLabelText(/phone number/i, undefined, { timeout: 5000 });
 }
 

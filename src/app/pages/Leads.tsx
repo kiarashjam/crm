@@ -25,8 +25,6 @@ import DataPagination from '@/app/components/DataPagination';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import {
   getLeads,
-  getLeadsPaged,
-  getLeadStats,
   getLeadById,
   updateLead,
   assignLead,
@@ -35,8 +33,6 @@ import {
   getContacts,
   getDeals,
   getPipelines,
-  getLeadStatuses,
-  getLeadSources,
   convertLead,
   getActivitiesByLead,
   getActivitiesByLeadIds,
@@ -44,11 +40,14 @@ import {
   setLeadReferral,
   messages,
   type ConvertLeadRequest,
-  type LeadStats,
 } from '@/app/api';
+import {
+  useAllLeads, useLeadSources, useLeadStatuses, useLeadStats, useLeadsPage, useOrgMembers,
+} from '@/app/hooks/queries';
+import { LoadFailed } from '@/app/components/LoadFailed';
 import type { Lead, Company, Contact, Deal, LeadStatus, LeadSource, Pipeline, Activity } from '@/app/api/types';
 import { recordHref } from '@/app/hooks/useDocumentTitle';
-import { getOrgMembers, orgCan, PERMISSION, type OrgMemberDto } from '@/app/api/organizations';
+import { orgCan, PERMISSION, type OrgMemberDto } from '@/app/api/organizations';
 import { relationshipLabel } from '@/app/api/relationships';
 import { bulkUpdateLeads } from '@/app/api/leadOps';
 import { getCurrentUser, type AuthUser } from '@/app/lib/auth';
@@ -143,11 +142,15 @@ function saveLeadCreatedAtMap(createdAtByLeadId: Record<string, string>) {
   }
 }
 
+const NO_STATUSES: LeadStatus[] = [];
+const NO_SOURCES: LeadSource[] = [];
+const NO_MEMBERS: OrgMemberDto[] = [];
+
 export default function Leads() {
   const money = useMoney();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { currentOrgId, currentOrg, isReadOnly: viewOnly } = useOrg();
+  const { currentOrg, isReadOnly: viewOnly } = useOrg();
   // What the member's role lets them do here: work leads, delete them, export them.
   const isReadOnly = viewOnly || !orgCan(currentOrg, PERMISSION.EditRecords);
   const canDelete = !viewOnly && orgCan(currentOrg, PERMISSION.DeleteRecords);
@@ -160,28 +163,28 @@ export default function Leads() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
-  const [leadStats, setLeadStats] = useState<LeadStats | null>(null);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
-  const [leadStatuses, setLeadStatuses] = useState<LeadStatus[]>([]);
+  // The org's statuses and sources, read once per workspace through the shared cache.
+  const statusesQuery = useLeadStatuses();
+  const leadStatuses: LeadStatus[] = statusesQuery.data ?? NO_STATUSES;
   // Gate auto status sync until the org's real status list has arrived —
-  // FALLBACK_STATUSES is handed out synchronously and may not match this org.
-  const [statusesLoaded, setStatusesLoaded] = useState(false);
+  // FALLBACK_STATUSES is handed out synchronously and may not match this org. An
+  // empty list means FALLBACK_STATUSES are on screen, so it does not open the gate.
+  const statusesLoaded = leadStatuses.length > 0;
   // "Not loaded" has two causes and only one of them ever resolves. An org with
   // no statuses configured (or a failing request) leaves the gate shut forever,
   // and every pipeline edit then skipped the status write in total silence —
-  // which reads as the whole feature being broken. Tracked separately so the UI
-  // can say which of the two it is.
-  const [statusesUnavailable, setStatusesUnavailable] = useState(false);
-  const [leadSources, setLeadSources] = useState<LeadSource[]>([]);
-  // `loading` is only the first load of a workspace: it blanks the list for the
-  // skeleton and holds the full-page overlay. Every later fetch (each debounced
-  // search keystroke, a page change, a save) used to do the same — the page
-  // dimmed and the list vanished while typing. Those now keep the list on screen
-  // and set `refreshing` instead.
+  // which reads as the whole feature being broken. Told apart so the UI can say
+  // which of the two it is.
+  const statusesUnavailable = !statusesQuery.isPending && leadStatuses.length === 0;
+  const leadSources: LeadSource[] = useLeadSources().data ?? NO_SOURCES;
+  // `loading` is only the first load: it blanks the list for the skeleton and holds
+  // the full-page overlay. Every later read (each debounced search keystroke, a
+  // page change, a save) used to do the same — the page dimmed and the list
+  // vanished while typing. Those keep the list on screen and show `refreshing`
+  // instead. A workspace switch mounts the page afresh (WorkspaceOutlet).
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const loadedForOrgRef = useRef<string | null | undefined>(undefined);
   usePageLoading(loading);
   const [searchQuery, setSearchQuery] = useState(searchFromUrl);
   const [debouncedSearch, setDebouncedSearch] = useState(searchFromUrl);
@@ -210,7 +213,7 @@ export default function Leads() {
   const [converting, setConverting] = useState(false);
 
   // Detail modal state
-  const [orgMembers, setOrgMembers] = useState<OrgMemberDto[]>([]);
+  const orgMembers: OrgMemberDto[] = useOrgMembers().data ?? NO_MEMBERS;
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
 
   // Multi-select for bulk actions
@@ -582,147 +585,90 @@ export default function Leads() {
     }
   }, [companies.length, contacts.length]);
 
-  const lookupCacheRef = useRef<{ orgId: string | null; statuses: LeadStatus[]; sources: LeadSource[] } | null>(null);
-
+  // The list and the figures above it, through the shared cache: keyed by workspace
+  // and by what is asked, so an older search's answer can never land over a newer
+  // one's (its request is cancelled instead), and read again after a save that
+  // changes leads. The paged API takes a single status. When the user picks more
+  // than one status, filters by assignment, or applies a sales-tracker axis (all
+  // client-side data), every lead is read and filtered here instead.
+  const useClientMode =
+    filterAssignment !== 'all'
+    || filterStatuses.length > 1
+    || activeSalesFilterCount > 0;
+  const pageParams = useMemo(() => ({
+    page: currentPage,
+    pageSize,
+    search: debouncedSearch || undefined,
+    status: filterStatuses.length === 1 ? filterStatuses[0] : undefined,
+    source: filterSource !== 'all' ? filterSource : undefined,
+    converted: filterConverted,
+    sortBy: sortField,
+    sortDir: sortDirection,
+  }), [currentPage, pageSize, debouncedSearch, filterStatuses, filterSource, filterConverted, sortField, sortDirection]);
+  const pageQuery = useLeadsPage(pageParams, !useClientMode);
+  const allLeadsQuery = useAllLeads(useClientMode);
+  const listQuery = useClientMode ? allLeadsQuery : pageQuery;
+  const statsQuery = useLeadStats();
+  const leadStats = statsQuery.data ?? null;
+  const refreshing = !loading && listQuery.isFetching;
+  /** Read the list and its figures again now, where nothing announced a save (a reload asked for). */
   const fetchLeads = useCallback(async () => {
-    const first = loadedForOrgRef.current !== currentOrgId;
-    if (first) setLoading(true);
-    else setRefreshing(true);
-    try {
-      // Statuses and sources rarely change, so keep them for this org and load
-      // them in parallel with the lead page instead of blocking the list on them.
-      // An empty status list means we are rendering FALLBACK_STATUSES, so do not
-      // cache that result — auto-sync must not act on it.
-      const lookupsPromise = (async () => {
-        const cached = lookupCacheRef.current;
-        if (cached && cached.orgId === currentOrgId) return cached;
-        const [statuses, sources] = await Promise.all([
-          getLeadStatuses().catch(() => [] as LeadStatus[]),
-          getLeadSources().catch(() => [] as LeadSource[]),
-        ]);
-        const next = {
-          orgId: currentOrgId,
-          statuses: statuses ?? [],
-          sources: sources ?? [],
-        };
-        if (next.statuses.length > 0) lookupCacheRef.current = next;
-        return next;
-      })();
+    await Promise.all([listQuery.refetch(), statsQuery.refetch()]);
+  }, [listQuery, statsQuery]);
 
-      const applyLookups = (lookups: { statuses: LeadStatus[]; sources: LeadSource[] }) => {
-        setLeadStatuses(lookups.statuses);
-        const statusesReady = lookups.statuses.length > 0;
-        setStatusesLoaded(statusesReady);
-        setStatusesUnavailable(!statusesReady);
-        setLeadSources(lookups.sources);
-      };
-
-      const contactsById = new Map(contactsRef.current.map((c) => [c.id, c]));
-      // The paged API takes a single status. When the user picks more than one
-      // status, filters by assignment, or applies a sales-tracker axis (all
-      // client-side data), filter client-side instead.
-      const useClientMode =
-        filterAssignment !== 'all'
-        || filterStatuses.length > 1
-        || activeSalesFilterCount > 0;
-
-      const statsPromise = getLeadStats().catch(() => null);
-      let pageItems: Lead[] = [];
-
-      if (useClientMode) {
-        const [lookups, stats, allLeadsRaw] = await Promise.all([
-          lookupsPromise,
-          statsPromise,
-          getLeads(),
-        ]);
-        applyLookups(lookups);
-        if (stats) setLeadStats(stats);
-
-        let merged = mergeLeadsWithLocalData(Array.isArray(allLeadsRaw) ? allLeadsRaw : [], contactsById);
-        merged = applyClientLeadFilters(merged);
-        merged = applyAssignmentFilter(merged);
-        merged = applySalesTrackerFilter(merged);
-        const count = merged.length;
-        const pages = Math.ceil(count / pageSize) || 0;
-        const start = (currentPage - 1) * pageSize;
-        pageItems = merged.slice(start, start + pageSize);
-        setLeads(pageItems);
-        setTotalCount(count);
-        setTotalPages(pages);
-        if (pages > 0 && currentPage > pages) {
-          setSearchParams((prev) => {
-            const params = new URLSearchParams(prev);
-            params.set('page', String(pages));
-            return params;
-          }, { replace: true });
-        }
-      } else {
-        const [lookups, stats, paged] = await Promise.all([
-          lookupsPromise,
-          statsPromise,
-          getLeadsPaged({
-            page: currentPage,
-            pageSize,
-            search: debouncedSearch || undefined,
-            status: filterStatuses.length === 1 ? filterStatuses[0] : undefined,
-            source: filterSource !== 'all' ? filterSource : undefined,
-            converted: filterConverted,
-            sortBy: sortField,
-            sortDir: sortDirection,
-          }),
-        ]);
-        applyLookups(lookups);
-        if (stats) setLeadStats(stats);
-
-        const merged = mergeLeadsWithLocalData(paged.items, contactsById);
-        pageItems = merged;
-        setLeads(merged);
-        setTotalCount(paged.totalCount);
-        setTotalPages(paged.totalPages);
-
-        // If URL page is past the end (e.g. after deletes), jump to last page
-        const pages = paged.totalPages;
-        if (pages > 0 && currentPage > pages) {
-          setSearchParams((prev) => {
-            const params = new URLSearchParams(prev);
-            params.set('page', String(pages));
-            return params;
-          }, { replace: true });
-        }
-      }
-
-      // Interactions fill in after the cards are visible.
-      void loadPageActivities(pageItems.map((l) => l.id));
-      loadedForOrgRef.current = currentOrgId;
-    } catch {
-      toast.error(messages.errors.loadFailed);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+  // The rows on screen, from what was read: the legacy browser maps merged in, and in
+  // client mode the filters, order and page applied here.
+  useEffect(() => {
+    const data = listQuery.data;
+    if (data === undefined) {
+      // Nothing read yet for this view. A failure is said in place of the list.
+      if (listQuery.isError) setLoading(false);
+      return;
     }
+    const contactsById = new Map(contactsRef.current.map((c) => [c.id, c]));
+    let pageItems: Lead[];
+    let count: number;
+    let pages: number;
+    if (Array.isArray(data)) {
+      let merged = mergeLeadsWithLocalData(data, contactsById);
+      merged = applyClientLeadFilters(merged);
+      merged = applyAssignmentFilter(merged);
+      merged = applySalesTrackerFilter(merged);
+      count = merged.length;
+      pages = Math.ceil(count / pageSize) || 0;
+      const start = (currentPage - 1) * pageSize;
+      pageItems = merged.slice(start, start + pageSize);
+    } else {
+      pageItems = mergeLeadsWithLocalData(data.items, contactsById);
+      count = data.totalCount;
+      pages = data.totalPages;
+    }
+    setLeads(pageItems);
+    setTotalCount(count);
+    setTotalPages(pages);
+    // If URL page is past the end (e.g. after deletes), jump to last page
+    if (pages > 0 && currentPage > pages) {
+      setSearchParams((prev) => {
+        const params = new URLSearchParams(prev);
+        params.set('page', String(pages));
+        return params;
+      }, { replace: true });
+    }
+    // Interactions fill in after the cards are visible.
+    void loadPageActivities(pageItems.map((l) => l.id));
+    setLoading(false);
   }, [
-    currentOrgId,
+    listQuery.data,
+    listQuery.isError,
     currentPage,
     pageSize,
-    debouncedSearch,
-    filterStatuses,
-    filterSource,
-    filterConverted,
-    filterAssignment,
-    sortField,
-    sortDirection,
     setSearchParams,
     mergeLeadsWithLocalData,
     applyClientLeadFilters,
     applyAssignmentFilter,
     applySalesTrackerFilter,
-    activeSalesFilterCount,
     loadPageActivities,
   ]);
-
-  useEffect(() => {
-    fetchLeads();
-  }, [fetchLeads]);
 
   // Restore a stored list scroll position once the rows have rendered.
   // One-shot per mount; clears the stored value.
@@ -758,17 +704,6 @@ export default function Leads() {
   useEffect(() => {
     setCurrentUser(getCurrentUser());
   }, []);
-
-  // Reload org members whenever the active organization changes.
-  useEffect(() => {
-    if (!currentOrgId) {
-      setOrgMembers([]);
-      return;
-    }
-    getOrgMembers(currentOrgId)
-      .then(setOrgMembers)
-      .catch((err) => console.error('Failed to load org members:', err));
-  }, [currentOrgId]);
 
   /** Leads for the current page (search/filter/sort applied server-side, except assignment filter). */
   const filteredLeads = leads;
@@ -924,7 +859,6 @@ export default function Leads() {
   }) => {
     const onAdded = async () => {
       toast.success('Lead added');
-      await fetchLeads();
     };
     try {
       const created = await createLeadOrOfferDuplicate({
@@ -1011,7 +945,6 @@ export default function Leads() {
         if (result.dealId) parts.push('deal created');
         toast.success(parts.length ? `Lead converted: ${parts.join(', ')}` : messages.success.leadConverted);
         setConvertDialogLead(null);
-        fetchLeads();
       } else {
         toast.error(messages.errors.generic);
       }
@@ -1060,7 +993,11 @@ export default function Leads() {
 
   // Migrate any legacy `?leadId=` deep-links to the new page, then handle
   // hand-offs from the detail page: `?convertLeadId=<id>` opens the convert
-  // dialog; `?edit=<id>` opens the edit wizard. Each cleans up its own param.
+  // dialog; `?edit=<id>` opens the edit wizard. Each cleans up its own param, and
+  // each is handled once: the list arriving while the param still lingers used to
+  // open the dialog a second time, on the list's older copy of the lead, over the
+  // fresh one the hand-over had just read.
+  const handedOver = useRef<string | null>(null);
   useEffect(() => {
     const legacyLeadId = searchParams.get('leadId');
     if (legacyLeadId) {
@@ -1069,6 +1006,8 @@ export default function Leads() {
     }
     const convertLeadId = searchParams.get('convertLeadId');
     if (convertLeadId) {
+      if (handedOver.current === `convert:${convertLeadId}`) return;
+      handedOver.current = `convert:${convertLeadId}`;
       const target = leads.find((l) => l.id === convertLeadId);
       const consumeParam = () => {
         setSearchParams(
@@ -1095,6 +1034,8 @@ export default function Leads() {
     }
     const editLeadId = searchParams.get('edit');
     if (editLeadId) {
+      if (handedOver.current === `edit:${editLeadId}`) return;
+      handedOver.current = `edit:${editLeadId}`;
       const target = leads.find((l) => l.id === editLeadId);
       const consumeParam = () => {
         setSearchParams(
@@ -1231,9 +1172,6 @@ export default function Leads() {
       } else {
         toast.error(`${failed} of ${ids.length} deletes failed`);
       }
-      if (successIds.size > 0) {
-        await fetchLeads();
-      }
       clearSelection();
     } finally {
       setBulkBusy(false);
@@ -1250,7 +1188,6 @@ export default function Leads() {
       if (result.updated > 0) toast.success(`Updated ${result.updated} lead${result.updated === 1 ? '' : 's'}.${skipped}`);
       else toast.warning(`Nothing was updated.${skipped}`);
       clearSelection();
-      await fetchLeads();
     } catch (err) {
       // There was no catch at all: a failure was an unhandled rejection and the
       // user saw nothing happen.
@@ -1341,7 +1278,6 @@ export default function Leads() {
         const onCreated = async () => {
           toast.success(messages.success.leadCreated);
           setDialogOpen(false);
-          await fetchLeads();
         };
         const created = await createLeadOrOfferDuplicate({
           name: form.name.trim(),
@@ -2000,8 +1936,13 @@ export default function Leads() {
           )}
         </div>
 
+        {!loading && listQuery.isError && listQuery.data !== undefined && (
+          <LoadFailed stale what="Leads" error={listQuery.error} onRetry={() => { void fetchLeads(); }} retrying={listQuery.isFetching} className="mb-4" />
+        )}
         {loading ? (
           <LeadsListSkeleton />
+        ) : listQuery.isError && listQuery.data === undefined ? (
+          <LoadFailed what="Leads" error={listQuery.error} onRetry={() => { void fetchLeads(); }} retrying={listQuery.isFetching} />
         ) : totalCount === 0 ? (
           <div className="w-full">
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">

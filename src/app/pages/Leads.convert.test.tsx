@@ -4,6 +4,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { withQueries } from '@/test/queryWrapper';
 import type { Lead } from '@/app/api/types';
 
 const lead: Lead = { id: 'l1', name: 'Jean Dupont', email: 'jean@example.ch', status: 'Qualified' };
@@ -52,11 +53,11 @@ beforeEach(() => {
 
 // The lead page hands over with ?convertLeadId=, which opens the dialog for that lead.
 async function openConversion() {
-  render(
+  render(withQueries(
     <MemoryRouter initialEntries={['/leads?convertLeadId=l1']}>
       <Leads />
     </MemoryRouter>,
-  );
+  ));
   fireEvent.click(await screen.findByRole('button', { name: /create new deal/i }, { timeout: 5000 }));
   fireEvent.change(await screen.findByLabelText('Deal value'), { target: { value: "2'400.50" } });
 }
