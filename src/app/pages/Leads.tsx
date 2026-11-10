@@ -618,13 +618,18 @@ export default function Leads() {
 
   // The rows on screen, from what was read: the legacy browser maps merged in, and in
   // client mode the filters, order and page applied here.
+  const rowsShownOnce = useRef(false);
   useEffect(() => {
     const data = listQuery.data;
     if (data === undefined) {
-      // Nothing read yet for this view. A failure is said in place of the list.
-      if (listQuery.isError) setLoading(false);
+      // Nothing read yet for this view. A failure is said in place of the list. Until a
+      // first list has been shown there are no rows to keep on screen, so a read on its
+      // way (a search typed after a failure) shows the skeleton: the empty list there
+      // read as the first-day screen, telling a team with leads it had none.
+      if (!rowsShownOnce.current) setLoading(!listQuery.isError);
       return;
     }
+    rowsShownOnce.current = true;
     const contactsById = new Map(contactsRef.current.map((c) => [c.id, c]));
     let pageItems: Lead[];
     let count: number;

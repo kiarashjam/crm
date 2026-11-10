@@ -61,6 +61,21 @@ describe('the leads list', () => {
     expect((await screen.findAllByText('Jean Dupont', undefined, { timeout: 5000 })).length).toBeGreaterThan(0);
   });
 
+  it('shows the list loading, not the first-day screen, for a search typed after a failure', async () => {
+    // Nothing was ever read, so the page has no rows to keep on screen. It used to say
+    // "Start Building Your Pipeline" to a team with leads while the search was read.
+    api.getLeadsPaged.mockRejectedValueOnce(new Error('The server took too long to answer.'));
+    show();
+    await screen.findByText('Leads could not be loaded.', undefined, { timeout: 5000 });
+
+    api.getLeadsPaged.mockImplementation(() => new Promise(() => {}));
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'jean' } });
+    await waitFor(() => expect(api.getLeadsPaged).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'jean' }), expect.anything()));
+
+    expect(screen.queryByText('Start Building Your Pipeline')).toBeNull();
+    expect(screen.queryByText('Leads could not be loaded.')).toBeNull();
+  });
+
   it('cancels the read for a search typed over, so it cannot land over the newer one', async () => {
     show();
     await screen.findAllByText('Jean Dupont', undefined, { timeout: 5000 });
