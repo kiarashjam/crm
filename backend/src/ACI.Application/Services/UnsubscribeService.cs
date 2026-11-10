@@ -1,10 +1,21 @@
 using ACI.Application.Interfaces;
+using ACI.Domain.Entities;
 using Microsoft.Extensions.Logging;
 
 namespace ACI.Application.Services;
 
-/// <summary>What the unsubscribe page shows: whose email stops, to which address.</summary>
-public sealed record UnsubscribeDto(string WorkspaceName, string Email);
+/// <summary>What the unsubscribe page shows: whose email stops, to which address, and how much of it.</summary>
+/// <param name="Scope">
+/// "all": every email the workspace sends to the address (the link in sales outreach).
+/// "marketing": a club member's news and offers; their statements and booking confirmations still come.
+/// </param>
+public sealed record UnsubscribeDto(string WorkspaceName, string Email, string Scope = UnsubscribeScopes.All);
+
+public static class UnsubscribeScopes
+{
+    public const string All = "all";
+    public const string Marketing = "marketing";
+}
 
 public interface IUnsubscribeService
 {
@@ -36,6 +47,7 @@ public sealed class UnsubscribeService : IUnsubscribeService
     private readonly ISequenceRepository _sequences;
     private readonly ILogger<UnsubscribeService> _logger;
     private readonly ITenantContext? _tenant;
+    private readonly IConsentService? _consent;
 
     public UnsubscribeService(
         IUnsubscribeLinks links,
@@ -43,7 +55,8 @@ public sealed class UnsubscribeService : IUnsubscribeService
         IContactRepository contacts,
         ISequenceRepository sequences,
         ILogger<UnsubscribeService> logger,
-        ITenantContext? tenant = null)
+        ITenantContext? tenant = null,
+        IConsentService? consent = null)
     {
         _links = links;
         _organizations = organizations;
@@ -51,10 +64,16 @@ public sealed class UnsubscribeService : IUnsubscribeService
         _sequences = sequences;
         _logger = logger;
         _tenant = tenant;
+        _consent = consent;
     }
 
     public async Task<UnsubscribeDto?> PreviewAsync(string token, CancellationToken ct = default)
     {
+        if (_links.TryReadMember(token, out var memberOrganizationId, out _, out var memberEmail))
+        {
+            var club = await _organizations.GetByIdAsync(memberOrganizationId, ct);
+            return club == null ? null : new UnsubscribeDto(club.Name, memberEmail, UnsubscribeScopes.Marketing);
+        }
         if (!_links.TryRead(token, out var organizationId, out var email)) return null;
         var workspace = await _organizations.GetByIdAsync(organizationId, ct);
         return workspace == null ? null : new UnsubscribeDto(workspace.Name, email);
@@ -62,6 +81,8 @@ public sealed class UnsubscribeService : IUnsubscribeService
 
     public async Task<UnsubscribeDto?> UnsubscribeAsync(string token, CancellationToken ct = default)
     {
+        if (_links.TryReadMember(token, out var memberOrganizationId, out var memberId, out var memberEmail))
+            return await WithdrawMarketingAsync(memberOrganizationId, memberId, memberEmail, ct);
         if (!_links.TryRead(token, out var organizationId, out var email)) return null;
         var workspace = await _organizations.GetByIdAsync(organizationId, ct);
         if (workspace == null) return null;
@@ -79,5 +100,24 @@ public sealed class UnsubscribeService : IUnsubscribeService
         _logger.LogInformation("An address unsubscribed from organization {OrganizationId}'s email ({Contacts} contact(s), {Leads} lead(s))",
             organizationId, marked.ContactIds.Count, marked.LeadIds.Count);
         return new UnsubscribeDto(workspace.Name, email);
+    }
+
+    /// <summary>
+    /// The link in a club member's marketing email: their consent to marketing by email is
+    /// withdrawn, recorded as given by the unsubscribe link at this moment. Their statements,
+    /// booking confirmations and receipts still come, so nobody is marked do not contact.
+    /// Marketing already queued to them is stopped by the outbox, which asks again as it sends.
+    /// </summary>
+    private async Task<UnsubscribeDto?> WithdrawMarketingAsync(Guid organizationId, Guid memberId, string email, CancellationToken ct)
+    {
+        var club = await _organizations.GetByIdAsync(organizationId, ct);
+        if (club == null || _consent == null) return null;
+        // The person unsubscribing signs in to nothing; the signed link names the workspace.
+        using var acting = _tenant?.ActFor(organizationId, club.OwnerUserId);
+        var changed = await _consent.WithdrawMarketingEmailAsync(organizationId, memberId, email, ConsentSources.Unsubscribe,
+            "Unsubscribed with the link in a marketing email", ct);
+        _logger.LogInformation("A member unsubscribed from organization {OrganizationId}'s marketing email ({Members} member(s) changed)",
+            organizationId, changed);
+        return new UnsubscribeDto(club.Name, email, UnsubscribeScopes.Marketing);
     }
 }

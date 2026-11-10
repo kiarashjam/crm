@@ -2384,6 +2384,9 @@ namespace ACI.Infrastructure.Migrations
                     b.Property<DateTime?>("NextAttemptAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<bool>("OneClickUnsubscribe")
+                        .HasColumnType("bit");
+
                     b.Property<DateTime?>("OpenedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -2392,6 +2395,10 @@ namespace ACI.Infrastructure.Migrations
 
                     b.Property<string>("PayloadJson")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Purpose")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
 
                     b.Property<string>("RecipientName")
                         .HasMaxLength(200)

@@ -24,6 +24,7 @@ internal sealed class OutboundMessageConfiguration : IEntityTypeConfiguration<Ou
         builder.Property(e => e.RecipientName).HasMaxLength(200);
         builder.Property(e => e.Subject).HasMaxLength(300);
         builder.Property(e => e.UnsubscribeUrl).HasMaxLength(1000);
+        builder.Property(e => e.Purpose).HasMaxLength(16);
         builder.Property(e => e.MessageIdHeader).HasMaxLength(255);
         builder.Property(e => e.ReplyToken).HasMaxLength(64);
         builder.Property(e => e.DeliveryStatus).HasMaxLength(32);
