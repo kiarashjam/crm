@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Activity, Phone, Mail, FileText, Users, Video, Presentation, CheckCircle, CalendarClock, Clock, TriangleAlert } from 'lucide-react';
 import type { Activity as ActivityType } from '@/app/api/types';
+import { RetryButton } from '@/app/components/LoadFailed';
 
 interface RecentActivityProps {
   /** Already sorted newest-first by `mostRecent`. */
@@ -8,6 +9,10 @@ interface RecentActivityProps {
   loaded: boolean;
   /** True when the request failed, which is not "nothing has happened". */
   failed: boolean;
+  /** Read the figures again; shown with the failure. */
+  onRetry?: () => void;
+  /** A retry is on its way. */
+  retrying?: boolean;
 }
 
 function getActivityIcon(type: string) {
@@ -60,7 +65,7 @@ function getActivityIconColor(type: string) {
   }
 }
 
-export function RecentActivity({ items, loaded, failed }: RecentActivityProps) {
+export function RecentActivity({ items, loaded, failed, onRetry, retrying }: RecentActivityProps) {
   return (
     <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
       <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
@@ -74,10 +79,11 @@ export function RecentActivity({ items, loaded, failed }: RecentActivityProps) {
         {failed ? (
           <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
             <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden />
-            <p className="text-xs text-amber-900">
+            <p className="flex-1 text-xs text-amber-900">
               <strong className="font-semibold">Could not load activity.</strong> An empty panel
               here would have read as "nothing has happened".
             </p>
+            {onRetry && <RetryButton onRetry={onRetry} retrying={retrying} />}
           </div>
         ) : !loaded ? (
           <div className="space-y-3" aria-busy="true">

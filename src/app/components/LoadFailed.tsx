@@ -17,6 +17,21 @@ interface LoadFailedProps {
   className?: string;
 }
 
+/** The retry on its own, for a panel that already says what failed in its own words. */
+export function RetryButton({ onRetry, retrying = false, className }: { onRetry: () => void; retrying?: boolean; className?: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onRetry}
+      disabled={retrying}
+      className={cn('inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-2.5 text-xs font-semibold text-amber-900 hover:border-amber-400 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500', className)}
+    >
+      <RotateCw className={cn('h-3.5 w-3.5', retrying && 'motion-safe:animate-spin')} aria-hidden="true" />
+      {retrying ? 'Trying again…' : 'Try again'}
+    </button>
+  );
+}
+
 function reasonOf(error: unknown): string | null {
   return error instanceof Error && error.message && error.message !== 'Failed to fetch' ? error.message : null;
 }

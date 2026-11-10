@@ -3,6 +3,7 @@ import { BarChart3, ArrowRight, TriangleAlert } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
 import { useMoney } from '@/app/hooks/useMoney';
 import type { PipelineStage } from './types';
+import { RetryButton } from '@/app/components/LoadFailed';
 
 interface PipelineChartProps {
   stages: PipelineStage[];
@@ -10,6 +11,10 @@ interface PipelineChartProps {
   loaded: boolean;
   /** True when it failed, which is not the same as having no deals. */
   failed: boolean;
+  /** Read the figures again; shown with the failure. */
+  onRetry?: () => void;
+  /** A retry is on its way. */
+  retrying?: boolean;
 }
 
 const stageColors = [
@@ -42,7 +47,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function PipelineChart({ stages, loaded, failed }: PipelineChartProps) {
+export function PipelineChart({ stages, loaded, failed, onRetry, retrying }: PipelineChartProps) {
   // In the workspace's number format, like every other amount in the app.
   const money = useMoney();
   // This used to `return null` whenever the list was empty, so a failed request
@@ -53,10 +58,11 @@ export function PipelineChart({ stages, loaded, failed }: PipelineChartProps) {
       <Shell>
         <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden />
-          <p className="text-sm text-amber-900">
+          <p className="flex-1 text-sm text-amber-900">
             <strong className="font-semibold">Could not load the pipeline breakdown.</strong>{' '}
-            This is not the same as having no deals — reload rather than reading it as empty.
+            This is not the same as having no deals — try again rather than reading it as empty.
           </p>
+          {onRetry && <RetryButton onRetry={onRetry} retrying={retrying} />}
         </div>
       </Shell>
     );

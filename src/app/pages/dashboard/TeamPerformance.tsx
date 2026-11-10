@@ -1,11 +1,16 @@
 import { Users, TriangleAlert } from 'lucide-react';
 import { useMoney } from '@/app/hooks/useMoney';
 import type { PipelineValueByAssignee } from '@/app/api/reporting';
+import { RetryButton } from '@/app/components/LoadFailed';
 
 interface TeamPerformanceProps {
   members: PipelineValueByAssignee[];
   loaded: boolean;
   failed: boolean;
+  /** Read the figures again; shown with the failure. */
+  onRetry?: () => void;
+  /** A retry is on its way. */
+  retrying?: boolean;
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -25,7 +30,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function TeamPerformance({ members, loaded, failed }: TeamPerformanceProps) {
+export function TeamPerformance({ members, loaded, failed, onRetry, retrying }: TeamPerformanceProps) {
   // In the workspace's number format, like every other amount in the app.
   const money = useMoney();
   // Until the scope fix in ReportingService this panel could only ever show the
@@ -36,10 +41,11 @@ export function TeamPerformance({ members, loaded, failed }: TeamPerformanceProp
       <Shell>
         <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden />
-          <p className="text-sm text-amber-900">
+          <p className="flex-1 text-sm text-amber-900">
             <strong className="font-semibold">Could not load team figures.</strong>{' '}
             An empty list here would have looked like a team with no deals.
           </p>
+          {onRetry && <RetryButton onRetry={onRetry} retrying={retrying} />}
         </div>
       </Shell>
     );
