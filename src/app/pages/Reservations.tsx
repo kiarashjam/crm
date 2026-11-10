@@ -296,14 +296,16 @@ export default function Reservations() {
           ))}
         </SelectContent>
       </Select>
-      <button
-        type="button"
-        onClick={() => openEdit(r)}
-        className="rounded p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-        aria-label="Edit reservation"
-      >
-        <Pencil className="h-4 w-4" />
-      </button>
+      <WriteOnly permission={PERMISSION.FrontDesk}>
+        <button
+          type="button"
+          onClick={() => openEdit(r)}
+          className="rounded p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+          aria-label="Edit reservation"
+        >
+          <Pencil className="h-4 w-4" />
+        </button>
+      </WriteOnly>
       <WriteOnly permission={PERMISSION.DeleteRecords}>
         <button
           type="button"

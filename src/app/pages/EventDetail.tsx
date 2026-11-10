@@ -406,19 +406,23 @@ export default function EventDetail() {
                   </WriteOnly>
                 )}
                 {event.status !== 'Cancelled' && event.status !== 'Completed' && (
-                  <Button
-                    variant="outline"
-                    onClick={() => changeStatus('Cancelled')}
-                    className={`${heroSecondary} text-rose-600 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700`}
-                  >
-                    Cancel event
-                  </Button>
+                  <WriteOnly permission={PERMISSION.ClubMembers}>
+                    <Button
+                      variant="outline"
+                      onClick={() => changeStatus('Cancelled')}
+                      className={`${heroSecondary} text-rose-600 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700`}
+                    >
+                      Cancel event
+                    </Button>
+                  </WriteOnly>
                 )}
-                <Button variant="outline" asChild className={heroSecondary}>
-                  <Link to="/events">
-                    <Pencil className="h-4 w-4" /> Edit
-                  </Link>
-                </Button>
+                <WriteOnly permission={PERMISSION.ClubMembers}>
+                  <Button variant="outline" asChild className={heroSecondary}>
+                    <Link to="/events">
+                      <Pencil className="h-4 w-4" /> Edit
+                    </Link>
+                  </Button>
+                </WriteOnly>
                 <WriteOnly permission={PERMISSION.DeleteRecords}>
                   <Button
                     variant="outline"

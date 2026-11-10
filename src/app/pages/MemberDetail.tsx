@@ -270,11 +270,13 @@ export default function MemberDetail() {
             }
             actions={
               <>
-                <Button variant="outline" asChild className={heroSecondary}>
-                  <Link to="/members" state={{ editMemberId: member.id }}>
-                    <Pencil className="h-4 w-4" /> Edit
-                  </Link>
-                </Button>
+                <WriteOnly permission={PERMISSION.ClubMembers}>
+                  <Button variant="outline" asChild className={heroSecondary}>
+                    <Link to="/members" state={{ editMemberId: member.id }}>
+                      <Pencil className="h-4 w-4" /> Edit
+                    </Link>
+                  </Button>
+                </WriteOnly>
                 <WriteOnly permission={PERMISSION.DeleteRecords}>
                   <Button
                     variant="outline"

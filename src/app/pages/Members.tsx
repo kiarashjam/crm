@@ -181,14 +181,16 @@ export default function Members() {
   /** Open, edit and remove: the same in every layout. */
   const memberActions = (m: Member) => (
     <>
-      <button
-        type="button"
-        onClick={() => openEdit(m)}
-        className="rounded p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-        aria-label="Edit member"
-      >
-        <Pencil className="h-4 w-4" />
-      </button>
+      <WriteOnly permission={PERMISSION.ClubMembers}>
+        <button
+          type="button"
+          onClick={() => openEdit(m)}
+          className="rounded p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+          aria-label="Edit member"
+        >
+          <Pencil className="h-4 w-4" />
+        </button>
+      </WriteOnly>
       <WriteOnly permission={PERMISSION.DeleteRecords}>
         <button
           type="button"
