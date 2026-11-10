@@ -5,7 +5,7 @@
 // needs it any more, a failure the page can show and retry, and a refresh when a save
 // changes that kind of record (invalidation.ts).
 
-import { keepPreviousData, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
+import { useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
 import { useCallback } from 'react';
 // Through the API's front door, as the pages import it, so what a page's test puts in
 // place of a read is what its queries call.
@@ -37,16 +37,30 @@ export function useCacheWriter() {
   );
 }
 
+/**
+ * Keep the last page on screen while the next one is read (another page, search or
+ * filter), but never across workspaces or accounts: after a switch, one workspace's rows
+ * must not stand in for another's while they load.
+ */
+export function keepPreviousInWorkspace<T>(key: readonly unknown[]) {
+  return (previous: T | undefined, previousQuery: { queryKey: readonly unknown[] } | undefined): T | undefined => {
+    if (!previousQuery) return undefined;
+    const [, org, user] = previousQuery.queryKey;
+    return org === key[1] && user === key[2] ? previous : undefined;
+  };
+}
+
 // ── leads ────────────────────────────────────────────────────────────────────
 
 export function useLeadsPage(params: Params<typeof getLeadsPaged>, enabled = true) {
   const ws = useWorkspaceScope();
-  return useQuery({
-    queryKey: queryKeys.leads.page(ws, params),
+  const key = queryKeys.leads.page(ws, params);
+  return useQuery<Awaited<ReturnType<typeof getLeadsPaged>>>({
+    queryKey: key,
     queryFn: ({ signal }) => timed(signal, (s) => getLeadsPaged(params, { signal: s })),
     enabled,
     // A new page or search keeps the last one on screen until it arrives.
-    placeholderData: keepPreviousData,
+    placeholderData: keepPreviousInWorkspace<Awaited<ReturnType<typeof getLeadsPaged>>>(key),
   });
 }
 
@@ -112,11 +126,12 @@ export function dealBoardKey(ws: WorkspaceScope, query: DealBoardQuery) {
 
 export function useDealBoard(query: DealBoardQuery, enabled = true) {
   const ws = useWorkspaceScope();
-  return useQuery({
-    queryKey: dealBoardKey(ws, query),
+  const key = dealBoardKey(ws, query);
+  return useQuery<Awaited<ReturnType<typeof getDealBoard>>>({
+    queryKey: key,
     queryFn: ({ signal }) => timed(signal, (s) => getDealBoard(query, { signal: s })),
     enabled,
-    placeholderData: keepPreviousData,
+    placeholderData: keepPreviousInWorkspace<Awaited<ReturnType<typeof getDealBoard>>>(key),
   });
 }
 
@@ -124,10 +139,11 @@ export function useDealBoard(query: DealBoardQuery, enabled = true) {
 
 export function useContactsPage(params: Params<typeof getContactsPaged>) {
   const ws = useWorkspaceScope();
-  return useQuery({
-    queryKey: queryKeys.contacts.page(ws, params),
+  const key = queryKeys.contacts.page(ws, params);
+  return useQuery<Awaited<ReturnType<typeof getContactsPaged>>>({
+    queryKey: key,
     queryFn: ({ signal }) => timed(signal, (s) => getContactsPaged(params, { signal: s })),
-    placeholderData: keepPreviousData,
+    placeholderData: keepPreviousInWorkspace<Awaited<ReturnType<typeof getContactsPaged>>>(key),
   });
 }
 
@@ -150,10 +166,11 @@ export function useAllContacts(enabled = true) {
 
 export function useCompaniesPage(params: Params<typeof getCompaniesPaged>) {
   const ws = useWorkspaceScope();
-  return useQuery({
-    queryKey: queryKeys.companies.page(ws, params),
+  const key = queryKeys.companies.page(ws, params);
+  return useQuery<Awaited<ReturnType<typeof getCompaniesPaged>>>({
+    queryKey: key,
     queryFn: ({ signal }) => timed(signal, (s) => getCompaniesPaged(params, { signal: s })),
-    placeholderData: keepPreviousData,
+    placeholderData: keepPreviousInWorkspace<Awaited<ReturnType<typeof getCompaniesPaged>>>(key),
   });
 }
 
@@ -203,11 +220,12 @@ export function activitiesPageKey(ws: WorkspaceScope, params: GetActivitiesPaged
 
 export function useActivitiesPage(params: GetActivitiesPagedOptions, enabled = true) {
   const ws = useWorkspaceScope();
-  return useQuery({
-    queryKey: activitiesPageKey(ws, params),
+  const key = activitiesPageKey(ws, params);
+  return useQuery<Awaited<ReturnType<typeof getActivitiesPaged>>>({
+    queryKey: key,
     queryFn: ({ signal }) => timed(signal, (s) => getActivitiesPaged(params, { signal: s })),
     enabled,
-    placeholderData: keepPreviousData,
+    placeholderData: keepPreviousInWorkspace<Awaited<ReturnType<typeof getActivitiesPaged>>>(key),
   });
 }
 
@@ -236,11 +254,12 @@ export function useRecordActivities(kind: RecordKind, id: string | null | undefi
 /** The activities of the leads on one page, read together. */
 export function useActivitiesForLeads(leadIds: readonly string[]) {
   const ws = useWorkspaceScope();
-  return useQuery({
-    queryKey: queryKeys.activities.forLeads(ws, leadIds),
+  const key = queryKeys.activities.forLeads(ws, leadIds);
+  return useQuery<Awaited<ReturnType<typeof getActivitiesByLeadIds>>>({
+    queryKey: key,
     queryFn: ({ signal }) => timed(signal, (s) => getActivitiesByLeadIds([...leadIds], { signal: s })),
     enabled: leadIds.length > 0,
-    placeholderData: keepPreviousData,
+    placeholderData: keepPreviousInWorkspace<Awaited<ReturnType<typeof getActivitiesByLeadIds>>>(key),
   });
 }
 

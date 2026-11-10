@@ -9,6 +9,7 @@ import { AUTH_SESSION_CHANGED } from '@/app/lib/auth';
 import { queryKeys, type WorkspaceScope } from './queryKeys';
 import { clearOnSessionChange, keepOnlyWorkspace, refreshAfterWrites, SETTLE_MS } from './invalidation';
 import { RequestTimeoutError, retryOnce, timed } from './queryClient';
+import { keepPreviousInWorkspace } from './records';
 
 const PAVILLON: WorkspaceScope = { orgId: 'pavillon', userId: 'u1' };
 const LAC: WorkspaceScope = { orgId: 'lac-leman', userId: 'u1' };
@@ -104,6 +105,14 @@ describe('workspaces and sessions', () => {
 
     expect(client.getQueryData(queryKeys.leads.all(PAVILLON))).toBeUndefined();
     expect(client.getQueryData(queryKeys.leads.all(LAC))).toEqual(['lac lead']);
+  });
+
+  it('keeps the last page on screen while the next is read, but never across workspaces', () => {
+    // After a switch, the old workspace's rows must not stand in for the new one's.
+    const keep = keepPreviousInWorkspace<string[]>(queryKeys.contacts.page(LAC, { page: 1 }));
+    expect(keep(['lac, page 2'], { queryKey: queryKeys.contacts.page(LAC, { page: 2 }) })).toEqual(['lac, page 2']);
+    expect(keep(['pavillon, page 1'], { queryKey: queryKeys.contacts.page(PAVILLON, { page: 1 }) })).toBeUndefined();
+    expect(keep(['another account'], { queryKey: queryKeys.contacts.page({ orgId: 'lac-leman', userId: 'u2' }, { page: 1 }) })).toBeUndefined();
   });
 
   it('keys the same list apart for two workspaces', () => {
