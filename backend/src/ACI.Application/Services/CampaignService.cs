@@ -457,6 +457,9 @@ public sealed class CampaignService : ICampaignService
 
         if (request.ScheduledAtUtc is DateTime at)
         {
+            // A campaign that would go by SMS or push (one kept from before) cannot be given a
+            // time either: "Send now" refuses it, and the scheduler would have emailed it.
+            if (campaign.Channel != CampaignChannels.Email) return ChannelUnavailable(campaign.Channel);
             var when = at.Kind == DateTimeKind.Local ? at.ToUniversalTime() : DateTime.SpecifyKind(at, DateTimeKind.Utc);
             if (when <= now.AddMinutes(1)) return new Error("Campaign.ScheduleInPast", "Pick a time in the future to send it, or send it now.");
             campaign.ScheduledAtUtc = when;

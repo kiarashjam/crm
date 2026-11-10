@@ -329,6 +329,33 @@ public class CampaignTests
     }
 
     [Fact]
+    public async Task ATextCampaignKeptFromBeforeCannotBeScheduledToGoByEmail()
+    {
+        await using var app = new App();
+        var club = await ClubAsync(app);
+        await MemberAsync(club, "Anna", "anna@example.ch");
+        // As the move from the old documents leaves an SMS campaign that was never sent: a draft.
+        var texts = Guid.NewGuid();
+        using (var scope = app.Services.CreateScope())
+        {
+            await using var db = scope.ServiceProvider.EveryWorkspace();
+            var now = DateTime.UtcNow;
+            db.Campaigns.Add(new Campaign
+            {
+                Id = texts, OrganizationId = club.Org, Name = "Text blast", Channel = CampaignChannels.Sms, Purpose = ConsentPurposes.Service,
+                Subject = "Hi", Body = "Court 2 is free tonight", Status = CampaignStatuses.Draft, CreatedAtUtc = now, UpdatedAtUtc = now,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var scheduled = await club.Owner.PutAsync($"/api/campaigns/{texts}", Body(new { scheduledAtUtc = DateTime.UtcNow.AddMinutes(30) }));
+
+        scheduled.StatusCode.Should().Be(HttpStatusCode.BadRequest, "Send now refuses it, so the scheduler must not get it to send by email");
+        (await scheduled.Content.ReadAsStringAsync()).Should().Contain("Campaign.ChannelUnavailable");
+        (await app.Services.Read(db => db.Campaigns.Single(c => c.Id == texts).Status)).Should().Be(CampaignStatuses.Draft);
+    }
+
+    [Fact]
     public async Task AnEditMadeFromAnOlderCopyIsRefused()
     {
         await using var app = new App();
