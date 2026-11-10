@@ -27,8 +27,8 @@ namespace ACI.WebApi;
 /// so first, and the refusal says so.
 /// </para>
 /// <para>
-/// Two things the old DDL did differently are put right first, being only names or a
-/// check: the primary keys it declared inline, which SQL Server named at random
+/// Two things the old DDL did differently are put right first where they can be, being only
+/// names or a check: the primary keys it declared inline, which SQL Server named at random
 /// (PK__Attachme__3214EC07…), are given the names the baseline gives them, so a later
 /// migration that drops or rebuilds one finds it; and sequence steps get the foreign key
 /// to their sequence that the DDL left out, unless a step has lost its sequence. Anything
@@ -61,12 +61,25 @@ public static class SchemaBaseline
             throw new InvalidOperationException(
                 "This database was made before the baseline migration but lacks "
                 + string.Join(", ", before.Missing.Take(20)) + (before.Missing.Count > 20 ? $" and {before.Missing.Count - 20} more" : "")
-                + ". It is not recorded at the baseline, as nothing would add them afterwards. Start it once on the last "
-                + "release whose start-up DDL brings old databases up to date, then on this one.");
+                + ". It is not recorded at the baseline, as nothing would add them afterwards. They come from the old "
+                + "start-up DDL: start the database once on a release that still runs it, then on this one.");
         }
 
-        await db.Database.ExecuteSqlRawAsync(NamePrimaryKeysSql(db.Model, before.PrimaryKeys), ct);
-        await db.Database.ExecuteSqlRawAsync(OutreachStepsForeignKeySql, ct);
+        // Names and a key, not anything the app needs to run: if one cannot be put right, the
+        // baseline is recorded all the same and what is left is logged with the rest below.
+        async Task PutRightAsync(string sql, string what)
+        {
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync(sql, ct);
+            }
+            catch (Microsoft.Data.SqlClient.SqlException ex)
+            {
+                logger.LogWarning(ex, "Could not {What} before recording the baseline", what);
+            }
+        }
+        await PutRightAsync(NamePrimaryKeysSql(db.Model, before.PrimaryKeys), "give the primary keys the baseline's names");
+        await PutRightAsync(OutreachStepsForeignKeySql, "add the sequence steps' foreign key");
 
         await db.Database.ExecuteSqlRawAsync(history.GetCreateIfNotExistsScript(), ct);
         await db.Database.ExecuteSqlRawAsync(string.Join("\n",
