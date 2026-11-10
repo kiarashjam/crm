@@ -266,3 +266,37 @@ public class OnlinePaymentsController : ControllerBase
     public async Task<ActionResult<IReadOnlyList<OnlinePaymentDto>>> List([FromQuery] Guid? memberId, [FromQuery] string? status, CancellationToken ct) =>
         Ok(await _payments.OnlinePaymentsAsync(_user.CurrentOrganizationId!.Value, memberId, status, ct));
 }
+
+/// <summary>The accounting journal for a period, as bookings Bexio, Abacus or another program imports.</summary>
+[ApiController]
+[Route("api/accounting")]
+[Authorize]
+[WorkspaceRequired]
+[Produces("application/json", "text/csv")]
+public class AccountingController : ControllerBase
+{
+    private readonly IClubAccounting _accounting;
+    private readonly ICurrentUserService _user;
+
+    public AccountingController(IClubAccounting accounting, ICurrentUserService user)
+    {
+        _accounting = accounting;
+        _user = user;
+    }
+
+    /// <summary>
+    /// The bookings for [from, to): as JSON with what each account moved by, or (format=csv) as
+    /// the CSV file docs/accounting-export.md describes. layout=gross books a charge with its VAT
+    /// code; layout=net books its VAT on a line of its own.
+    /// </summary>
+    [HttpGet("journal")]
+    [Requires(MemberPermissions.ManageMoney, What = "export the accounting journal")]
+    public async Task<ActionResult> Journal([FromQuery] DateTime from, [FromQuery] DateTime to, [FromQuery] string? layout, [FromQuery] string? format, CancellationToken ct)
+    {
+        var journal = await _accounting.JournalAsync(_user.CurrentOrganizationId!.Value, from.ToUniversalTime(), to.ToUniversalTime(), layout ?? "gross", ct);
+        if (!journal.IsSuccess) return journal.Error.ToProblemResult();
+        if (!string.Equals(format, "csv", StringComparison.OrdinalIgnoreCase)) return Ok(journal.Value);
+        var name = $"journal-{journal.Value.FromUtc:yyyy-MM-dd}-to-{journal.Value.ToUtc.AddTicks(-1):yyyy-MM-dd}.csv";
+        return File(ACI.Application.Common.Payments.JournalCsv.Write(journal.Value.Rows), "text/csv; charset=utf-8", name);
+    }
+}

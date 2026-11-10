@@ -74,6 +74,7 @@ public static class DependencyInjection
         services.AddScoped<IClubBankFiles, ACI.Infrastructure.Services.Payments.ClubBankFileService>();
         services.AddSingleton<ACI.Infrastructure.Services.Payments.PayLinkSigner>();
         services.AddScoped<IClubPayments, ACI.Infrastructure.Services.Payments.ClubPaymentsService>();
+        services.AddScoped<IClubAccounting, ACI.Infrastructure.Services.Payments.ClubAccountingService>();
         services.AddHttpClient(ACI.Infrastructure.Services.Payments.StripePaymentProvider.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(30));
         services.AddSingleton<IPaymentProvider, ACI.Infrastructure.Services.Payments.StripePaymentProvider>();
         services.AddScoped<IConsentRepository, ConsentRepository>();
