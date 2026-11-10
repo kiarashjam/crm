@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { Building2, UserPlus, Mail, Check, X, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { servesDemoData } from '@/app/api/apiClient';
-import { orgCan, PERMISSION, type InviteDto, type JoinRequestDto, type OrgMemberDto } from '@/app/api/organizations';
+import { orgCan, PERMISSION, PRESET_LABELS, type InviteDto, type JoinRequestDto, type OrgMemberDto } from '@/app/api/organizations';
 import { RegionalSettingsCard } from './RegionalSettingsCard';
 import { EmailSendingCard } from './EmailSendingCard';
 
@@ -210,6 +210,19 @@ export function OrganizationSection({
                             {isOwner ? (
                               <span className="inline-flex items-center px-2 py-1 bg-orange-100 text-orange-700 text-xs font-medium rounded-full">
                                 Owner
+                              </span>
+                            ) : m.preset ? (
+                              // What they may do is a preset now, set on the Team page. The
+                              // old Member / Manager list here named a read-only accountant
+                              // "Member", and choosing a role reset what the owner had set.
+                              <span className="inline-flex flex-wrap items-center gap-2">
+                                <span className="inline-flex items-center px-2 py-1 bg-slate-100 text-slate-700 text-xs font-medium rounded-full">
+                                  {PRESET_LABELS[m.preset] ?? m.preset}
+                                  {m.customised ? ', changed' : ''}
+                                </span>
+                                <Link to="/team" className="text-xs text-orange-700 hover:text-orange-800 font-medium">
+                                  Change on the Team page
+                                </Link>
                               </span>
                             ) : (
                               <select

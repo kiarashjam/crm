@@ -107,6 +107,20 @@ export interface OrgMemberDto {
   customised?: boolean;
 }
 
+/**
+ * How each preset is named, for a page that does not load the catalogue (the Team page
+ * does, and names them from the server's).
+ */
+export const PRESET_LABELS: Readonly<Record<string, string>> = {
+  owner: 'Owner',
+  manager: 'Manager',
+  sales_rep: 'Sales rep',
+  membership_director: 'Membership director',
+  finance: 'Finance',
+  front_desk: 'Front desk',
+  read_only_accountant: 'Read-only accountant',
+};
+
 /** A permission as the Team page lists it. */
 export interface PermissionInfo {
   key: string;
