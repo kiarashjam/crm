@@ -412,7 +412,8 @@ public sealed class ClubApplicationService : IClubApplications
     }
 
     /// <summary>What an approval will do, worked out before the claim so a refusal writes nothing.</summary>
-    private sealed record Plan(CatalogItemDto Tier, ClubMember? Existing, ClubHousehold? Household, string HouseholdRole, bool FeeApplies, int FeeDueDays);
+    private sealed record Plan(CatalogItemDto Tier, ClubMember? Existing, ClubHousehold? Household, string HouseholdRole, bool FeeApplies, int FeeDueDays,
+        bool HouseholdGone = false);
 
     private async Task<Result<Plan>> PlanAsync(Guid organizationId, ClubApplication app, Approval approval, CancellationToken ct)
     {
@@ -439,18 +440,23 @@ public sealed class ClubApplicationService : IClubApplications
             return DomainErrors.Club.CurrencyMismatch(tier.Currency, currency);
 
         ClubHousehold? household = null;
+        var householdGone = false;
         var role = HouseholdRoles.Normalize(request.HouseholdRole ?? app.HouseholdRole) ?? HouseholdRoles.Other;
         if (role == HouseholdRoles.Primary) return DomainErrors.Application.HouseholdRoleInvalid;
         if ((request.HouseholdId ?? app.HouseholdId) is { } householdId)
         {
             household = await _db.ClubHouseholds.AsNoTracking().FirstOrDefaultAsync(h => h.Id == householdId && h.OrganizationId == organizationId, ct);
-            if (household == null) return DomainErrors.Household.NotFound;
+            // A household named on this approval has to be there. One the application named that
+            // has gone since (deleted, or the member who headed it with it) is no reason the
+            // applicant cannot be admitted, and nothing else can take it off the application.
+            if (household == null && request.HouseholdId != null) return DomainErrors.Household.NotFound;
+            householdGone = household == null;
         }
         var rules = await _rules.ReadAsync(organizationId, ct);
         // A member who was never more than Pending (the old approval left them so) pays the fee
         // of joining; someone who was a member before does not pay it again.
         var feeApplies = existing == null || existing.Status == "Pending";
-        return new Plan(tier, existing, household, role, feeApplies, rules.Billing.PaymentTermsDays);
+        return new Plan(tier, existing, household, role, feeApplies, rules.Billing.PaymentTermsDays, householdGone);
     }
 
     /// <summary>What the approval did, for the answer.</summary>
@@ -537,6 +543,7 @@ public sealed class ClubApplicationService : IClubApplications
             if (!opened.IsSuccess) return opened.Error;
         }
 
+        if (plan.HouseholdGone) notes.Add("The household the application named no longer exists, so they were not added to one.");
         var joined = await JoinHouseholdAsync(organizationId, member, plan, approval, notes, ct);
         await CarryConsentAsync(organizationId, app, member, ct);
 

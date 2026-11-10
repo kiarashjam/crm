@@ -149,6 +149,13 @@ public sealed class ClubHouseholdService : IClubHouseholds
         // member ran up on the primary's account stay there, saying who ran them up.
         _db.ClubHouseholdMembers.RemoveRange(await _db.ClubHouseholdMembers
             .Where(l => l.HouseholdId == householdId && l.OrganizationId == organizationId).ToListAsync(ct));
+        // An application still waiting to join it joins none: the household it named is gone.
+        foreach (var application in await OpenApplicationsNamingAsync(organizationId, [householdId], ct))
+        {
+            application.HouseholdId = null;
+            application.HouseholdRole = null;
+            application.UpdatedAtUtc = DateTime.UtcNow;
+        }
         _db.ClubHouseholds.Remove(household);
         var saved = await SaveAsync(ct);
         return saved.IsSuccess ? Result.Success() : saved.Error;
@@ -192,6 +199,12 @@ public sealed class ClubHouseholdService : IClubHouseholds
             if (!string.IsNullOrEmpty(text) && !notes.Contains(text, StringComparison.Ordinal))
                 notes = string.IsNullOrWhiteSpace(notes) ? text : $"{notes.TrimEnd()}\n\n{text}";
             _db.ClubHouseholds.Remove(duplicate);
+        }
+        // An application waiting to join a duplicate joins the household it was folded into.
+        foreach (var application in await OpenApplicationsNamingAsync(organizationId, duplicates.Select(d => d.Id).ToList(), ct))
+        {
+            application.HouseholdId = householdId;
+            application.UpdatedAtUtc = DateTime.UtcNow;
         }
         keep.Notes = notes.Length == 0 ? null : notes.Length > MaxNotes ? notes[..MaxNotes] : notes;
         keep.UpdatedAtUtc = DateTime.UtcNow;
@@ -588,6 +601,13 @@ public sealed class ClubHouseholdService : IClubHouseholds
         return link.MemberId is { } memberId
             && await _db.ClubMembers.AsNoTracking().AnyAsync(m => m.Id == memberId && m.OrganizationId == organizationId && m.ContactId == contactId, ct);
     }
+
+    /// <summary>The applications still waiting for a decision that name one of these households, tracked.</summary>
+    private Task<List<ClubApplication>> OpenApplicationsNamingAsync(Guid organizationId, IReadOnlyCollection<Guid> householdIds, CancellationToken ct) =>
+        _db.ClubApplications
+            .Where(a => a.OrganizationId == organizationId && a.HouseholdId != null && householdIds.Contains(a.HouseholdId.Value)
+                && (a.Status == ApplicationStatuses.Submitted || a.Status == ApplicationStatuses.UnderReview || a.Status == ApplicationStatuses.Waitlisted))
+            .ToListAsync(ct);
 
     private async Task<List<ClubHouseholdMember>> LinksAsync(Guid organizationId, Guid householdId, CancellationToken ct, bool tracked = false)
     {

@@ -262,6 +262,48 @@ public class ClubApplicationsTests
     }
 
     [Fact]
+    public async Task AnApplicationWhoseHouseholdWasDeletedOrMergedAway_CanStillBeApproved()
+    {
+        // The household an application names can go before the committee decides: deleted, or
+        // merged into another. The application has no way to clear it, so approving it must not
+        // stop at a household that is not there: it joins the household the merge kept, or none.
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await ClubAsync(factory);
+        async Task<Guid> Member(string first) => (await Json(await client.PostAsync("/api/members", Body(new
+        {
+            firstName = first, lastName = "Meier", email = $"{first.ToLowerInvariant()}.meier@example.ch", tier = "Gold",
+        })), $"add {first}")).GetProperty("id").GetGuid();
+        async Task<Guid> Household(string name, Guid primary) =>
+            (await Json(await client.PostAsync("/api/households", Body(new { name, primaryMemberId = primary })), $"the {name} household")).GetProperty("id").GetGuid();
+
+        var gone = await Household("Gone", await Member("Peter"));
+        var anna = (await ApplyAsync(client, "Anna", "Gone")).GetProperty("id").GetGuid();
+        await Json(await client.PutAsync($"/api/applications/{anna}", Body(new { householdId = gone, householdRole = "Spouse" })), "Anna names the household");
+        (await client.DeleteAsync($"/api/households/{gone}")).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var admitted = await Json(await client.PostAsync($"/api/applications/{anna}/approve", Body(new { })), "approve Anna");
+        admitted.GetProperty("memberCreated").GetBoolean().Should().BeTrue("a household that went is no reason she cannot join");
+        admitted.GetProperty("joinedHousehold").GetBoolean().Should().BeFalse();
+
+        var kept = await Household("Kept", await Member("Hans"));
+        var duplicate = await Household("Duplicate", await Member("Rosa"));
+        var kim = (await ApplyAsync(client, "Kim", "Kept")).GetProperty("id").GetGuid();
+        await Json(await client.PutAsync($"/api/applications/{kim}", Body(new { householdId = duplicate, householdRole = "Child" })), "Kim names the duplicate");
+        await Json(await client.PostAsync($"/api/households/{kept}/merge", Body(new { duplicateIds = new[] { duplicate } })), "merge the duplicate away");
+        (await Json(await client.GetAsync($"/api/applications/{kim}"), "read Kim's")).GetProperty("householdId").GetGuid()
+            .Should().Be(kept, "the application follows the household it named into the one kept");
+
+        var joined = await Json(await client.PostAsync($"/api/applications/{kim}/approve", Body(new { })), "approve Kim");
+        joined.GetProperty("joinedHousehold").GetBoolean().Should().BeTrue();
+        var kimMember = joined.GetProperty("memberId").GetGuid();
+        (await Read(factory, db => db.ClubHouseholdMembers.Single(l => l.MemberId == kimMember).HouseholdId)).Should().Be(kept);
+
+        // A household named on the approval itself that is not there is still refused.
+        var late = (await ApplyAsync(client, "Late", "Comer")).GetProperty("id").GetGuid();
+        await Refused(await client.PostAsync($"/api/applications/{late}/approve", Body(new { householdId = gone })), HttpStatusCode.NotFound, "approve into a deleted household");
+    }
+
+    [Fact]
     public async Task AMemberCannotBeLinkedToAnotherWorkspacesContactOrLead()
     {
         using var factory = new CustomWebApplicationFactory();
