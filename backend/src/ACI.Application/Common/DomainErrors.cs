@@ -266,6 +266,9 @@ public static class DomainErrors
         public static readonly Error HasMoney = new(
             "Reservation.HasMoney.Conflict", "This booking's deposit or no-show fee is on the member's account, so it can't be deleted. Cancel it instead: the deposit is given back and the record stays.");
 
+        public static readonly Error NotStarted = new(
+            "Reservation.NotStarted.Conflict", "This booking hasn't started yet, so it can't be marked a no-show.");
+
         public static readonly Error ResourceHasBookings = new(
             "Resource.HasBookings.Conflict", "This resource has bookings, so it can't be deleted. Make it not bookable instead: its bookings keep its name.");
     }

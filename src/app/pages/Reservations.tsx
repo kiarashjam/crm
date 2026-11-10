@@ -173,6 +173,15 @@ function errorText(err: unknown, fallback: string): string {
   return err instanceof Error && err.message ? err.message : fallback;
 }
 
+/**
+ * The statuses a booking can move to, as the server allows them: a no-show posts the
+ * resource's fee and keeps the deposit, so it is offered only once the booking has started.
+ */
+function movesFor(r: Reservation): ReservationStatus[] {
+  const started = Date.parse(r.startAtUtc) <= Date.now();
+  return NEXT_STATUSES[r.status].filter((s) => s !== 'NoShow' || started);
+}
+
 export default function Reservations() {
   const { format: money, currency } = useClubMoney();
   // Read through the app's cache, keyed by workspace: a failed read says so with a way to try
@@ -395,12 +404,12 @@ export default function Reservations() {
     <div className="flex items-center gap-2">
       {/* Changing a booking's status is the front desk's; only the moves the server allows are offered. */}
       <WriteOnly permission={PERMISSION.FrontDesk}>
-        <Select value={r.status} onValueChange={(v) => setStatus(r, v as ReservationStatus)} disabled={NEXT_STATUSES[r.status].length === 0}>
+        <Select value={r.status} onValueChange={(v) => setStatus(r, v as ReservationStatus)} disabled={movesFor(r).length === 0}>
           <SelectTrigger className="h-9 w-36 text-xs" aria-label={`Status of ${r.memberName}'s booking`}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {[r.status, ...NEXT_STATUSES[r.status]].map((s) => (
+            {[r.status, ...movesFor(r)].map((s) => (
               <SelectItem key={s} value={s}>
                 {statusLabel(s)}
               </SelectItem>
@@ -860,7 +869,7 @@ export default function Reservations() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {(editing ? [editing.status, ...NEXT_STATUSES[editing.status]] : (['Pending', 'Confirmed', 'CheckedIn'] as ReservationStatus[])).map((s) => (
+                  {(editing ? [editing.status, ...movesFor(editing)] : (['Pending', 'Confirmed', 'CheckedIn'] as ReservationStatus[])).map((s) => (
                     <SelectItem key={s} value={s}>
                       {statusLabel(s)}
                     </SelectItem>

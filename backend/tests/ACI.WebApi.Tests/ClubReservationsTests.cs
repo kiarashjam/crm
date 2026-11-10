@@ -179,7 +179,8 @@ public class ClubReservationsTests
         var marie = await MemberAsync(client, "Marie");
 
         var kept = await Json(await BookAsync(client, room, Tomorrow(18), Tomorrow(21), party: 8, memberId: jean), "Jean's dinner");
-        var missed = await Json(await BookAsync(client, room, Tomorrow(12), Tomorrow(14), party: 6, memberId: marie), "Marie's lunch");
+        // Today's lunch, begun an hour ago: a no-show waits for the booking's start.
+        var missed = await Json(await BookAsync(client, room, DateTime.UtcNow.AddHours(-1), DateTime.UtcNow.AddHours(1), party: 6, memberId: marie), "Marie's lunch");
 
         kept.GetProperty("depositAmount").GetDecimal().Should().Be(100);
         kept.GetProperty("depositState").GetString().Should().Be("charged");
@@ -236,7 +237,7 @@ public class ClubReservationsTests
         var (client, _) = await ClubAsync(factory);
         var court = await ResourceAsync(client, "Tennis Court", "Court", 4, noShowFee: 25);
         var jean = await MemberAsync(client, "Jean");
-        var booking = await Json(await BookAsync(client, court, Tomorrow(9), Tomorrow(10), party: 2, memberId: jean), "Jean books the court");
+        var booking = await Json(await BookAsync(client, court, DateTime.UtcNow.AddMinutes(-30), DateTime.UtcNow.AddMinutes(30), party: 2, memberId: jean), "Jean books the court");
         (await client.DeleteAsync($"/api/members/{jean}")).StatusCode.Should().Be(HttpStatusCode.NoContent);
 
         var bookings = await Json(await client.GetAsync("/api/reservations"), "bookings");
@@ -248,6 +249,26 @@ public class ClubReservationsTests
         noShow.GetProperty("status").GetString().Should().Be("NoShow");
         noShow.TryGetProperty("noShowChargeId", out _).Should().BeFalse("there is no member account left to post the fee to");
         (await Json(await client.GetAsync("/api/charges"), "charges")).GetArrayLength().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task NobodyIsMarkedANoShowBeforeTheirBookingStarts()
+    {
+        // A no-show posts the resource's fee and keeps the deposit. An event refuses one before
+        // it starts; a booking took one at any time, so a slip on tomorrow's booking in the
+        // status list charged the member for missing it already.
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _) = await ClubAsync(factory);
+        var room = await ResourceAsync(client, "Private Dining Room", "Dining", 12, mode: "Exclusive", deposit: 100, noShowFee: 50);
+        var jean = await MemberAsync(client, "Jean");
+        var tomorrow = await Json(await BookAsync(client, room, Tomorrow(18), Tomorrow(21), party: 6, memberId: jean), "tomorrow's dinner");
+
+        (await Refused(await SetStatusAsync(client, tomorrow, "NoShow"), HttpStatusCode.Conflict, "a no-show before the booking starts"))
+            .Should().Contain("hasn't started");
+        (await BalanceAsync(client, jean)).Should().Be(-100, "the deposit alone: no fee was posted");
+        var bookings = await Json(await client.GetAsync("/api/reservations"), "bookings");
+        bookings[0].GetProperty("status").GetString().Should().Be("Confirmed");
+        bookings[0].GetProperty("depositState").GetString().Should().Be("charged");
     }
 
     [Fact]

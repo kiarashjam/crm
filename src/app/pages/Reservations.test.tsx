@@ -200,6 +200,27 @@ describe('the bookings page', () => {
     expect(posted).not.toHaveProperty('deposit');
   });
 
+  it('offers a no-show only once the booking has started, as the server allows it', async () => {
+    // A no-show posts the resource's fee and keeps the deposit; the list offered it on
+    // tomorrow's bookings too, one slip away from charging a member for a booking still ahead.
+    const started: Reservation = {
+      ...BOOKED, id: 'b-2', memberId: undefined, memberName: 'Paul Weber', version: 'bv2',
+      startAtUtc: new Date(Date.now() - 1_800_000).toISOString(), endAtUtc: new Date(Date.now() + 1_800_000).toISOString(),
+    };
+    bookings = [BOOKED, started];
+    const user = userEvent.setup();
+    show();
+
+    await user.click(await screen.findByRole('combobox', { name: "Status of Jean Dupont's booking" }));
+    const ahead = (await screen.findAllByRole('option')).map((o) => o.textContent);
+    expect(ahead).toContain('Checked in');
+    expect(ahead).not.toContain('No-show');
+    await user.keyboard('{Escape}');
+
+    await user.click(screen.getByRole('combobox', { name: "Status of Paul Weber's booking" }));
+    expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toContain('No-show');
+  });
+
   it('offers to add the usual spaces to a club with none, to whoever runs the members', async () => {
     resources = [];
     let added = false;

@@ -413,6 +413,11 @@ public sealed class ClubReservationService : IClubReservations
                 var start = askedStart ?? before.StartAtUtc;
                 var end = askedEnd ?? before.EndAtUtc;
                 if (Times(start, end) == null) return DomainErrors.Reservation.TimesInvalid;
+                // A no-show posts the resource's fee and keeps the deposit, so it waits for the
+                // booking's start, as an event's does: before that the member has missed nothing,
+                // and a slip in the status list charged them for it.
+                if (status == ReservationStatuses.NoShow && before.Status != ReservationStatuses.NoShow && DateTime.UtcNow < start)
+                    return DomainErrors.Reservation.NotStarted;
                 var party = request.PartySize ?? before.PartySize;
                 var moved = resourceId != before.ResourceId || start != before.StartAtUtc || end != before.EndAtUtc || party > before.PartySize;
                 var needsCheck = ReservationStatuses.HoldsResource(status) && (moved || !ReservationStatuses.HoldsResource(before.Status));
