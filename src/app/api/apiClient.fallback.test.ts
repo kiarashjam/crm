@@ -2,14 +2,16 @@
 //
 // It used to fall back on any error at all. A Viewer's 403, a validation error
 // or a 500 then turned into a local save that looked like it had worked, so the
-// screen said "saved" for a write the server had refused or never seen. The
-// rule now is narrow: only the server saying the endpoint doesn't exist (404,
-// 405, 501) falls back. These tests pin that rule to real HTTP responses.
+// screen said "saved" for a write the server had refused or never seen. Then it
+// fell back only when the server had no route for the feature (404, 405, 501),
+// which still kept real records in a browser no teammate could see. Now only
+// demo data is kept in the browser: against the real API every failure is a
+// failure. These tests pin that rule to real HTTP responses.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse, type JsonBodyType } from 'msw';
 import { server } from '@/test/mocks/server';
-import { ApiError, apiWithFallback, authFetch, authFetchJson, ensureOk } from './apiClient';
+import { ApiError, apiWithFallback, authFetch, authFetchJson, ensureOk, NOT_ON_SERVER_MESSAGE } from './apiClient';
 import { isLocalOnly, resetLocalOnly } from './localOnly';
 
 const BASE = 'http://api.test';
@@ -47,9 +49,13 @@ describe('apiWithFallback against the real API', () => {
     server.use(http.get(`${BASE}/api/widgets`, () => new HttpResponse(null, { status })));
   }
 
-  it.each([404, 405, 501])('falls back when the endpoint is missing (%i)', async (status) => {
+  it.each([404, 405, 501])('refuses, keeping nothing in this browser, when the endpoint is missing (%i)', async (status) => {
     missing(status);
-    await expect(apiWithFallback(real, local)).resolves.toBe('local copy');
+    const err = await apiWithFallback(real, local).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err).toMatchObject({ status, message: NOT_ON_SERVER_MESSAGE, path: '/api/widgets' });
+    expect(local).not.toHaveBeenCalled();
+    expect(isLocalOnly(['widgets'])).toBe(false);
   });
 
   it('rethrows a 404 that explains itself: the record is missing, not the feature', async () => {
@@ -58,13 +64,6 @@ describe('apiWithFallback against the real API', () => {
     expect(err).toMatchObject({ status: 404, message: 'The record was not found' });
     expect(local).not.toHaveBeenCalled();
     expect(isLocalOnly(['widgets'])).toBe(false);
-  });
-
-  it('records the feature that fell back, so the page can say so', async () => {
-    missing(404);
-    await apiWithFallback(real, local);
-    expect(isLocalOnly(['widgets'])).toBe(true);
-    expect(isLocalOnly(['members'])).toBe(false);
   });
 
   it.each([

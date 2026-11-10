@@ -5,8 +5,9 @@ import { servesDemoData } from '@/app/api/apiClient';
 import { isLocalOnly, subscribeLocalOnly } from '@/app/api/localOnly';
 
 /**
- * API resources behind each module that the backend doesn't serve yet. When a
- * request to one of them 404s, `apiWithFallback` saves to this browser instead.
+ * API resources behind each module, for features recorded as kept on this device
+ * (`markLocalOnly`). `apiWithFallback` no longer keeps real records in the browser
+ * when the server has no route, so against the real API nothing records one now.
  */
 const MODULE_RESOURCES = {
   applications: ['applications'],

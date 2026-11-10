@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { server } from '@/test/mocks/server';
 import { resetLocalOnly } from './localOnly';
+import { NOT_ON_SERVER_MESSAGE } from './apiClient';
 import type { ClubEvent } from './events';
 import {
   addEventAttendee, getEventAttendees, localAttendeesToUpload, setAttendeeStatus, uploadLocalAttendees,
@@ -104,22 +105,24 @@ describe('event attendees', () => {
     expect(localAttendeesToUpload(EVENT_ID)).toHaveLength(1);
   });
 
-  it('on a server without the route, keeps the list here and does not offer an upload', async () => {
+  it('on a server without the route, says so instead of showing the list this browser kept', async () => {
+    // Showing the browser's copy hid the team's list and looked like the server's.
     const kept: EventAttendee = { ...ON_SERVER, id: 'att-local-1' };
     localStorage.setItem(LOCAL_KEY, JSON.stringify([kept]));
     server.use(http.get(`${BASE}/api/events/${EVENT_ID}/attendees`, () => new HttpResponse(null, { status: 404 })));
 
-    expect(await getEventAttendees(EVENT_ID)).toEqual([kept]);
-    expect(localAttendeesToUpload(EVENT_ID)).toEqual([]);
+    await expect(getEventAttendees(EVENT_ID)).rejects.toThrow(NOT_ON_SERVER_MESSAGE);
+    // What the browser kept is left alone, ready to upload once the server can take it.
+    expect(JSON.parse(localStorage.getItem(LOCAL_KEY)!)).toEqual([kept]);
   });
 
-  it('on a server without the route, still refuses to check someone in twice', async () => {
+  it('on a server without the route, refuses a check-in and changes nothing in this browser', async () => {
     // The page gives a member event points for each check-in that succeeds.
     const kept: EventAttendee = { ...ON_SERVER, id: 'att-local-1', status: 'CheckedIn', checkedInAtUtc: '2026-11-06T18:01:00Z' };
     localStorage.setItem(LOCAL_KEY, JSON.stringify([kept]));
     server.use(http.put(`${BASE}/api/events/${EVENT_ID}/attendees/att-local-1`, () => new HttpResponse(null, { status: 404 })));
 
-    await expect(setAttendeeStatus(EVENT, { ...kept, status: 'Reserved' }, 'CheckedIn')).rejects.toThrow(/already checked in/);
+    await expect(setAttendeeStatus(EVENT, { ...kept, status: 'Reserved' }, 'CheckedIn')).rejects.toThrow(NOT_ON_SERVER_MESSAGE);
     expect(JSON.parse(localStorage.getItem(LOCAL_KEY)!)[0].checkedInAtUtc).toBe(kept.checkedInAtUtc);
   });
 });
