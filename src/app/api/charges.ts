@@ -298,6 +298,11 @@ export interface ChargeInput {
   amount: number;
   dueAtUtc?: string;
   reference?: string;
+  /**
+   * A fee, product, ticket or menu item from the price catalogue: the server charges its
+   * price, as its charge kind and with its VAT rate, whatever amount or kind is sent.
+   */
+  catalogItemId?: string;
 }
 
 export async function createCharge(input: ChargeInput): Promise<Charge | null> {

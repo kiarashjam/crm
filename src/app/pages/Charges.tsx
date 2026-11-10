@@ -62,7 +62,8 @@ import { useOrgOptional } from '@/app/contexts/OrgContext';
 import { endOfLocalDay } from '@/app/lib/dateInputs';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import { ClubReadState } from '@/app/components/ClubReadState';
-import { NONE, useClubCharges, useClubMembers, useClubPayments, useClubReads } from '@/app/hooks/queries';
+import { NONE, useClubCatalog, useClubCharges, useClubMembers, useClubPayments, useClubReads } from '@/app/hooks/queries';
+import { CATALOG_KIND_LABEL } from '@/app/api/catalog';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import {
@@ -127,7 +128,28 @@ export default function Charges() {
     description: '',
     amount: '',
     dueAtUtc: '',
+    /** A priced item from the catalogue; '' for a charge typed in. */
+    catalogItemId: '',
   });
+  // The one-off prices on sale (fees, products, tickets, menu items) a charge can be rung up
+  // from: the server then charges the catalogue's price, kind and VAT rate.
+  const catalogQuery = useClubCatalog();
+  const priced = useMemo(
+    () => (catalogQuery.data ?? NONE).filter((i) => i.kind !== 'Membership' && i.kind !== 'Dues' && i.isActive),
+    [catalogQuery.data],
+  );
+  const pickPriced = (id: string) => {
+    const item = priced.find((i) => i.id === id);
+    setChargeForm(item
+      ? {
+        ...chargeForm,
+        catalogItemId: item.id,
+        description: item.name,
+        amount: String(item.price),
+        kind: (CHARGE_KINDS as readonly string[]).includes(item.chargeKind) ? item.chargeKind as ChargeKind : chargeForm.kind,
+      }
+      : { ...chargeForm, catalogItemId: '' });
+  };
   const [paymentForm, setPaymentForm] = useState({
     amount: '',
     method: 'CardOnFile' as Payment['method'],
@@ -167,6 +189,7 @@ export default function Charges() {
       description: '',
       amount: '',
       dueAtUtc: '',
+      catalogItemId: '',
     });
     setChargeDialog(true);
   };
@@ -196,12 +219,14 @@ export default function Charges() {
         amount,
         // Due by the end of the chosen day: the server counts it overdue once that has passed.
         dueAtUtc: endOfLocalDay(chargeForm.dueAtUtc),
+        catalogItemId: chargeForm.catalogItemId || undefined,
       });
       toast.success('Charge posted');
       setChargeDialog(false);
       await load();
-    } catch {
-      toast.error('Failed to post charge');
+    } catch (err) {
+      // An item taken off sale meanwhile, say: the server says so in a sentence.
+      toast.error(err instanceof Error && err.message ? err.message : 'Failed to post charge');
     } finally {
       setSaving(false);
     }
@@ -711,12 +736,34 @@ export default function Charges() {
                 </SelectContent>
               </Select>
             </div>
+            {priced.length > 0 && (
+              <div>
+                <Label>From the price catalogue</Label>
+                <Select value={chargeForm.catalogItemId || 'typed'} onValueChange={(v) => pickPriced(v === 'typed' ? '' : v)}>
+                  <SelectTrigger aria-label="From the price catalogue">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="typed">None: type the amount in</SelectItem>
+                    {priced.map((i) => (
+                      <SelectItem key={i.id} value={i.id}>
+                        {CATALOG_KIND_LABEL[i.kind]}: {i.name} — {formatCurrency(i.price)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {chargeForm.catalogItemId && (
+                  <p className="mt-1 text-xs text-slate-500">Charged at the catalogue&apos;s price, kind and VAT rate.</p>
+                )}
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Kind</Label>
                 <Select
                   value={chargeForm.kind}
                   onValueChange={(v) => setChargeForm({ ...chargeForm, kind: v as ChargeKind })}
+                  disabled={!!chargeForm.catalogItemId}
                 >
                   <SelectTrigger aria-label="Kind">
                     <SelectValue />
@@ -738,6 +785,7 @@ export default function Charges() {
                   step="0.01"
                   value={chargeForm.amount}
                   onChange={(e) => setChargeForm({ ...chargeForm, amount: e.target.value })}
+                  disabled={!!chargeForm.catalogItemId}
                 />
               </div>
             </div>
