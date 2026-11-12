@@ -16,6 +16,7 @@ import {
   getOrgMembers, getPipelines, getTaskStats, getTasks,
   type DealBoardQuery, type GetActivitiesPagedOptions, type GetTasksOptions,
 } from '@/app/api';
+import { getCalendar } from '@/app/api/calendar';
 import type { WorkScope } from '@/app/lib/workScope';
 import { queryKeys, type WorkspaceScope } from './queryKeys';
 import { timed } from './queryClient';
@@ -227,6 +228,21 @@ export function useTaskStats(scope?: WorkScope) {
   return useQuery({
     queryKey: queryKeys.tasks.stats(ws, scope ?? 'all'),
     queryFn: ({ signal }) => timed(signal, (s) => getTaskStats(scope, { signal: s })),
+  });
+}
+
+/**
+ * The calendar's tasks and meetings from `from` up to `to`: the rep's own or the team's.
+ * Each six weeks and scope is a read of its own, so a slow answer for a month just left
+ * never lands on the one on show, and one that failed is never shown as this month's.
+ */
+export function useCalendarEntries(from: Date, to: Date, scope: WorkScope) {
+  const ws = useWorkspaceScope();
+  const fromIso = from.toISOString();
+  const toIso = to.toISOString();
+  return useQuery({
+    queryKey: queryKeys.calendar(ws, scope, fromIso, toIso),
+    queryFn: ({ signal }) => timed(signal, (s) => getCalendar(new Date(fromIso), new Date(toIso), scope, { signal: s })),
   });
 }
 

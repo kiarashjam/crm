@@ -2,7 +2,7 @@
 // due, the meetings logged as activities, and the meeting date on each lead's pipeline.
 // The club's events and reservations come from their own endpoints.
 
-import { authFetchJson, servesDemoData } from './apiClient';
+import { authFetchJson, servesDemoData, type RequestOptions } from './apiClient';
 import { getActivities } from './activities';
 import { getLeads } from './leads';
 import { getTasks, isMineInDemo } from './tasks';
@@ -75,10 +75,12 @@ const capitalized = (text: string) => (text ? text[0]!.toUpperCase() + text.slic
 const dayOf = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
 /** What is on the calendar from `from` up to `to` (at most 45 days): the rep's own, or the team's. */
-export async function getCalendar(from: Date, to: Date, scope: WorkScope): Promise<CalendarPage> {
+export async function getCalendar(from: Date, to: Date, scope: WorkScope, req: RequestOptions = {}): Promise<CalendarPage> {
   if (!servesDemoData()) {
     const params = new URLSearchParams({ from: from.toISOString(), to: to.toISOString(), scope });
-    const raw = await authFetchJson<{ scope?: string; entries?: CalendarEntryRaw[]; truncated?: boolean }>(`/api/calendar?${params.toString()}`);
+    const raw = await authFetchJson<{ scope?: string; entries?: CalendarEntryRaw[]; truncated?: boolean }>(
+      `/api/calendar?${params.toString()}`, { signal: req.signal },
+    );
     return {
       scope: raw?.scope === 'team' ? 'team' : 'mine',
       entries: (raw?.entries ?? []).filter((e) => KINDS.includes(e.kind)).map(mapEntry),

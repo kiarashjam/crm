@@ -1,7 +1,7 @@
 // The calendar: a rep's tasks and meetings, and the club's events and reservations, on
 // one month grid.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   CalendarDays,
@@ -19,9 +19,10 @@ import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import { Button } from '@/app/components/ui/button';
-import { getEvents, type ClubEvent } from '@/app/api/events';
-import { getReservations, type Reservation } from '@/app/api/reservations';
-import { getCalendar, type CalendarEntry } from '@/app/api/calendar';
+import type { ClubEvent } from '@/app/api/events';
+import type { Reservation } from '@/app/api/reservations';
+import type { CalendarEntry } from '@/app/api/calendar';
+import { NONE, useCalendarEntries, useClubEvents, useReservations } from '@/app/hooks/queries';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero from '@/app/components/PageHero';
 import { StaggerItem } from '@/app/components/motion/Stagger';
@@ -105,81 +106,51 @@ const CHIP: Record<CalendarEntry['kind'], string> = {
 };
 
 export default function Calendar() {
-  const [events, setEvents] = useState<ClubEvent[]>([]);
-  const [reservations, setReservations] = useState<Reservation[]>([]);
-  const [clubFailed, setClubFailed] = useState(false);
-  const [loading, setLoading] = useState(true);
-  usePageLoading(loading);
   const [cursor, setCursor] = useState<Date>(() => startOfMonth(new Date()));
   const [selectedDay, setSelectedDay] = useState<Date>(() => new Date());
   // My tasks and meetings by default; the team's one switch away. The club's events and
   // reservations are the whole club's either way.
   const inWorkspace = !!useOrgOptional()?.currentOrgId;
   const [scope, setScope] = useWorkScope('calendar');
-  const [entries, setEntries] = useState<CalendarEntry[]>([]);
-  const [entriesState, setEntriesState] = useState<'loading' | 'ready' | 'failed'>('loading');
-  const [truncated, setTruncated] = useState(false);
 
   // The club's events and reservations are the Club module's: a workspace that has turned
-  // it off has none to show, and the server refuses to read them.
+  // it off has none to show, and the server refuses to read them. Read through the club's
+  // cache, so a booking made on its page shows here, and an outage says so: it used to
+  // leave an empty month that read as "nothing booked tonight".
   const clubOn = useModules().club;
-
-  // An outage used to leave an empty month that read as "nothing booked tonight".
-  const loadClub = useCallback(async () => {
-    if (!clubOn) {
-      setEvents([]);
-      setReservations([]);
-      setClubFailed(false);
-      setLoading(false);
-      return;
-    }
-    try {
-      const [e, r] = await Promise.all([getEvents(), getReservations()]);
-      setEvents(e);
-      setReservations(r);
-      setClubFailed(false);
-    } catch {
-      setClubFailed(true);
-    } finally {
-      setLoading(false);
-    }
-  }, [clubOn]);
-
-  useEffect(() => {
-    void loadClub();
-  }, [loadClub]);
+  const eventsQuery = useClubEvents(clubOn);
+  const reservationsQuery = useReservations(null, clubOn);
+  const events: ClubEvent[] = (clubOn ? eventsQuery.data : undefined) ?? NONE;
+  const reservations: Reservation[] = (clubOn ? reservationsQuery.data : undefined) ?? NONE;
+  const clubFailed = clubOn
+    && ((eventsQuery.isError && eventsQuery.data === undefined) || (reservationsQuery.isError && reservationsQuery.data === undefined));
+  const loading = clubOn && (eventsQuery.isPending || reservationsQuery.isPending) && !clubFailed;
+  usePageLoading(loading);
 
   // Build the visible 6-week grid.
   const grid = useMemo(() => ({ cells: gridCells(cursor), monthStart: startOfMonth(cursor), monthEnd: endOfMonth(cursor) }), [cursor]);
-
-  // Only the latest read lands: a slow answer for the month or scope just left must not
-  // replace the one on show.
-  const latestRead = useRef(0);
-  const loadEntries = useCallback(async () => {
-    const read = ++latestRead.current;
-    const from = grid.cells[0]!;
+  const range = useMemo(() => {
     const to = new Date(grid.cells[grid.cells.length - 1]!);
     to.setDate(to.getDate() + 1);
-    setEntriesState('loading');
-    try {
-      const page = await getCalendar(from, to, inWorkspace ? scope : 'mine');
-      if (read !== latestRead.current) return;
-      setEntries(page.entries);
-      setTruncated(page.truncated);
-      setEntriesState('ready');
-    } catch {
-      if (read !== latestRead.current) return;
-      // What the last read held is for another month or scope: shown beside "could not
-      // be loaded", it read as this one's.
-      setEntries([]);
-      setTruncated(false);
-      setEntriesState('failed');
-    }
-  }, [grid, scope, inWorkspace]);
+    return { from: grid.cells[0]!, to };
+  }, [grid]);
 
-  useEffect(() => {
-    void loadEntries();
-  }, [loadEntries]);
+  // Tasks and meetings for the six weeks on show, a read per weeks and scope (see
+  // useCalendarEntries): what one month held is never shown as another's.
+  const entriesQuery = useCalendarEntries(range.from, range.to, inWorkspace ? scope : 'mine');
+  const entries: CalendarEntry[] = entriesQuery.data?.entries ?? NONE;
+  const truncated = entriesQuery.data?.truncated ?? false;
+  const entriesState: 'loading' | 'ready' | 'failed' = entriesQuery.data !== undefined
+    ? 'ready'
+    : entriesQuery.isError ? 'failed' : 'loading';
+  // A refresh that failed with the earlier copy still on show: said, not hidden.
+  const stale = (entriesQuery.isError && entriesQuery.data !== undefined)
+    || (clubOn && !clubFailed && (eventsQuery.isError || reservationsQuery.isError));
+  const retry = () => {
+    if (entriesQuery.isError) void entriesQuery.refetch();
+    if (clubOn && eventsQuery.isError) void eventsQuery.refetch();
+    if (clubOn && reservationsQuery.isError) void reservationsQuery.refetch();
+  };
 
   const eventsByDay = useMemo(() => {
     const m = new Map<string, ClubEvent[]>();
@@ -290,14 +261,16 @@ export default function Calendar() {
                           ? 'Events and reservations could not be loaded, so they are missing here.'
                           : 'Tasks and meetings could not be loaded, so they are missing here.'}
                     </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        if (clubFailed) void loadClub();
-                        if (entriesState === 'failed') void loadEntries();
-                      }}
-                    >
+                    <Button variant="outline" size="sm" onClick={retry}>
+                      <RotateCw className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+                      Try again
+                    </Button>
+                  </div>
+                )}
+                {stale && !clubFailed && entriesState !== 'failed' && (
+                  <div role="status" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                    <span>This could not be refreshed; it is the last copy read.</span>
+                    <Button variant="outline" size="sm" onClick={retry}>
                       <RotateCw className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
                       Try again
                     </Button>

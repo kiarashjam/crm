@@ -100,6 +100,13 @@ export const queryKeys = {
     notSame: (s: WorkspaceScope) => key(s, 'duplicates', 'not-same'),
   },
   workQueue: (s: WorkspaceScope, scope: WorkScope) => key(s, 'work-queue', scope),
+  /**
+   * The calendar's six weeks of tasks and meetings. It shows the same work as the work
+   * queue (tasks with a time, meetings logged, a lead's meeting date), so it is kept under
+   * that kind and read again whenever a write changes it.
+   */
+  calendar: (s: WorkspaceScope, scope: WorkScope, fromIso: string, toIso: string) =>
+    key(s, 'work-queue', 'calendar', scope, fromIso, toIso),
   templates: {
     all: (s: WorkspaceScope) => key(s, 'templates', 'all'),
   },

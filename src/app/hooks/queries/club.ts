@@ -91,9 +91,10 @@ export function useClubVisits() {
 // door; clashes and deposits). The pages read them here so a failed read shows as a failure
 // with a retry, not as an empty list, and a save on one screen refreshes the others.
 
-export function useClubEvents() {
+/** The club's events. Off with `enabled` false: a page both modules share, with the club turned off. */
+export function useClubEvents(enabled = true) {
   const ws = useWorkspaceScope();
-  return useQuery({ queryKey: queryKeys.club.events(ws), queryFn: ({ signal }) => timed(signal, (s) => getEvents({ signal: s })) });
+  return useQuery({ queryKey: queryKeys.club.events(ws), queryFn: ({ signal }) => timed(signal, (s) => getEvents({ signal: s })), enabled });
 }
 
 /** One event as the server keeps it now. Off while `id` is empty. */
@@ -132,11 +133,12 @@ export function useClubResources() {
 }
 
 /** Bookings: the club's, or one member's (asked of the server by member id, not matched by email). */
-export function useReservations(memberId: string | null = null) {
+export function useReservations(memberId: string | null = null, enabled = true) {
   const ws = useWorkspaceScope();
   return useQuery({
     queryKey: queryKeys.club.reservations(ws, memberId),
     queryFn: ({ signal }) => timed(signal, (s) => getReservations({ signal: s, memberId: memberId ?? undefined })),
+    enabled,
   });
 }
 
