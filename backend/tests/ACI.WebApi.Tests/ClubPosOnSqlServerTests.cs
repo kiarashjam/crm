@@ -140,4 +140,33 @@ public class ClubPosOnSqlServerTests
         });
         await FluentActions.Invoking(() => db.SaveChangesAsync()).Should().ThrowAsync<DbUpdateException>();
     });
+
+    [SqlServerFact]
+    public Task TheFirstImportSetsTheDateToImportFrom_AndAnEarlierDateIsReadFromThen() => RunAsync(async w =>
+    {
+        // The UPDATEs that set the date and move how far the import has read are conditional
+        // (only an unset date; only for the location and date the run read): SQL the in-memory
+        // tests never run.
+        await Ok(await w.Client.PostAsync($"/api/members/{w.Member}/codes", Body(new { code = "1042" })), "give Jean his code");
+        var url = (await Ok(await w.Client.PostAsync("/api/pos/connect", null), "start connecting")).GetProperty("url").GetString()!;
+        var state = System.Web.HttpUtility.ParseQueryString(new Uri(url).Query)["state"]!;
+        await Ok(await w.Client.PostAsync("/api/pos/connect/complete", Body(new { code = "c", state })), "finish connecting");
+        await Ok(await w.Client.PutAsync("/api/pos/settings", Body(new { locationId = "46100001" })), "choose the location, the import off");
+        w.Lightspeed.Sales.Add(Sale("R1", DateTime.UtcNow.AddHours(-30), [Line("Dinner", 1, 60.00m, 8.1m)],
+            [Payment("ACCOUNT", "House account", 60.00m)], accountName: "1042"));
+
+        (await Ok(await w.Client.PostAsync("/api/pos/import", null), "import with no date set")).GetProperty("imported").GetInt32().Should().Be(0);
+        (await Ok(await w.Client.GetAsync("/api/pos/settings"), "read the settings")).GetProperty("importFromUtc").GetDateTime()
+            .Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromMinutes(1), "the first import set the date to import from");
+
+        await Ok(await w.Client.PutAsync("/api/pos/settings", Body(new { importFromUtc = DateTime.UtcNow.AddDays(-2).ToString("O") })), "import from two days ago");
+        (await Ok(await w.Client.PostAsync("/api/pos/import", null), "import from the earlier date")).GetProperty("posted").GetInt32().Should().Be(1);
+        (await BalanceAsync(w)).Should().Be(-60.00m);
+
+        // That run read the location and date the settings name, so it said how far it got: the
+        // next reads back only a while, one request, not the two days again.
+        var asked = w.Lightspeed.SalesRequests;
+        await Ok(await w.Client.PostAsync("/api/pos/import", null), "import again");
+        (w.Lightspeed.SalesRequests - asked).Should().Be(1);
+    });
 }
