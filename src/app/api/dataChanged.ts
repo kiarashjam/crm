@@ -161,7 +161,8 @@ const CHANGES: Readonly<Record<string, readonly string[]>> = {
   dealstages: ['pipelines', 'deals', 'reports'],
   leadstatuses: ['lead-lookups', 'leads', 'reports'],
   leadsources: ['lead-lookups', 'leads', 'reports'],
-  organizations: ['team', 'organizations', 'leads', 'deals', 'tasks', 'work-queue', 'reports'],
+  // The workspace's currency and time zone decide how the club's reports are counted too.
+  organizations: ['team', 'organizations', 'leads', 'deals', 'tasks', 'work-queue', 'reports', 'club-reports'],
   invites: ['team'],
   joinrequests: ['team'],
   teams: ['team', 'reports'],
@@ -183,8 +184,9 @@ const CHANGES: Readonly<Record<string, readonly string[]>> = {
   loyalty: ['loyalty', 'club-reports'],
   // A tier renamed in the catalogue is renamed on every member who has it.
   catalog: ['catalog', 'members', 'club-reports'],
-  // Billing posts charges, moves subscriptions on and members' balances, and is a run.
-  billing: ['billing', 'charges', 'subscriptions', 'members', 'statements', 'club-reports'],
+  // Billing posts charges, moves subscriptions on and members' balances, and is a run; its
+  // reminders and monthly statements are emailed, each logged in the member's communications.
+  billing: ['billing', 'charges', 'subscriptions', 'members', 'statements', 'communications', 'club-reports'],
   hospitality: ['hospitality'],
   events: ['events', 'charges', 'payments', 'members', 'statements', 'loyalty', 'communications', 'club-reports'],
   reservations: ['reservations', 'charges', 'payments', 'members', 'statements', 'club-reports'],
@@ -244,9 +246,10 @@ export function resourcesChangedBy(method: string | undefined, path: string, bod
   }
   // Deleting a member detaches their places on event lists and their bookings, which stay
   // under the name they were made in: a screen still showing the member on one would send
-  // the id of someone who is gone.
+  // the id of someone who is gone. They leave their household too, and a household nobody
+  // is left in goes with them.
   if (base === 'members' && segments.length === 2 && (method ?? 'GET').toUpperCase() === 'DELETE') {
-    return [...(CHANGES.members ?? ['members']), 'events', 'reservations', 'payment-profile'];
+    return [...(CHANGES.members ?? ['members']), 'events', 'reservations', 'payment-profile', 'households'];
   }
   // Households merge on their own: the people move to the household kept.
   if (base === 'households') return [...HOUSEHOLD_WRITE];

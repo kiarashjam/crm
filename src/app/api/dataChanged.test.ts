@@ -186,6 +186,18 @@ describe('what a write changes', () => {
     expect(resourcesChangedBy('PUT', '/api/members/m-1')).not.toContain('reservations');
   });
 
+  it('deleting a club member takes them out of their household, which the households list then shows', () => {
+    expect(resourcesChangedBy('DELETE', '/api/members/m-1')).toContain('households');
+  });
+
+  it("billing's reminders and statements are logged in members' communications", () => {
+    expect(resourcesChangedBy('POST', '/api/billing/run')).toEqual(expect.arrayContaining(['billing', 'charges', 'communications']));
+  });
+
+  it("the workspace's currency and time zone refresh the club's reports, which they count in", () => {
+    expect(resourcesChangedBy('PUT', '/api/organizations/o-1')).toContain('club-reports');
+  });
+
   it('an approval refreshes the member it made, their dues, fee and welcome, and the lead and contact pages', () => {
     expect(resourcesChangedBy('POST', '/api/applications/a-1/approve')).toEqual(expect.arrayContaining([
       'applications', 'members', 'charges', 'subscriptions', 'statements', 'communications', 'households', 'leads', 'contacts',
