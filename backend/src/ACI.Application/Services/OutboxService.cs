@@ -795,7 +795,13 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
                 return new Error(DomainErrors.Contact.DoNotContact.Code, "This person is marked do not contact, so nothing was sent.");
         }
         if (await _messages.FindSuppressionAsync(organizationId, addresses, ct) is { } suppressed)
-            return new Error("Email.Suppressed", $"{suppressed.Email} {SuppressedBecause(suppressed)}, so email to it is suppressed and nothing was sent.");
+        {
+            // An erasure leaves a fingerprint, not the address: name the address it matched.
+            var address = ErasedAddresses.IsKey(suppressed.Email)
+                ? addresses.FirstOrDefault(a => ErasedAddresses.Key(a) == suppressed.Email) ?? "This address"
+                : suppressed.Email;
+            return new Error("Email.Suppressed", $"{address} {SuppressedBecause(suppressed)}, so email to it is suppressed and nothing was sent.");
+        }
         return null;
     }
 
@@ -845,6 +851,7 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
             EmailSuppressionReasons.SpamReport => $"marked this workspace's email as spam on {on}",
             EmailSuppressionReasons.Invalid => $"was refused by the mail service as not deliverable on {on}",
             EmailSuppressionReasons.Unsubscribed => $"unsubscribed through the mail service on {on}",
+            EmailSuppressionReasons.Erased => $"belongs to a person erased at their request on {on}",
             _ => $"bounced on {on}",
         };
     }

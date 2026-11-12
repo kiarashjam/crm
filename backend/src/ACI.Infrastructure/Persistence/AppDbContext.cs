@@ -132,6 +132,10 @@ public partial class AppDbContext : DbContext
     public DbSet<ConsentRecord> ConsentRecords => Set<ConsentRecord>();
     public DbSet<Campaign> Campaigns => Set<Campaign>();
     public DbSet<MemberMessage> MemberMessages => Set<MemberMessage>();
+    // A workspace's privacy settings, its log of erasures, and what its retention runs removed.
+    public DbSet<PrivacySettings> PrivacySettings => Set<PrivacySettings>();
+    public DbSet<PersonErasure> PersonErasures => Set<PersonErasure>();
+    public DbSet<RetentionRun> RetentionRuns => Set<RetentionRun>();
 
     /// <summary>
     /// Whether saving writes audit lines. Off only while an organization is copied: its

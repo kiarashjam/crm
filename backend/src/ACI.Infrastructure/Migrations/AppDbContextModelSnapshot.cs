@@ -1740,6 +1740,9 @@ namespace ACI.Infrastructure.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
 
+                    b.Property<DateTime?>("ErasedAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("FirstName")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -5990,6 +5993,51 @@ namespace ACI.Infrastructure.Migrations
                     b.ToTable("OutreachSteps", (string)null);
                 });
 
+            modelBuilder.Entity("ACI.Domain.Entities.PersonErasure", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ErasedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ErasedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid?>("ErasedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Number")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Reference")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("SummaryJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Trigger")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId", "ErasedAtUtc");
+
+                    b.HasIndex("OrganizationId", "Number")
+                        .IsUnique();
+
+                    b.ToTable("PersonErasures", (string)null);
+                });
+
             modelBuilder.Entity("ACI.Domain.Entities.Pipeline", b =>
                 {
                     b.Property<Guid>("Id")
@@ -6015,6 +6063,77 @@ namespace ACI.Infrastructure.Migrations
                     b.HasIndex("OrganizationId");
 
                     b.ToTable("Pipelines", (string)null);
+                });
+
+            modelBuilder.Entity("ACI.Domain.Entities.PrivacySettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ControllerAddress")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("ControllerEmail")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("ControllerName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DetailRetentionMonths")
+                        .HasColumnType("int");
+
+                    b.Property<string>("DpoContact")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<int?>("LeadRetentionMonths")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("MailRetentionMonths")
+                        .HasColumnType("int");
+
+                    b.Property<string>("MarketingConsent")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<string>("MarketingConsentText")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int?>("MemberRetentionYears")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UpdatedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId")
+                        .IsUnique();
+
+                    b.ToTable("PrivacySettings", (string)null);
                 });
 
             modelBuilder.Entity("ACI.Domain.Entities.Product", b =>
@@ -6054,6 +6173,68 @@ namespace ACI.Infrastructure.Migrations
                     b.HasIndex("OrganizationId");
 
                     b.ToTable("Products", (string)null);
+                });
+
+            modelBuilder.Entity("ACI.Domain.Entities.RetentionRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("DetailsPurged")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Failures")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTime?>("FinishedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("LeadsDeleted")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MembersAnonymised")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MessagesPurged")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateOnly?>("ScheduledFor")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("StartedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("StartedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid?>("StartedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<string>("Trigger")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId", "ScheduledFor")
+                        .IsUnique()
+                        .HasFilter("[ScheduledFor] IS NOT NULL");
+
+                    b.HasIndex("OrganizationId", "StartedAtUtc");
+
+                    b.ToTable("RetentionRuns", (string)null);
                 });
 
             modelBuilder.Entity("ACI.Domain.Entities.SalesTeam", b =>

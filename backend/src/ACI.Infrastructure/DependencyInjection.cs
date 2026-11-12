@@ -92,6 +92,9 @@ public static class DependencyInjection
         services.AddSingleton<ACI.Infrastructure.Services.Pos.PosConnectState>();
         services.AddHttpClient(ACI.Infrastructure.Services.Pos.LightspeedKSeriesProvider.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(60));
         services.AddSingleton<IPosProvider, ACI.Infrastructure.Services.Pos.LightspeedKSeriesProvider>();
+        // A person's data rights (export, erasure) across every module.
+        services.AddScoped<ACI.Infrastructure.Services.Privacy.PersonDataService>();
+        services.AddScoped<IPersonData>(sp => sp.GetRequiredService<ACI.Infrastructure.Services.Privacy.PersonDataService>());
         services.AddScoped<IConsentRepository, ConsentRepository>();
         services.AddScoped<ICampaignRepository, CampaignRepository>();
         services.AddScoped<IImportRepository, ImportRepository>();

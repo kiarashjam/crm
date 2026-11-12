@@ -302,11 +302,15 @@ public sealed class CampaignRepository : ICampaignRepository
         // have more members than that.
         foreach (var slice in wanted.Chunk(500))
         {
-            // The suppression list keeps addresses as the outbox compares them (DoNotContactRules.Normalize).
-            suppressed.UnionWith(await _db.EmailSuppressions.AsNoTracking()
-                .Where(s => s.OrganizationId == organizationId && slice.Contains(s.Email))
-                .Select(s => s.Email)
-                .ToListAsync(ct));
+            // The suppression list keeps addresses as the outbox compares them (DoNotContactRules.Normalize),
+            // and an erased person's as a fingerprint (ErasedAddresses), matched back to the address here.
+            var keys = slice.ToDictionary(ErasedAddresses.Key, a => a, StringComparer.Ordinal);
+            var lookup = slice.Concat(keys.Keys).ToList();
+            suppressed.UnionWith((await _db.EmailSuppressions.AsNoTracking()
+                    .Where(s => s.OrganizationId == organizationId && lookup.Contains(s.Email))
+                    .Select(s => s.Email)
+                    .ToListAsync(ct))
+                .Select(e => keys.TryGetValue(e, out var address) ? address : e));
             // Read as the outbox reads it (FindDoNotContactAddressAsync): any contact of the
             // workspace with the address, archived or not, marked do not contact.
             var held = await _db.Contacts.AsNoTracking()

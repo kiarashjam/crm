@@ -64,12 +64,17 @@ public sealed class EmailSendingService : IEmailSendingService
         _logger = logger;
     }
 
+    /// <summary>How the suppression list shows the row an erasure left: the address is not kept.</summary>
+    public const string ErasedAddressLabel = "An erased person's address (kept only as a fingerprint)";
+
     public async Task<Result<IReadOnlyList<EmailSuppressionDto>>> SuppressionsAsync(Guid organizationId, Guid userId, CancellationToken ct = default)
     {
         if (await _organizations.GetMemberRoleAsync(userId, organizationId, ct) == null) return DomainErrors.Organization.NotMember;
         var rows = await _outbox.SuppressionsAsync(organizationId, 200, ct);
+        // An erased person's address is held only as a fingerprint, which means nothing to read.
         return Result.Success<IReadOnlyList<EmailSuppressionDto>>(rows
-            .Select(s => new EmailSuppressionDto(s.Id, s.Email, s.Reason, s.Detail, s.CreatedAtUtc)).ToList());
+            .Select(s => new EmailSuppressionDto(s.Id, ErasedAddresses.IsKey(s.Email) ? ErasedAddressLabel : s.Email,
+                s.Reason, s.Detail, s.CreatedAtUtc)).ToList());
     }
 
     public async Task<Result> LiftSuppressionAsync(Guid organizationId, Guid userId, Guid suppressionId, CancellationToken ct = default)

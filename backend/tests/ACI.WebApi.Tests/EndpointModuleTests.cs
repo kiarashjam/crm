@@ -26,6 +26,7 @@ public class EndpointModuleTests
         ["JoinRequestsController"] = "joining the workspace",
         ["TeamsController"] = "the workspace's team",
         ["AuditController"] = "the workspace's history, of both modules",
+        ["PrivacyController"] = "a person's export and erasure, which reach both modules: refusing one with a module off would leave the person in it",
         ["ContactsController"] = "contacts belong to both: members and applicants are linked to them",
         ["CompaniesController"] = "companies belong to both",
         ["ContactRelationshipsController"] = "relationships between contacts, of both modules",

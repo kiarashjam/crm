@@ -1,3 +1,4 @@
+using ACI.Application.Common;
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
 using ACI.Infrastructure.Persistence;
@@ -189,13 +190,17 @@ public sealed class SequenceRepository : ISequenceRepository
             DoNotContact: leadStopped, OwnerUserId: owner, SuppressedAs: await SuppressedAsAsync(organizationId, lead.Email, ct));
     }
 
-    /// <summary>Why the mail service put this address on the workspace's suppression list, if it did.</summary>
+    /// <summary>
+    /// Why this address is on the workspace's suppression list, if it is: the mail service put
+    /// it there, or the person was erased (their address kept only as a fingerprint).
+    /// </summary>
     private async Task<string?> SuppressedAsAsync(Guid? organizationId, string? email, CancellationToken ct)
     {
         var address = DoNotContactRules.Normalize(email);
         if (organizationId is not Guid org || address.Length == 0) return null;
+        var erased = ErasedAddresses.Key(address);
         return await _db.EmailSuppressions.AsNoTracking()
-            .Where(s => s.OrganizationId == org && s.Email == address)
+            .Where(s => s.OrganizationId == org && (s.Email == address || s.Email == erased))
             .Select(s => s.Reason)
             .FirstOrDefaultAsync(ct);
     }

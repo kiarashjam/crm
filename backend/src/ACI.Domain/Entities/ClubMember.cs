@@ -60,6 +60,12 @@ public class ClubMember : Common.BaseEntity
 
     /// <summary>The deal the member joined through, when they came from a converted lead (see DealOnboarding).</summary>
     public Guid? DealId { get; set; }
+    /// <summary>
+    /// When the member was erased: at their request, or by the workspace's retention settings.
+    /// The row stays so the books still add up (their charges and payments name it), but its
+    /// name is a pseudonym ("Erased member 12") and nothing personal is left on it.
+    /// </summary>
+    public DateTime? ErasedAtUtc { get; set; }
 }
 
 public class ClubVisit : Common.BaseEntity

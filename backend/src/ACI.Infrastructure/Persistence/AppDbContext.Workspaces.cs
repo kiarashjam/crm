@@ -167,6 +167,12 @@ public partial class AppDbContext
         Scope<ClubMemberCode>(model, e => e.OrganizationId);
         Scope<ClubPosSettings>(model, e => e.OrganizationId);
         Scope<ClubPosTicket>(model, e => e.OrganizationId);
+        // Privacy: the settings, the log of erasures and the retention runs. An organization's alone;
+        // the retention job finds the workspaces it runs for across workspaces first
+        // (IgnoreQueryFilters, said where), then acts for each.
+        Scope<PrivacySettings>(model, e => e.OrganizationId);
+        Scope<PersonErasure>(model, e => e.OrganizationId);
+        Scope<RetentionRun>(model, e => e.OrganizationId);
         Scope<OnboardingSettings>(model, e => e.OrganizationId);
         Scope<DealOnboarding>(model, e => e.OrganizationId);
         Scope<EmailImage>(model, e => e.OrganizationId);
