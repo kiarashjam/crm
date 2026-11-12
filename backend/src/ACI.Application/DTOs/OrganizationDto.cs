@@ -20,13 +20,15 @@ public record OrganizationDto(
     string PermissionPreset = "",
     IReadOnlyList<string>? Permissions = null,
     bool SalesEnabled = true,
-    bool ClubEnabled = true);
+    bool ClubEnabled = true,
+    bool CsvSemicolon = false);
 
 /// <summary>
 /// What a workspace works in. Each field left out keeps its current value.
 /// </summary>
 /// <param name="StaleDealDays">Days without activity after which an open deal is stale, 1–365; 0 never flags one.</param>
-public record UpdateOrganizationSettingsRequest(string? Currency, string? Locale, string? TimeZone, int? StaleDealDays = null);
+/// <param name="CsvSemicolon">CSV exports with a semicolon between columns, as Excel set up for Switzerland reads them.</param>
+public record UpdateOrganizationSettingsRequest(string? Currency, string? Locale, string? TimeZone, int? StaleDealDays = null, bool? CsvSemicolon = null);
 
 /// <summary>Which of the Sales and Club modules a workspace has on.</summary>
 public record WorkspaceModulesDto(bool Sales, bool Club);

@@ -86,6 +86,13 @@ public class ClubApplication : Common.BaseEntity, Common.IVersioned
     public string? Occupation { get; set; }
     public string? ReasonForJoining { get; set; }
 
+    /// <summary>
+    /// The language the applicant filled the public form in ("en", "de" or "fr"), carried
+    /// to the member on approval so the welcome email and what follows are in it. Null for
+    /// an application staff entered.
+    /// </summary>
+    public string? Language { get; set; }
+
     /// <summary><see cref="ApplicationStatuses"/>.</summary>
     public string Status { get; set; } = ApplicationStatuses.Submitted;
 

@@ -150,3 +150,12 @@ public record UpdateUserSettingsRequest
     [StringLength(4000)]
     public string? ViewPreferencesJson { get; init; }
 }
+
+/// <summary>
+/// The language a person chose for the app: "en", "de" or "fr", or null when they have not
+/// chosen and the app follows their workspace's locale, then their browser.
+/// </summary>
+public sealed record LanguageChoiceDto(string? Language);
+
+/// <summary>The language to keep on the account; null or empty clears the choice.</summary>
+public sealed record SetLanguageRequest(string? Language);

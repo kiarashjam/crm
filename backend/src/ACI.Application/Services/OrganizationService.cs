@@ -520,6 +520,7 @@ public sealed class OrganizationService : IOrganizationService
         if (locale != null) org.Locale = locale;
         if (zone != null) org.TimeZone = zone;
         if (request.StaleDealDays is int days) org.StaleDealDays = days;
+        if (request.CsvSemicolon is bool semicolon) org.CsvSemicolon = semicolon;
         await _organizationRepository.UpdateAsync(org, ct);
         _logger.LogInformation("Regional settings of organization {OrganizationId} set to {Currency}, {Locale}, {TimeZone}, stale after {StaleDealDays} days, by {UserId}",
             organizationId, org.Currency, org.Locale, org.TimeZone, org.StaleDealDays, userId);
@@ -599,7 +600,7 @@ public sealed class OrganizationService : IOrganizationService
     private static OrganizationDto ToDto(Organization org, Guid userId, OrganizationMember member) =>
         new(org.Id, org.Name, org.OwnerUserId, org.OwnerUserId == userId, (int)member.Role, org.Currency, org.Locale, org.TimeZone, org.StaleDealDays,
             MemberPermissions.PresetOf(member.Role, member.PermissionPreset).Key, Ordered(Permissions(member)),
-            SalesEnabled: !org.SalesModuleOff, ClubEnabled: !org.ClubModuleOff);
+            SalesEnabled: !org.SalesModuleOff, ClubEnabled: !org.ClubModuleOff, CsvSemicolon: org.CsvSemicolon);
 
     private static IReadOnlySet<string> Permissions(OrganizationMember member) =>
         MemberPermissions.Effective(member.Role, member.PermissionPreset, member.Permissions);

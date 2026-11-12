@@ -1,4 +1,5 @@
 using ACI.Application.Common;
+using ACI.Application.Common.I18n;
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
 
@@ -7,12 +8,14 @@ namespace ACI.Application.Services;
 /// <param name="BillingLapsedAtUtc">When the club's billing lapsed the member for a charge left unpaid; none otherwise.</param>
 /// <param name="ContactId">The member's CRM contact, when they are linked to one.</param>
 /// <param name="LeadId">The lead they came in as, when they joined through the sales pipeline.</param>
+/// <param name="PreferredLanguage">The language the club writes to them in ("en", "de", "fr"); null follows the workspace.</param>
 public record MemberDto(
     Guid Id, string FirstName, string LastName, string Email, string? Phone,
     string Tier, string Status, DateTime JoinedAtUtc, DateTime RenewsAtUtc,
     decimal DuesAmount, string DuesFrequency, decimal HouseAccountBalance, string? Notes,
     DateTime? BillingLapsedAtUtc = null, Guid? ContactId = null, Guid? LeadId = null,
-    DateTime? StartsOnUtc = null, bool StartUndetermined = false, Guid? DealId = null);
+    DateTime? StartsOnUtc = null, bool StartUndetermined = false, Guid? DealId = null,
+    string? PreferredLanguage = null);
 
 /// <summary>
 /// A member to add, or the fields of one to change. On a change a field left out is
@@ -52,6 +55,12 @@ public class MemberWriteRequest : IMergePatchRequest
 
     /// <summary>The start is still to be decided. Setting a start date clears it.</summary>
     public bool? StartUndetermined { get; set; }
+
+    /// <summary>
+    /// The language the club writes to the member in: "en", "de" or "fr". Sent as null, the
+    /// member follows the workspace's language again.
+    /// </summary>
+    public string? PreferredLanguage { get; set; }
 
     /// <summary>
     /// On adding a member: "import" for a row of a members file, someone the club already
@@ -207,6 +216,7 @@ public sealed class ClubService : IClubService
         if (first.Length == 0 || last.Length == 0 || email.Length == 0)
             return new Error("Member.NameRequired", "A member needs a first name, a last name, and an email.");
         if (MemberTooLong(request) is { } tooLong) return tooLong;
+        if (!AppLanguages.IsValidChoice(request.PreferredLanguage)) return LanguageInvalid;
         if (request.DuesAmount < 0 || request.HouseAccountBalance is < -MaxMoney or > MaxMoney || request.DuesAmount > MaxMoney)
             return MoneyInvalid;
         if (await LinksRefusedAsync(userId, organizationId, request, ct) is { } badLink) return badLink;
@@ -273,6 +283,7 @@ public sealed class ClubService : IClubService
             LeadId = request.LeadId,
             StartsOnUtc = request.StartsOnUtc,
             StartUndetermined = request.StartsOnUtc == null && request.StartUndetermined == true,
+            PreferredLanguage = AppLanguages.Normalise(request.PreferredLanguage),
         };
         await _club.SaveMemberAsync(row, ct);
         // The house account opens with the member, and an opening balance is its first entry.
@@ -324,6 +335,7 @@ public sealed class ClubService : IClubService
         var row = await _club.MemberAsync(id, organizationId, ct);
         if (row == null) return new Error("Member.NotFound", "That member was not found.");
         if (MemberTooLong(request) is { } tooLong) return tooLong;
+        if (!AppLanguages.IsValidChoice(request.PreferredLanguage)) return LanguageInvalid;
         if (request.DuesAmount < 0 || request.HouseAccountBalance is < -MaxMoney or > MaxMoney || request.DuesAmount > MaxMoney)
             return MoneyInvalid;
         if (_user.UserId is { } editor && await LinksRefusedAsync(editor, organizationId, request, ct) is { } badLink) return badLink;
@@ -386,6 +398,9 @@ public sealed class ClubService : IClubService
             row.StartUndetermined = undetermined;
             if (undetermined) row.StartsOnUtc = null;
         }
+        // The language the club writes in; an explicit null (or empty) follows the workspace again.
+        if (!string.IsNullOrWhiteSpace(request.PreferredLanguage)) row.PreferredLanguage = AppLanguages.Normalise(request.PreferredLanguage);
+        else if (request.PreferredLanguage != null || request.Clears(nameof(request.PreferredLanguage))) row.PreferredLanguage = null;
         await _club.SaveMemberAsync(row, ct);
         return ToDto(row, balance);
     }
@@ -503,6 +518,7 @@ public sealed class ClubService : IClubService
 
     private const decimal MaxMoney = 1_000_000_000m;
     private static readonly Error MoneyInvalid = new("Member.MoneyInvalid", "Dues can't be negative, and amounts must be under 1,000,000,000.");
+    private static readonly Error LanguageInvalid = new("Member.LanguageInvalid", "The language is English (en), German (de) or French (fr), or none to follow the workspace.");
 
     private static bool Longer(string? value, int max) => (value?.Trim().Length ?? 0) > max;
 
@@ -535,5 +551,5 @@ public sealed class ClubService : IClubService
     private static MemberDto ToDto(ClubMember m, decimal balance) => new(
         m.Id, m.FirstName, m.LastName, m.Email, m.Phone, m.Tier, m.Status,
         m.JoinedAtUtc, m.RenewsAtUtc, m.DuesAmount, m.DuesFrequency, balance, m.Notes, m.BillingLapsedAtUtc, m.ContactId, m.LeadId,
-        m.StartsOnUtc, m.StartUndetermined, m.DealId);
+        m.StartsOnUtc, m.StartUndetermined, m.DealId, m.PreferredLanguage);
 }

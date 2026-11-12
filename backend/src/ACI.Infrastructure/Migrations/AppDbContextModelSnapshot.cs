@@ -624,6 +624,10 @@ namespace ACI.Infrastructure.Migrations
                     b.Property<Guid?>("InitiationChargeId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("Language")
+                        .HasMaxLength(5)
+                        .HasColumnType("nvarchar(5)");
+
                     b.Property<string>("LastName")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -1975,6 +1979,10 @@ namespace ACI.Infrastructure.Migrations
                     b.Property<string>("Phone")
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("PreferredLanguage")
+                        .HasMaxLength(5)
+                        .HasColumnType("nvarchar(5)");
 
                     b.Property<DateTime>("RenewsAtUtc")
                         .HasColumnType("datetime2");
@@ -5741,6 +5749,9 @@ namespace ACI.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<bool>("CsvSemicolon")
+                        .HasColumnType("bit");
+
                     b.Property<string>("Currency")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -6756,6 +6767,10 @@ namespace ACI.Infrastructure.Migrations
 
                     b.Property<DateTime?>("EmailVerifiedAtUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("Language")
+                        .HasMaxLength(5)
+                        .HasColumnType("nvarchar(5)");
 
                     b.Property<DateTime?>("LastLoginAtUtc")
                         .HasColumnType("datetime2");

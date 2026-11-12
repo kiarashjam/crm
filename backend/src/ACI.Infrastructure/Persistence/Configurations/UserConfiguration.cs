@@ -20,5 +20,6 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(e => e.PasswordResetTokenHash).HasMaxLength(64);
         builder.Property(e => e.EmailVerificationTokenHash).HasMaxLength(64);
         builder.Property(e => e.SecurityStamp).HasMaxLength(64);
+        builder.Property(e => e.Language).HasMaxLength(5);
     }
 }

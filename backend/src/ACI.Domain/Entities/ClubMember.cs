@@ -66,6 +66,13 @@ public class ClubMember : Common.BaseEntity
     /// name is a pseudonym ("Erased member 12") and nothing personal is left on it.
     /// </summary>
     public DateTime? ErasedAtUtc { get; set; }
+
+    /// <summary>
+    /// The language the club writes to the member in, "en", "de" or "fr": their statements,
+    /// reminders, welcome and booking emails. Null means the workspace's language (from its
+    /// locale), then English. Set by staff, or from the language the member applied in.
+    /// </summary>
+    public string? PreferredLanguage { get; set; }
 }
 
 public class ClubVisit : Common.BaseEntity

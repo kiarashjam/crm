@@ -534,6 +534,7 @@ public sealed partial class PersonDataService
             member.Email = "";
             member.Phone = null;
             member.Notes = null;
+            member.PreferredLanguage = null;
             member.ContactId = null;
             member.LeadId = null;
             member.DealId = null;

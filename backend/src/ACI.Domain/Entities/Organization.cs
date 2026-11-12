@@ -65,6 +65,14 @@ public class Organization : Common.BaseEntity
     /// <summary>Whether the Club module is turned off, as <see cref="SalesModuleOff"/> is for Sales.</summary>
     public bool ClubModuleOff { get; set; }
 
+    /// <summary>
+    /// Whether the workspace's CSV exports put a semicolon between columns instead of a
+    /// comma. Excel set up for Switzerland (and most of continental Europe) splits a CSV
+    /// it opens on semicolons, so a comma file opened there is one column. Off by default,
+    /// as exports always were.
+    /// </summary>
+    public bool CsvSemicolon { get; set; }
+
     public User OwnerUser { get; set; } = null!;
     public ICollection<OrganizationMember> Members { get; set; } = new List<OrganizationMember>();
     public ICollection<Invite> Invites { get; set; } = new List<Invite>();

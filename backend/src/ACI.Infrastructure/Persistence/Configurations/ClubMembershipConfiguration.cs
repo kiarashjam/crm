@@ -23,6 +23,7 @@ internal sealed class ClubApplicationConfiguration : IEntityTypeConfiguration<Cl
         builder.Property(e => e.ReferredByName).HasMaxLength(200);
         builder.Property(e => e.Occupation).HasMaxLength(200);
         builder.Property(e => e.ReasonForJoining).HasMaxLength(2000);
+        builder.Property(e => e.Language).HasMaxLength(5);
         builder.Property(e => e.Status).HasMaxLength(20).IsRequired();
         builder.Property(e => e.Source).HasMaxLength(20).IsRequired();
         builder.Property(e => e.ReviewerNotes).HasMaxLength(2000);
