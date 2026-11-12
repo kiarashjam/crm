@@ -34,7 +34,8 @@ namespace ACI.Infrastructure.Persistence;
 /// to or are asked into, and so are read across them; and records that belong to another
 /// record rather than to a workspace (a pipeline's stages, a deal's line items and stage
 /// changes, a task's comments, a contract's events, a sequence's steps, a team's members,
-/// an automation's runs), which are only ever reached through that record, filtered itself.
+/// the marks that stop an automation firing twice), which are only ever reached through that
+/// record, filtered itself.
 /// WorkspaceFilterTests fails when a new table with an OrganizationId has no filter.
 /// </para>
 /// </remarks>
@@ -176,6 +177,11 @@ public partial class AppDbContext
         Scope<OnboardingSettings>(model, e => e.OrganizationId);
         Scope<DealOnboarding>(model, e => e.OrganizationId);
         Scope<EmailImage>(model, e => e.OrganizationId);
+        // An automation's runs and the log of their steps: an organization's alone, as its
+        // rules are. The runner finds what is due across workspaces first (IgnoreQueryFilters,
+        // said where), then acts for each run's own.
+        Scope<AutomationRun>(model, e => e.OrganizationId);
+        Scope<AutomationRunStep>(model, e => e.OrganizationId);
 
         // Copy templates follow a person rather than a workspace (TemplateRepository): the
         // system's templates are everyone's, a person's own go with them, and a team's

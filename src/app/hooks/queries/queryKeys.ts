@@ -93,8 +93,13 @@ export const queryKeys = {
     all: (s: WorkspaceScope) => key(s, 'sequences', 'all'),
     enrollments: (s: WorkspaceScope) => key(s, 'sequences', 'enrollments'),
   },
+  // The rules, what the builder is drawn from, and what the rules did: every write under
+  // /api/automations (a rule saved, a run tried again or stopped) refreshes them all.
   automations: {
     all: (s: WorkspaceScope) => key(s, 'automations', 'all'),
+    catalog: (s: WorkspaceScope) => key(s, 'automations', 'catalog'),
+    runs: (s: WorkspaceScope, query: object) => key(s, 'automations', 'runs', query),
+    run: (s: WorkspaceScope, id: string) => key(s, 'automations', 'run', id),
   },
   duplicates: {
     notSame: (s: WorkspaceScope) => key(s, 'duplicates', 'not-same'),

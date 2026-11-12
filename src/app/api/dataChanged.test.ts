@@ -75,6 +75,15 @@ describe('what a write changes', () => {
     expect(resourcesChangedBy('POST', '/api/contracts/c-1/countersign')).toContain('tasks');
   });
 
+  it('a member added, a booking, an event place and an approval change tasks: the automations they start add some', () => {
+    expect(resourcesChangedBy('POST', '/api/members')).toContain('tasks');
+    expect(resourcesChangedBy('POST', '/api/reservations')).toContain('tasks');
+    expect(resourcesChangedBy('POST', '/api/events/e-1/registrations')).toContain('tasks');
+    expect(resourcesChangedBy('POST', '/api/applications/a-1/approve')).toContain('tasks');
+    // Checking someone in starts none.
+    expect(resourcesChangedBy('POST', '/api/visits')).not.toContain('tasks');
+  });
+
   it("removing a member changes the leads, deals and tasks handed to whoever takes them over", () => {
     expect(resourcesChangedBy('DELETE', '/api/organizations/o-1/members/u-2?handOverTo=u-3'))
       .toEqual(expect.arrayContaining(['team', 'leads', 'deals', 'tasks', 'work-queue', 'reports']));

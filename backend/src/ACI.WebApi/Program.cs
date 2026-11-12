@@ -339,6 +339,10 @@ try
     builder.Services.AddScoped<IProductService, ProductService>();
     builder.Services.AddScoped<IAutomationService, AutomationService>();
     builder.Services.AddScoped<IAutomationEngine, AutomationEngine>();
+    // Carries automation runs on after a wait, a send window or a failed step (AutomationRunner).
+    builder.Services.AddSingleton<ACI.WebApi.Services.AutomationSignal>();
+    builder.Services.AddSingleton<IAutomationSignal>(sp => sp.GetRequiredService<ACI.WebApi.Services.AutomationSignal>());
+    builder.Services.AddSingleton<ACI.WebApi.Services.AutomationRunner>();
     builder.Services.AddScoped<IClubService, ClubService>();
     builder.Services.AddScoped<IOnboardingService, OnboardingService>();
     builder.Services.AddScoped<IEmailImageService, EmailImageService>();
@@ -402,6 +406,7 @@ try
     builder.Services.AddHostedService<ACI.WebApi.Services.ClubPosBackgroundService>();
     // Each workspace's retention settings, once a day; nothing runs for one that set no period.
     builder.Services.AddHostedService<ACI.WebApi.Services.RetentionBackgroundService>();
+    builder.Services.AddHostedService<ACI.WebApi.Services.AutomationRunnerBackgroundService>();
 
     // HTTP Context accessor for current user service
     builder.Services.AddHttpContextAccessor();

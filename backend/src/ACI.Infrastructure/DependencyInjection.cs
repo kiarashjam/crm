@@ -59,6 +59,9 @@ public static class DependencyInjection
         services.AddScoped<IOnboardingRepository, OnboardingRepository>();
         services.AddScoped<IEmailImageRepository, EmailImageRepository>();
         services.AddScoped<IAutomationRepository, AutomationRepository>();
+        // An automation's runs and their logs, and the records they are about.
+        services.AddScoped<IAutomationRunStore, AutomationRunStore>();
+        services.AddScoped<IAutomationRecordReader, ACI.Infrastructure.Services.AutomationRecordReader>();
         services.AddScoped<IClubRepository, ClubRepository>();
         services.AddScoped<IClubDocumentRepository, ClubDocumentRepository>();
         services.AddScoped<IClubLedger, ClubLedgerService>();

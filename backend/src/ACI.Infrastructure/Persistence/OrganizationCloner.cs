@@ -507,6 +507,15 @@ public sealed class OrganizationCloner
                     m.MessageIdHeader = $"<{m.Id:N}{header[(header.IndexOf('@') is var at and >= 0 ? at : header.Length - 1)..]}";
                 m.ReplyToken = null;
                 return "Outbox messages still queued are sent from the original only, and copies get their own Message-ID";
+            case AutomationRun run when AutomationRunStatuses.Active.Contains(run.Status):
+                // A rule's run still waiting (or about to retry) is carried on by the original
+                // alone: carried on in the copy too, its email would reach the same person twice.
+                run.Status = AutomationRunStatuses.Cancelled;
+                run.NextAttemptAtUtc = null;
+                run.ClaimedUntilUtc = null;
+                run.FinishedAtUtc = DateTime.UtcNow;
+                run.LastError = "Copied with its organization while under way; the original carries it on.";
+                return "Automation runs still under way are carried on by the original only";
             case Campaign c when c.Status is CampaignStatuses.Scheduled or CampaignStatuses.Sending:
                 // The members are the same people in both organizations: a campaign waiting
                 // for its time, or still being sent, goes out once, from the original. The copy

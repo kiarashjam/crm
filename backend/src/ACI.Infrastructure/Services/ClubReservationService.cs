@@ -56,13 +56,15 @@ public sealed class ClubReservationService : IClubReservations
     private readonly ICurrentUserService _user;
     private readonly IClubLedger _ledger;
     private readonly ILedgerReadObserver _reads;
+    private readonly IAutomationEngine? _automations;
 
-    public ClubReservationService(AppDbContext db, ICurrentUserService user, IClubLedger ledger, ILedgerReadObserver reads)
+    public ClubReservationService(AppDbContext db, ICurrentUserService user, IClubLedger ledger, ILedgerReadObserver reads, IAutomationEngine? automations = null)
     {
         _db = db;
         _user = user;
         _ledger = ledger;
         _reads = reads;
+        _automations = automations;
     }
 
     // ── resources ────────────────────────────────────────────────────────────
@@ -251,6 +253,21 @@ public sealed class ClubReservationService : IClubReservations
     }
 
     public async Task<Result<ReservationDto>> CreateAsync(Guid? organizationId, ReservationWriteRequest request, bool mayHandleMoney, CancellationToken ct = default)
+    {
+        var made = await MakeAsync(organizationId, request, mayHandleMoney, ct);
+        // The workspace's rules for a new booking, once it is committed: outside the booking's
+        // own attempts, so nothing a rule does can make the booking be tried again.
+        if (made.IsSuccess && _automations != null && organizationId is Guid org && _user.UserId is Guid actor)
+        {
+            var booking = made.Value;
+            await _automations.DispatchAsync(AutomationCatalog.ReservationCreated, new AutomationEvent(
+                org, actor, booking.Id.ToString(), $"{booking.MemberName}: {booking.ResourceName}",
+                Email: booking.MemberEmail, MemberId: booking.MemberId, RecordId: booking.Id), ct);
+        }
+        return made;
+    }
+
+    private async Task<Result<ReservationDto>> MakeAsync(Guid? organizationId, ReservationWriteRequest request, bool mayHandleMoney, CancellationToken ct)
     {
         if (request.ResourceId is not Guid resourceId) return DomainErrors.Reservation.ResourceNotFound;
         var person = await PersonAsync(organizationId, request.MemberId, request.MemberName, request.MemberEmail, ct);

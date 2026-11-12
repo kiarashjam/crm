@@ -160,6 +160,7 @@ public sealed partial class ClubPaymentsService
                     attempt.Status = OnlinePaymentStatuses.Processing;
                 attempt.UpdatedAtUtc = DateTime.UtcNow;
                 await SaveAttemptAsync(attempt, ct);
+                if (stripeEvent.Type == "checkout.session.async_payment_failed") await AnnounceFailureAsync(organizationId, attempt, ct);
                 // The money itself is recorded from payment_intent.succeeded, which says what Stripe received.
                 return new Outcome($"checkout {attempt.Status}");
             }
@@ -305,6 +306,11 @@ public sealed partial class ClubPaymentsService
                 break;
         }
         await SaveAttemptAsync(attempt, ct);
+        // Whenever Stripe's word leaves it failed, even when it was marked failed before: a
+        // charge Stripe did not answer is marked failed, "not known yet", and Stripe's webhook
+        // is what says it really was declined. Each rule fires once for the attempt however
+        // often this is reached (its source key), so a repeated failure sets nothing off twice.
+        if (attempt.Status == OnlinePaymentStatuses.Failed) await AnnounceFailureAsync(organizationId, attempt, ct);
     }
 
     /// <summary>Keeps the card the member saved on Stripe's page: its ids and what Stripe shows of it, never its number.</summary>

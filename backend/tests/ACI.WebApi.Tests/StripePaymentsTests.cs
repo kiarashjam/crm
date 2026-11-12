@@ -329,6 +329,31 @@ public class StripePaymentsTests
     }
 
     [Fact]
+    public async Task AFailedPaymentSetsOffTheWorkspacesRules_OnceHoweverOftenStripeSaysSo()
+    {
+        await using var app = new PaymentsApp();
+        var club = await ClubAsync(app);
+        await Json(await club.Owner.PostAsync("/api/automations", Body(new
+        {
+            name = "Card declined", trigger = "payment.failed",
+            actions = new object[] { new { type = "create_task", config = new { title = "Call about the declined card" } } },
+        })), "add the rule");
+        var (memberId, _, metadata) = await PayOnlineAsync(app, club);
+
+        foreach (var eventId in new[] { "evt_1", "evt_2" })
+            await Json(await app.CreateClient().SendAsync(FakeStripe.Webhook(club.Webhook, Secret,
+                IntentEvent(eventId, "payment_intent.payment_failed", "pi_1", "requires_payment_method", 29900, metadata, failure: "Your card has insufficient funds."))),
+                "Stripe says it failed");
+
+        var task = await app.Services.Read(db => db.TaskItems.IgnoreQueryFilters().Single(t => t.OrganizationId == club.Org));
+        task.Title.Should().Be("Call about the declined card");
+        task.Description.Should().Contain("Jean");
+        var run = await app.Services.Read(db => db.AutomationRuns.IgnoreQueryFilters().Single(r => r.OrganizationId == club.Org));
+        run.MemberId.Should().Be(memberId);
+        run.RecordType.Should().Be("payment");
+    }
+
+    [Fact]
     public async Task ACardSavedOnStripesPageKeepsOnlyStripesIdsAndWhatItShows_AndTheMembersAgreementForTheirDues()
     {
         await using var app = new PaymentsApp();
@@ -524,6 +549,36 @@ public class StripePaymentsTests
         var online = (await Json(await club.Owner.GetAsync($"/api/online-payments?memberId={memberId}"), "online payments")).EnumerateArray().Single();
         online.GetProperty("status").GetString().Should().Be("succeeded");
         (await Json(await club.Owner.GetAsync($"/api/members/{memberId}/balance"), "balance")).GetProperty("balance").GetDecimal().Should().Be(0m);
+    }
+
+    [Fact]
+    public async Task ACardChargeStripeDidNotAnswer_ThatStripeThenSaysWasDeclined_SetsOffTheFailedPaymentRules_Once()
+    {
+        await using var app = new PaymentsApp();
+        var club = await ClubAsync(app);
+        await Json(await club.Owner.PostAsync("/api/automations", Body(new
+        {
+            name = "Card declined", trigger = "payment.failed",
+            actions = new object[] { new { type = "create_task", config = new { title = "Call about the declined card" } } },
+        })), "add the rule");
+        var (memberId, _) = await SavedCardAsync(app, club, autoPay: false);
+        await ChargeAsync(club.Owner, memberId, 299m);
+        app.Stripe.On("POST", "/v1/payment_intents", _ => ((HttpStatusCode)503, new { error = new { type = "api_error", message = "Something went wrong." } }));
+
+        await Json(await club.Owner.PostAsync($"/api/members/{memberId}/card/charge", Body(new { })), "charge the card");
+        (await app.Services.Read(db => db.AutomationRuns.IgnoreQueryFilters().Count(r => r.OrganizationId == club.Org)))
+            .Should().Be(0, "whether the card was charged is not known yet");
+
+        // Stripe's word: it was declined. Said twice, as Stripe may.
+        var metadata = MetadataOf(app.Stripe.Sent("POST", "/v1/payment_intents").Single());
+        foreach (var eventId in new[] { "evt_declined", "evt_declined_again" })
+            await Json(await app.CreateClient().SendAsync(FakeStripe.Webhook(club.Webhook, Secret,
+                IntentEvent(eventId, "payment_intent.payment_failed", "pi_late", "requires_payment_method", 29900, metadata, failure: "Your card was declined."))),
+                "Stripe says it failed");
+
+        var tasks = await app.Services.Read(db => db.TaskItems.IgnoreQueryFilters().Where(t => t.OrganizationId == club.Org).ToList());
+        tasks.Should().ContainSingle("the rule fires once for the attempt, however often Stripe says so")
+            .Which.Title.Should().Be("Call about the declined card");
     }
 
     [Fact]

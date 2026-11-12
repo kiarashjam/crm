@@ -166,6 +166,11 @@ export type MemberInput = Omit<Member, 'id' | 'houseAccountBalance' | 'duesAmoun
   startDues?: boolean;
   /** Charge the tier's initiation fee (money.manage). */
   chargeInitiationFee?: boolean;
+  /**
+   * 'import' for a row of a members file: someone the club already has, so the server
+   * sets off no "When a member is added" automations for them.
+   */
+  origin?: 'import';
 };
 
 export async function createMember(input: MemberInput): Promise<Member | null> {
@@ -173,7 +178,7 @@ export async function createMember(input: MemberInput): Promise<Member | null> {
     () => authFetchJson<Member>('/api/members', { method: 'POST', body: JSON.stringify(input) }),
     async () => {
       await delay(160);
-      const { startDues: _startDues, chargeInitiationFee: _chargeFee, ...fields } = input;
+      const { startDues: _startDues, chargeInitiationFee: _chargeFee, origin: _origin, ...fields } = input;
       // As the server does: dues left out are the tier's, from the catalogue.
       const tier = tierNamed(await getCatalog('Membership'), fields.tier);
       return memberStore.add({
