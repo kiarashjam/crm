@@ -241,7 +241,10 @@ public class ClubPosSettings : Common.BaseEntity, Common.IVersioned
     /// <summary>Tickets closed before this are not imported: set when the club connects, so nothing from before is billed.</summary>
     public DateTime? ImportFromUtc { get; set; }
 
-    /// <summary>The latest close time imported so far; each import reads again from a while before it.</summary>
+    /// <summary>
+    /// How far the import has read every ticket the POS closed: each import reads again from a
+    /// while before it, and moves it on only past the days it read in full.
+    /// </summary>
     public DateTime? LastClosedAtUtc { get; set; }
 
     /// <summary>

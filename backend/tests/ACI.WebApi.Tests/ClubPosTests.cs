@@ -265,7 +265,121 @@ public class ClubPosTests
         app.Lightspeed.Sent("GET", "/f/v2/business-location/").Should().HaveCount(1);
     }
 
+    [Fact]
+    public async Task AnImportCutShort_PassesOverNoTicket_TheNextReadsAgainTheDayItDidNotFinish()
+    {
+        using var app = new PosApp();
+        var (client, _, jean) = await ConnectedClubAsync(app);
+        await Club.Json(await client.PutAsync("/api/pos/settings", Body(new { importFromUtc = Now.AddDays(-2).ToString("O") })), "import from two days ago");
+        // Two days of tickets, read a ticket a page and newest first; the POS stops answering after the first page.
+        app.Lightspeed.PageSize = 1;
+        app.Lightspeed.NewestFirst = true;
+        app.Lightspeed.Sales.AddRange(
+        [
+            Sale("R60", Now.AddHours(-47), [Line("Lunch", 1, 30.00m, 8.1m)], [OnAccount(30.00m)], accountName: "1042"),
+            Sale("R61", Now.AddHours(-40), [Line("Dinner", 1, 60.00m, 8.1m)], [OnAccount(60.00m)], accountName: "1042"),
+            Sale("R62", Now.AddHours(-2), [Line("Negroni", 1, 18.50m, 8.1m)], [OnAccount(18.50m)], accountName: "1042"),
+        ]);
+        app.Lightspeed.FailSalesFrom = 2;
+
+        await Club.Refused(await client.PostAsync("/api/pos/import", null), HttpStatusCode.BadGateway, "an import the POS stops answering");
+
+        // The next import reads again from where the last one had read in full, not from the
+        // newest ticket it happened to see: the older tickets of the day it did not finish come in.
+        app.Lightspeed.FailSalesFrom = null;
+        await ImportAsync(client);
+        var tickets = await TicketsAsync(client);
+        tickets.Select(t => t.GetProperty("receiptNumber").GetString()).Should().BeEquivalentTo(["R60", "R61", "R62"]);
+        tickets.Should().OnlyContain(t => t.GetProperty("status").GetString() == "posted");
+        (await Club.BalanceAsync(client, jean)).Should().Be(-108.50m);
+    }
+
     // ── staff deal with what waits ───────────────────────────────────────────
+
+    [Fact]
+    public async Task ATicketWaitingForStaff_KeepsItsVersionThroughImports_SoAMatchFromAPageReadBeforeThemGoesThrough()
+    {
+        using var app = new PosApp();
+        var (client, _, _) = await ConnectedClubAsync(app);
+        var anna = await Club.MemberAsync(client, "Anna", "Silver");
+        app.Lightspeed.Sales.Add(Sale("R42", Now.AddMinutes(-20), [Line("Club sandwich", 1, 28.00m, 8.1m)], [OnAccount(28.00m)]));
+        await ImportAsync(client);
+        var read = Ticket(await TicketsAsync(client), "R42");
+
+        // Every import tries the waiting tickets again; this one comes out as it was, so nobody
+        // dealt with it and its version stands.
+        await ImportAsync(client);
+        await ImportAsync(client);
+        Ticket(await TicketsAsync(client), "R42").GetProperty("version").GetGuid().Should().Be(read.GetProperty("version").GetGuid());
+
+        var matched = await Club.Json(await client.PostAsync($"/api/pos/tickets/{read.GetProperty("id").GetGuid()}/match",
+            Body(new { memberId = anna, version = read.GetProperty("version").GetGuid() })), "match it with the version read before the imports");
+        matched.GetProperty("status").GetString().Should().Be("posted");
+        (await Club.BalanceAsync(client, anna)).Should().Be(-28.00m);
+    }
+
+    [Fact]
+    public async Task ATicketPartlyOnTheHouseAccount_IsNotSetAsideForAMethodThatIsNotAMemberSale()
+    {
+        using var app = new PosApp();
+        var (client, _, jean) = await ConnectedClubAsync(app);
+        await Club.Json(await client.PutAsync("/api/pos/settings", Body(new { methodMap = new Dictionary<string, string> { ["STAFF"] = "Skip" } })),
+            "say staff meals are not members' sales");
+        app.Lightspeed.Sales.AddRange(
+        [
+            // A staff meal: not a member's sale.
+            Sale("R70", Now.AddMinutes(-5), [Line("Staff lunch", 1, 15.00m, 8.1m)], [Payment("STAFF", "Staff meal", 15.00m)]),
+            // Half on Jean's account, half on the staff meal method: Jean owes his half, so staff decide.
+            Sale("R71", Now.AddMinutes(-4), [Line("Dinner", 1, 80.00m, 8.1m)], [OnAccount(40.00m), Payment("STAFF", "Staff meal", 40.00m)],
+                accountName: "1042"),
+        ]);
+
+        await ImportAsync(client);
+        var tickets = await TicketsAsync(client);
+        Ticket(tickets, "R70").GetProperty("status").GetString().Should().Be("skipped");
+        var mixed = Ticket(tickets, "R71");
+        mixed.GetProperty("status").GetString().Should().Be("failed", "part of it is owed on a house account, which nobody decided to drop");
+        mixed.GetProperty("note").GetString().Should().Contain("Staff meal");
+        (await TicketsAsync(client, "attention")).Select(t => t.GetProperty("receiptNumber").GetString()).Should().Equal("R71");
+        (await Club.ChargesAsync(client, jean)).Should().BeEmpty("nothing is posted until staff decide");
+    }
+
+    [Fact]
+    public async Task ATicketTheLedgerPostedBeforeItCouldSaySo_IsMarkedPosted_AndIsNeitherSetAsideNorPostedAgain()
+    {
+        using var app = new PosApp();
+        var (client, org, jean) = await ConnectedClubAsync(app);
+        app.Lightspeed.Sales.Add(Sale("R80", Now.AddMinutes(-5), [Line("Lunch", 1, 30.00m, 8.1m)], [OnAccount(30.00m)], accountName: "STRANGER"));
+        await ImportAsync(client);
+        var waiting = Ticket(await TicketsAsync(client), "R80");
+        waiting.GetProperty("status").GetString().Should().Be("unmatched");
+        var ticketId = waiting.GetProperty("id").GetGuid();
+
+        // The ledger posts the ticket's sale to Jean, and the run stops before the ticket says so.
+        using (var scope = app.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ACI.Infrastructure.Persistence.AppDbContext>();
+            using var acting = db.ActFor(org, null);
+            var posted = await scope.ServiceProvider.GetRequiredService<IClubLedger>().PostSaleAsync(org, new SaleRequest
+            {
+                MemberId = jean, Venue = "Dining", Tender = "HouseAccount", AllowLinesOutsideCatalog = true, Source = PosProviders.LightspeedK,
+                PosTicketId = ticketId, Currency = "CHF", Lines = [new SaleLineRequest { Name = "Lunch", UnitPrice = 30.00m, VatRate = 8.1m }],
+            });
+            posted.IsSuccess.Should().BeTrue();
+        }
+
+        // Setting it aside now would leave it saying "set aside" while Jean owes for it.
+        var refused = await Club.Refused(await client.PostAsync($"/api/pos/tickets/{ticketId}/ignore",
+            Body(new { reason = "Not a member", version = waiting.GetProperty("version").GetGuid() })), HttpStatusCode.Conflict, "set aside a ticket the ledger posted");
+        refused.Should().Contain("Jean Dupont");
+        var now = Ticket(await TicketsAsync(client), "R80");
+        now.GetProperty("status").GetString().Should().Be("posted");
+        now.GetProperty("memberName").GetString().Should().Be("Jean Dupont");
+        await Club.Refused(await client.PostAsync($"/api/pos/tickets/{ticketId}/match", Body(new { memberId = jean })), HttpStatusCode.Conflict, "match it again");
+        await ImportAsync(client);
+        (await Club.ChargesAsync(client, jean)).Should().HaveCount(1);
+        (await Club.BalanceAsync(client, jean)).Should().Be(-30.00m);
+    }
 
     [Fact]
     public async Task StaffMatchATicketToAMember_WhoseNextTicketsFindThemByTheCustomer()

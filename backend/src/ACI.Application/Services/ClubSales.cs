@@ -28,6 +28,9 @@ public partial interface IClubLedger
 
     /// <summary>The latest sales, the workspace's or one member's (as buyer), newest first.</summary>
     Task<IReadOnlyList<SaleDto>> SalesAsync(Guid? organizationId, Guid? memberId = null, int take = 50, CancellationToken ct = default);
+
+    /// <summary>The sale posted for a ticket from the POS, if one was: the ledger keeps one per ticket.</summary>
+    Task<SaleDto?> SaleForPosTicketAsync(Guid? organizationId, Guid posTicketId, CancellationToken ct = default);
 }
 
 /// <summary>A line of a sale: an item from the catalogue, or (from the POS) a line as its ticket has it.</summary>

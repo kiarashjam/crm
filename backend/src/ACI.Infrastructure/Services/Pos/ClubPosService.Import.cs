@@ -20,11 +20,12 @@ namespace ACI.Infrastructure.Services.Pos;
 /// out, and the next one carries on.
 /// </para>
 /// <para>
-/// Each run reads from <see cref="Lookback"/> before the latest ticket it has seen: a till that
-/// was offline sends its tickets when it is back, closed hours before. Reading the same ticket
-/// twice adds nothing, as its id is unique in the workspace. It also tries again the tickets
-/// still waiting for a member, so one whose member was given their code meanwhile is posted
-/// without anyone touching it.
+/// Each run reads from <see cref="Lookback"/> before where the import had read every ticket: a
+/// till that was offline sends its tickets when it is back, closed hours before. It reads a day
+/// at a time (<see cref="Slice"/>) and moves that mark on only past days it read in full, so a
+/// run cut short never passes over a ticket. Reading the same ticket twice adds nothing, as its
+/// id is unique in the workspace. It also tries again the tickets still waiting for a member, so
+/// one whose member was given their code meanwhile is posted without anyone touching it.
 /// </para>
 /// </remarks>
 public sealed partial class ClubPosService
@@ -32,7 +33,7 @@ public sealed partial class ClubPosService
     /// <summary>How long a run has the workspace before another may start.</summary>
     public static readonly TimeSpan Lease = TimeSpan.FromMinutes(10);
 
-    /// <summary>How far back before the latest ticket seen each run reads again.</summary>
+    /// <summary>How far back before where the import had read every ticket each run reads again.</summary>
     public static readonly TimeSpan Lookback = TimeSpan.FromHours(6);
 
     /// <summary>How often the scheduled import runs for a workspace.</summary>
@@ -41,8 +42,11 @@ public sealed partial class ClubPosService
     /// <summary>Waiting tickets closed within this are tried again by each run.</summary>
     private static readonly TimeSpan RetryWindow = TimeSpan.FromDays(14);
 
-    /// <summary>Pages read in one run at most (100 tickets each): a backlog beyond it is read by the next.</summary>
-    private const int MaxPages = 50;
+    /// <summary>A run reads what it has to read a day of close times at a time, oldest first.</summary>
+    public static readonly TimeSpan Slice = TimeSpan.FromDays(1);
+
+    /// <summary>Requests one run makes to the POS at most (a page of up to 100 tickets each): a backlog beyond it is read by the next run.</summary>
+    public const int MaxRequests = 60;
 
     /// <summary>The in-memory test database has no conditional UPDATE: claims are taken one at a time instead.</summary>
     private static readonly SemaphoreSlim InMemoryClaims = new(1, 1);
@@ -87,7 +91,7 @@ public sealed partial class ClubPosService
     {
         var counts = new Counts();
         string? error = null;
-        DateTime? latest = null;
+        DateTime? readThrough = null;
         try
         {
             var row = await _db.ClubPosSettings.AsNoTracking().FirstAsync(s => s.Id == settingsId, ct);
@@ -102,24 +106,43 @@ public sealed partial class ClubPosService
             var now = DateTime.UtcNow;
             var start = row.ImportFromUtc ?? row.ConnectedAtUtc ?? now.AddDays(-1);
             var from = row.LastClosedAtUtc is { } seen && seen - Lookback > start ? seen - Lookback : start;
-            string? page = null;
-            for (var pages = 0; pages < MaxPages; pages++)
+            // The window is read a day at a time, oldest first, and how far the import has read is
+            // moved on only once a day's every page is in. A run cut short (the POS refusing, or
+            // the most one run asks for) leaves the rest to the next run, which starts again at the
+            // end of the last whole day: whatever order the POS pages its tickets in, none is
+            // passed over. Moving on to the newest ticket seen, as this did, lost the older ones of
+            // a day a run did not finish.
+            var requests = 0;
+            for (var sliceFrom = from; sliceFrom < now && requests < MaxRequests;)
             {
-                var read = await provider.ClosedTicketsAsync(token.Value, row.LocationId!, from, now, page, ct);
-                if (read.Failure is { } failure)
+                var sliceTo = sliceFrom + Slice < now ? sliceFrom + Slice : now;
+                string? page = null;
+                var whole = false;
+                while (requests < MaxRequests)
                 {
-                    error = failure.Message;
-                    return failure.Unreachable ? DomainErrors.Pos.ProviderUnreachable(failure.Message) : DomainErrors.Pos.ProviderRefused(failure.Message);
+                    requests++;
+                    var read = await provider.ClosedTicketsAsync(token.Value, row.LocationId!, sliceFrom, sliceTo, page, ct);
+                    if (read.Failure is { } failure)
+                    {
+                        error = failure.Message;
+                        return failure.Unreachable ? DomainErrors.Pos.ProviderUnreachable(failure.Message) : DomainErrors.Pos.ProviderRefused(failure.Message);
+                    }
+                    foreach (var data in read.Value!.Tickets)
+                    {
+                        counts.Read++;
+                        if (data.ClosedAtUtc < start) continue;
+                        if (await SaveNewTicketAsync(organizationId, provider.Name, data, ct)) counts.Imported++;
+                    }
+                    page = read.Value.NextPageToken;
+                    if (page == null)
+                    {
+                        whole = true;
+                        break;
+                    }
                 }
-                foreach (var data in read.Value!.Tickets)
-                {
-                    counts.Read++;
-                    if (data.ClosedAtUtc < start) continue;
-                    latest = latest is { } l && l >= data.ClosedAtUtc ? l : data.ClosedAtUtc;
-                    if (await SaveNewTicketAsync(organizationId, provider.Name, data, ct)) counts.Imported++;
-                }
-                page = read.Value.NextPageToken;
-                if (page == null) break;
+                if (!whole) break;
+                readThrough = sliceTo;
+                sliceFrom = sliceTo;
             }
 
             // What came in, and what still waits for a member: matched and posted now if it can be.
@@ -146,7 +169,7 @@ public sealed partial class ClubPosService
         }
         finally
         {
-            await FinishAsync(settingsId, until, latest, counts.Imported, error);
+            await FinishAsync(settingsId, until, readThrough, counts.Imported, error);
         }
     }
 
@@ -215,6 +238,7 @@ public sealed partial class ClubPosService
     }
 
     /// <summary>Lets go of the claim and records how the run went, unless another run has the workspace by now.</summary>
+    /// <param name="latest">How far this run read every ticket the POS had: the import never moves back from it.</param>
     private async Task FinishAsync(Guid settingsId, DateTime until, DateTime? latest, int imported, string? error)
     {
         var now = DateTime.UtcNow;
@@ -290,9 +314,11 @@ public sealed partial class ClubPosService
     private async Task<Outcome> ProcessAsync(Guid organizationId, ClubPosTicket ticket, ClubPosSettings settings, ClubMember? member,
         string? matchedBy, bool countAttempt, CancellationToken ct)
     {
-        var data = ReadData(ticket);
         if (countAttempt) ticket.Attempts++;
-        ticket.UpdatedAtUtc = DateTime.UtcNow;
+        // A sale the ledger already holds for the ticket (posted by a run that stopped before it
+        // could say so on the ticket) is the ticket's, whoever it would be matched to now.
+        if (await PostedSaleAsync(organizationId, ticket.Id, ct) is { } posted) return await PostedAsync(organizationId, ticket, posted, ct);
+        var data = ReadData(ticket);
         if (data == null) return await SettleAsync(ticket, PosTicketStatuses.Failed, "The ticket as read from the POS could not be read again.", ct);
 
         var map = MapOf(settings.MethodMapJson);
@@ -304,10 +330,14 @@ public sealed partial class ClubPosService
         if (ticket.TendersText.Length == 0) ticket.TendersText = null;
 
         if (data.Cancelled) return await SettleAsync(ticket, PosTicketStatuses.Skipped, "Cancelled at the POS.", ct);
-        if (payments.Where(p => p.Means == Skip).Select(p => p.Payment).FirstOrDefault() is { } skipped)
-            return await SettleAsync(ticket, PosTicketStatuses.Skipped, $"Paid by {skipped.Name ?? skipped.Code}, which the POS settings say is not a member's sale.", ct);
-
         var hasHouse = payments.Any(p => p.Means == SaleTenders.HouseAccount);
+        // A method the settings call "not a member sale" (staff meals, say) sets the ticket aside,
+        // unless part of it was put on a house account: then a member owes that part, and setting
+        // the whole ticket aside would leave it off their account without anyone deciding so.
+        var notMemberSale = payments.Where(p => p.Means == Skip).Select(p => p.Payment).FirstOrDefault();
+        if (notMemberSale != null && !hasHouse)
+            return await SettleAsync(ticket, PosTicketStatuses.Skipped, $"Paid by {notMemberSale.Name ?? notMemberSale.Code}, which the POS settings say is not a member's sale.", ct);
+
         if (member == null)
         {
             (member, matchedBy) = await LinkAsync(organizationId, ticket.Provider, data, ct);
@@ -325,6 +355,10 @@ public sealed partial class ClubPosService
         ticket.MemberName = Clip($"{member.FirstName} {member.LastName}".Trim(), 200);
         ticket.MatchedBy = matchedBy;
 
+        if (notMemberSale != null)
+            return await SettleAsync(ticket, PosTicketStatuses.Failed,
+                $"Part of it was put on the house account and part paid by {notMemberSale.Name ?? notMemberSale.Code}, which the POS settings say is not a member's sale. "
+                + "Change what that method means and try again, or ring the house-account part up on the house-charge screen and set this ticket aside.", ct);
         if (payments.Where(p => p.Means == null).Select(p => p.Payment).FirstOrDefault() is { } unknown)
             return await SettleAsync(ticket, PosTicketStatuses.Failed,
                 $"Paid by '{unknown.Name ?? unknown.Code}', which is not known as the house account, card, cash or TWINT. Say what it is in the POS settings, then try again.", ct);
@@ -335,17 +369,49 @@ public sealed partial class ClubPosService
         // What was decided so far is saved before the ledger posts: the ledger lets go of
         // whatever else is waiting to be saved when it refuses a sale, and the ticket's state
         // (and a customer staff just matched) must not go with it. Saving it first is also the
-        // claim: of two people dealing with the ticket at once, the second is refused here.
+        // claim, so it always gives the ticket a new version: of two people dealing with the
+        // ticket at once, the second is refused here.
+        ticket.UpdatedAtUtc = DateTime.UtcNow;
         if (!await SaveTicketAsync(ticket, ct)) return Outcome.Changed;
         var sale = await _ledger.PostSaleAsync(organizationId, built.Request!, null, ct);
         if (!sale.IsSuccess) return await SettleAsync(ticket, PosTicketStatuses.Failed, sale.Error.Description, ct);
-        ticket.SaleId = sale.Value.Id;
-        ticket.PointsAwarded = sale.Value.PointsAwarded;
-        ticket.PostedAtUtc ??= DateTime.UtcNow;
-        var words = sale.Value.OwedAmount > 0 && sale.Value.PaidAmount > 0 ? "Partly on the house account, partly paid at the POS."
-            : sale.Value.OwedAmount > 0 ? "On the house account." : "Recorded as paid at the POS.";
-        return await SettleAsync(ticket, PosTicketStatuses.Posted, words, ct);
+        return await PostedAsync(organizationId, ticket, sale.Value, ct);
     }
+
+    /// <summary>
+    /// Says on the ticket that it is on the account, as the sale the ledger posted for it has it.
+    /// </summary>
+    /// <remarks>
+    /// The ledger keeps one sale per ticket, so once it holds one the member is charged (or the
+    /// payment recorded) whatever happens to the ticket. Someone who changed the ticket while the
+    /// sale was posted (setting it aside, say) is overruled: the ticket is read again and marked
+    /// posted, rather than left saying it waits, or was set aside, while the account says otherwise.
+    /// </remarks>
+    private async Task<Outcome> PostedAsync(Guid organizationId, ClubPosTicket ticket, SaleDto sale, CancellationToken ct)
+    {
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            if (ticket.MemberId != sale.MemberId) ticket.MatchedBy = null;
+            ticket.MemberId = sale.MemberId;
+            ticket.MemberName = Clip(sale.MemberName, 200);
+            ticket.SaleId = sale.Id;
+            ticket.PointsAwarded = sale.PointsAwarded;
+            ticket.PostedAtUtc ??= sale.CreatedAtUtc;
+            var words = sale.OwedAmount > 0 && sale.PaidAmount > 0 ? "Partly on the house account, partly paid at the POS."
+                : sale.OwedAmount > 0 ? "On the house account." : "Recorded as paid at the POS.";
+            var outcome = await SettleAsync(ticket, PosTicketStatuses.Posted, words, ct);
+            if (outcome != Outcome.Changed) return outcome;
+            var fresh = await _db.ClubPosTickets.FirstOrDefaultAsync(t => t.Id == ticket.Id && t.OrganizationId == organizationId, ct);
+            if (fresh == null) return Outcome.Changed;
+            ticket = fresh;
+        }
+        _logger.LogWarning("POS ticket {TicketId} is posted as sale {SaleId}, but the ticket could not be marked so", ticket.Id, sale.Id);
+        return Outcome.Changed;
+    }
+
+    /// <summary>The sale the ledger posted for the ticket, if it did.</summary>
+    private Task<SaleDto?> PostedSaleAsync(Guid organizationId, Guid ticketId, CancellationToken ct) =>
+        _ledger.SaleForPosTicketAsync(organizationId, ticketId, ct);
 
     /// <summary>Saves where the ticket stands; a ticket someone else dealt with meanwhile is left as they left it.</summary>
     private async Task<Outcome> SettleAsync(ClubPosTicket ticket, string status, string note, CancellationToken ct)
@@ -366,8 +432,15 @@ public sealed partial class ClubPosService
     /// Saves the ticket and whatever waits with it; false, with nothing of it kept, when someone
     /// else changed the ticket meanwhile (or took the customer staff were matching).
     /// </summary>
+    /// <remarks>
+    /// Each import tries the waiting tickets again, and most come out as they were. Such a ticket
+    /// is not written at all, so it keeps its version: someone matching it from a page read before
+    /// the import is not told that someone else dealt with it when nobody did.
+    /// </remarks>
     private async Task<bool> SaveTicketAsync(ClubPosTicket ticket, CancellationToken ct)
     {
+        _db.ChangeTracker.DetectChanges();
+        if (_db.Entry(ticket).State == EntityState.Modified) ticket.UpdatedAtUtc = DateTime.UtcNow;
         try
         {
             await _db.SaveChangesAsync(ct);

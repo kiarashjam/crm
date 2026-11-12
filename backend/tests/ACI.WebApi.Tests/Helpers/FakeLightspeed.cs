@@ -48,6 +48,15 @@ public sealed class FakeLightspeed : HttpMessageHandler
     /// <summary>Answer the token endpoint with 400, as Lightspeed does for a code or refresh token it does not accept.</summary>
     public bool RefuseTokens { get; set; }
 
+    /// <summary>Page the sales newest first, as nothing in Lightspeed's documentation rules out.</summary>
+    public bool NewestFirst { get; set; }
+
+    /// <summary>When set, the requests for sales from this one on (counting from 1) answer 503: an import cut short.</summary>
+    public int? FailSalesFrom { get; set; }
+
+    /// <summary>Requests for sales answered so far.</summary>
+    public int SalesRequests;
+
     public IReadOnlyList<Request> Sent(string method, string pathStart) =>
         Requests.Where(r => r.Method == method && r.Path.StartsWith(pathStart, StringComparison.Ordinal)).ToList();
 
@@ -96,16 +105,32 @@ public sealed class FakeLightspeed : HttpMessageHandler
         {
             SalesAsked.TrySetResult();
             if (HoldSales is { } hold) await hold.Task.WaitAsync(ct);
+            var asked = Interlocked.Increment(ref SalesRequests);
+            if (FailSalesFrom is { } failFrom && asked >= failFrom)
+                return Answer(HttpStatusCode.ServiceUnavailable, new { message = "Service temporarily unavailable" });
             var query = System.Web.HttpUtility.ParseQueryString(message.RequestUri.Query);
+            // The sales closed in the period asked for, from its start up to its end.
+            var from = DateTime.Parse(query["from"]!, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AdjustToUniversal);
+            var to = DateTime.Parse(query["to"]!, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AdjustToUniversal);
+            List<object> inPeriod;
+            lock (Sales)
+                inPeriod = Sales.Select(s => (Sale: s, Closed: ClosedAt(s)))
+                    .Where(s => s.Closed >= from && s.Closed < to)
+                    .OrderBy(s => NewestFirst ? -s.Closed.Ticks : s.Closed.Ticks)
+                    .Select(s => s.Sale)
+                    .ToList();
             var start = int.TryParse(query["nextPageToken"], out var token) ? token : 0;
-            List<object> sales;
-            lock (Sales) sales = Sales.Skip(start).Take(PageSize).ToList();
-            var next = start + PageSize < Sales.Count ? (start + PageSize).ToString(System.Globalization.CultureInfo.InvariantCulture) : null;
+            var sales = inPeriod.Skip(start).Take(PageSize).ToList();
+            var next = start + PageSize < inPeriod.Count ? (start + PageSize).ToString(System.Globalization.CultureInfo.InvariantCulture) : null;
             return Answer(HttpStatusCode.OK, new { sales, nextPageToken = next });
         }
 
         return Answer(HttpStatusCode.NotFound, new { message = $"No such route: {request.Method} {path}" });
     }
+
+    private static DateTime ClosedAt(object sale) =>
+        DateTime.Parse(JsonSerializer.SerializeToElement(sale).GetProperty("timeClosed").GetString()!,
+            System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AdjustToUniversal);
 
     private static HttpResponseMessage Answer(HttpStatusCode status, object body) => new(status)
     {

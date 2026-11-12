@@ -36,7 +36,7 @@ public sealed partial class ClubPosService
         var ticket = await _db.ClubPosTickets.FirstOrDefaultAsync(t => t.Id == ticketId && t.OrganizationId == organizationId, ct);
         if (ticket == null) return DomainErrors.Pos.TicketNotFound;
         if (request.Version is { } version && version != ticket.Version) return DomainErrors.Pos.TicketChanged;
-        if (ticket.SaleId != null) return DomainErrors.Pos.TicketPosted(ticket.MemberName ?? "a member");
+        if (await AlreadyPostedAsync(organizationId, ticket, ct) is { } posted) return posted;
         if (request.MemberId is not { } memberId || await MemberAsync(organizationId, memberId, ct) is not { } member) return DomainErrors.Club.MemberNotFound;
 
         // Their next tickets find them by the POS's customer, so nobody matches them by hand again.
@@ -78,7 +78,7 @@ public sealed partial class ClubPosService
         var ticket = await _db.ClubPosTickets.FirstOrDefaultAsync(t => t.Id == ticketId && t.OrganizationId == organizationId, ct);
         if (ticket == null) return DomainErrors.Pos.TicketNotFound;
         if (expectedVersion is { } version && version != ticket.Version) return DomainErrors.Pos.TicketChanged;
-        if (ticket.SaleId != null) return DomainErrors.Pos.TicketPosted(ticket.MemberName ?? "a member");
+        if (await AlreadyPostedAsync(organizationId, ticket, ct) is { } posted) return posted;
         var settings = await SettingsRowAsync(organizationId, ct);
         if (await ProcessAsync(organizationId, ticket, settings, null, null, countAttempt: true, ct) == Outcome.Changed)
             return DomainErrors.Pos.TicketChanged;
@@ -92,7 +92,7 @@ public sealed partial class ClubPosService
         var ticket = await _db.ClubPosTickets.FirstOrDefaultAsync(t => t.Id == ticketId && t.OrganizationId == organizationId, ct);
         if (ticket == null) return DomainErrors.Pos.TicketNotFound;
         if (expectedVersion is { } version && version != ticket.Version) return DomainErrors.Pos.TicketChanged;
-        if (ticket.SaleId != null) return DomainErrors.Pos.TicketPosted(ticket.MemberName ?? "a member");
+        if (await AlreadyPostedAsync(organizationId, ticket, ct) is { } posted) return posted;
         ticket.Status = PosTicketStatuses.Ignored;
         ticket.Note = why;
         ticket.ResolvedAtUtc = DateTime.UtcNow;
@@ -111,6 +111,19 @@ public sealed partial class ClubPosService
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The refusal for a ticket already on a member's account: posted as the ticket says, or
+    /// posted by the ledger before the ticket could say so (it says so from now on). Null when
+    /// the ledger holds no sale for it.
+    /// </summary>
+    private async Task<Error?> AlreadyPostedAsync(Guid organizationId, ClubPosTicket ticket, CancellationToken ct)
+    {
+        if (ticket.SaleId != null) return DomainErrors.Pos.TicketPosted(ticket.MemberName ?? "a member");
+        if (await PostedSaleAsync(organizationId, ticket.Id, ct) is not { } sale) return null;
+        await PostedAsync(organizationId, ticket, sale, ct);
+        return DomainErrors.Pos.TicketPosted(sale.MemberName);
+    }
 
     /// <summary>The settings a ticket is posted by; the defaults when the workspace has none (a ticket kept after disconnecting).</summary>
     private async Task<ClubPosSettings> SettingsRowAsync(Guid organizationId, CancellationToken ct) =>

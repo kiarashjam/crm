@@ -335,6 +335,9 @@ public sealed partial class ClubLedgerService
         return sales.Select(s => ToDto(s, bySale.GetValueOrDefault(s.Id) ?? [])).ToList();
     }
 
+    public async Task<SaleDto?> SaleForPosTicketAsync(Guid? organizationId, Guid posTicketId, CancellationToken ct = default) =>
+        await EarlierSaleAsync(organizationId, null, posTicketId, ct) is { } sale ? await SaleDtoAsync(sale, ct) : null;
+
     // ── helpers ──────────────────────────────────────────────────────────────
 
     /// <summary>The sale already posted for this key, or for this POS ticket.</summary>
