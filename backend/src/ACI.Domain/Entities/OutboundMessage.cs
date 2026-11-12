@@ -226,6 +226,11 @@ public static class OutboundSources
     /// <summary>A link for a member to pay their account online or save a card, sent by staff.</summary>
     public const string PaymentLink = "payment_link";
     public const string Webhook = "webhook";
+    /// <summary>
+    /// A new customer handed to the workspace's onboarding address (see DealOnboarding),
+    /// posted there rather than to its events address, with SourceId the handoff.
+    /// </summary>
+    public const string Onboarding = "onboarding";
 }
 
 /// <summary>

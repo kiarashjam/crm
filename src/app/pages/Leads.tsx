@@ -71,6 +71,8 @@ import {
 
 // Import extracted components from leads folder
 import { AddLeadDialog } from './leads/AddLeadDialog';
+import { WelcomeConfirmDialog, WelcomeFields, WelcomeProgressDialog, draftFrom, toPreviewRequest, toStartRequest, type WelcomeDraft } from '@/app/components/onboarding';
+import { getOnboardingSettings, type OnboardingSettings, type StartOnboardingRequest } from '@/app/api/onboarding';
 import { StatusFilterMultiSelect } from './leads/components/StatusFilterMultiSelect';
 import { BulkActionsBar } from './leads/components/BulkActionsBar';
 import { QuickAddLeadDialog } from './leads/components/QuickAddLeadDialog';
@@ -210,6 +212,11 @@ export default function Leads() {
   const [convertOptions, setConvertOptions] = useState<{ contacts: Contact[]; deals: Deal[]; pipelines: Pipeline[] }>({ contacts: [], deals: [], pipelines: [] });
   const [convertOptionsLoading, setConvertOptionsLoading] = useState(false);
   const [converting, setConverting] = useState(false);
+  // The welcome that can go with a conversion into a deal (see Welcome & portal).
+  const [onboardingSettings, setOnboardingSettings] = useState<OnboardingSettings | null>(null);
+  const [welcome, setWelcome] = useState<WelcomeDraft>(() => draftFrom(null));
+  const [welcomeConfirm, setWelcomeConfirm] = useState(false);
+  const [welcomeProgress, setWelcomeProgress] = useState<{ dealId: string; name: string; request: StartOnboardingRequest } | null>(null);
 
   // Detail modal state
   const orgMembers: OrgMemberDto[] = useOrgMembers().data ?? NO_MEMBERS;
@@ -916,12 +923,21 @@ export default function Leads() {
       existingContactId: undefined,
       existingDealId: undefined,
     });
+    setWelcome(draftFrom(onboardingSettings));
+    setWelcomeConfirm(false);
     Promise.all([getContacts(), getDeals(), getPipelines()])
       .then(([contacts, deals, pipelines]) => {
         setConvertOptions({ contacts: contacts ?? [], deals: deals ?? [], pipelines: pipelines ?? [] });
       })
       .catch(() => {})
       .finally(() => setConvertOptionsLoading(false));
+    // Read each time, so a portal connected in another tab is offered here straight away.
+    getOnboardingSettings()
+      .then((s) => {
+        setOnboardingSettings(s);
+        setWelcome(draftFrom(s));
+      })
+      .catch(() => setOnboardingSettings(null));
   };
 
   const convertPipeline = convertForm.pipelineId
@@ -929,6 +945,22 @@ export default function Leads() {
     : convertOptions.pipelines[0];
   const convertStageList = (convertPipeline?.dealStages ?? []).slice().sort((a, b) => a.displayOrder - b.displayOrder);
   const defaultConvertStageId = convertStageList[0]?.id ?? 'Qualification';
+
+  // A welcome goes when the portal is connected, the person left it on, and there is a deal.
+  const welcomeGoes = Boolean(
+    onboardingSettings?.configured && welcome.send && (convertForm.createDeal || convertForm.existingDealId),
+  );
+  const welcomePreview = useMemo(
+    () => (welcomeConfirm && convertDialogLead
+      ? toPreviewRequest(welcome, {
+        name: convertDialogLead.name,
+        email: convertDialogLead.email,
+        company: convertDialogLead.companyName ?? companies.find((c) => c.id === convertDialogLead.companyId)?.name,
+        dealName: convertForm.createDeal ? convertForm.dealName || convertDialogLead.name : undefined,
+      })
+      : null),
+    [welcomeConfirm, convertDialogLead, welcome, companies, convertForm.createDeal, convertForm.dealName],
+  );
 
   const handleConvert = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -945,6 +977,11 @@ export default function Leads() {
       toast.error(AMOUNT_HINT);
       return;
     }
+    // With a welcome, the person sees the email as it will go and confirms it first.
+    if (welcomeGoes && !welcomeConfirm) {
+      setWelcomeConfirm(true);
+      return;
+    }
     setConverting(true);
     try {
       const result = await convertLead(convertDialogLead.id, convertForm.createDeal
@@ -956,6 +993,10 @@ export default function Leads() {
         if (result.contactId) parts.push('contact created');
         if (result.dealId) parts.push('deal created');
         toast.success(parts.length ? `Lead converted: ${parts.join(', ')}` : messages.success.leadConverted);
+        if (welcomeGoes && result.dealId) {
+          setWelcomeProgress({ dealId: result.dealId, name: convertDialogLead.name, request: toStartRequest(welcome, convertDialogLead.id) });
+        }
+        setWelcomeConfirm(false);
         setConvertDialogLead(null);
       } else {
         toast.error(messages.errors.generic);
@@ -964,6 +1005,7 @@ export default function Leads() {
       // The server says why ("A currency is a three-letter ISO code"); "Something went
       // wrong" left people guessing which field it was.
       toast.error(err instanceof Error && err.message ? err.message : messages.errors.generic);
+      setWelcomeConfirm(false);
     } finally {
       setConverting(false);
     }
@@ -2536,6 +2578,10 @@ export default function Leads() {
                 )}
               </div>
 
+              {(convertForm.createDeal || convertForm.existingDealId) && (
+                <WelcomeFields draft={welcome} onChange={setWelcome} settings={onboardingSettings} idPrefix="convert-welcome" />
+              )}
+
               </div>
               {/* Action Buttons - fixed at bottom */}
               <div className="flex items-center gap-3 px-6 pb-6 pt-4 border-t border-slate-100">
@@ -2560,7 +2606,7 @@ export default function Leads() {
                   ) : (
                     <span className="flex items-center gap-2">
                       <ArrowRightCircle className="w-4 h-4" />
-                      Convert Lead
+                      {welcomeGoes ? 'Preview welcome & convert' : 'Convert Lead'}
                     </span>
                   )}
                 </Button>
@@ -2577,6 +2623,22 @@ export default function Leads() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <WelcomeConfirmDialog
+        open={welcomeConfirm && Boolean(convertDialogLead)}
+        onOpenChange={(open) => { if (!open && !converting) setWelcomeConfirm(false); }}
+        request={welcomePreview}
+        recipient={{ name: convertDialogLead?.name, email: convertDialogLead?.email }}
+        confirmLabel="Convert & send welcome"
+        busy={converting}
+        onConfirm={() => { void handleConvert({ preventDefault: () => {} } as React.FormEvent); }}
+      />
+      <WelcomeProgressDialog
+        dealId={welcomeProgress?.dealId ?? null}
+        personName={welcomeProgress?.name ?? ''}
+        request={welcomeProgress?.request ?? null}
+        onClose={() => setWelcomeProgress(null)}
+      />
     </div>
   );
 }

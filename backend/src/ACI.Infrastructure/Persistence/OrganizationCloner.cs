@@ -41,8 +41,9 @@ public sealed record OrganizationClonePlan(
 /// Nothing that already exists emails anyone a second time from the copy: enrollments
 /// that were running start paused, a contract out for signature keeps its link and its
 /// reminder with the original, and task reminders not yet sent are marked sent. The
-/// webhook key, password and outbound address stay with the original too, so leads sent
-/// in from outside and events posted out keep going to one place.
+/// webhook key, password and outbound address stay with the original too, and so do the
+/// portal's address and secret, so leads sent in from outside, events posted out and new
+/// customers handed over keep going to one place.
 /// </para>
 /// </remarks>
 public sealed class OrganizationCloner
@@ -540,6 +541,12 @@ public sealed class OrganizationCloner
                 payment.Status = OnlinePaymentStatuses.Canceled;
                 payment.FailureMessage = "Copied with its organization while still with Stripe; the original records how it ends.";
                 return "Online payments still with Stripe are recorded by the original only";
+            case OnboardingSettings s when s.WebhookUrl != null || s.WebhookSecret != null:
+                // Like its events address: a customer won in the copy is never handed to the
+                // original's portal, signed as the original. The template and choices stay.
+                s.WebhookUrl = null;
+                s.WebhookSecret = null;
+                return "The portal's address and signing secret stay with the original";
             case Notification n when n.SourceKey != null && n.SourceKey == ((Notification)source).SourceKey:
                 // The key stops a person being told the same thing twice, and is unique per
                 // person. One with no copied record's id in it would be the original's exactly.

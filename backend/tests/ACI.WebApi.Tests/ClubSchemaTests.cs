@@ -7,8 +7,10 @@ using Microsoft.SqlServer.TransactSql.ScriptDom;
 namespace ACI.WebApi.Tests;
 
 /// <summary>
-/// The club tables are created by the hand-written DDL in Program.cs, not by a
-/// migration, so a column the model maps exists in production only if that DDL adds it.
+/// The club tables were created by the hand-written DDL in Program.cs before the baseline
+/// migration, and that DDL still brings an old database up to the baseline before the
+/// baseline is recorded on it. So it must make every column the baseline makes; a column
+/// added since comes from its own migration, on every database alike.
 /// </summary>
 /// <remarks>
 /// A column added to the entity and forgotten in the DDL compiles, passes every test
@@ -83,6 +85,28 @@ public class ClubSchemaTests
             found.Groups["null"].Value.Should().Be(m.Groups["null"].Value, $"the DDL and the model disagree about whether {table}.{column} is nullable");
         }
         columns.Should().BeGreaterThan(3, "the EF script should have been read");
+    }
+
+    /// <summary>
+    /// An old database is checked against what the baseline makes before the baseline is
+    /// recorded on it. Today's model also has what later migrations add, which only those
+    /// migrations give it, after: checking for that first refused every old database.
+    /// </summary>
+    [Fact]
+    public void AnOldDatabaseIsCheckedAgainstTheBaselinesOwnModel()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseSqlServer("Server=not-connected;Database=none;Trusted_Connection=True;")
+            .Options;
+        using var db = new AppDbContext(options);
+        var baseline = ACI.WebApi.SchemaBaseline.BaselineModel(db).GetRelationalModel();
+        var today = db.GetService<Microsoft.EntityFrameworkCore.Metadata.IDesignTimeModel>().Model.GetRelationalModel();
+
+        baseline.Tables.Should().Contain(t => t.Name == "ClubMembers");
+        baseline.Tables.Select(t => t.Name).Should().NotContain("DealOnboardings", "a later migration makes it");
+        baseline.Tables.Single(t => t.Name == "ClubMembers").Columns.Select(c => c.Name).Should().NotContain("StartsOnUtc");
+        today.Tables.Single(t => t.Name == "ClubMembers").Columns.Select(c => c.Name).Should().Contain("StartsOnUtc");
+        baseline.Tables.Count().Should().BeGreaterThan(50, "the baseline makes the whole schema as it stood");
     }
 
     [Theory]

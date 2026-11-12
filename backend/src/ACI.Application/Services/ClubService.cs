@@ -11,7 +11,8 @@ public record MemberDto(
     Guid Id, string FirstName, string LastName, string Email, string? Phone,
     string Tier, string Status, DateTime JoinedAtUtc, DateTime RenewsAtUtc,
     decimal DuesAmount, string DuesFrequency, decimal HouseAccountBalance, string? Notes,
-    DateTime? BillingLapsedAtUtc = null, Guid? ContactId = null, Guid? LeadId = null);
+    DateTime? BillingLapsedAtUtc = null, Guid? ContactId = null, Guid? LeadId = null,
+    DateTime? StartsOnUtc = null, bool StartUndetermined = false, Guid? DealId = null);
 
 /// <summary>
 /// A member to add, or the fields of one to change. On a change a field left out is
@@ -45,6 +46,12 @@ public class MemberWriteRequest : IMergePatchRequest
     /// <summary>The member's CRM contact and the lead they came in as, in this workspace; sent as null, the link is taken off.</summary>
     public Guid? ContactId { get; set; }
     public Guid? LeadId { get; set; }
+
+    /// <summary>When the membership starts. Sent as null, it is taken off.</summary>
+    public DateTime? StartsOnUtc { get; set; }
+
+    /// <summary>The start is still to be decided. Setting a start date clears it.</summary>
+    public bool? StartUndetermined { get; set; }
 
     /// <inheritdoc />
     [System.Text.Json.Serialization.JsonIgnore]
@@ -239,6 +246,8 @@ public sealed class ClubService : IClubService
             Notes = request.Notes,
             ContactId = request.ContactId,
             LeadId = request.LeadId,
+            StartsOnUtc = request.StartsOnUtc,
+            StartUndetermined = request.StartsOnUtc == null && request.StartUndetermined == true,
         };
         await _club.SaveMemberAsync(row, ct);
         // The house account opens with the member, and an opening balance is its first entry.
@@ -335,6 +344,18 @@ public sealed class ClubService : IClubService
         else if (request.Clears(nameof(request.ContactId))) row.ContactId = null;
         if (request.LeadId != null) row.LeadId = request.LeadId;
         else if (request.Clears(nameof(request.LeadId))) row.LeadId = null;
+        // A date and "still to be decided" are one answer: either replaces the other.
+        if (request.StartsOnUtc.HasValue)
+        {
+            row.StartsOnUtc = request.StartsOnUtc.Value;
+            row.StartUndetermined = false;
+        }
+        else if (request.Clears(nameof(request.StartsOnUtc))) row.StartsOnUtc = null;
+        if (request.StartUndetermined is bool undetermined && !request.StartsOnUtc.HasValue)
+        {
+            row.StartUndetermined = undetermined;
+            if (undetermined) row.StartsOnUtc = null;
+        }
         await _club.SaveMemberAsync(row, ct);
         return ToDto(row, balance);
     }
@@ -483,5 +504,6 @@ public sealed class ClubService : IClubService
 
     private static MemberDto ToDto(ClubMember m, decimal balance) => new(
         m.Id, m.FirstName, m.LastName, m.Email, m.Phone, m.Tier, m.Status,
-        m.JoinedAtUtc, m.RenewsAtUtc, m.DuesAmount, m.DuesFrequency, balance, m.Notes, m.BillingLapsedAtUtc, m.ContactId, m.LeadId);
+        m.JoinedAtUtc, m.RenewsAtUtc, m.DuesAmount, m.DuesFrequency, balance, m.Notes, m.BillingLapsedAtUtc, m.ContactId, m.LeadId,
+        m.StartsOnUtc, m.StartUndetermined, m.DealId);
 }

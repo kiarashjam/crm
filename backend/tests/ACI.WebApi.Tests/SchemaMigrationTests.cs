@@ -22,6 +22,58 @@ namespace ACI.WebApi.Tests;
 /// </remarks>
 public class SchemaMigrationTests
 {
+    /// <summary>
+    /// The upgrade production makes: a database that already took the welcome and email
+    /// image migrations (they shipped first) then gets the club migrations, which are dated
+    /// earlier and so run after them there, while a new database runs them before. Both made
+    /// ClubMembers.ContactId, and a second plain ADD COLUMN failed the start-up.
+    /// </summary>
+    [SqlServerFact]
+    public async Task ADatabaseThatShippedTheWelcomeMigrationsFirstTakesTheClubOnesAfter()
+    {
+        await SqlServerApp.WaitForServerAsync();
+        var database = await SqlServerApp.NewDatabaseAsync();
+        try
+        {
+            string[] shippedFirst;
+            await using (var db = SqlServerSchema.Context(database))
+            {
+                // As the deployed release left it: the baseline, then those two alone.
+                await db.GetService<IMigrator>().MigrateAsync(SchemaBaseline.MigrationId);
+                var assembly = db.GetService<IMigrationsAssembly>();
+                var generator = db.GetService<IMigrationsSqlGenerator>();
+                var history = db.GetService<IHistoryRepository>();
+                shippedFirst = assembly.Migrations.Keys
+                    .Where(id => id.EndsWith("_AddDealOnboarding", StringComparison.Ordinal) || id.EndsWith("_AddEmailImages", StringComparison.Ordinal))
+                    .ToArray();
+                shippedFirst.Should().HaveCount(2);
+                foreach (var id in shippedFirst)
+                {
+                    var migration = assembly.CreateMigration(assembly.Migrations[id], db.Database.ProviderName!);
+                    var model = migration.TargetModel!;
+                    if (model is Microsoft.EntityFrameworkCore.Metadata.IMutableModel mutable) model = mutable.FinalizeModel();
+                    model = db.GetService<IModelRuntimeInitializer>().Initialize(model, designTime: true, validationLogger: null);
+                    foreach (var command in generator.Generate(migration.UpOperations, model))
+                        await db.Database.ExecuteSqlRawAsync(command.CommandText.Replace("{", "{{").Replace("}", "}}"));
+                    await db.Database.ExecuteSqlRawAsync(history.GetInsertScript(new HistoryRow(id, ProductInfo.GetVersion())));
+                }
+            }
+            (await SqlServerSchema.HistoryAsync(database)).Should().HaveCount(3);
+
+            // The release with the club migrations starts on it, and runs the ones it lacks.
+            using (var app = SqlServerApp.Start(database))
+                await ShouldWorkAsync(app);
+
+            (await SqlServerSchema.HistoryAsync(database)).Should().BeEquivalentTo(SqlServerSchema.AllMigrationIds());
+            await using var check = SqlServerSchema.Context(database);
+            (await SchemaBaseline.CompareAsync(check)).Missing.Should().BeEmpty("every table and column the model maps is there");
+        }
+        finally
+        {
+            await SqlServerApp.DropDatabaseAsync(database);
+        }
+    }
+
     [SqlServerFact]
     public async Task ANewDatabaseGetsItsSchemaFromTheMigrationsAlone()
     {
