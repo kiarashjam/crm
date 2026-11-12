@@ -88,9 +88,18 @@ export interface Company {
   version?: string;
 }
 
+export type LeadKind = 'person' | 'establishment';
+
 export interface Lead {
   id: string;
+  /**
+   * A person, or an establishment (a business such as a restaurant). Older servers and
+   * demo records send none: a person. For an establishment, name, email and phone are
+   * the establishment's own, and its contact person is in the contactPerson fields.
+   */
+  kind?: LeadKind;
   name: string;
+  /** Empty for an establishment known by no email. */
   email: string;
   phone?: string;
   referredByContactId?: string;
@@ -128,6 +137,18 @@ export interface Lead {
   emailOpenCount?: number;
   enrichedDomain?: string;
   scoreIsManual?: boolean;
+  /** An establishment's: restaurant, cafe, bar, hotel, bakery, catering, food_truck, shop or other (see lib/leadKinds.ts). */
+  establishmentType?: string;
+  addressLine?: string;
+  postalCode?: string;
+  city?: string;
+  website?: string;
+  seats?: number;
+  /** The person to speak to at an establishment. */
+  contactPersonName?: string;
+  contactPersonRole?: string;
+  contactPersonEmail?: string;
+  contactPersonPhone?: string;
   /**
    * The record as of this read. An edit dialog sends it back, and the server refuses the
    * save (409) when someone has saved the record since. See lib/editConflict.ts.

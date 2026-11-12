@@ -182,6 +182,14 @@ public class LeadKindsTests
         // Searching by city finds it.
         var found = await JsonOf(await owner.GetAsync("/api/leads?search=zürich&page=1&pageSize=20"), HttpStatusCode.OK, "search");
         found.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("name").GetString()).Should().Contain("Pizzeria Roma");
+        // The list takes people or establishments alone.
+        var places = await JsonOf(await owner.GetAsync("/api/leads?kind=establishment&page=1&pageSize=50"), HttpStatusCode.OK, "establishments");
+        places.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("kind").GetString()).Should().OnlyContain(k => k == "establishment");
+        places.GetProperty("totalCount").GetInt32().Should().Be(2);
+        var people = await JsonOf(await owner.GetAsync("/api/leads?kind=person&page=1&pageSize=50"), HttpStatusCode.OK, "people");
+        people.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("name").GetString()).Should().Equal("Ada");
+        (await JsonOf(await owner.GetAsync("/api/leads?kind=all&page=1&pageSize=50"), HttpStatusCode.OK, "all"))
+            .GetProperty("totalCount").GetInt32().Should().Be(3);
     }
 
     [Fact]

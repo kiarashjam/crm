@@ -59,6 +59,13 @@ public sealed class LeadRepository : ILeadRepository
                 : query.Where(l => !l.IsConverted);
         }
 
+        // People or establishments (LeadKinds); anything else is both.
+        if (options.Kind?.Trim().ToLowerInvariant() is LeadKinds.Person or LeadKinds.Establishment)
+        {
+            var kind = options.Kind.Trim().ToLowerInvariant();
+            query = query.Where(l => l.Kind == kind);
+        }
+
         return query;
     }
 

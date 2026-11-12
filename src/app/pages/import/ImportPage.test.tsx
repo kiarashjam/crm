@@ -87,4 +87,18 @@ describe('what still has to be chosen', () => {
     expect(missingChoice('lead', ['email', null], 'update')).toBeNull();
     expect(missingChoice('company', ['domain'], 'update')).toBe('Choose the column that holds the company name.');
   });
+
+  it('needs no email column where leads may be establishments, as the server says', () => {
+    const fields = [
+      { key: 'name', label: 'Establishment name', required: true },
+      { key: 'email', label: 'Email', required: false },
+    ];
+    expect(missingChoice('lead', ['name', null], 'skip', fields)).toBeNull();
+    expect(missingChoice('lead', [null, null], 'skip', fields)).toBe('Choose the column that holds the establishment name.');
+    expect(missingChoice('lead', ['email', null], 'skip', fields)).toBe('Choose the column that holds the establishment name.');
+    expect(missingChoice('lead', ['email', null], 'update', fields)).toBeNull();
+    // A people-only workspace's email is required, as before.
+    expect(missingChoice('lead', ['name', null], 'skip', [{ key: 'email', label: 'Email', required: true }]))
+      .toBe('Choose the column that holds the email address.');
+  });
 });

@@ -20,6 +20,7 @@ import { getLeads } from '@/app/api/leads';
 import { getDeals } from '@/app/api/deals';
 import { getMembers, type Member } from '@/app/api/members';
 import type { Company, Contact, Deal, Lead } from '@/app/api/types';
+import { establishmentSummary, isEstablishment } from '@/app/lib/leadKinds';
 
 export interface DuplicateKind<T extends { id: string }> {
   kind: MergeKind;
@@ -102,14 +103,17 @@ export const COMPANY_DUPLICATES: DuplicateKind<Company> = {
 export const LEAD_DUPLICATES: DuplicateKind<Lead> = {
   kind: 'leads',
   noun: { one: 'lead', many: 'leads' },
-  groupNoun: { one: 'person', many: 'people' },
+  // A lead may be a person or an establishment, so a group is one lead entered twice.
+  groupNoun: { one: 'lead', many: 'leads' },
   tone: 'orange',
   icon: UserRound,
   load: async () => withCompanyNames(await getLeads()),
   group: duplicateLeadGroups,
   fields: LEAD_MERGE_FIELDS,
   title: (l) => l.name || l.email || 'Unnamed lead',
-  subtitle: (l) => [l.email, l.companyName, l.status].filter(Boolean).join(' · ') || l.phone,
+  subtitle: (l) => (isEstablishment(l)
+    ? [establishmentSummary(l), l.contactPersonName, l.status].filter(Boolean).join(' · ') || l.phone
+    : [l.email, l.companyName, l.status].filter(Boolean).join(' · ') || l.phone),
   created: (l) => l.createdAtUtc,
   href: (l) => `/leads/${l.id}`,
   moves: ['tasks', 'activities', 'status history', 'emails', 'contracts', 'sequences', 'files', 'custom fields'],

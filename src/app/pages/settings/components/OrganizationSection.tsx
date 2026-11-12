@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { servesDemoData } from '@/app/api/apiClient';
 import { orgCan, PERMISSION, PRESET_LABELS, type InviteDto, type JoinRequestDto, type OrgMemberDto } from '@/app/api/organizations';
 import { RegionalSettingsCard } from './RegionalSettingsCard';
+import { LeadKindsCard } from './LeadKindsCard';
 import { EmailSendingCard } from './EmailSendingCard';
 
 export interface OrganizationSectionProps {
@@ -91,6 +92,8 @@ export function OrganizationSection({
       )}
 
       <RegionalSettingsCard />
+
+      <LeadKindsCard />
 
       <EmailSendingCard />
 

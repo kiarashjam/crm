@@ -8,6 +8,8 @@ public sealed class LeadQueryOptions
     public string? Source { get; init; }
     /// <summary>null = all, true = converted only, false = active (not converted).</summary>
     public bool? IsConverted { get; init; }
+    /// <summary>"person" or "establishment"; null or "all" for both.</summary>
+    public string? Kind { get; init; }
     public string SortBy { get; init; } = "createdAt";
     public string SortDir { get; init; } = "desc";
 }

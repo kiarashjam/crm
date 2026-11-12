@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import {
-  User, Building2, Mail, Phone, Briefcase, Sparkles, ChevronRight, Check, Tag, Activity, UserPlus
+  User, Building2, Mail, Phone, Briefcase, Sparkles, ChevronRight, Check, Tag, Activity, UserPlus, Store, UserRound,
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -18,8 +19,22 @@ import {
   SelectValue,
 } from '@/app/components/ui/select';
 import type { AddLeadDialogProps, WizardStep } from './types';
-import { WIZARD_STEPS, SOURCE_ICONS, STATUS_COLORS, LIFECYCLE_STAGES } from './config';
+import { WIZARD_STEPS as PERSON_STEPS, SOURCE_ICONS, STATUS_COLORS, LIFECYCLE_STAGES } from './config';
 import { whenChosen } from '@/app/lib/whenChosen';
+import { establishmentSummary, useLeadKinds } from '@/app/lib/leadKinds';
+import { EstablishmentFields, LeadKindChooser } from './components/LeadKindFields';
+import { leadFormProblem } from './leadFormPayload';
+
+/** The same four steps, the first two asking about an establishment and the person to speak to there. */
+const ESTABLISHMENT_STEPS = PERSON_STEPS.map((step) => {
+  if (step.id === 'contact') {
+    return { ...step, label: 'Establishment', shortLabel: 'Place', description: 'What it is, where it is, and how to reach it', icon: Store };
+  }
+  if (step.id === 'company') {
+    return { ...step, label: 'Contact person & Source', shortLabel: 'Contact', description: 'Who to speak to there, and how they found you', icon: UserRound };
+  }
+  return step;
+});
 
 export function AddLeadDialog({
   open,
@@ -35,7 +50,12 @@ export function AddLeadDialog({
   saving,
 }: AddLeadDialogProps) {
   const [activeStep, setActiveStep] = useState<WizardStep>('contact');
-  const isContactComplete = form.name.trim() && form.email.trim();
+  const { choose, defaultKind } = useLeadKinds();
+  // An establishment is asked where it is and who to speak to there; a person, as always.
+  const isPlace = form.kind === 'establishment';
+  const problem = leadFormProblem(form);
+  const isContactComplete = isPlace ? !problem : !!(form.name.trim() && form.email.trim());
+  const WIZARD_STEPS = isPlace ? ESTABLISHMENT_STEPS : PERSON_STEPS;
 
   // Reset to first step when dialog opens
   useEffect(() => {
@@ -43,6 +63,13 @@ export function AddLeadDialog({
       setActiveStep('contact');
     }
   }, [open]);
+
+  // A new lead is what the workspace's leads are, unless it has both and someone chose.
+  useEffect(() => {
+    if (open && !editingLead && !choose && form.kind !== defaultKind) {
+      setForm((f) => ({ ...f, kind: defaultKind }));
+    }
+  }, [open, editingLead, choose, defaultKind, form.kind, setForm]);
 
   // Get current step index
   const currentStepIndex = WIZARD_STEPS.findIndex(s => s.id === activeStep);
@@ -83,7 +110,7 @@ export function AddLeadDialog({
   const isStepComplete = (stepId: WizardStep): boolean => {
     switch (stepId) {
       case 'contact':
-        return !!(form.name.trim() && form.email.trim());
+        return !!isContactComplete;
       case 'company':
         return true; // Optional step, always "complete"
       case 'qualification':
@@ -110,14 +137,16 @@ export function AddLeadDialog({
           <div className="relative px-6 py-5">
             <div className="flex items-center gap-4">
               <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-white/20 backdrop-blur-sm border border-white/30 shadow-lg">
-                <UserPlus className="w-6 h-6 text-white" />
+                {isPlace ? <Store className="w-6 h-6 text-white" /> : <UserPlus className="w-6 h-6 text-white" />}
               </div>
               <div>
                 <DialogTitle className="text-xl font-bold text-white tracking-tight">
                   {editingLead ? 'Edit Lead' : 'Add New Lead'}
                 </DialogTitle>
                 <p className="text-white/80 text-sm mt-0.5">
-                  {editingLead ? 'Update lead information' : 'Capture a new potential customer'}
+                  {editingLead
+                    ? (isPlace ? 'Update the establishment' : 'Update lead information')
+                    : (isPlace ? 'Capture a new establishment' : 'Capture a new potential customer')}
                 </p>
               </div>
             </div>
@@ -206,6 +235,45 @@ export function AddLeadDialog({
           <div className="p-6">
             {/* Step 1: Contact Info Section */}
             <div className={`space-y-4 ${activeStep === 'contact' ? 'block' : 'hidden'}`}>
+              {/* Where a workspace has both, what the lead is comes first. */}
+              {choose && (
+                <LeadKindChooser value={form.kind} onChange={(kind) => setForm((f) => ({ ...f, kind }))} />
+              )}
+              <AnimatePresence mode="wait" initial={false}>
+              {isPlace ? (
+                <motion.div
+                  key="establishment"
+                  initial={{ opacity: 0, x: 12 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -12 }}
+                  transition={{ duration: 0.18 }}
+                  className="space-y-4"
+                >
+                  <div className="bg-violet-50 rounded-xl p-4 border border-violet-100">
+                    <p className="text-sm text-violet-800">
+                      <strong>An establishment:</strong> what it is, where it is and how to reach it. Only its name is
+                      required; it is kept as a company too, and the next step asks who to speak to there.
+                    </p>
+                  </div>
+                  <EstablishmentFields
+                    value={form}
+                    onChange={setForm}
+                    idPrefix="lead-place"
+                    parts={['essentials', 'place', 'reach']}
+                  />
+                  {problem && form.name.trim() && (
+                    <p role="alert" className="text-xs text-red-700">{problem}</p>
+                  )}
+                </motion.div>
+              ) : (
+              <motion.div
+                key="person"
+                initial={{ opacity: 0, x: -12 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 12 }}
+                transition={{ duration: 0.18 }}
+                className="space-y-4"
+              >
               {/* Step explanation */}
               <div className="bg-blue-50 rounded-xl p-4 border border-blue-100 mb-5">
                 <p className="text-sm text-blue-800">
@@ -306,11 +374,18 @@ export function AddLeadDialog({
                 </Select>
                 <p className="text-xs text-slate-500 mt-1.5">Choose which existing contact referred this lead, or leave empty</p>
               </div>
+              </motion.div>
+              )}
+              </AnimatePresence>
             </div>
 
             {/* Step 2: Company & Source Section */}
             <div className={`space-y-4 ${activeStep === 'company' ? 'block' : 'hidden'}`}>
               {/* Step explanation */}
+              {isPlace ? (
+                <EstablishmentFields value={form} onChange={setForm} idPrefix="lead-place" parts={['contact']} />
+              ) : (
+              <>
               <div className="bg-purple-50 rounded-xl p-4 border border-purple-100 mb-5">
                 <p className="text-sm text-purple-800">
                   <strong>Why this matters:</strong> Understanding where leads come from helps you optimize marketing spend. 
@@ -350,6 +425,8 @@ export function AddLeadDialog({
                 </Select>
                 <p className="text-xs text-slate-500 mt-1.5">Link to an existing company or leave empty for individual leads</p>
               </div>
+              </>
+              )}
 
               {/* Source Select - Enhanced with visual cards */}
               <div className="group">
@@ -558,10 +635,25 @@ Examples:
                     <span className="text-slate-500">Name:</span>
                     <span className="ml-2 font-medium text-slate-700">{form.name || '—'}</span>
                   </div>
+                  {isPlace ? (
+                    <>
+                      <div>
+                        <span className="text-slate-500">What:</span>
+                        <span className="ml-2 font-medium text-slate-700">{establishmentSummary(form)}</span>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-slate-500">Contact person:</span>
+                        <span className="ml-2 font-medium text-slate-700">
+                          {form.contactPersonName || '—'}{form.contactPersonRole ? ` (${form.contactPersonRole})` : ''}
+                        </span>
+                      </div>
+                    </>
+                  ) : (
                   <div>
                     <span className="text-slate-500">Email:</span>
                     <span className="ml-2 font-medium text-slate-700 truncate">{form.email || '—'}</span>
                   </div>
+                  )}
                   <div>
                     <span className="text-slate-500">Status:</span>
                     <span className="ml-2 font-medium text-slate-700">{form.status || 'New'}</span>
@@ -615,7 +707,7 @@ Examples:
               ) : (
                 <Button
                   type="submit"
-                  disabled={saving || !form.name.trim() || !form.email.trim()}
+                  disabled={saving || !!problem}
                   className="h-11 px-6 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-medium shadow-lg shadow-orange-200/50 transition-all disabled:opacity-50"
                 >
                   {saving ? (
@@ -642,8 +734,10 @@ Examples:
         <div className="px-6 py-3 bg-gradient-to-r from-slate-50 to-orange-50/30 border-t border-slate-100 shrink-0">
           <p className="text-xs text-slate-500 flex items-center gap-2">
             <span className="flex items-center justify-center w-4 h-4 rounded-full bg-orange-100 text-orange-500 text-[10px]">💡</span>
-            {activeStep === 'contact' && 'Name and email are required to create a lead'}
-            {activeStep === 'company' && 'Tracking lead sources helps optimize your marketing efforts'}
+            {activeStep === 'contact' && (isPlace ? 'Only the establishment’s name is required' : 'Name and email are required to create a lead')}
+            {activeStep === 'company' && (isPlace
+              ? 'With a name and an email, the contact person is saved as a contact too'
+              : 'Tracking lead sources helps optimize your marketing efforts')}
             {activeStep === 'qualification' && 'Qualified leads convert 3x better than unqualified ones'}
             {activeStep === 'notes' && 'Good notes help your team pick up conversations seamlessly'}
           </p>
