@@ -62,6 +62,20 @@ vi.mock('@/app/api/billing', async (o) => ({
   getBillingPreview: async () => ({ subscriptions: 0, periods: 0, amountByCurrency: {} }),
 }));
 
+// Campaigns: one being written and one sending, for the actions each offers.
+vi.mock('@/app/api/campaigns', async (o) => {
+  const actual = await o<typeof import('@/app/api/campaigns')>();
+  const draft = {
+    id: 'cmp-1', name: 'Founders dinner', channel: 'Email', category: 'Event', purpose: 'marketing', subject: 'Dinner', body: 'Save the date.',
+    segment: {}, status: 'Draft', createdAtUtc: '2026-10-01T00:00:00Z', recipientCount: 0, version: 'v1',
+  };
+  return {
+    ...actual,
+    getCampaigns: async () => [draft, { ...draft, id: 'cmp-2', name: 'Wine evening', status: 'Sending', version: 'v2' }],
+    getCampaignAudience: async () => ({ purpose: 'marketing', matching: 0, withAddress: 0, agreed: 0, willReceive: 0 }),
+  };
+});
+
 const show = (page: React.ReactNode) => render(withQueries(<MemoryRouter>{page}</MemoryRouter>));
 
 beforeEach(() => {
@@ -133,5 +147,33 @@ describe('Hospitality settings', () => {
 
     expect(await screen.findByRole('combobox', { name: 'Club currency' })).toBeEnabled();
     expect(screen.getByRole('button', { name: /save changes/i })).toBeInTheDocument();
+  });
+});
+
+describe('Campaigns', () => {
+  const Campaigns = async () => (await import('./Campaigns')).default;
+
+  it.each([
+    ['a read-only member', () => asViewer()],
+    ['a member without club.members', () => as([PERMISSION.FrontDesk, PERMISSION.ManageMoney])],
+  ])('offer %s nothing that sends, stops, edits or deletes one', async (_who, signIn) => {
+    signIn();
+    const Page = await Campaigns();
+    show(<Page />);
+
+    expect(await screen.findByText('Wine evening')).toBeInTheDocument();
+    for (const name of [/Send now/, /Send a test to me/, /Stop sending/, /Edit Founders dinner/, /Delete Founders dinner/, /New campaign/]) {
+      expect(screen.queryByRole('button', { name })).toBeNull();
+    }
+  });
+
+  it('offer whoever manages members to send one and stop one that is sending', async () => {
+    as([PERMISSION.ClubMembers, PERMISSION.DeleteRecords]);
+    const Page = await Campaigns();
+    show(<Page />);
+
+    expect(await screen.findByRole('button', { name: /Stop sending/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Send now/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Delete Founders dinner/ })).toBeInTheDocument();
   });
 });

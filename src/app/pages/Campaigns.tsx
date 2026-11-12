@@ -14,6 +14,7 @@ import {
   FlaskConical,
   ListChecks,
   ShieldCheck,
+  OctagonX,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -45,12 +46,14 @@ import {
   deleteCampaign,
   sendCampaign,
   sendCampaignTest,
+  stopCampaign,
   updateCampaign,
   computeCampaignStats,
   campaignStatusLabel,
   isEditable,
   type Campaign,
   type CampaignPurpose,
+  type CampaignAudience,
   type CampaignTotals,
   type SegmentFilter,
 } from '@/app/api/campaigns';
@@ -77,6 +80,7 @@ const STATUS_BADGE: Record<Campaign['status'], string> = {
   Scheduled: 'bg-blue-50 text-blue-700 ring-1 ring-blue-200',
   Sending: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
   Sent: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
+  Stopped: 'bg-rose-50 text-rose-700 ring-1 ring-rose-200',
   Logged: 'bg-slate-100 text-slate-500 ring-1 ring-slate-200',
 };
 
@@ -91,6 +95,7 @@ const RECIPIENT_BADGE: Record<CommStatus, string> = {
   suppressed: 'bg-amber-50 text-amber-800',
   skipped: 'bg-amber-50 text-amber-800',
   failed: 'bg-rose-50 text-rose-700',
+  cancelled: 'bg-slate-100 text-slate-600',
   logged: 'bg-slate-100 text-slate-500',
 };
 
@@ -113,7 +118,7 @@ function toLocalInput(iso?: string | null): string {
 
 /** One line of figures for a campaign that has gone out. */
 function totalsLine(t: CampaignTotals): string {
-  const notSent = t.suppressed + t.skipped + t.failed;
+  const notSent = t.suppressed + t.skipped + t.failed + (t.cancelled ?? 0);
   const parts = [`${t.recipients} member${t.recipients === 1 ? '' : 's'}`, `${t.sent} sent`, `${t.delivered} delivered`, `${t.opened} opened`];
   if (t.bounced) parts.push(`${t.bounced} bounced`);
   if (t.queued) parts.push(`${t.queued} queued`);
@@ -149,6 +154,7 @@ export default function Campaigns() {
   const [confirming, setConfirming] = useState<Campaign | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [recipientsOf, setRecipientsOf] = useState<Campaign | null>(null);
+  const [stopping, setStopping] = useState<Campaign | null>(null);
 
   const stats = useMemo(() => computeCampaignStats(campaigns), [campaigns]);
   const filtered = useMemo(() => {
@@ -240,7 +246,14 @@ export default function Campaigns() {
             </Button>
           </WriteOnly>
         )}
-        {(c.status === 'Sent' || c.status === 'Sending') && (
+        {c.status === 'Sending' && (
+          <WriteOnly permission={PERMISSION.ClubMembers}>
+            <Button size="sm" variant="outline" className="border-rose-200 text-rose-700 hover:bg-rose-50" onClick={() => setStopping(c)}>
+              <OctagonX className="mr-1 h-3.5 w-3.5" /> Stop sending
+            </Button>
+          </WriteOnly>
+        )}
+        {(c.status === 'Sent' || c.status === 'Sending' || c.status === 'Stopped') && (
           <Button size="sm" variant="outline" onClick={() => setRecipientsOf(c)}>
             <ListChecks className="mr-1 h-3.5 w-3.5" /> Recipients
           </Button>
@@ -269,8 +282,9 @@ export default function Campaigns() {
     if (c.channel !== 'Email') return `${c.channel} is not available: CadenceE has no ${c.channel === 'Push' ? 'push' : 'SMS'} provider.`;
     switch (c.status) {
       case 'Scheduled': return `Sends ${formatDateTime(c.scheduledAtUtc)}`;
-      case 'Sending': return c.totals ? `Sending now · ${totalsLine(c.totals)}` : 'Sending now';
+      case 'Sending': return c.totals && c.totals.recipients > 0 ? `Sending in the background · ${totalsLine(c.totals)}` : 'Sending in the background: the members are being worked through';
       case 'Sent': return c.totals ? `Sent ${formatDateTime(c.sentAtUtc)} · ${totalsLine(c.totals)}` : `Sent ${formatDateTime(c.sentAtUtc)}`;
+      case 'Stopped': return c.totals ? `Stopped ${formatDateTime(c.sentAtUtc)} · ${totalsLine(c.totals)}` : `Stopped ${formatDateTime(c.sentAtUtc)}`;
       default: return 'Draft: not sent';
     }
   };
@@ -402,9 +416,18 @@ export default function Campaigns() {
         />
       )}
       {confirming && <SendDialog campaign={confirming} onClose={() => setConfirming(null)} />}
+      {stopping && <StopDialog campaign={stopping} onClose={() => setStopping(null)} />}
       {recipientsOf && <RecipientsDialog campaign={recipientsOf} onClose={() => setRecipientsOf(null)} />}
     </div>
   );
+}
+
+/** Those who may have it but whom the outbox would still refuse, in a sentence, or nothing when there are none. */
+function unreachableLine(a: CampaignAudience, purpose: CampaignPurpose): string {
+  const parts: string[] = [];
+  if (a.suppressed) parts.push(`${a.suppressed} at an address on the suppression list (bounced, complained or unsubscribed)`);
+  if (purpose === 'marketing' && a.doNotContact) parts.push(`${a.doNotContact} marked do not contact`);
+  return parts.length ? `Left out: ${parts.join(', ')}. ` : '';
 }
 
 /** Who a campaign would reach, in a sentence: the figures the server works out for it. */
@@ -417,6 +440,7 @@ function AudienceLine({ segment, purpose }: { segment: SegmentFilter; purpose: C
     <span>
       <strong>{a.matching}</strong> member{a.matching === 1 ? ' matches' : 's match'}, <strong>{a.withAddress}</strong> with an email address
       {purpose === 'marketing' && <>, <strong>{a.agreed}</strong> agreed to marketing by email</>}.{' '}
+      {unreachableLine(a, purpose)}
       It would go to <strong>{a.willReceive}</strong> address{a.willReceive === 1 ? '' : 'es'}.
     </span>
   );
@@ -535,10 +559,9 @@ function SendDialog({ campaign, onClose }: { campaign: Campaign; onClose: () => 
     setSending(true);
     try {
       const sent = await sendCampaign(campaign.id, campaign.version);
-      // The outbox starts on them as soon as they are queued: by the time the answer comes
-      // back some are already with the mail server, and are going out all the same.
-      const going = (sent.totals?.queued ?? 0) + (sent.totals?.sent ?? 0);
-      toast.success(`"${sent.name}" is on its way: ${going} email${going === 1 ? '' : 's'} sent or queued.`);
+      // The server answers at once and works through the members in the background: the
+      // list follows it until it is sent, and it can be stopped meanwhile.
+      toast.success(`"${sent.name}" is sending. Its figures fill in as each member's email is queued.`);
       onClose();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'The campaign could not be sent.');
@@ -565,7 +588,9 @@ function SendDialog({ campaign, onClose }: { campaign: Campaign; onClose: () => 
               {a.matching - a.willReceive > 0 && (
                 <p className="mt-1 text-slate-500">
                   {a.matching - a.willReceive} of the {a.matching} members it is for will not get it
-                  {campaign.purpose === 'marketing' ? ': no consent to marketing by email, no address, or an address shared with another member.' : ': no address, or an address shared with another member.'}
+                  {campaign.purpose === 'marketing'
+                    ? ': no consent to marketing by email, no address, an address shared with another member, on the suppression list, or marked do not contact.'
+                    : ': no address, an address shared with another member, or on the suppression list.'}
                 </p>
               )}
             </>
@@ -577,6 +602,42 @@ function SendDialog({ campaign, onClose }: { campaign: Campaign; onClose: () => 
           <Button variant="outline" onClick={onClose} disabled={sending}>Cancel</Button>
           <Button onClick={() => void send()} disabled={sending}>
             {sending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sending</> : 'Send now'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** "Stop sending", once someone has read what stopping does and does not undo. */
+function StopDialog({ campaign, onClose }: { campaign: Campaign; onClose: () => void }) {
+  const [stopping, setStopping] = useState(false);
+  const stop = async () => {
+    setStopping(true);
+    try {
+      await stopCampaign(campaign.id, campaign.version);
+      toast.success(`"${campaign.name}" is stopped. Members it had not reached get nothing.`);
+      onClose();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'The campaign could not be stopped.');
+    } finally {
+      setStopping(false);
+    }
+  };
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open && !stopping) onClose(); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Stop sending &ldquo;{campaign.name}&rdquo;?</DialogTitle>
+          <DialogDescription>
+            Members it has not reached yet get nothing, and its emails still waiting to go are not sent. Emails the mail
+            server has already taken cannot be called back. It cannot be sent again afterwards.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={stopping}>Keep sending</Button>
+          <Button variant="destructive" onClick={() => void stop()} disabled={stopping}>
+            {stopping ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Stopping</> : 'Stop sending'}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -320,6 +320,9 @@ export function useCampaigns() {
   return useQuery({
     queryKey: clubKeys.campaigns(ws),
     queryFn: ({ signal }) => timed(signal, (s) => getCampaigns({ signal: s })),
+    // Send answers at once and the server works through the members in the background:
+    // while a campaign is sending, its figures are read again every few seconds until it is done.
+    refetchInterval: (query) => (query.state.data?.some((c) => c.status === 'Sending') ? 4000 : false),
   });
 }
 
