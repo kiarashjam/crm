@@ -137,7 +137,9 @@ Who signs in: the account already linked to that provider account (its issuer an
 else the account with the address the provider vouches for (Google's `email_verified`,
 Entra's `xms_edov` optional claim), which is then linked; else a new account with a confirmed
 address and no workspace, as a sign-up. An unconfirmed account with the address is taken back
-by its proven owner: its password, 2FA and passkeys go, with every session. An address the
+by its proven owner: its password, 2FA and passkeys go, with every session. A password reset
+through the emailed link makes the same claim: when it confirms the address, the 2FA and
+passkeys whoever registered it first had added go too. An address the
 provider does not vouch for signs nobody in (`#error=email_not_verified`). 2FA still holds:
 someone who turned it on is asked for the code (or a passkey) after single sign-on.
 `GET /api/auth/sso/links` lists the person's linked accounts; `DELETE /api/auth/sso/links/{id}`
