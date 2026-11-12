@@ -140,7 +140,9 @@ public class AuthService : IAuthService
         ClearPasswordResetFieldsIfPresent(user);
         user.LastLoginAtUtc = DateTime.UtcNow;
         await _userRepository.UpdateAsync(user, ct);
-        var token = _tokenService.GenerateToken(user);
+        // The session goes on as the sign-in began: after single sign-on it is a single
+        // sign-on session, which a workspace that requires it accepts.
+        var token = SessionToken(user, _tokenService.TwoFactorSignInMethod(request.TwoFactorToken));
         
         _logger.LogInformation("User {UserId} completed 2FA login successfully", user.Id);
         return new LoginResponse(token, ToInfo(user));
@@ -296,7 +298,7 @@ public class AuthService : IAuthService
         return new TwoFactorStatusResponse(user.TwoFactorEnabled);
     }
 
-    public async Task<Result<string>> EnableTwoFactorAsync(Guid userId, TwoFactorEnableRequest request, CancellationToken ct = default)
+    public async Task<Result<string>> EnableTwoFactorAsync(Guid userId, TwoFactorEnableRequest request, string? signInMethod = null, CancellationToken ct = default)
     {
         _logger.LogInformation("Enabling 2FA for user {UserId}", userId);
         
@@ -352,10 +354,10 @@ public class AuthService : IAuthService
         _stamps?.Forget(user.Id);
 
         _logger.LogInformation("2FA enabled successfully for user {UserId}", userId);
-        return _tokenService.GenerateToken(user);
+        return SessionToken(user, signInMethod);
     }
 
-    public async Task<Result<string>> DisableTwoFactorAsync(Guid userId, TwoFactorDisableRequest request, CancellationToken ct = default)
+    public async Task<Result<string>> DisableTwoFactorAsync(Guid userId, TwoFactorDisableRequest request, string? signInMethod = null, CancellationToken ct = default)
     {
         _logger.LogInformation("Disabling 2FA for user {UserId}", userId);
         
@@ -410,7 +412,7 @@ public class AuthService : IAuthService
         _stamps?.Forget(user.Id);
 
         _logger.LogInformation("2FA disabled successfully for user {UserId}", userId);
-        return _tokenService.GenerateToken(user);
+        return SessionToken(user, signInMethod);
     }
 
     public async Task<Result> RequestPasswordResetAsync(ForgotPasswordRequest request, CancellationToken ct = default)
@@ -511,6 +513,15 @@ public class AuthService : IAuthService
         if (!password.Any(char.IsLetter)) return false;
         return password.Any(char.IsDigit) || password.Length >= 15;
     }
+
+    /// <summary>
+    /// A session token that carries on the way the session began (see <see cref="SignInMethods"/>):
+    /// one replaced because 2FA was turned on or off, or one finished with the code.
+    /// </summary>
+    private string SessionToken(User user, string? signInMethod) =>
+        signInMethod is null or SignInMethods.Password || !SignInMethods.IsKnown(signInMethod)
+            ? _tokenService.GenerateToken(user)
+            : _tokenService.GenerateToken(user, signInMethod);
 
     /// <summary>Ends every session issued before now (see <see cref="User.SecurityStamp"/>).</summary>
     private static void RotateSecurityStamp(User user) => user.SecurityStamp = Guid.NewGuid().ToString("N");

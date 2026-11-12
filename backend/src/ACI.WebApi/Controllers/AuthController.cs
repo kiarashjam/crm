@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using ACI.Application.Common;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using ACI.WebApi.Extensions;
@@ -222,7 +223,7 @@ public class AuthController : ControllerBase
         if (!_currentUser.UserId.HasValue)
             return Unauthorized();
         
-        var result = await _authService.EnableTwoFactorAsync(_currentUser.UserId.Value, request, ct);
+        var result = await _authService.EnableTwoFactorAsync(_currentUser.UserId.Value, request, SignInMethods.Of(User), ct);
         if (result.IsFailure)
             return result.Error.ToProblemResult();
 
@@ -252,7 +253,7 @@ public class AuthController : ControllerBase
         if (!_currentUser.UserId.HasValue)
             return Unauthorized();
         
-        var result = await _authService.DisableTwoFactorAsync(_currentUser.UserId.Value, request, ct);
+        var result = await _authService.DisableTwoFactorAsync(_currentUser.UserId.Value, request, SignInMethods.Of(User), ct);
         if (result.IsFailure)
             return result.Error.ToProblemResult();
 
