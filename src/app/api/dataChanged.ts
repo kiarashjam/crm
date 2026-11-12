@@ -204,12 +204,12 @@ const CHANGES: Readonly<Record<string, readonly string[]>> = {
   // they settle charges, move balances and statements, and can put back a lapsed member.
   bank: ['bank', 'payments', 'charges', 'members', 'statements', 'club-reports'],
   // A sale posts its charges and what was paid at the till, moves the balance and the
-  // statement, and earns its points.
-  sales: ['sales', 'charges', 'payments', 'members', 'statements', 'loyalty'],
+  // statement, and earns its points; the club's reports sum all of those.
+  sales: ['sales', 'charges', 'payments', 'members', 'statements', 'loyalty', 'club-reports'],
   // An import, a match or a retry posts tickets as sales; the settings and the connection
   // decide what the POS screens show. A match also remembers the POS customer as one of the
   // member's codes.
-  pos: ['pos', 'sales', 'charges', 'payments', 'members', 'statements', 'loyalty', 'member-codes'],
+  pos: ['pos', 'sales', 'charges', 'payments', 'members', 'statements', 'loyalty', 'member-codes', 'club-reports'],
 };
 
 /** Which records an activity is about, from the body it was saved with. */

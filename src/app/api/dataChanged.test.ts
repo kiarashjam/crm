@@ -100,6 +100,9 @@ describe('what a write changes', () => {
       ['POST', '/api/applications/a-1/approve'], ['POST', '/api/bank/imports'], ['POST', '/api/gift-cards/g-1/redeem'],
       ['POST', '/api/loyalty/ledger'], ['POST', '/api/members'], ['POST', '/api/members/m-1/merge'], ['POST', '/api/members/m-1/card/charge'],
       ['PUT', '/api/catalog/c-1'],
+      // A sale rung up at the house-charge screen, and POS tickets imported, matched or tried
+      // again, post charges, payments and points through the ledger.
+      ['POST', '/api/sales'], ['POST', '/api/pos/import'], ['POST', '/api/pos/tickets/t-1/match'], ['POST', '/api/pos/tickets/t-1/retry'],
     ] as const) {
       expect(resourcesChangedBy(method, path), `${method} ${path}`).toContain('club-reports');
     }
