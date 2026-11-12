@@ -117,6 +117,9 @@ describe('the menu', () => {
     const nav = await openMenu();
     expect(nav.queryByText('Members')).not.toBeInTheDocument();
     expect(nav.queryByText('House accounts')).not.toBeInTheDocument();
+    // The house-charge screen and the POS tickets are the club's too.
+    expect(nav.queryByText('House charge')).not.toBeInTheDocument();
+    expect(nav.queryByText('POS tickets')).not.toBeInTheDocument();
     expect(nav.queryByRole('button', { name: /^Club$/ })).not.toBeInTheDocument();
     expect(nav.getByText('Leads')).toBeInTheDocument();
     expect(nav.getAllByText('Calendar')).toHaveLength(1);
