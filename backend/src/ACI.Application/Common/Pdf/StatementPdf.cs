@@ -1,4 +1,5 @@
 using System.Globalization;
+using ACI.Application.Common.I18n;
 
 namespace ACI.Application.Common.Pdf;
 
@@ -35,6 +36,10 @@ public sealed record StatementPdfHouseholdLine(string Name, string Role, decimal
 /// <param name="Title">The heading: "Statement", or "Household statement" for a household's primary.</param>
 /// <param name="Household">On a household statement: each person and what they ran up in the period.</param>
 /// <param name="HouseholdName">On a household statement: the household's name, under the primary's.</param>
+/// <param name="Language">
+/// The language the member reads ("en", "de", "fr"): every heading, note and the QR-bill's
+/// words, and the dates' month names. Amounts keep the workspace's number format.
+/// </param>
 public sealed record StatementPdfRequest(
     string ClubName,
     string MemberName,
@@ -52,9 +57,10 @@ public sealed record StatementPdfRequest(
     IReadOnlyList<StatementPdfLine> Lines,
     DateTime GeneratedAtUtc,
     Payments.QrBill? PaymentSlip = null,
-    string Title = "Statement",
+    string? Title = null,
     IReadOnlyList<StatementPdfHouseholdLine>? Household = null,
-    string? HouseholdName = null);
+    string? HouseholdName = null,
+    string Language = AppLanguages.English);
 
 /// <summary>
 /// Sets a member's statement as an A4 document: the period, the balance brought forward,
@@ -97,44 +103,47 @@ public static class StatementPdf
     {
         var culture = Culture(r.Locale);
         var zone = RegionalSettings.ZoneOf(r.TimeZone);
+        var language = AppLanguages.Normalise(r.Language) ?? AppLanguages.English;
+        string L(string key, params (string, object?)[] args) => MemberTexts.T(language, key, args);
         string Money(decimal amount) => $"{(amount < 0 ? "-" : "")}{r.Currency} {Math.Abs(amount).ToString("N2", culture)}";
-        string Date(DateTime utc) => TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), zone)
-            .ToString("d MMM yyyy", CultureInfo.InvariantCulture);
+        string Date(DateTime utc) => MemberTexts.Date(language, r.Locale,
+            TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), zone));
+        var title = r.Title ?? L("pdf.statementTitle");
         // The last day of the period is the day before the moment it ends.
         var period = $"{Date(r.FromUtc)} – {Date(r.ToUtc.AddTicks(-1))}";
 
         var pdf = new PdfBuilder
         {
-            Title = $"{r.Title} {period} – {r.MemberName}",
+            Title = $"{title} {period} – {r.MemberName}",
             Author = r.ClubName,
-            Subject = "Account statement",
+            Subject = L("pdf.statementSubject"),
             CreatedUtc = r.GeneratedAtUtc,
             CompressStreams = compressStreams,
         };
 
         var page = pdf.AddPage();
-        var y = Letterhead(page, r, period, Date(r.GeneratedAtUtc));
+        var y = Letterhead(page, r, title, period, Date(r.GeneratedAtUtc), language);
 
         // The four figures a member looks for first.
         var boxes = new (string Label, decimal Value, PdfColor Colour)[]
         {
-            ("Brought forward", r.OpeningOwed, Ink),
-            ("Charges", r.ChargesTotal, Ink),
-            ("Payments and credits", r.PaymentsTotal, Paid),
-            ("Closing balance", r.ClosingOwed, r.ClosingOwed > 0 ? Due : Ink),
+            (L("pdf.boxBroughtForward"), r.OpeningOwed, Ink),
+            (L("pdf.boxCharges"), r.ChargesTotal, Ink),
+            (L("pdf.boxPayments"), r.PaymentsTotal, Paid),
+            (L("pdf.boxClosing"), r.ClosingOwed, r.ClosingOwed > 0 ? Due : Ink),
         };
         var boxWidth = (Right - Left - 3 * 10) / 4;
         for (var i = 0; i < boxes.Length; i++)
         {
             var x = Left + i * (boxWidth + 10);
             page.RoundedRect(x, y, boxWidth, 48, 6, fill: Panel);
-            page.Text(x + 10, y + 17, PdfFont.Helvetica, 7.5, boxes[i].Label.ToUpperInvariant(), Muted, tracking: 0.4);
+            page.Text(x + 10, y + 17, PdfFont.Helvetica, 7.5, boxes[i].Label.ToUpper(culture), Muted, tracking: 0.4);
             page.Text(x + 10, y + 36, PdfFont.HelveticaBold, 12, Fit(Money(boxes[i].Value), PdfFont.HelveticaBold, 12, boxWidth - 20), boxes[i].Colour);
         }
         y += 72;
 
-        y = TableHeader(page, y);
-        y = Row(page, y, Date(r.FromUtc), "Balance brought forward", null, null, null, Money(r.OpeningOwed));
+        y = TableHeader(page, y, language, culture);
+        y = Row(page, y, Date(r.FromUtc), L("pdf.rowBroughtForward"), null, null, null, Money(r.OpeningOwed));
         foreach (var line in r.Lines)
         {
             var height = line.Detail == null ? 18 : 28;
@@ -142,9 +151,9 @@ public static class StatementPdf
             {
                 page = pdf.AddPage();
                 // Whose statement a loose page belongs to, the name cut to fit rather than the words.
-                page.Text(Left, 60, PdfFont.HelveticaBold, 10, "Statement, continued", Ink);
+                page.Text(Left, 60, PdfFont.HelveticaBold, 10, L("pdf.continued"), Ink);
                 page.Text(Right, 60, PdfFont.Helvetica, 9, Fit($"{r.MemberName} · {period}", PdfFont.Helvetica, 9, 300), Muted, align: PdfAlign.Right);
-                y = TableHeader(page, 84);
+                y = TableHeader(page, 84, language, culture);
             }
             y = Row(page, y, Date(line.AtUtc), line.Description, line.Detail,
                 line.Charge > 0 ? Money(line.Charge) : null,
@@ -152,7 +161,7 @@ public static class StatementPdf
                 Money(line.OwedAfter));
         }
         if (r.Lines.Count == 0)
-            y = Row(page, y, "", "Nothing was charged or paid in this period.", null, null, null, null);
+            y = Row(page, y, "", L("pdf.nothingInPeriod"), null, null, null, null);
 
         if (y + 120 > BodyBottom)
         {
@@ -160,28 +169,32 @@ public static class StatementPdf
             y = 70;
         }
         page.Rule(Left, y - 6, Right, 0.6, Hairline);
-        page.Text(DescriptionX, y + 8, PdfFont.HelveticaBold, 9, "Totals for the period", Ink);
+        page.Text(DescriptionX, y + 8, PdfFont.HelveticaBold, 9, L("pdf.totals"), Ink);
         page.Text(ChargeRight, y + 8, PdfFont.HelveticaBold, 9, Money(r.ChargesTotal), Ink, align: PdfAlign.Right);
         page.Text(PaymentRight, y + 8, PdfFont.HelveticaBold, 9, Money(-r.PaymentsTotal), Paid, align: PdfAlign.Right);
         y += 34;
 
         // What the member is to do about it.
         var (headline, colour) = r.ClosingOwed > 0
-            ? ($"Amount due: {Money(r.ClosingOwed)}", Due)
+            ? (L("pdf.amountDue", ("amount", Money(r.ClosingOwed))), Due)
             : r.ClosingOwed < 0
-                ? ($"In credit: {Money(-r.ClosingOwed)}", Paid)
-                : ("Nothing to pay", Ink);
+                ? (L("pdf.inCredit", ("amount", Money(-r.ClosingOwed))), Paid)
+                : (L("pdf.nothingToPay"), Ink);
         page.Text(Left, y, PdfFont.HelveticaBold, 14, headline, colour);
         y += 18;
-        page.Text(Left, y, PdfFont.Helvetica, 9,
-            r.ClosingOwed > 0 ? "This is what the account owed when the period ended. Payments made since are on the next statement."
-            : "Questions about this statement? Reply to the email it came with, or ask the membership office.", Muted);
-        y += 13;
+        // German and French run longer than the English these lines were laid out for: wrapped, not cut.
+        foreach (var line in Lines(r.ClosingOwed > 0 ? L("pdf.dueNote") : L("pdf.questionsNote"), PdfFont.Helvetica, 9, Right - Left))
+        {
+            page.Text(Left, y, PdfFont.Helvetica, 9, line, Muted);
+            y += 13;
+        }
         if (r.PaymentSlip != null)
         {
-            page.Text(Left, y, PdfFont.Helvetica, 9,
-                "Pay with the QR-bill at the foot of the statement: scan it in your banking app, or quote its reference.", Muted);
-            y += 13;
+            foreach (var line in Lines(L("pdf.qrNote"), PdfFont.Helvetica, 9, Right - Left))
+            {
+                page.Text(Left, y, PdfFont.Helvetica, 9, line, Muted);
+                y += 13;
+            }
         }
         y += 13;
 
@@ -194,13 +207,13 @@ public static class StatementPdf
             .ToList();
         if (vat.Count > 0)
         {
-            page.Text(Left, y, PdfFont.HelveticaBold, 9, "VAT included in the charges above", Ink);
+            page.Text(Left, y, PdfFont.HelveticaBold, 9, L("pdf.vatHeading"), Ink);
             y += 14;
             foreach (var (rate, gross) in vat)
             {
                 var included = Math.Round(gross * rate / (100 + rate), 2, MidpointRounding.AwayFromZero);
                 page.Text(Left, y, PdfFont.Helvetica, 9,
-                    $"{rate.ToString("0.0#", CultureInfo.InvariantCulture)}% on {Money(gross)}: {Money(included)}", Muted);
+                    L("pdf.vatLine", ("rate", rate.ToString("0.0#", culture)), ("gross", Money(gross)), ("vat", Money(included))), Muted);
                 y += 13;
             }
         }
@@ -214,7 +227,7 @@ public static class StatementPdf
                 page = pdf.AddPage();
                 y = 70;
             }
-            page.Text(Left, y, PdfFont.HelveticaBold, 9, "Who ran up what in this period", Ink);
+            page.Text(Left, y, PdfFont.HelveticaBold, 9, L("pdf.householdHeading"), Ink);
             y += 16;
             foreach (var person in household)
             {
@@ -223,10 +236,11 @@ public static class StatementPdf
                     page = pdf.AddPage();
                     y = 70;
                 }
-                page.Text(Left, y, PdfFont.Helvetica, 9, Fit($"{person.Name} · {person.Role}", PdfFont.Helvetica, 9, 250), Ink);
+                page.Text(Left, y, PdfFont.Helvetica, 9, Fit($"{person.Name} · {MemberTexts.Role(language, person.Role)}", PdfFont.Helvetica, 9, 250), Ink);
                 page.Text(ChargeRight, y, PdfFont.Helvetica, 9, Money(person.Charged), Ink, align: PdfAlign.Right);
                 if (person.OwnAccountOwed is { } own)
-                    page.Text(OwedRight, y, PdfFont.Helvetica, 8, own > 0 ? $"Own account owes {Money(own)}" : $"Own account in credit {Money(-own)}",
+                    page.Text(OwedRight, y, PdfFont.Helvetica, 8,
+                        own > 0 ? L("pdf.ownAccountOwes", ("amount", Money(own))) : L("pdf.ownAccountCredit", ("amount", Money(-own))),
                         own > 0 ? Due : Muted, align: PdfAlign.Right);
                 y += 15;
             }
@@ -240,10 +254,10 @@ public static class StatementPdf
             if (y > PageH - QrBillPdf.HeightPt - 40)
             {
                 page = pdf.AddPage();
-                page.Text(Left, 70, PdfFont.HelveticaBold, 10, "Payment slip", Ink);
+                page.Text(Left, 70, PdfFont.HelveticaBold, 10, L("pdf.paymentSlip"), Ink);
                 page.Text(Right, 70, PdfFont.Helvetica, 9, Fit($"{r.MemberName} · {period}", PdfFont.Helvetica, 9, 300), Muted, align: PdfAlign.Right);
             }
-            QrBillPdf.Draw(page, slip);
+            QrBillPdf.Draw(page, slip, language);
             slipPage = pdf.PageCount - 1;
         }
 
@@ -255,18 +269,18 @@ public static class StatementPdf
             var footer = i == slipPage ? PageH - QrBillPdf.HeightPt - 32 : PageH - 50;
             p.Rule(Left, footer, Right, 0.4, Hairline);
             p.Text(Left, footer + 14, PdfFont.Helvetica, 7.5, Fit(r.ClubName, PdfFont.Helvetica, 7.5, 300), Muted);
-            p.Text(Right, footer + 14, PdfFont.Helvetica, 7.5, $"Page {i + 1} of {pages}", Muted, align: PdfAlign.Right);
+            p.Text(Right, footer + 14, PdfFont.Helvetica, 7.5, L("pdf.page", ("page", i + 1), ("pages", pages)), Muted, align: PdfAlign.Right);
         }
         return pdf.Build();
     }
 
     /// <summary>The club's name, the title, the period and who it is for. Returns where the body starts.</summary>
-    private static double Letterhead(PdfCanvas page, StatementPdfRequest r, string period, string issued)
+    private static double Letterhead(PdfCanvas page, StatementPdfRequest r, string title, string period, string issued, string language)
     {
         page.Text(Left, 62, PdfFont.HelveticaBold, 11, Fit(r.ClubName.ToUpperInvariant(), PdfFont.HelveticaBold, 11, 280), Muted, tracking: 1.2);
-        page.Text(Left, 96, PdfFont.HelveticaBold, 24, r.Title, Ink);
+        page.Text(Left, 96, PdfFont.HelveticaBold, 24, title, Ink);
         page.Text(Left, 116, PdfFont.Helvetica, 10.5, period, Ink);
-        page.Text(Left, 131, PdfFont.Helvetica, 8.5, $"Issued {issued}", Muted);
+        page.Text(Left, 131, PdfFont.Helvetica, 8.5, MemberTexts.T(language, "pdf.issued", ("date", issued)), Muted);
 
         var x = Right;
         page.Text(x, 96, PdfFont.HelveticaBold, 11, Fit(r.MemberName, PdfFont.HelveticaBold, 11, 220), Ink, align: PdfAlign.Right);
@@ -278,23 +292,24 @@ public static class StatementPdf
         }
         if (!string.IsNullOrWhiteSpace(r.MemberTier))
         {
-            page.Text(x, y, PdfFont.Helvetica, 9, Fit($"{r.MemberTier} member", PdfFont.Helvetica, 9, 220), Muted, align: PdfAlign.Right);
+            page.Text(x, y, PdfFont.Helvetica, 9, Fit(MemberTexts.T(language, "pdf.tierMember", ("tier", r.MemberTier)), PdfFont.Helvetica, 9, 220), Muted, align: PdfAlign.Right);
             y += 13;
         }
         if (!string.IsNullOrWhiteSpace(r.HouseholdName))
-            page.Text(x, y, PdfFont.Helvetica, 9, Fit($"For the {r.HouseholdName} household", PdfFont.Helvetica, 9, 220), Muted, align: PdfAlign.Right);
+            page.Text(x, y, PdfFont.Helvetica, 9, Fit(MemberTexts.T(language, "pdf.forHousehold", ("household", r.HouseholdName)), PdfFont.Helvetica, 9, 220), Muted, align: PdfAlign.Right);
 
         page.Rule(Left, 150, Right, 0.6, Hairline);
         return 168;
     }
 
-    private static double TableHeader(PdfCanvas page, double y)
+    private static double TableHeader(PdfCanvas page, double y, string language, CultureInfo culture)
     {
-        page.Text(DateX, y + 10, PdfFont.HelveticaBold, 7.5, "DATE", Muted, tracking: 0.4);
-        page.Text(DescriptionX, y + 10, PdfFont.HelveticaBold, 7.5, "DESCRIPTION", Muted, tracking: 0.4);
-        page.Text(ChargeRight, y + 10, PdfFont.HelveticaBold, 7.5, "CHARGES", Muted, tracking: 0.4, align: PdfAlign.Right);
-        page.Text(PaymentRight, y + 10, PdfFont.HelveticaBold, 7.5, "PAYMENTS", Muted, tracking: 0.4, align: PdfAlign.Right);
-        page.Text(OwedRight, y + 10, PdfFont.HelveticaBold, 7.5, "OWED", Muted, tracking: 0.4, align: PdfAlign.Right);
+        string H(string key) => MemberTexts.T(language, key).ToUpper(culture);
+        page.Text(DateX, y + 10, PdfFont.HelveticaBold, 7.5, H("pdf.colDate"), Muted, tracking: 0.4);
+        page.Text(DescriptionX, y + 10, PdfFont.HelveticaBold, 7.5, H("pdf.colDescription"), Muted, tracking: 0.4);
+        page.Text(ChargeRight, y + 10, PdfFont.HelveticaBold, 7.5, H("pdf.colCharges"), Muted, tracking: 0.4, align: PdfAlign.Right);
+        page.Text(PaymentRight, y + 10, PdfFont.HelveticaBold, 7.5, H("pdf.colPayments"), Muted, tracking: 0.4, align: PdfAlign.Right);
+        page.Text(OwedRight, y + 10, PdfFont.HelveticaBold, 7.5, H("pdf.colOwed"), Muted, tracking: 0.4, align: PdfAlign.Right);
         page.Rule(Left, y + 16, Right, 0.6, Hairline);
         return y + 32;
     }
@@ -312,6 +327,26 @@ public static class StatementPdf
             return y + 28;
         }
         return y + 18;
+    }
+
+    /// <summary>The words of <paramref name="text"/> in lines no wider than <paramref name="width"/> points.</summary>
+    public static IEnumerable<string> Lines(string text, PdfFont font, double size, double width)
+    {
+        var line = new System.Text.StringBuilder();
+        foreach (var word in text.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var candidate = line.Length == 0 ? word : $"{line} {word}";
+            if (line.Length > 0 && PdfFonts.Measure(font, candidate, size) > width)
+            {
+                yield return line.ToString();
+                line.Clear().Append(word);
+            }
+            else
+            {
+                line.Clear().Append(candidate);
+            }
+        }
+        if (line.Length > 0) yield return Fit(line.ToString(), font, size, width);
     }
 
     /// <summary>The text, cut with an ellipsis where it would run past <paramref name="width"/> points.</summary>

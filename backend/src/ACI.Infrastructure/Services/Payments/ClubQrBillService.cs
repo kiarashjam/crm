@@ -1,5 +1,6 @@
 using System.Globalization;
 using ACI.Application.Common;
+using ACI.Application.Common.I18n;
 using ACI.Application.Common.Payments;
 using ACI.Application.Services;
 using ACI.Domain.Entities;
@@ -51,13 +52,21 @@ public sealed class ClubQrBillService : IClubQrBills
         _logger = logger;
     }
 
-    public async Task<QrBill?> ForStatementAsync(Guid organizationId, Guid memberId, DateTime fromUtc, DateTime toUtc, decimal amountDue, string currency, CancellationToken ct = default)
+    public async Task<QrBill?> ForStatementAsync(Guid organizationId, Guid memberId, DateTime fromUtc, DateTime toUtc, decimal amountDue, string currency,
+        string? language = null, CancellationToken ct = default)
     {
         if (amountDue <= 0 || currency is not ("CHF" or "EUR")) return null;
         var config = await _settings.ConfigAsync(organizationId, ct);
         if (config.QrBillProblem != null || config.Creditor == null) return null;
         var reference = await IssueAsync(organizationId, config, memberId, new Key(StatementPurpose, fromUtc, toUtc, null), amountDue, currency, ct);
-        return Bill(config, reference, amountDue, currency, $"Statement {PeriodWords(fromUtc, toUtc, RegionalSettings.ZoneOf(config.TimeZone))}", memberId);
+        var zone = RegionalSettings.ZoneOf(config.TimeZone);
+        // The message on the slip is in the statement's language; English reads as it always did.
+        var message = AppLanguages.Normalise(language) is { } words && words != AppLanguages.English
+            ? MemberTexts.T(words, "statement.qrMessage", ("period", MemberTexts.Period(words, config.Locale,
+                TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(fromUtc, DateTimeKind.Utc), zone),
+                TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(toUtc, DateTimeKind.Utc), zone))))
+            : $"Statement {PeriodWords(fromUtc, toUtc, zone)}";
+        return Bill(config, reference, amountDue, currency, message, memberId);
     }
 
     public async Task<QrBill?> ForChargeAsync(Guid organizationId, Guid memberId, Guid chargeId, decimal amountDue, string currency, string message, CancellationToken ct = default)

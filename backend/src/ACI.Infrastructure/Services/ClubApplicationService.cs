@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using ACI.Application.Common;
+using ACI.Application.Common.I18n;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using ACI.Application.Services;
@@ -37,8 +38,8 @@ public sealed class ClubApplicationService : IClubApplications
     /// <summary>How long a claim holds an application for the request that made it.</summary>
     private static readonly TimeSpan ClaimFor = TimeSpan.FromMinutes(2);
 
-    internal const string DefaultConsentText = "Yes, I would like to hear about news, events and offers from the club by email. I can change my mind at any time.";
-    private const string DefaultSuccess = "Thank you for applying. The membership committee will be in touch.";
+    /// <summary>The checkbox's words when the club wrote none, in English (see <see cref="MemberTexts"/> for German and French).</summary>
+    internal static readonly string DefaultConsentText = MemberTexts.T(AppLanguages.English, "form.applicationConsent");
     private const string LeadSource = "Membership application";
 
     private readonly AppDbContext _db;
@@ -561,6 +562,8 @@ public sealed class ClubApplicationService : IClubApplications
                 DuesAmount = plan.Tier.Price,
                 DuesFrequency = Cadence(plan.Tier.Cadence),
                 Notes = app.ReasonForJoining,
+                // The language they applied in: the welcome, statements and reminders follow it.
+                PreferredLanguage = AppLanguages.Normalise(app.Language),
             };
             _db.ClubMembers.Add(member);
             created = true;
@@ -579,6 +582,8 @@ public sealed class ClubApplicationService : IClubApplications
             notes.Add($"{Name(member)} was already a member, so their record was used and set active again.");
         }
         else notes.Add($"{Name(member)} is already an active member: the application is linked to their record, their tier stays {member.Tier}, and nothing was charged or started.");
+        // A member the club had already keeps the language staff set; one with none takes the one they applied in.
+        if (member.PreferredLanguage == null && AppLanguages.Normalise(app.Language) is { } applied) member.PreferredLanguage = applied;
 
         // The person the sales side has for them, carried onto the member. From the public form
         // the link is by address alone, so it is carried only when the name matches as well.
@@ -868,17 +873,20 @@ public sealed class ClubApplicationService : IClubApplications
     private async Task<bool> WelcomeAsync(Guid organizationId, ClubApplication app, ClubMember member, CatalogItemDto tier, Guid userId, List<string> notes, CancellationToken ct)
     {
         var address = (member.Email ?? "").Trim();
-        var club = await _db.Organizations.AsNoTracking().Where(o => o.Id == organizationId).Select(o => o.Name).FirstOrDefaultAsync(ct) ?? "the club";
+        var workspace = await _db.Organizations.AsNoTracking().Where(o => o.Id == organizationId).Select(o => new { o.Name, o.Locale }).FirstOrDefaultAsync(ct);
+        // In the member's language: the one they applied in, or staff set (English when none).
+        var language = AppLanguages.ForMember(member.PreferredLanguage);
+        var club = workspace?.Name ?? MemberTexts.T(language, "theClub");
         if (!ValidationHelper.IsValidEmail(address))
         {
             notes.Add($"No welcome email: {Name(member)} has no valid email address.");
             return false;
         }
-        var subject = $"Welcome to {club}";
+        var subject = MemberTexts.T(language, "welcome.subject", ("club", club));
         var body = new StringBuilder()
-            .Append("Dear ").Append(string.IsNullOrWhiteSpace(member.FirstName) ? Name(member) : member.FirstName.Trim()).Append(",\n\n")
-            .Append("Your application has been approved, and you are now a ").Append(tier.Name).Append(" member of ").Append(club).Append(".\n\n")
-            .Append("We look forward to welcoming you. If you have any questions, reply to this email.\n\n")
+            .Append(MemberTexts.T(language, "greeting", ("name", string.IsNullOrWhiteSpace(member.FirstName) ? Name(member) : member.FirstName.Trim()))).Append("\n\n")
+            .Append(MemberTexts.T(language, "welcome.approved", ("tier", tier.Name), ("club", club))).Append("\n\n")
+            .Append(MemberTexts.T(language, "welcome.closing")).Append("\n\n")
             .Append(club)
             .ToString();
         var log = new MemberMessage
@@ -1016,16 +1024,23 @@ public sealed class ClubApplicationService : IClubApplications
         return ToDto(form);
     }
 
-    public async Task<PublicApplicationFormDto?> PublicFormAsync(string token, CancellationToken ct = default)
+    public async Task<PublicApplicationFormDto?> PublicFormAsync(string token, string? language = null, CancellationToken ct = default)
     {
         var form = await FormByTokenAsync(token, ct);
         if (form?.OrganizationId is not { } organizationId) return null;
         using var acting = _tenant.ActFor(organizationId, form.CreatedByUserId);
-        var club = await _db.Organizations.AsNoTracking().Where(o => o.Id == organizationId).Select(o => o.Name).FirstOrDefaultAsync(ct) ?? "";
+        var workspace = await _db.Organizations.AsNoTracking().Where(o => o.Id == organizationId).Select(o => new { o.Name, o.Locale }).FirstOrDefaultAsync(ct);
         var tiers = (await _catalog.TiersAsync(organizationId, ct)).Where(t => t.IsActive)
             .Select(t => new PublicTierDto(t.Name, t.Price, Cadence(t.Cadence), t.InitiationFee, t.Currency)).ToList();
-        return new PublicApplicationFormDto(club, form.Intro, form.ConsentText ?? DefaultConsentText, tiers, await ConsentModeAsync(organizationId, ct));
+        // The club's own words as it wrote them; the standard ones in the language the form is read in.
+        var words = AppLanguages.ForMember(language);
+        return new PublicApplicationFormDto(workspace?.Name ?? "", form.Intro, ConsentTextIn(form, words), tiers, await ConsentModeAsync(organizationId, ct),
+            AppLanguages.Normalise(workspace?.Locale));
     }
+
+    /// <summary>The words beside the marketing checkbox: the club's own, else the standard ones in <paramref name="language"/>.</summary>
+    private static string ConsentTextIn(ClubApplicationForm form, string language) =>
+        string.IsNullOrWhiteSpace(form.ConsentText) ? MemberTexts.T(language, "form.applicationConsent") : form.ConsentText;
 
     public async Task<Result<PublicApplicationReceipt>> SubmitAsync(string token, PublicApplicationRequest request, CancellationToken ct = default)
     {
@@ -1034,7 +1049,11 @@ public sealed class ClubApplicationService : IClubApplications
         // Nobody signs in on the form: its link names the workspace, and everything here reads
         // and writes as that workspace, as its creator (whose the new lead is).
         using var acting = _tenant.ActFor(organizationId, form.CreatedByUserId);
-        var receipt = new PublicApplicationReceipt(string.IsNullOrWhiteSpace(form.SuccessMessage) ? DefaultSuccess : form.SuccessMessage);
+        // The language the form was filled in: the thank-you is in it, the consent record keeps the
+        // words shown in it, and the member the application becomes is written to in it. A post
+        // that does not say (an old page, a club's own form) is answered in English, as before.
+        var language = AppLanguages.ForMember(request.Language);
+        var receipt = new PublicApplicationReceipt(string.IsNullOrWhiteSpace(form.SuccessMessage) ? MemberTexts.T(language, "form.applicationThanks") : form.SuccessMessage);
 
         // The hidden honeypot: a person never sees it, a bot fills it. Thanked, and nothing kept.
         if (!string.IsNullOrWhiteSpace(request.Website)) return receipt;
@@ -1047,7 +1066,7 @@ public sealed class ClubApplicationService : IClubApplications
         // and whether the box must be ticked (meant for a form that signs people up for news).
         var consentMode = await ConsentModeAsync(organizationId, ct);
         if (consentMode == MarketingConsentModes.Required && !request.MarketingConsent)
-            return new Error("Application.ConsentRequired", "Please tick the box to say you would like to hear from the club: this form signs you up for its news.");
+            return new Error("Application.ConsentRequired", MemberTexts.T(language, "form.consentRequired"));
         if (!ValidationHelper.IsValidEmail(email)) return DomainErrors.Application.EmailInvalid;
         var tiers = await _catalog.TiersAsync(organizationId, ct);
         var tier = tiers.FirstOrDefault(t => t.IsActive && string.Equals(t.Name, request.RequestedTier?.Trim(), StringComparison.OrdinalIgnoreCase));
@@ -1095,6 +1114,7 @@ public sealed class ClubApplicationService : IClubApplications
             ReasonForJoining = Trimmed(request.ReasonForJoining) is { } reason ? Clip(reason, 2000) : null,
             Status = ApplicationStatuses.Submitted,
             Source = ApplicationSources.PublicForm,
+            Language = AppLanguages.Normalise(request.Language),
             SubmittedAtUtc = now,
             LeadId = leadId,
             ContactId = contactId,
@@ -1118,7 +1138,7 @@ public sealed class ClubApplicationService : IClubApplications
                 Granted = request.MarketingConsent,
                 Source = ConsentSources.Form,
                 Address = email.ToLowerInvariant(),
-                Detail = Clip($"Membership application form: \"{form.ConsentText ?? DefaultConsentText}\"", 500),
+                Detail = Clip($"Membership application form: \"{ConsentTextIn(form, language)}\"", 500),
                 RecordedAtUtc = now,
             }, ct);
         }

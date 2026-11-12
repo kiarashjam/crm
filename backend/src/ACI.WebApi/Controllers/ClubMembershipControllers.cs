@@ -319,10 +319,11 @@ public class PublicApplicationsController : ControllerBase
 
     public PublicApplicationsController(IClubApplications applications) => _applications = applications;
 
+    /// <param name="lang">The language the form is read in (en, de, fr): the standard words it shows are in it.</param>
     [HttpGet("{token}")]
-    public async Task<ActionResult<PublicApplicationFormDto>> Form(string token, CancellationToken ct)
+    public async Task<ActionResult<PublicApplicationFormDto>> Form(string token, [FromQuery] string? lang, CancellationToken ct)
     {
-        var form = await _applications.PublicFormAsync(token, ct);
+        var form = await _applications.PublicFormAsync(token, lang, ct);
         return form == null ? NotFound() : Ok(form);
     }
 

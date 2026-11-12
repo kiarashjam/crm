@@ -1,4 +1,5 @@
 using ACI.Application.Common;
+using ACI.Application.Common.I18n;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using ACI.Domain.Common;
@@ -23,7 +24,8 @@ public interface ILeadOpsService
     Task<SlaSettingsDto> SetSlaAsync(Guid? organizationId, int hours, CancellationToken ct = default);
     Task<IReadOnlyList<CaptureFormDto>> GetFormsAsync(Guid? organizationId, CancellationToken ct = default);
     Task<CaptureFormDto> CreateFormAsync(Guid userId, Guid? organizationId, string name, CancellationToken ct = default);
-    Task<PublicCaptureFormDto?> GetPublicFormAsync(string token, CancellationToken ct = default);
+    /// <remarks><paramref name="language"/>: the language the form is read in, for the standard words it shows.</remarks>
+    Task<PublicCaptureFormDto?> GetPublicFormAsync(string token, string? language = null, CancellationToken ct = default);
     Task<Result<PublicCaptureReceipt>> CaptureAsync(string token, PublicCaptureRequest request, CancellationToken ct = default);
     /// <summary>
     /// When an open lead with this email already exists, record the new inquiry on
@@ -211,14 +213,37 @@ public sealed class LeadOpsService : ILeadOpsService
         return ToForm(form);
     }
 
-    public async Task<PublicCaptureFormDto?> GetPublicFormAsync(string token, CancellationToken ct = default)
+    public async Task<PublicCaptureFormDto?> GetPublicFormAsync(string token, string? language = null, CancellationToken ct = default)
     {
         var form = await _ops.GetFormByTokenAsync(token, ct);
         if (form == null) return null;
         var consent = await ConsentAsync(form, ct);
-        return new PublicCaptureFormDto(form.Name, form.SuccessMessage, consent.Mode,
-            consent.Mode == MarketingConsentModes.Off ? null : consent.Text);
+        var workspaceLanguage = AppLanguages.Normalise(await WorkspaceLocaleAsync(form, ct));
+        var words = AppLanguages.ForMember(language);
+        return new PublicCaptureFormDto(form.Name, ThanksIn(form, words), consent.Mode,
+            consent.Mode == MarketingConsentModes.Off ? null : ConsentTextIn(consent, words), workspaceLanguage);
     }
+
+    private const string StandardThanks = "Thanks. We'll be in touch.";
+
+    /// <summary>
+    /// The form's thank-you: the workspace's own words as written, else the standard ones in the
+    /// visitor's language. A new form is saved with the English standard words, which are read as
+    /// the standard and not as the workspace's own.
+    /// </summary>
+    private static string ThanksIn(LeadCaptureForm form, string language) =>
+        string.IsNullOrWhiteSpace(form.SuccessMessage) || form.SuccessMessage.Trim() == StandardThanks
+            ? MemberTexts.T(language, "form.captureThanks")
+            : form.SuccessMessage;
+
+    /// <summary>The marketing checkbox's words: the workspace's own, else the standard ones in the visitor's language.</summary>
+    private static string ConsentTextIn(FormConsentDto consent, string language) =>
+        string.IsNullOrWhiteSpace(consent.Text) || consent.Text == FormConsentDefaults.Text
+            ? MemberTexts.T(language, "form.captureConsent")
+            : consent.Text;
+
+    private async Task<string?> WorkspaceLocaleAsync(LeadCaptureForm form, CancellationToken ct) =>
+        _organizations != null && form.OrganizationId is Guid org ? (await _organizations.GetByIdAsync(org, ct))?.Locale : null;
 
     /// <summary>Whether and how the form's workspace asks for marketing consent; optional when it set nothing.</summary>
     private async Task<FormConsentDto> ConsentAsync(LeadCaptureForm form, CancellationToken ct) =>
@@ -230,10 +255,11 @@ public sealed class LeadOpsService : ILeadOpsService
     /// What the visitor said about news and offers, recorded on their lead through the consent
     /// records (source "form", with the words they were shown), whichever answer they gave.
     /// </summary>
-    private async Task RecordConsentAsync(LeadCaptureForm form, FormConsentDto consent, Guid leadId, PublicCaptureRequest request, CancellationToken ct)
+    private async Task RecordConsentAsync(LeadCaptureForm form, FormConsentDto consent, Guid leadId, PublicCaptureRequest request, string language, CancellationToken ct)
     {
         if (_consent == null || form.OrganizationId is not Guid org || consent.Mode == MarketingConsentModes.Off) return;
-        var detail = $"Capture form \"{form.Name}\": \"{consent.Text}\"";
+        // The words as the visitor saw them, in the language they read the form in.
+        var detail = $"Capture form \"{form.Name}\": \"{ConsentTextIn(consent, language)}\"";
         await _consent.AddCurrentAsync(new ConsentRecord
         {
             Id = Guid.NewGuid(),
@@ -275,7 +301,10 @@ public sealed class LeadOpsService : ILeadOpsService
         // Nobody signs in on a public form: its token names the workspace the lead goes
         // to, and everything below reads and writes as that workspace.
         using var acting = _tenant?.ActFor(form.OrganizationId, form.CreatedByUserId);
-        var receipt = new PublicCaptureReceipt(string.IsNullOrWhiteSpace(form.SuccessMessage) ? "Thanks. We'll be in touch." : form.SuccessMessage);
+        // The language the form was filled in: the thank-you, a refusal and the consent record are in
+        // it. A post that does not say (an old page, a club's own form) is answered in English, as before.
+        var language = AppLanguages.ForMember(request.Language);
+        var receipt = new PublicCaptureReceipt(ThanksIn(form, language));
 
         // The hidden honeypot field: a person never sees it, a bot fills it.
         if (!string.IsNullOrWhiteSpace(request.Website)) return receipt;
@@ -284,7 +313,7 @@ public sealed class LeadOpsService : ILeadOpsService
         // shows it required, and a post without it is refused rather than kept half-agreed.
         var consent = await ConsentAsync(form, ct);
         if (consent.Mode == MarketingConsentModes.Required && request.MarketingConsent != true)
-            return new Error("Lead.ConsentRequired", "Please tick the box to say you would like to hear from us: this form signs you up for news.");
+            return new Error("Lead.ConsentRequired", MemberTexts.T(language, "form.captureConsentRequired"));
 
         // Leads.Source is nvarchar(64) and a form name may be up to 120. Unclipped,
         // a form with a long name failed on every single submission.
@@ -293,7 +322,7 @@ public sealed class LeadOpsService : ILeadOpsService
 
         if (await AttachInquiryAsync(form.OrganizationId, form.CreatedByUserId, request.Email, source, summary, ct) is Guid existing)
         {
-            await RecordConsentAsync(form, consent, existing, request, ct);
+            await RecordConsentAsync(form, consent, existing, request, language, ct);
             return receipt;
         }
 
@@ -313,7 +342,7 @@ public sealed class LeadOpsService : ILeadOpsService
         }, ct);
         if (!created.IsSuccess)
             return new Error("Lead.CaptureFailed", "That could not be saved. Please check the details and try again.");
-        await RecordConsentAsync(form, consent, created.Value.Id, request, ct);
+        await RecordConsentAsync(form, consent, created.Value.Id, request, language, ct);
         return receipt;
     }
 

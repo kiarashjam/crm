@@ -27,10 +27,11 @@ public class PublicLeadController : ControllerBase
 
     public PublicLeadController(ILeadOpsService ops) => _ops = ops;
 
+    /// <param name="lang">The language the form is read in (en, de, fr): the standard words it shows are in it.</param>
     [HttpGet("capture/{token}")]
-    public async Task<ActionResult<PublicCaptureFormDto>> Form(string token, CancellationToken ct)
+    public async Task<ActionResult<PublicCaptureFormDto>> Form(string token, [FromQuery] string? lang, CancellationToken ct)
     {
-        var form = await _ops.GetPublicFormAsync(token, ct);
+        var form = await _ops.GetPublicFormAsync(token, lang, ct);
         return form == null ? NotFound() : Ok(form);
     }
 

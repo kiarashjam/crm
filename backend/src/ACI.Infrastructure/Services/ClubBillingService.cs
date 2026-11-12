@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using ACI.Application.Common;
+using ACI.Application.Common.I18n;
 using ACI.Application.Common.Pdf;
 using ACI.Application.Interfaces;
 using ACI.Application.Services;
@@ -466,29 +467,31 @@ public sealed class ClubBillingService : IClubBilling
         }
 
         var last = reached.Max(r => r.Step);
-        var subject = last == steps.Count && steps.Count > 1 ? "Final payment reminder"
-            : last == 1 ? "Payment reminder"
-            : last == 2 ? "Second payment reminder"
-            : $"Payment reminder ({last})";
+        // In the member's language (English when none is set).
+        var language = LanguageOf(member);
+        string L(string key, params (string, object?)[] args) => MemberTexts.T(language, key, args);
+        var subject = last == steps.Count && steps.Count > 1 ? L("reminder.subjectFinal")
+            : last == 1 ? L("reminder.subjectFirst")
+            : last == 2 ? L("reminder.subjectSecond")
+            : L("reminder.subjectNth", ("step", last));
         var culture = Culture(workspace.Locale);
         var zone = RegionalSettings.ZoneOf(workspace.TimeZone);
         var body = new StringBuilder();
-        body.Append("Dear ").Append(string.IsNullOrWhiteSpace(member.FirstName) ? NameOf(member) : member.FirstName.Trim()).Append(",\n\n");
+        body.Append(L("greeting", ("name", string.IsNullOrWhiteSpace(member.FirstName) ? NameOf(member) : member.FirstName.Trim()))).Append("\n\n");
         body.Append(last == steps.Count && steps.Count > 1
-            ? "This is a final reminder. The following on your account is still unpaid:\n\n"
+            ? L("reminder.introFinal")
             : last == 1
-                ? "This is a reminder that the following on your account has not been paid by its due date:\n\n"
-                : "We have still not received payment for the following on your account:\n\n");
+                ? L("reminder.introFirst")
+                : L("reminder.introLater")).Append("\n\n");
         foreach (var (charge, _) in reached.OrderBy(r => r.Charge.DueAtUtc))
-            body.Append("- ").Append(charge.Description).Append(": ").Append(Money(charge.Owed, charge.Currency, culture))
-                .Append(", due ").Append(Date(charge.DueAtUtc, zone)).Append('\n');
+            body.Append(L("reminder.line", ("description", charge.Description), ("amount", Money(charge.Owed, charge.Currency, culture)),
+                ("date", Date(charge.DueAtUtc, zone, language, workspace.Locale)))).Append('\n');
         var currency = reached[0].Charge.Currency;
         if (reached.All(r => r.Charge.Currency == currency))
-            body.Append("\nTotal overdue: ").Append(Money(reached.Sum(r => r.Charge.Owed), currency, culture)).Append('\n');
+            body.Append('\n').Append(L("reminder.total", ("amount", Money(reached.Sum(r => r.Charge.Owed), currency, culture)))).Append('\n');
         if (rules.Billing.LapseEnabled)
-            body.Append("\nA membership is suspended when a charge is still unpaid ").Append(rules.Billing.GracePeriodDays)
-                .Append(" days after its due date, until it is paid.\n");
-        body.Append("\nIf you have paid in the last few days, thank you, and please ignore this reminder.\n\n").Append(workspace.Name);
+            body.Append('\n').Append(L("reminder.lapse", ("days", rules.Billing.GracePeriodDays))).Append('\n');
+        body.Append('\n').Append(L("reminder.ignore")).Append("\n\n").Append(workspace.Name);
 
         var log = new MemberMessage
         {
@@ -636,10 +639,11 @@ public sealed class ClubBillingService : IClubBilling
         var statement = read.Value;
         var member = await _db.ClubMembers.AsNoTracking().FirstOrDefaultAsync(m => m.Id == memberId && m.OrganizationId == organizationId, ct);
         var workspace = await WorkspaceAsync(organizationId, ct);
+        var language = LanguageOf(member);
         var lines = statement.Lines.Select(l => new StatementPdfLine(
             l.AtUtc,
-            l.Description,
-            Detail(l),
+            Describe(l, language),
+            Detail(l, language),
             l.Debit,
             l.Credit,
             Owed(l.Balance),
@@ -647,7 +651,7 @@ public sealed class ClubBillingService : IClubBilling
         var amountDue = Math.Max(0, Owed(statement.ClosingBalance));
         // The club's QR-bill for what is due, with a reference that names the member and this
         // statement, when its bank details are set; none otherwise.
-        var slip = await _qrBills.ForStatementAsync(organizationId, memberId, statement.FromUtc, statement.ToUtc, amountDue, statement.Currency, ct);
+        var slip = await _qrBills.ForStatementAsync(organizationId, memberId, statement.FromUtc, statement.ToUtc, amountDue, statement.Currency, language, ct);
         var bytes = StatementPdf.Render(new StatementPdfRequest(
             workspace.Name,
             statement.MemberName,
@@ -664,7 +668,8 @@ public sealed class ClubBillingService : IClubBilling
             Owed(statement.ClosingBalance),
             lines,
             DateTime.UtcNow,
-            slip));
+            slip,
+            Language: language));
         return new StatementFile(FileName(statement, workspace), bytes, statement, amountDue);
     }
 
@@ -683,7 +688,8 @@ public sealed class ClubBillingService : IClubBilling
         var statement = read.Value;
         var primary = await _db.ClubMembers.AsNoTracking().FirstOrDefaultAsync(m => m.Id == primaryMemberId && m.OrganizationId == organizationId, ct);
         var workspace = await WorkspaceAsync(organizationId, ct);
-        var lines = statement.Lines.Select(l => new StatementPdfLine(l.AtUtc, l.Description, Detail(l), l.Debit, l.Credit, Owed(l.Balance), l.VatRate)).ToList();
+        var language = LanguageOf(primary);
+        var lines = statement.Lines.Select(l => new StatementPdfLine(l.AtUtc, Describe(l, language), Detail(l, language), l.Debit, l.Credit, Owed(l.Balance), l.VatRate)).ToList();
 
         // What each person ran up in the period on this account: charges less the voids of them.
         var charged = statement.Lines.Where(l => l.Side == "charge")
@@ -703,15 +709,15 @@ public sealed class ClubBillingService : IClubBilling
         // Someone who has left the household since still ran up what the lines say.
         foreach (var gone in statement.Lines.Where(l => l.IncurredByMemberId is { } id && id != primaryMemberId && others.All(o => o.MemberId != id))
                      .GroupBy(l => l.IncurredByMemberId!.Value))
-            people.Add(new StatementPdfHouseholdLine(gone.First().IncurredByName ?? "A former member of the household", "No longer in the household",
-                charged.GetValueOrDefault(gone.Key), null));
+            people.Add(new StatementPdfHouseholdLine(gone.First().IncurredByName ?? MemberTexts.T(language, "pdf.formerHouseholdMember"),
+                MemberTexts.T(language, "pdf.noLongerInHousehold"), charged.GetValueOrDefault(gone.Key), null));
 
         // It is the primary's account statement, so it carries the QR-bill the primary's own
         // statement for the period does: the same reference, which pays the primary's account
         // and with it the household's bills. Without it the page asked for the household's bills
         // with nothing to pay them by.
         var amountDue = Math.Max(0, Owed(statement.ClosingBalance));
-        var slip = await _qrBills.ForStatementAsync(organizationId, primaryMemberId, statement.FromUtc, statement.ToUtc, amountDue, statement.Currency, ct);
+        var slip = await _qrBills.ForStatementAsync(organizationId, primaryMemberId, statement.FromUtc, statement.ToUtc, amountDue, statement.Currency, language, ct);
         var bytes = StatementPdf.Render(new StatementPdfRequest(
             workspace.Name,
             statement.MemberName,
@@ -729,9 +735,10 @@ public sealed class ClubBillingService : IClubBilling
             lines,
             DateTime.UtcNow,
             PaymentSlip: slip,
-            Title: "Household statement",
+            Title: MemberTexts.T(language, "pdf.householdTitle"),
             Household: people,
-            HouseholdName: householdName));
+            HouseholdName: householdName,
+            Language: language));
         var fileName = $"household-{FileName(statement, workspace)}";
         return new StatementFile(fileName, bytes, statement, amountDue);
     }
@@ -747,13 +754,15 @@ public sealed class ClubBillingService : IClubBilling
         if (charge == null) return DomainErrors.Club.ChargeNotFound;
         var member = await _db.ClubMembers.AsNoTracking().FirstOrDefaultAsync(m => m.Id == owner && m.OrganizationId == organizationId, ct);
         var workspace = await WorkspaceAsync(organizationId, ct);
+        var language = LanguageOf(member);
 
         // The charge's document number in the accounting journal.
         var number = "C-" + charge.Id.ToString("N")[..8].ToUpperInvariant();
         var voided = charge.Status == "Voided";
         var amountDue = ChargeInvoicePdf.Owed(charge.Amount, charge.PaidAmount, voided);
         // The club's QR-bill for what is left on the charge, with a reference that names it.
-        var slip = await _qrBills.ForChargeAsync(organizationId, owner, charge.Id, amountDue, charge.Currency, "Invoice " + number, ct);
+        var slip = await _qrBills.ForChargeAsync(organizationId, owner, charge.Id, amountDue, charge.Currency,
+            MemberTexts.T(language, "invoice.qrMessage", ("number", number)), ct);
         var bytes = ChargeInvoicePdf.Render(new ChargeInvoicePdfRequest(
             workspace.Name,
             charge.MemberName,
@@ -761,7 +770,7 @@ public sealed class ClubBillingService : IClubBilling
             member?.Tier,
             number,
             charge.Description,
-            charge.EntryType == "Charge" ? charge.Kind : "Balance brought over",
+            charge.EntryType == "Charge" ? charge.Kind : MemberTexts.T(language, "invoice.balanceBroughtOver"),
             charge.PostedAtUtc,
             charge.DueAtUtc,
             charge.Amount,
@@ -773,7 +782,8 @@ public sealed class ClubBillingService : IClubBilling
             workspace.TimeZone,
             DateTime.UtcNow,
             slip,
-            charge.IncurredByName));
+            charge.IncurredByName,
+            language));
         return new InvoiceFile("invoice-" + number + ".pdf", bytes, amountDue);
     }
 
@@ -853,22 +863,27 @@ public sealed class ClubBillingService : IClubBilling
         var culture = Culture(workspace.Locale);
         var zone = RegionalSettings.ZoneOf(workspace.TimeZone);
         var statement = file.Value.Statement;
-        var period = PeriodWords(fromUtc, toUtc, zone);
+        // In the member's language, as the attached statement is.
+        var language = LanguageOf(member);
+        string L(string key, params (string, object?)[] args) => MemberTexts.T(language, key, args);
+        var period = MemberTexts.Period(language, workspace.Locale,
+            TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(fromUtc, DateTimeKind.Utc), zone),
+            TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(toUtc, DateTimeKind.Utc), zone));
         var address = (member.Email ?? "").Trim();
         var reachable = ValidationHelper.IsValidEmail(address);
         var now = DateTime.UtcNow;
-        var subject = $"Your statement for {period}";
+        var subject = L("statement.subject", ("period", period));
 
         var closing = Owed(statement.ClosingBalance);
         var body = new StringBuilder();
-        body.Append("Dear ").Append(string.IsNullOrWhiteSpace(member.FirstName) ? NameOf(member) : member.FirstName.Trim()).Append(",\n\n");
-        body.Append("Your statement for ").Append(period).Append(" is attached.\n\n");
-        body.Append("Brought forward: ").Append(Money(Owed(statement.OpeningBalance), statement.Currency, culture)).Append('\n');
-        body.Append("Charges: ").Append(Money(statement.TotalDebits, statement.Currency, culture)).Append('\n');
-        body.Append("Payments and credits: ").Append(Money(statement.TotalCredits, statement.Currency, culture)).Append('\n');
-        body.Append(closing > 0 ? "Amount due: " : closing < 0 ? "In credit: " : "Balance: ")
-            .Append(Money(Math.Abs(closing), statement.Currency, culture)).Append("\n\n");
-        body.Append("If you have a question about it, reply to this email.\n\n").Append(workspace.Name);
+        body.Append(L("greeting", ("name", string.IsNullOrWhiteSpace(member.FirstName) ? NameOf(member) : member.FirstName.Trim()))).Append("\n\n");
+        body.Append(L("statement.attached", ("period", period))).Append("\n\n");
+        body.Append(L("statement.broughtForward", ("amount", Money(Owed(statement.OpeningBalance), statement.Currency, culture)))).Append('\n');
+        body.Append(L("statement.charges", ("amount", Money(statement.TotalDebits, statement.Currency, culture)))).Append('\n');
+        body.Append(L("statement.payments", ("amount", Money(statement.TotalCredits, statement.Currency, culture)))).Append('\n');
+        var owedKey = closing > 0 ? "statement.amountDue" : closing < 0 ? "statement.inCredit" : "statement.balance";
+        body.Append(L(owedKey, ("amount", Money(Math.Abs(closing), statement.Currency, culture)))).Append("\n\n");
+        body.Append(L("statement.question")).Append("\n\n").Append(workspace.Name);
 
         var delivery = new ClubStatementDelivery
         {
@@ -1025,30 +1040,20 @@ public sealed class ClubBillingService : IClubBilling
     /// <summary>A balance (negative while owing) as what is owed (positive while owing).</summary>
     private static decimal Owed(decimal balance) => balance == 0 ? 0 : -balance;
 
-    private static string? Detail(StatementLineDto line)
+    private static string? Detail(StatementLineDto line, string language)
     {
         var label = line.EntryType switch
         {
-            ClubEntryTypes.Opening => "Balance brought over",
-            ClubEntryTypes.Adjustment => "Correction",
-            ClubEntryTypes.Void => "Void",
-            ClubEntryTypes.Refund => "Refund",
+            ClubEntryTypes.Opening => MemberTexts.T(language, "line.balanceBroughtOver"),
+            ClubEntryTypes.Adjustment => MemberTexts.T(language, "line.correction"),
+            ClubEntryTypes.Void => MemberTexts.T(language, "line.void"),
+            ClubEntryTypes.Refund => MemberTexts.T(language, "line.refund"),
             _ => null,
         };
         // A household member's charge on the primary's account says whose it was.
-        var incurred = string.IsNullOrWhiteSpace(line.IncurredByName) ? null : $"Incurred by {line.IncurredByName}";
+        var incurred = string.IsNullOrWhiteSpace(line.IncurredByName) ? null : MemberTexts.T(language, "line.incurredBy", ("name", line.IncurredByName));
         var parts = new[] { incurred, label, line.Reason, line.Reference }.Where(p => !string.IsNullOrWhiteSpace(p)).ToList();
         return parts.Count == 0 ? null : string.Join(" · ", parts);
-    }
-
-    /// <summary>"October 2026" for a calendar month in the club's time zone; otherwise its first and last day.</summary>
-    private static string PeriodWords(DateTime fromUtc, DateTime toUtc, TimeZoneInfo zone)
-    {
-        var from = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(fromUtc, DateTimeKind.Utc), zone);
-        var to = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(toUtc, DateTimeKind.Utc), zone);
-        if (from.Day == 1 && from.TimeOfDay == TimeSpan.Zero && to == from.AddMonths(1))
-            return from.ToString("MMMM yyyy", CultureInfo.InvariantCulture);
-        return $"{from:d MMM yyyy} – {to.AddTicks(-1):d MMM yyyy}".Replace("  ", " ");
     }
 
     private static string FileName(AccountStatementDto statement, Workspace workspace)
@@ -1064,8 +1069,35 @@ public sealed class ClubBillingService : IClubBilling
     private static string Money(decimal amount, string currency, CultureInfo culture) =>
         $"{(amount < 0 ? "-" : "")}{currency} {Math.Abs(amount).ToString("N2", culture)}";
 
-    private static string Date(DateTime utc, TimeZoneInfo zone) =>
-        TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), zone).ToString("d MMM yyyy", CultureInfo.InvariantCulture);
+    private static string Date(DateTime utc, TimeZoneInfo zone, string language, string? workspaceLocale) =>
+        MemberTexts.Date(language, workspaceLocale, TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), zone));
+
+    /// <summary>The language the club writes to a member in: the one set on them, else English (see <see cref="AppLanguages.ForMember"/>).</summary>
+    private static string LanguageOf(ClubMember? member) => AppLanguages.ForMember(member?.PreferredLanguage);
+
+    /// <summary>
+    /// What a statement line says. The ledger writes its own entries' words in English ("Payment
+    /// (Wire)", "Voided: …"); a member reading German or French gets them in theirs. What staff
+    /// typed on a charge stays as they typed it.
+    /// </summary>
+    private static string Describe(StatementLineDto line, string language)
+    {
+        if (language == AppLanguages.English) return line.Description;
+        if (line.Side == "payment")
+            return line.EntryType switch
+            {
+                ClubEntryTypes.Payment => line.Method is { } method
+                    ? MemberTexts.T(language, "line.paymentBy", ("method", MemberTexts.Method(language, method)))
+                    : MemberTexts.T(language, "line.payment"),
+                ClubEntryTypes.Void => MemberTexts.T(language, "line.paymentVoided"),
+                ClubEntryTypes.Refund => MemberTexts.T(language, "line.refund"),
+                _ => line.Description,
+            };
+        const string voided = "Voided: ";
+        return line.ReversesId != null && line.Description.StartsWith(voided, StringComparison.Ordinal)
+            ? MemberTexts.T(language, "line.voided", ("description", line.Description[voided.Length..]))
+            : line.Description;
+    }
 
     private static CultureInfo Culture(string locale)
     {

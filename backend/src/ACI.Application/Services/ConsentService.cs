@@ -193,6 +193,9 @@ public sealed class ConsentService : IConsentService, IMemberMailRules
     public async Task<bool> MemberExistsAsync(Guid organizationId, Guid memberId, CancellationToken ct = default) =>
         await _club.MemberAsync(memberId, organizationId, ct) != null;
 
+    public async Task<string?> PreferredLanguageAsync(Guid organizationId, Guid memberId, CancellationToken ct = default) =>
+        (await _club.MemberAsync(memberId, organizationId, ct))?.PreferredLanguage;
+
     public async Task<MailRefusal?> MarketingRefusalAsync(Guid organizationId, Guid memberId, string channel, CancellationToken ct = default)
     {
         var standing = (await _consent.CurrentAsync(organizationId, ConsentSubjects.Member, [memberId], channel, ConsentPurposes.Marketing, ct))

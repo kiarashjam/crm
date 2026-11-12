@@ -38,6 +38,18 @@ public static class AppLanguages
         Normalise(preferred) ?? Normalise(workspaceLocale) ?? English;
 
     /// <summary>
+    /// The language the club writes to a member in: the one set on the member, else English.
+    /// </summary>
+    /// <remarks>
+    /// Not the workspace's locale: every member was written to in English before languages
+    /// existed, and most workspaces still carry the de-CH locale they were created with, French
+    /// clubs included, so falling back to it would switch every existing member's statements to
+    /// German overnight. A member's language is set where they join instead: the member form
+    /// offers the workspace's language first, an applicant's is the one they applied in.
+    /// </remarks>
+    public static string ForMember(string? preferred) => Normalise(preferred) ?? English;
+
+    /// <summary>
     /// The culture dates are written in for a language and a workspace: the language with the
     /// workspace's region, so month names are the reader's and the order is the region's
     /// ("fr" in a de-CH workspace writes fr-CH).

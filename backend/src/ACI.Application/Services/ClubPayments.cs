@@ -33,8 +33,10 @@ public interface IClubQrBills
     /// <paramref name="amountDue"/>, with a reference that names the member and the statement
     /// (the same one every time the statement is printed). Null when the club has no bank
     /// details, nothing is due, or the currency is not CHF or EUR: no slip is printed then.
+    /// Its message ("Statement October 2026") is in <paramref name="language"/>, the statement's.
     /// </summary>
-    Task<QrBill?> ForStatementAsync(Guid organizationId, Guid memberId, DateTime fromUtc, DateTime toUtc, decimal amountDue, string currency, CancellationToken ct = default);
+    Task<QrBill?> ForStatementAsync(Guid organizationId, Guid memberId, DateTime fromUtc, DateTime toUtc, decimal amountDue, string currency,
+        string? language = null, CancellationToken ct = default);
 
     /// <summary>
     /// The QR-bill for an invoice of one charge that asks for <paramref name="amountDue"/>, with
@@ -291,11 +293,13 @@ public sealed record PayLinkDto(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? EmailReason = null);
 
 /// <summary>What the public pay page shows: the club, whom it is for, what and how much. No account details.</summary>
+/// <param name="Language">The member's language (en, de, fr), which the page reads in unless the visitor picks another.</param>
 public sealed record PublicPayPageDto(
     string ClubName, string MemberFirstName, string Purpose, string Description, decimal Amount, string Currency,
     IReadOnlyList<string> Methods, bool Available,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Reason,
-    bool AutoPay);
+    bool AutoPay,
+    string Language = "en");
 
 public sealed record CheckoutStartedDto(string Url);
 

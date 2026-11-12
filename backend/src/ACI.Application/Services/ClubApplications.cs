@@ -96,7 +96,8 @@ public interface IClubApplications
     Task<Result<ApplicationFormDto>> RotateFormAsync(Guid organizationId, Guid userId, CancellationToken ct = default);
 
     /// <summary>What a visitor to the form's link sees, or null when the link is not open.</summary>
-    Task<PublicApplicationFormDto?> PublicFormAsync(string token, CancellationToken ct = default);
+    /// <remarks><paramref name="language"/>: the language the form is read in, for the standard words it shows.</remarks>
+    Task<PublicApplicationFormDto?> PublicFormAsync(string token, string? language = null, CancellationToken ct = default);
 
     /// <summary>
     /// A visitor's application from the public form: a Submitted application, linked to the lead
@@ -178,6 +179,7 @@ public sealed class ApplicationFormRequest
 /// <summary>What a stranger submits on the public application form.</summary>
 /// <param name="Website">A honeypot: hidden from people, filled by bots. A filled one is thanked and dropped.</param>
 /// <param name="MarketingConsent">Whether they agreed to news and offers by email: recorded either way.</param>
+/// <param name="Language">The language the form was filled in (en, de, fr): the member's language once approved.</param>
 public sealed record PublicApplicationRequest(
     [Required, StringLength(100, MinimumLength = 1)] string FirstName,
     [Required, StringLength(100, MinimumLength = 1)] string LastName,
@@ -188,7 +190,8 @@ public sealed record PublicApplicationRequest(
     [StringLength(200)] string? ReferredByName,
     [StringLength(2000)] string? ReasonForJoining,
     bool MarketingConsent = false,
-    [StringLength(200)] string? Website = null);
+    [StringLength(200)] string? Website = null,
+    [StringLength(10)] string? Language = null);
 
 /// <summary>The whole of what the public form says back: no record, no ids.</summary>
 public sealed record PublicApplicationReceipt(string Message);
@@ -197,7 +200,9 @@ public sealed record PublicApplicationReceipt(string Message);
 public sealed record PublicTierDto(string Name, decimal Price, string Cadence, decimal? InitiationFee, string Currency);
 
 /// <param name="MarketingConsent">off, optional or required: whether the form shows the marketing checkbox, and must have it ticked (the workspace's privacy settings).</param>
-public sealed record PublicApplicationFormDto(string ClubName, string? Intro, string ConsentText, IReadOnlyList<PublicTierDto> Tiers, string MarketingConsent = "optional");
+/// <param name="Language">The club's language (from its locale), for a visitor whose browser speaks none of the app's: en, de, fr or null.</param>
+public sealed record PublicApplicationFormDto(string ClubName, string? Intro, string ConsentText, IReadOnlyList<PublicTierDto> Tiers, string MarketingConsent = "optional",
+    string? Language = null);
 
 public sealed record ApplicationFormDto(Guid Id, string PublicToken, string PublicPath, bool IsActive, string? Intro, string? SuccessMessage, string ConsentText, DateTime CreatedAtUtc);
 

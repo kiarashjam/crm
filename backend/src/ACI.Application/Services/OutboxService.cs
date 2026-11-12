@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using ACI.Application.Common;
+using ACI.Application.Common.I18n;
 using ACI.Application.Configuration;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
@@ -278,7 +279,8 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
         var mail = request.ForOwnTeam
             ? new OutreachBody(body, PlainTextEmail.ToHtml(body, null, sender.WorkspaceName), null)
             : purpose != null && request.MemberId is Guid memberId
-                ? _outreach.MemberBody(organizationId, sender.WorkspaceName, body, memberId, to[0], purpose == ConsentPurposes.Marketing)
+                ? _outreach.MemberBody(organizationId, sender.WorkspaceName, body, memberId, to[0], purpose == ConsentPurposes.Marketing,
+                    purpose == ConsentPurposes.Marketing ? await MemberLanguageAsync(organizationId, memberId, ct) : AppLanguages.English)
                 : _outreach.Body(organizationId, sender.WorkspaceName, body, to.Concat(cc).ToList(), tracking);
 
         var id = Guid.NewGuid();
@@ -380,6 +382,13 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
     }
 
     // ── Sending ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The language a member's marketing footer is in: theirs, else English (see
+    /// <see cref="AppLanguages.ForMember"/>). The words above it are whatever staff wrote.
+    /// </summary>
+    private async Task<string> MemberLanguageAsync(Guid organizationId, Guid memberId, CancellationToken ct) =>
+        AppLanguages.ForMember(_members == null ? null : await _members.PreferredLanguageAsync(organizationId, memberId, ct));
 
     public Task<OutboxAttempt> SendNowAsync(OutboundMessage message, CancellationToken ct = default) =>
         AttemptEmailAsync(message, personWaiting: true, ct);
