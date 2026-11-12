@@ -412,6 +412,12 @@ forms, unsubscribe links, contracts sent for signing, a portal's handoff reports
 images). `GET /api/organizations` says which modules each workspace has on
 (`salesEnabled`, `clubEnabled`).
 
+What one module does to the other's records stops with it too. With the club off, a deal's
+handoff adds nobody to the club's members and a countersigned contract admits nobody (the
+application stays open for when the club is on again). With Sales off, an automation puts no
+lead in an outreach sequence (leads a website form posts are still kept), search leaves out
+leads and deals, and the weekly digest leaves the workspace out.
+
 ### Club reports
 
 Summed by the database from the ledger, in the workspace's currency first (any other
