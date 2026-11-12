@@ -28,9 +28,10 @@ public static class ClubReportCsv
         DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), zone))
             .ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
-    public static byte[] Write(ClubReportDto report, DateTime nowUtc)
+    /// <param name="separator">The workspace's column separator (<see cref="CsvExport.SeparatorFor"/>).</param>
+    public static byte[] Write(ClubReportDto report, DateTime nowUtc, char separator = CsvExport.Comma)
     {
-        var csv = new CsvExport(Headers);
+        var csv = new CsvExport(separator, Headers);
         // Days on the workspace's calendar, as the periods are: its midnight is the evening before in UTC.
         var zone = RegionalSettings.ZoneOf(report.TimeZone);
         string Day(DateTime utc) => ClubReportCsv.Day(utc, zone);

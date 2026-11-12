@@ -1,6 +1,7 @@
 using ACI.Application.Common;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
+using ACI.Application.Services;
 using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -25,11 +26,14 @@ public class CompaniesController : ControllerBase
     /// <summary>
     /// Initializes a new instance of the CompaniesController.
     /// </summary>
-    public CompaniesController(ICompanyService companyService, ICurrentUserService currentUser)
+    public CompaniesController(ICompanyService companyService, ICurrentUserService currentUser, IWorkspaceCsv csv)
     {
         _companyService = companyService;
         _currentUser = currentUser;
+        _csv = csv;
     }
+
+    private readonly IWorkspaceCsv _csv;
 
     /// <summary>
     /// Retrieves companies with pagination, filters and sorting, all applied to the whole
@@ -116,7 +120,8 @@ public class CompaniesController : ControllerBase
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
         var file = await _companyService.ExportAsync(
-            userId.Value, _currentUser.CurrentOrganizationId, Options(search, industry, hasIndustry, size, sortBy, sortDir), ct);
+            userId.Value, _currentUser.CurrentOrganizationId, Options(search, industry, hasIndustry, size, sortBy, sortDir),
+            await _csv.SeparatorAsync(_currentUser.CurrentOrganizationId, ct), ct);
         Response.Headers["X-Total-Count"] = file.Total.ToString(System.Globalization.CultureInfo.InvariantCulture);
         Response.Headers["X-Exported-Count"] = file.Exported.ToString(System.Globalization.CultureInfo.InvariantCulture);
         return File(file.Content, "text/csv; charset=utf-8", file.FileName);

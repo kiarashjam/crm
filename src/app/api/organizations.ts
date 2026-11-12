@@ -24,6 +24,8 @@ export interface Organization {
   salesEnabled?: boolean;
   /** Whether the Club module is on (members, house accounts, events, campaigns…). Older servers send none: on. */
   clubEnabled?: boolean;
+  /** Whether CSV exports split columns by a semicolon (Excel set up for Switzerland) rather than a comma. */
+  csvSemicolon?: boolean;
 }
 
 /**
@@ -251,7 +253,7 @@ export async function createOrganization(name: string): Promise<Organization | n
  */
 export async function updateOrganizationSettings(
   id: string,
-  settings: { currency?: string; locale?: string; timeZone?: string; staleDealDays?: number },
+  settings: { currency?: string; locale?: string; timeZone?: string; staleDealDays?: number; csvSemicolon?: boolean },
 ): Promise<Organization | null> {
   const org = await authFetchJson<Organization>(`/api/organizations/${id}/settings`, {
     method: 'PUT',

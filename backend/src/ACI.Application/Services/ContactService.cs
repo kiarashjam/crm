@@ -81,12 +81,12 @@ public class ContactService : IContactService
         _repository.GetStatsAsync(userId, organizationId, ct);
 
     /// <inheritdoc />
-    public async Task<ExportFile> ExportAsync(Guid userId, Guid? organizationId, ContactQueryOptions options, CancellationToken ct = default)
+    public async Task<ExportFile> ExportAsync(Guid userId, Guid? organizationId, ContactQueryOptions options, char separator = CsvExport.Comma, CancellationToken ct = default)
     {
         // The rows the list would show, all of them: the page used to export the twenty
         // contacts on screen.
         var (rows, total) = await _repository.GetExportRowsAsync(userId, organizationId, options, MaxExportRows, ct);
-        var csv = new CsvExport("Name", "Email", "Phone", "Job title", "Company", "Do not contact", "Archived", "Last activity (UTC)", "Added (UTC)");
+        var csv = new CsvExport(separator, "Name", "Email", "Phone", "Job title", "Company", "Do not contact", "Archived", "Last activity (UTC)", "Added (UTC)");
         foreach (var r in rows)
         {
             csv.Row(r.Name, r.Email, r.Phone, r.JobTitle, r.CompanyName, CsvExport.YesNo(r.DoNotContact), CsvExport.YesNo(r.IsArchived),

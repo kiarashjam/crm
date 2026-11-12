@@ -1,6 +1,7 @@
 using ACI.Application.Common;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
+using ACI.Application.Services;
 using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -25,11 +26,14 @@ public class ContactsController : ControllerBase
     /// <summary>
     /// Initializes a new instance of the ContactsController.
     /// </summary>
-    public ContactsController(IContactService contactService, ICurrentUserService currentUser)
+    public ContactsController(IContactService contactService, ICurrentUserService currentUser, IWorkspaceCsv csv)
     {
         _contactService = contactService;
         _currentUser = currentUser;
+        _csv = csv;
     }
+
+    private readonly IWorkspaceCsv _csv;
 
     /// <summary>
     /// Retrieves contacts with pagination, filters and sorting, all applied to the whole workspace.
@@ -123,6 +127,7 @@ public class ContactsController : ControllerBase
             userId.Value,
             _currentUser.CurrentOrganizationId,
             Options(search, includeArchived, companyId, status, hasCompany, activity, sortBy, sortDir),
+            await _csv.SeparatorAsync(_currentUser.CurrentOrganizationId, ct),
             ct);
         Response.Headers["X-Total-Count"] = file.Total.ToString(System.Globalization.CultureInfo.InvariantCulture);
         Response.Headers["X-Exported-Count"] = file.Exported.ToString(System.Globalization.CultureInfo.InvariantCulture);

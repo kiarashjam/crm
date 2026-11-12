@@ -70,7 +70,7 @@ public class CompanyService : ICompanyService
         _repository.GetSummaryAsync(userId, organizationId, ct);
 
     /// <inheritdoc />
-    public async Task<ExportFile> ExportAsync(Guid userId, Guid? organizationId, CompanyQueryOptions options, CancellationToken ct = default)
+    public async Task<ExportFile> ExportAsync(Guid userId, Guid? organizationId, CompanyQueryOptions options, char separator = CsvExport.Comma, CancellationToken ct = default)
     {
         var (rows, total) = await _repository.GetExportRowsAsync(userId, organizationId, options, MaxExportRows, ct);
         var stats = new Dictionary<Guid, (Guid CompanyId, int ContactCount, int DealCount, IReadOnlyList<CurrencyTotalDto> DealTotals)>();
@@ -78,7 +78,7 @@ public class CompanyService : ICompanyService
             foreach (var s in await _repository.GetStatsAsync(chunk, userId, organizationId, ct))
                 stats[s.CompanyId] = s;
 
-        var csv = new CsvExport("Name", "Domain", "Industry", "Size", "Website", "Location", "Contacts", "Deals", "Deal value", "Added (UTC)");
+        var csv = new CsvExport(separator, "Name", "Domain", "Industry", "Size", "Website", "Location", "Contacts", "Deals", "Deal value", "Added (UTC)");
         foreach (var c in rows)
         {
             stats.TryGetValue(c.Id, out var s);

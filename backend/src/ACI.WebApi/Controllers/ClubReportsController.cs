@@ -27,11 +27,13 @@ public class ClubReportsController : ControllerBase
 {
     private readonly IClubReports _reports;
     private readonly ICurrentUserService _currentUser;
+    private readonly IWorkspaceCsv _csv;
 
-    public ClubReportsController(IClubReports reports, ICurrentUserService currentUser)
+    public ClubReportsController(IClubReports reports, ICurrentUserService currentUser, IWorkspaceCsv csv)
     {
         _reports = reports;
         _currentUser = currentUser;
+        _csv = csv;
     }
 
     /// <summary>Every figure on Club Reports for a period; left out, the last twelve months by month.</summary>
@@ -63,7 +65,8 @@ public class ClubReportsController : ControllerBase
         var result = await _reports.ReportAsync(org, new ClubReportQuery(from?.UtcDateTime, to?.UtcDateTime, grain), ct);
         if (!result.IsSuccess) return result.Error.ToProblemResult();
         var report = result.Value;
-        return File(ClubReportCsv.Write(report, DateTime.UtcNow), "text/csv; charset=utf-8", ClubReportCsv.FileName(report));
+        var separator = await _csv.SeparatorAsync(org, ct);
+        return File(ClubReportCsv.Write(report, DateTime.UtcNow, separator), "text/csv; charset=utf-8", ClubReportCsv.FileName(report));
     }
 
     /// <summary>What the club's day holds, on the workspace's calendar.</summary>

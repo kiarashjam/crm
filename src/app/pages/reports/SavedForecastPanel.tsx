@@ -15,6 +15,7 @@ import {
   getForecastSnapshots, saveForecastSnapshot, type ForecastSnapshotSet,
 } from '@/app/api/reporting';
 import { downloadCsv } from '@/app/lib/exportCsv';
+import { useCsvSeparator } from '@/app/hooks/useCsvSeparator';
 import { CsvButton } from './ReportUI';
 import { savedForecastTable } from './reportCsv';
 import { addMonths, monthLabel, monthOf } from './reportFilters';
@@ -58,6 +59,7 @@ export function SavedForecastPanel() {
   // behind the club's clock, the 1st there was still last month here.
   const money = useMoney();
   const { timeZone } = money;
+  const csvSeparator = useCsvSeparator();
   const amount = (value: number, currency: string) => money.format(value, currency, 'never');
   const thisMonth = monthOf(new Date(), timeZone);
   const [month, setMonth] = useState(thisMonth);
@@ -185,7 +187,7 @@ export function SavedForecastPanel() {
               what="this saved forecast"
               onClick={() => {
                 const t = savedForecastTable(set.rows, chosen?.savedByName ?? '');
-                downloadCsv(`cadence-${t.name}-${set.month}`, t.rows, t.columns);
+                downloadCsv(`cadence-${t.name}-${set.month}`, t.rows, t.columns, csvSeparator);
               }}
             />
           </div>

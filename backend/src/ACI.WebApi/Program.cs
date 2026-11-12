@@ -314,6 +314,7 @@ try
     builder.Services.AddSingleton<ISecurityStampCache>(sp => sp.GetRequiredService<ACI.WebApi.Services.SecurityStampCache>());
     builder.Services.AddScoped<IAuthService, AuthService>();
     builder.Services.AddScoped<IContactService, ContactService>();
+    builder.Services.AddScoped<IWorkspaceCsv, WorkspaceCsv>();
     builder.Services.AddScoped<IContactRelationshipService, ContactRelationshipService>();
     builder.Services.AddScoped<IDealService, DealService>();
     builder.Services.AddScoped<ILeadService, LeadService>();

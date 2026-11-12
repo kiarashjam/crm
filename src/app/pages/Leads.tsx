@@ -52,6 +52,7 @@ import { relationshipLabel } from '@/app/api/relationships';
 import { bulkUpdateLeads } from '@/app/api/leadOps';
 import { getCurrentUser, type AuthUser } from '@/app/lib/auth';
 import { csvCell } from '@/app/lib/exportCsv';
+import { useCsvSeparator } from '@/app/hooks/useCsvSeparator';
 import { useOrg } from '@/app/contexts/OrgContext';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -153,6 +154,7 @@ export default function Leads() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { currentOrg, isReadOnly: viewOnly } = useOrg();
+  const csvSeparator = useCsvSeparator();
   // What the member's role lets them do here: work leads, delete them, export them.
   const isReadOnly = viewOnly || !orgCan(currentOrg, PERMISSION.EditRecords);
   const canDelete = !viewOnly && orgCan(currentOrg, PERMISSION.DeleteRecords);
@@ -809,8 +811,8 @@ export default function Leads() {
       // The shared cell encoder: names and descriptions arrive from the public form
       // and the webhook, and one starting with "=" must not run as a formula.
       const csvContent = [
-        headers.map((header) => csvCell(header)).join(','),
-        ...rows.map((row) => row.map((cell) => csvCell(cell)).join(',')),
+        headers.map((header) => csvCell(header, csvSeparator)).join(csvSeparator),
+        ...rows.map((row) => row.map((cell) => csvCell(cell, csvSeparator)).join(csvSeparator)),
       ].join('\n');
 
       const csvWithBom = `\uFEFF${csvContent}`;

@@ -3,7 +3,8 @@ import { common } from './common';
 import { publicPages } from './publicPages';
 import { messages } from './messages';
 import { signing } from './signing';
+import { settings } from './settings';
 
-export const sections = { common, publicPages, messages, signing };
+export const sections = { common, publicPages, messages, signing, settings };
 
-export const de = { ...common, ...publicPages, ...messages, ...signing };
+export const de = { ...common, ...publicPages, ...messages, ...signing, ...settings };
