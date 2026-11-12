@@ -156,11 +156,12 @@ public class ClubBillingRunTests
 
         var runs = (await Json(await client.GetAsync("/api/billing/runs"), "runs")).EnumerateArray().ToList();
         runs.Should().HaveCount(2);
-        var manual = runs[0];
-        (manual.GetProperty("trigger").GetString(), manual.GetProperty("chargesPosted").GetInt32()).Should().Be(("manual", 0));
+        // Each by its trigger, not its place in the newest-first list: between midnight and
+        // 03:00 in Zurich, RunTime() holds the daily run at 03:01, after the manual one.
+        var manual = runs.Single(r => r.GetProperty("trigger").GetString() == "manual");
+        manual.GetProperty("chargesPosted").GetInt32().Should().Be(0);
         manual.GetProperty("startedByName").GetString().Should().NotBeNullOrEmpty();
-        var daily = runs[1];
-        daily.GetProperty("trigger").GetString().Should().Be("schedule");
+        var daily = runs.Single(r => r.GetProperty("trigger").GetString() == "schedule");
         daily.GetProperty("status").GetString().Should().Be("succeeded");
         (daily.GetProperty("subscriptionsBilled").GetInt32(), daily.GetProperty("chargesPosted").GetInt32(), daily.GetProperty("amountBilled").GetDecimal())
             .Should().Be((1, 3, 300m));
