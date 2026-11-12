@@ -178,9 +178,12 @@ export function PrivacySettingsPanel() {
         </fieldset>
         {form.marketingConsent !== 'off' && (
           <div className="mt-4 space-y-1">
-            <Label htmlFor="pv-consent-text">The box&apos;s words</Label>
+            <Label htmlFor="pv-consent-text">The box&apos;s words on the enquiry form</Label>
             <Textarea id="pv-consent-text" rows={2} maxLength={500} value={form.marketingConsentText} onChange={(e) => set({ marketingConsentText: e.target.value })} />
-            <p className="text-xs text-slate-500">Say what they will get and that they can change their mind; the privacy notice prints them too.</p>
+            <p className="text-xs text-slate-500">
+              Say what they will get and that they can change their mind; the privacy notice prints them too. The membership
+              application shows the words set on its own form.
+            </p>
           </div>
         )}
       </section>

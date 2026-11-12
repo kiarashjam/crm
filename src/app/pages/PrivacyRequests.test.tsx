@@ -178,6 +178,26 @@ describe('a request', () => {
     expect(toast.success).toHaveBeenCalledWith(expect.stringMatching(/recorded in the audit log/));
   });
 
+  it("keeps a ticked record's own address with it, and lets an address go only once no ticked record has it", async () => {
+    as('owner');
+    const user = userEvent.setup();
+    show('/privacy-requests?lead=l1');
+
+    // The server always takes a chosen record's address with it: unticking it alone would do nothing.
+    const address = await screen.findByRole('checkbox', { name: /^anna@example\.ch/ });
+    expect(address).toBeChecked();
+    expect(address).toBeDisabled();
+    expect(screen.getByText('(on a ticked record)')).toBeInTheDocument();
+
+    for (const name of [/^Lead Anna Keller ·/, /^Member Anna Keller/, /Anna Keller \(old\)/])
+      await user.click(screen.getByRole('checkbox', { name }));
+    expect(address).toBeEnabled();
+    expect(screen.getByRole('button', { name: /Download everything held/ })).toBeEnabled();
+    await user.click(address);
+    expect(address).not.toBeChecked();
+    expect(screen.getByRole('button', { name: /Download everything held/ })).toBeDisabled();
+  });
+
   it('finds by an email address typed in', async () => {
     as('owner');
     const user = userEvent.setup();

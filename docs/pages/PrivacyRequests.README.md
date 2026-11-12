@@ -15,7 +15,8 @@ someone at once and an erasure cannot be undone. The menu offers it only to them
 - **Requests**: find a person by email, or open a lead's, contact's or member's page and choose
   *Privacy*. The server finds their records by the address and the links between records (never a
   name alone), and every record and address found starts ticked; staff untick what is someone
-  else's. *Download everything held* gives one zip (each area as JSON, a readable summary, the
+  else's (an address on a ticked record stays ticked: it always goes with the record). *Download
+  everything held* gives one zip (each area as JSON, a readable summary, the
   files on their records), written to the audit log. *Erase this person* shows the server's dry
   run (what is deleted, anonymised and kept in the books under a pseudonym, cancelled, or kept and
   why, with warnings such as money owed or a card saved with Stripe), then erases on the typed word
@@ -25,7 +26,8 @@ someone at once and an erasure cannot be undone. The menu offers it only to them
 - **Retention**: each rule with its period (all off until set), what a run would remove now and
   what it keeps although the period is over, *Run now* on a second click, and the runs.
 - **Settings**: who answers for the data (printed on the privacy notice), marketing consent on the
-  public forms (off, optional or required, and the box's words), and the retention periods. Saved
+  public forms (off, optional or required, and the enquiry form's words; the application form has
+  its own), and the retention periods. Saved
   against the version read; a stale save is refused and the settings are read again.
 
 ## API / Data

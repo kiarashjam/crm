@@ -58,7 +58,16 @@ export function PersonRequestPanel({
 
   const data = found.data;
   const chosenRecords = useMemo(() => (data?.records ?? []).filter((r) => !unticked.has(recordKey(r))), [data, unticked]);
-  const chosenAddresses = useMemo(() => (data?.addresses ?? []).filter((a) => !unticked.has(addressKey(a))), [data, unticked]);
+  // The server always takes a ticked record's own address with it (the mail to that record is
+  // the person's), so such an address cannot be left out by itself: it shows ticked and fixed.
+  const held = useMemo(
+    () => new Set(chosenRecords.map((r) => r.email?.trim().toLowerCase()).filter((a): a is string => !!a)),
+    [chosenRecords],
+  );
+  const chosenAddresses = useMemo(
+    () => (data?.addresses ?? []).filter((a) => held.has(a) || !unticked.has(addressKey(a))),
+    [data, unticked, held],
+  );
   const nothingChosen = chosenRecords.length === 0 && chosenAddresses.length === 0;
 
   const toggle = (key: string) => setUnticked((current) => {
@@ -188,12 +197,21 @@ export function PersonRequestPanel({
           {data.addresses.length > 0 && (
             <fieldset className="mt-4">
               <legend className="text-sm font-medium text-slate-900">Email addresses</legend>
-              <p className="text-xs text-slate-500">Mail sent and received, consent and suppression are found by these.</p>
+              <p className="text-xs text-slate-500">
+                Mail sent and received, consent and suppression are found by these. An address on a ticked record always goes with it.
+              </p>
               <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2">
                 {data.addresses.map((a) => (
                   <label key={a} className="flex items-center gap-2 text-sm text-slate-700">
-                    <input type="checkbox" className="h-4 w-4 rounded border-slate-300" checked={!unticked.has(addressKey(a))} onChange={() => toggle(addressKey(a))} />
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-slate-300"
+                      checked={held.has(a) || !unticked.has(addressKey(a))}
+                      disabled={held.has(a)}
+                      onChange={() => toggle(addressKey(a))}
+                    />
                     {a}
+                    {held.has(a) && <span className="text-xs text-slate-500">(on a ticked record)</span>}
                   </label>
                 ))}
               </div>
