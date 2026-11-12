@@ -1,4 +1,6 @@
 using System.Net;
+using System.Reflection;
+using System.Runtime.ExceptionServices;
 using System.Text.Json;
 using ACI.Application.Common;
 using ACI.Application.DTOs;
@@ -6,10 +8,13 @@ using ACI.Application.Interfaces;
 using ACI.Application.Services;
 using ACI.Domain.Entities;
 using ACI.Domain.Enums;
+using ACI.Infrastructure.Persistence;
+using ACI.Infrastructure.Repositories;
 using ACI.WebApi.Services;
 using ACI.WebApi.Tests.Helpers;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using static ACI.WebApi.Tests.Helpers.Workspaces;
 
@@ -34,6 +39,49 @@ public class AutomationRunsTests
     public sealed class Flakiness
     {
         public volatile bool FailAutomationEmails;
+
+        /// <summary>Whether a new task fails to save, as if the database were down.</summary>
+        public volatile bool FailNewTasks;
+    }
+
+    /// <summary>
+    /// The task repository, failing to save a new task while told to: the task is put in the
+    /// unit of work, as the real one does, and the save throws. The task service catches that
+    /// and answers with a server error.
+    /// </summary>
+    public class FlakyTasks : DispatchProxy
+    {
+        public ITaskRepository Inner { get; set; } = null!;
+        public AppDbContext Db { get; set; } = null!;
+        public Flakiness Flakiness { get; set; } = null!;
+
+        public static ITaskRepository Create(IServiceProvider services)
+        {
+            var proxy = DispatchProxy.Create<ITaskRepository, FlakyTasks>();
+            var flaky = (FlakyTasks)(object)proxy;
+            flaky.Db = services.GetRequiredService<AppDbContext>();
+            flaky.Inner = new TaskRepository(flaky.Db);
+            flaky.Flakiness = services.GetRequiredService<Flakiness>();
+            return proxy;
+        }
+
+        protected override object? Invoke(MethodInfo? method, object?[]? args)
+        {
+            if (method!.Name == nameof(ITaskRepository.AddAsync) && Flakiness.FailNewTasks)
+            {
+                Db.TaskItems.Add((TaskItem)args![0]!);
+                return System.Threading.Tasks.Task.FromException<TaskItem>(new DbUpdateException("The database could not be reached."));
+            }
+            try
+            {
+                return method.Invoke(Inner, args);
+            }
+            catch (TargetInvocationException ex) when (ex.InnerException != null)
+            {
+                ExceptionDispatchInfo.Capture(ex.InnerException).Throw();
+                throw;
+            }
+        }
     }
 
     /// <summary>The outbox, failing automation emails while told to.</summary>
@@ -80,6 +128,7 @@ public class AutomationRunsTests
                 services.AddSingleton(Flakiness);
                 services.AddSingleton<ILedgerReadObserver>(Gate);
                 services.AddScoped<IOutbox>(sp => new FlakyOutbox(sp.GetRequiredService<OutboxService>(), sp.GetRequiredService<Flakiness>()));
+                services.AddScoped<ITaskRepository>(FlakyTasks.Create);
             });
         }
 
@@ -413,6 +462,29 @@ public class AutomationRunsTests
         var first = (await LogAsync(owner, run.Id)).GetProperty("steps").EnumerateArray().First();
         first.GetProperty("outcome").GetString().Should().Be("skipped");
         first.GetProperty("summary").GetString().Should().Contain("No email was sent");
+    }
+
+    [Fact]
+    public async Task ATaskTheDatabaseCouldNotSaveIsTriedAgain_NotSkipped_AndIsMadeOnce()
+    {
+        await using var app = new App();
+        var (owner, _, _) = await WorkspaceAsync(app);
+        var ruleId = await RuleAsync(owner, new { name = "Qualify", trigger = "lead.created", actions = new object[] { Task("Qualify the lead") } });
+        // The task service catches the failed save and answers with a server error.
+        app.Flakiness.FailNewTasks = true;
+
+        var leadId = await LeadAsync(owner);
+
+        var run = await RunOfAsync(app, ruleId);
+        run.Status.Should().Be(AutomationRunStatuses.Retrying, "a task the database could not save is tried again, not skipped as if it were refused");
+        (await TasksAsync(app, leadId)).Should().BeEmpty("the half-made task is not saved with the run's log");
+
+        app.Flakiness.FailNewTasks = false;
+        app.Clock.Advance(TimeSpan.FromMinutes(1).Add(TimeSpan.FromSeconds(1)));
+        await app.RunDueAsync();
+
+        (await RunOfAsync(app, ruleId)).Status.Should().Be(AutomationRunStatuses.Completed);
+        (await TasksAsync(app, leadId)).Should().ContainSingle(t => t.Title == "Qualify the lead");
     }
 
     // ── claims ───────────────────────────────────────────────────────────────

@@ -1,3 +1,4 @@
+using ACI.Application.Common;
 using ACI.Application.DTOs;
 using ACI.Domain.Common;
 using ACI.Domain.Entities;
@@ -51,7 +52,14 @@ public sealed partial class AutomationEngine
             MadeBy = $"the automation \"{run.RuleName}\"",
             FromImport = run.FromImport,
         }, ct);
-        if (created.IsFailure) return Outcome.Skip($"No task was created: {created.Error.Description}");
+        // The task service answers an exception it caught (the database could not save the task)
+        // with a server error: that is tried again later, like a step that throws. Its other
+        // refusals (a link outside the workspace, say) would be the same next time, so they are
+        // logged and the run goes on.
+        if (created.IsFailure)
+            return created.Error.Code == DomainErrors.General.ServerError.Code
+                ? Outcome.Failed("The task could not be saved.")
+                : Outcome.Skip($"No task was created: {created.Error.Description}");
         return Outcome.Did($"Created the task \"{title}\".", taskId: created.Value.Id);
     }
 

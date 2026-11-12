@@ -383,6 +383,11 @@ public sealed partial class AutomationEngine : IAutomationEngine
                 try
                 {
                     outcome = await StepAsync(run, rule, step, steps, trigger, now, ct);
+                    // A step can fail without throwing, when a service catches the error and
+                    // answers with it: what it left half-made in the unit of work is taken back
+                    // too, or the save of the run's log would make it after all, and the retry
+                    // make it a second time.
+                    if (outcome.Kind == Outcome.Fail) _runs.RevertTo(checkpoint);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
                 {
