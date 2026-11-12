@@ -8,19 +8,18 @@ namespace ACI.Application.DTOs;
 public record CreateLeadRequest
 {
     /// <summary>
-    /// Lead's full name.
+    /// Lead's full name, or an establishment's name.
     /// </summary>
     [Required(ErrorMessage = "Name is required")]
     [StringLength(200, MinimumLength = 1, ErrorMessage = "Name must be between 1 and 200 characters")]
     public required string Name { get; init; }
 
     /// <summary>
-    /// Lead's email address.
+    /// Lead's email address: required for a person, and an establishment's own email when it
+    /// has one. Checked by the service, which knows which the lead is.
     /// </summary>
-    [Required(ErrorMessage = "Email is required")]
-    [EmailAddress(ErrorMessage = "Invalid email format")]
     [StringLength(254, ErrorMessage = "Email cannot exceed 254 characters")]
-    public required string Email { get; init; }
+    public string? Email { get; init; }
 
     /// <summary>
     /// Lead's phone number (optional).
@@ -96,6 +95,42 @@ public record CreateLeadRequest
 
     [StringLength(40)]
     public string? CompanySize { get; init; }
+
+    /// <summary>"person" or "establishment". Left out: the workspace's kind (see Organization.LeadKinds).</summary>
+    [StringLength(20)]
+    public string? Kind { get; init; }
+
+    /// <summary>For an establishment: restaurant, cafe, bar, hotel, bakery, catering, food_truck, shop or other.</summary>
+    [StringLength(40)]
+    public string? EstablishmentType { get; init; }
+
+    [StringLength(200)]
+    public string? AddressLine { get; init; }
+
+    [StringLength(20)]
+    public string? PostalCode { get; init; }
+
+    [StringLength(100)]
+    public string? City { get; init; }
+
+    [StringLength(300)]
+    public string? Website { get; init; }
+
+    [Range(0, 100000)]
+    public int? Seats { get; init; }
+
+    /// <summary>The person to speak to at an establishment.</summary>
+    [StringLength(200)]
+    public string? ContactPersonName { get; init; }
+
+    [StringLength(100)]
+    public string? ContactPersonRole { get; init; }
+
+    [StringLength(254)]
+    public string? ContactPersonEmail { get; init; }
+
+    [StringLength(50)]
+    public string? ContactPersonPhone { get; init; }
 
     /// <summary>
     /// The lead's five-phase pipeline as JSON, when it arrives with work already

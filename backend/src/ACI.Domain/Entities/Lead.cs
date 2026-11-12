@@ -35,6 +35,29 @@ public class Lead : Common.BaseEntity, Common.IVersioned
     public string? Country { get; set; }
     public string? Industry { get; set; }
     public string? CompanySize { get; set; }
+
+    /// <summary>
+    /// Who the lead is: a person (<see cref="LeadKinds.Person"/>), or a business such as a
+    /// restaurant (<see cref="LeadKinds.Establishment"/>). For an establishment,
+    /// <see cref="Name"/> is the business's name, <see cref="Email"/> and <see cref="Phone"/>
+    /// its own (the email may be empty), and the person to speak to is the contact person.
+    /// </summary>
+    public string Kind { get; set; } = LeadKinds.Person;
+
+    /// <summary>What kind of establishment: one of <see cref="LeadKinds.EstablishmentTypes"/>.</summary>
+    public string? EstablishmentType { get; set; }
+    public string? AddressLine { get; set; }
+    public string? PostalCode { get; set; }
+    public string? City { get; set; }
+    public string? Website { get; set; }
+    /// <summary>How many guests it seats, for a restaurant, café or bar.</summary>
+    public int? Seats { get; set; }
+
+    /// <summary>The person to speak to at an establishment.</summary>
+    public string? ContactPersonName { get; set; }
+    public string? ContactPersonRole { get; set; }
+    public string? ContactPersonEmail { get; set; }
+    public string? ContactPersonPhone { get; set; }
     /// <summary>True when a person typed the score. Automatic rules leave it alone.</summary>
     public bool ScoreIsManual { get; set; }
     public DateTime? FirstResponseAtUtc { get; set; }

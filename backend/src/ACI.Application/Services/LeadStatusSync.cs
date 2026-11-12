@@ -142,7 +142,7 @@ public sealed class LeadStatusSync : ILeadStatusSync
         {
             await _automations.DispatchAsync("lead.status_changed", new AutomationEvent(
                 lead.OrganizationId, actorUserId, $"{lead.Id}:{lead.Status}", lead.Name,
-                LeadId: lead.Id, Email: lead.Email, AssigneeId: lead.AssignedToUserId, FromImport: fromImport), ct);
+                LeadId: lead.Id, Email: LeadKindRules.EmailOf(lead) ?? "", AssigneeId: lead.AssignedToUserId, FromImport: fromImport), ct);
         }
     }
 

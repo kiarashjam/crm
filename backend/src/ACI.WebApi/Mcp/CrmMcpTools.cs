@@ -461,14 +461,22 @@ public sealed class CrmMcpTools
 
     private static string FormatLead(LeadDto lead)
     {
+        var establishment = lead.Kind == "establishment";
         var parts = new List<string>
         {
             lead.Name,
-            lead.Email,
+            establishment ? "establishment" + (string.IsNullOrWhiteSpace(lead.EstablishmentType) ? "" : $" ({lead.EstablishmentType})") : lead.Email,
             lead.Status,
-            lead.CompanyName ?? "no company",
+            establishment ? (lead.City ?? "no city") : lead.CompanyName ?? "no company",
             $"id {lead.Id}",
         };
+        if (establishment && !string.IsNullOrWhiteSpace(lead.Email)) parts.Add($"email {lead.Email}");
+        if (establishment && !string.IsNullOrWhiteSpace(lead.ContactPersonName))
+            parts.Add($"contact person {lead.ContactPersonName}"
+                + (string.IsNullOrWhiteSpace(lead.ContactPersonRole) ? "" : $" ({lead.ContactPersonRole})")
+                + (string.IsNullOrWhiteSpace(lead.ContactPersonEmail) ? "" : $" {lead.ContactPersonEmail}"));
+        if (establishment && !string.IsNullOrWhiteSpace(lead.AddressLine)) parts.Add($"address {lead.AddressLine}");
+        if (establishment && !string.IsNullOrWhiteSpace(lead.Website)) parts.Add($"website {lead.Website}");
         if (!string.IsNullOrWhiteSpace(lead.Phone)) parts.Add($"phone {lead.Phone}");
         if (lead.LeadScore.HasValue) parts.Add($"lead score {lead.LeadScore.Value}");
         if (lead.LastContactedAt.HasValue) parts.Add($"last contacted {lead.LastContactedAt:yyyy-MM-dd}");

@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using ACI.Application;
+using ACI.Application.Common;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using ACI.Application.Services;
@@ -171,10 +172,18 @@ public class WebhookController : ControllerBase
         WebhookLeadRequest request,
         CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.Email))
-            return BadRequest(new { error = "Name and Email are required" });
+        // A person, or an establishment where the workspace takes them. A workspace of
+        // people only (a club) refuses establishments here as everywhere else.
+        var kind = LeadKindRules.Resolve(request.Kind, organization.LeadKinds);
+        if (kind.IsFailure)
+            return kind.Error.ToProblemResult();
+        var establishment = kind.Value == LeadKinds.Establishment;
 
-        if (!request.Email.Contains('@') || request.Email.Length < 3)
+        if (string.IsNullOrWhiteSpace(request.Name) || (!establishment && string.IsNullOrWhiteSpace(request.Email)))
+            return BadRequest(new { error = establishment ? "Name is required" : "Name and Email are required" });
+
+        var email = request.Email?.Trim() ?? "";
+        if (email.Length > 0 && (!email.Contains('@') || email.Length < 3))
             return BadRequest(new { error = "Invalid email format" });
 
         // Nobody signs in here: the key or password named the workspace, and the lead is
@@ -191,16 +200,25 @@ public class WebhookController : ControllerBase
         var summary = string.Join("\n", new[]
         {
             $"Name: {request.Name.Trim()}",
-            $"Email: {request.Email.Trim()}",
+            email.Length == 0 ? null : $"Email: {email}",
             string.IsNullOrWhiteSpace(request.Phone) ? null : $"Phone: {request.Phone.Trim()}",
             string.IsNullOrWhiteSpace(request.CompanyName) ? null : $"Company: {request.CompanyName.Trim()}",
+            !establishment || string.IsNullOrWhiteSpace(request.City) ? null : $"City: {request.City.Trim()}",
+            !establishment || string.IsNullOrWhiteSpace(request.ContactPersonName) ? null : $"Contact person: {request.ContactPersonName.Trim()}",
+            !establishment || string.IsNullOrWhiteSpace(request.ContactPersonEmail) ? null : $"Contact person email: {request.ContactPersonEmail.Trim()}",
         }.Where(line => line != null));
-        var existingId = await _leadOps.AttachInquiryAsync(organization.Id, organization.OwnerUserId, request.Email.Trim(), source, summary, ct);
+        var existingId = establishment
+            ? await _leadOps.AttachEstablishmentInquiryAsync(organization.Id, organization.OwnerUserId, request.Name.Trim(), request.City, email, source, summary, ct)
+            : await _leadOps.AttachInquiryAsync(organization.Id, organization.OwnerUserId, email, source, summary, ct);
         if (existingId != null)
-            return Ok(new { id = existingId, duplicate = true, message = "An open lead with this email already exists; the inquiry was added to it." });
+            return Ok(new { id = existingId, duplicate = true, message = establishment
+                ? "An open lead for this establishment already exists; the inquiry was added to it."
+                : "An open lead with this email already exists; the inquiry was added to it." });
 
+        // An establishment is its own company, found or made by the lead service; the
+        // company name is for a person's employer.
         Guid? companyId = null;
-        if (!string.IsNullOrWhiteSpace(request.CompanyName))
+        if (!establishment && !string.IsNullOrWhiteSpace(request.CompanyName))
         {
             var companyRequest = new CreateCompanyRequest { Name = request.CompanyName.Trim() };
             var companyResult = await _companyService.CreateAsync(organization.OwnerUserId, organization.Id, companyRequest, ct);
@@ -210,12 +228,24 @@ public class WebhookController : ControllerBase
 
         var leadRequest = new CreateLeadRequest
         {
+            Kind = kind.Value,
             Name = request.Name.Trim(),
-            Email = request.Email.Trim(),
+            Email = email,
             Phone = request.Phone?.Trim(),
             CompanyId = companyId,
             Source = source,
-            Status = "New"
+            Status = "New",
+            Country = request.Country?.Trim(),
+            EstablishmentType = establishment ? request.EstablishmentType : null,
+            AddressLine = establishment ? request.AddressLine : null,
+            PostalCode = establishment ? request.PostalCode : null,
+            City = establishment ? request.City : null,
+            Website = establishment ? request.Website : null,
+            Seats = establishment ? request.Seats : null,
+            ContactPersonName = establishment ? request.ContactPersonName : null,
+            ContactPersonRole = establishment ? request.ContactPersonRole : null,
+            ContactPersonEmail = establishment ? request.ContactPersonEmail : null,
+            ContactPersonPhone = establishment ? request.ContactPersonPhone : null,
         };
 
         var leadResult = await _leadService.CreateAsync(organization.OwnerUserId, organization.Id, leadRequest, ct);

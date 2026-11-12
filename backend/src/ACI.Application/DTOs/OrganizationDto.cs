@@ -17,10 +17,12 @@ public record OrganizationDto(
     string TimeZone = "Europe/Zurich",
     int StaleDealDays = StaleDeals.DefaultDays,
     string PermissionPreset = "",
-    IReadOnlyList<string>? Permissions = null);
+    IReadOnlyList<string>? Permissions = null,
+    /// <summary>What the workspace's leads are: "person" (people only), "establishment" or "both".</summary>
+    string LeadKinds = "person");
 
 /// <summary>
 /// What a workspace works in. Each field left out keeps its current value.
 /// </summary>
 /// <param name="StaleDealDays">Days without activity after which an open deal is stale, 1–365; 0 never flags one.</param>
-public record UpdateOrganizationSettingsRequest(string? Currency, string? Locale, string? TimeZone, int? StaleDealDays = null);
+public record UpdateOrganizationSettingsRequest(string? Currency, string? Locale, string? TimeZone, int? StaleDealDays = null, string? LeadKinds = null);
