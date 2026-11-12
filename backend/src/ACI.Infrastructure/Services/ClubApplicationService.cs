@@ -37,7 +37,7 @@ public sealed class ClubApplicationService : IClubApplications
     /// <summary>How long a claim holds an application for the request that made it.</summary>
     private static readonly TimeSpan ClaimFor = TimeSpan.FromMinutes(2);
 
-    private const string DefaultConsentText = "Yes, I would like to hear about news, events and offers from the club by email. I can change my mind at any time.";
+    internal const string DefaultConsentText = "Yes, I would like to hear about news, events and offers from the club by email. I can change my mind at any time.";
     private const string DefaultSuccess = "Thank you for applying. The membership committee will be in touch.";
     private const string LeadSource = "Membership application";
 

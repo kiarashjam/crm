@@ -18,7 +18,10 @@ services the data goes to, where it is kept, how long, and how to use each right
   names the operator and says each club sets its own periods.
 - Lists only the processors actually used: Microsoft Azure always; SendGrid when it sends the
   mail; OpenAI (United States, with what is and is not sent) when the AI writer is configured;
-  Stripe and Lightspeed when the club connected them.
+  Stripe and Lightspeed when the club connected them; and, by kind rather than address, what the
+  club connected itself (its webhook or member portal, and systems holding its API key).
+- The consent wording printed is the one the form shows: the workspace's for the enquiry form,
+  the application form's own for an application.
 - Says what the browser keeps: a bearer sign-in token in local storage for the session length
   the server states, the person's name and email, the workspace per tab, preferences and a few
   working notes; no advertising or tracking cookies.

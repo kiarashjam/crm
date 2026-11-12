@@ -4,6 +4,7 @@ using ACI.Domain.Entities;
 using ACI.Domain.Enums;
 using ACI.WebApi.Tests.Helpers;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using static ACI.WebApi.Tests.Helpers.Workspaces;
 
@@ -215,6 +216,46 @@ public class PrivacySettingsTests
 
         (await Ok(await anyone.GetAsync("/api/public/privacy?form=not-a-form"), "an unknown form")).GetProperty("workspaceName").ValueKind
             .Should().Be(JsonValueKind.Null, "an unknown token names no workspace and reveals nothing");
+    }
+
+    [Fact]
+    public async Task TheNoticeNamesWhatTheClubConnectedItself_AndPrintsTheWordsItsApplicationFormShows()
+    {
+        var (factory, client, org, _) = await ClubAsync();
+        using var _ = factory;
+        using var anyone = factory.CreateClient();
+        await Ok(await client.PutAsync("/api/privacy/settings", Body(Settings(text: "Send me news about events."))), "save");
+
+        var before = await Ok(await anyone.GetAsync($"/api/public/privacy?form={FormToken}"), "nothing connected");
+        before.GetProperty("processors").EnumerateArray().Select(p => p.GetProperty("name").GetString())
+            .Should().NotContain(n => n!.Contains("connected") || n.Contains("linked"));
+
+        // Its webhook gets an event for every new lead, with the lead's name and address, and its
+        // API key lets a linked system (an AI assistant through MCP, say) read the records.
+        await using (var db = factory.Services.EveryWorkspace())
+        {
+            var workspace = await db.Organizations.SingleAsync(o => o.Id == org);
+            workspace.OutboundWebhookUrl = "https://hooks.example.com/cadence/abc123";
+            workspace.McpApiKeyHash = "hash-of-a-key";
+            await db.SaveChangesAsync();
+        }
+        var notice = await Ok(await anyone.GetAsync($"/api/public/privacy?form={FormToken}"), "the page from the form");
+        var processors = notice.GetProperty("processors").EnumerateArray().ToList();
+        processors.Select(p => p.GetProperty("name").GetString()).Should().Contain(["Services the club connected", "Systems the club linked with its API key"]);
+        notice.GetRawText().Should().NotContain("hooks.example.com", "the address of the club's webhook is the club's own business");
+        notice.GetProperty("marketingConsentText").GetString().Should().Be("Send me news about events.", "the enquiry form shows the workspace's words");
+
+        // The application form shows its own words beside the box, and its notice prints those.
+        var form = await Ok(await client.PutAsync("/api/applications/form", Body(new { isActive = true, consentText = "Yes, send me the club's newsletter." })), "the application form");
+        var fromApplication = await Ok(await anyone.GetAsync($"/api/public/privacy?form={form.GetProperty("publicToken").GetString()}"), "the page from the application form");
+        fromApplication.GetProperty("marketingConsentText").GetString().Should().Be("Yes, send me the club's newsletter.");
+
+        // What the AI writer sends to OpenAI, in full.
+        using var withAi = factory.WithWebHostBuilder(b => b.ConfigureAppConfiguration((_, c) =>
+            c.AddInMemoryCollection(new Dictionary<string, string?> { ["OpenAI:ApiKey"] = "sk-test-not-real" })));
+        var ai = await Ok(await withAi.CreateClient().GetAsync("/api/public/privacy"), "the page with AI drafting on");
+        ai.GetProperty("processors").EnumerateArray().Single(p => p.GetProperty("name").GetString() == "OpenAI")
+            .GetProperty("purpose").GetString().Should().Contain("deal stage and value");
     }
 
     [Fact]

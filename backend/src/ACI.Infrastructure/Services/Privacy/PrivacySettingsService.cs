@@ -102,7 +102,7 @@ public sealed class PrivacySettingsService : IPrivacySettings
 
         // The workspace a public form belongs to, found by the form's token, across workspaces:
         // the page is anonymous, and the token is what the form's own page already shows.
-        var organizationId = await WorkspaceOfFormAsync(formToken, ct);
+        var (organizationId, applicationConsentText) = await WorkspaceOfFormAsync(formToken, ct);
         PrivacySettings? settings = null;
         string? workspaceName = null;
         if (organizationId is Guid org)
@@ -125,7 +125,7 @@ public sealed class PrivacySettingsService : IPrivacySettings
         else if (mailHost.Length > 0)
             processors.Add(new($"The email relay at {mailHost}", "Sending the email the club sends.", "As its operator says", null));
         if (_openAi.IsConfigured)
-            processors.Add(new("OpenAI", "Drafting the text of an email when staff ask the AI writer: the recipient's name, company, job title, deal stage and last activity go with the request; their email address does not.",
+            processors.Add(new("OpenAI", "Drafting the text of an email when staff ask the AI writer: the recipient's name, company, job title, deal stage and value and last activity go with the request; their email address does not.",
                 "United States", "Standard contractual clauses in OpenAI's data processing addendum"));
         if (organizationId is Guid workspace)
         {
@@ -134,25 +134,48 @@ public sealed class PrivacySettingsService : IPrivacySettings
                     "Swiss-U.S. and EU-U.S. Data Privacy Framework, and standard contractual clauses"));
             if (await _db.ClubPosSettings.IgnoreQueryFilters().AsNoTracking().AnyAsync(s => s.OrganizationId == workspace && s.RefreshTokenProtected != null, ct))
                 processors.Add(new("Lightspeed (Restaurant K-Series)", "The till: what members buy at the bar or restaurant is posted to their account.", "As Lightspeed's privacy policy says", null));
+            // What the club itself connected also receives the data: its webhook gets an event,
+            // with the person's name and address, for every new lead or member, and a member
+            // portal gets each new customer handed over; a system holding its API key can read
+            // the records. The page names them by kind, not by address: the address is the club's.
+            var links = await _db.Organizations.AsNoTracking().Where(o => o.Id == workspace)
+                .Select(o => new { o.OutboundWebhookUrl, HasKey = o.McpApiKeyHash != null }).FirstOrDefaultAsync(ct);
+            var portal = await _db.OnboardingSettings.IgnoreQueryFilters().AsNoTracking()
+                .AnyAsync(s => s.OrganizationId == workspace && s.WebhookUrl != null && s.WebhookUrl != "", ct);
+            if (!string.IsNullOrWhiteSpace(links?.OutboundWebhookUrl) || portal)
+                processors.Add(new("Services the club connected",
+                    "When an enquiry, a lead, a deal or a member is created or changes, its details (names and email addresses among them) are sent to a service the club chose, such as its member portal or its own software.",
+                    "As the club's agreement with that service says", null));
+            if (links?.HasKey == true)
+                processors.Add(new("Systems the club linked with its API key",
+                    "Reading the club's records, for example for an AI assistant (MCP) or the club's own software.",
+                    "As the club's agreement with that service says", null));
         }
 
         var retention = settings == null && organizationId == null
             ? null
             : new PrivacyRetentionDto(settings?.LeadRetentionMonths, settings?.MemberRetentionYears, settings?.MailRetentionMonths, settings?.DetailRetentionMonths);
-        var consentText = organizationId == null ? null : settings?.MarketingConsentText ?? FormConsentDefaults.Text;
+        // The words beside the box on the form the page was opened from: an application form has its own.
+        var consentText = organizationId == null ? null : applicationConsentText ?? settings?.MarketingConsentText ?? FormConsentDefaults.Text;
         return new PrivacyNoticeDto(operatorParty, controller, workspaceName, hosting, processors, retention, consentText, sessionHours);
     }
 
-    /// <summary>The workspace of an open capture or application form with this token.</summary>
-    private async Task<Guid?> WorkspaceOfFormAsync(string? token, CancellationToken ct)
+    /// <summary>
+    /// The workspace of an open capture or application form with this token, and for an
+    /// application form the words it shows beside the marketing box (its own, or the standard ones).
+    /// </summary>
+    private async Task<(Guid? OrganizationId, string? ApplicationConsentText)> WorkspaceOfFormAsync(string? token, CancellationToken ct)
     {
         var t = (token ?? "").Trim();
-        if (t.Length == 0 || t.Length > 64) return null;
+        if (t.Length == 0 || t.Length > 64) return (null, null);
         var capture = await _db.LeadCaptureForms.IgnoreQueryFilters().AsNoTracking()
             .Where(f => f.PublicToken == t && f.IsActive).Select(f => f.OrganizationId).FirstOrDefaultAsync(ct);
-        if (capture != null) return capture;
-        return await _db.ClubApplicationForms.IgnoreQueryFilters().AsNoTracking()
-            .Where(f => f.PublicToken == t && f.IsActive).Select(f => f.OrganizationId).FirstOrDefaultAsync(ct);
+        if (capture != null) return (capture, null);
+        var application = await _db.ClubApplicationForms.IgnoreQueryFilters().AsNoTracking()
+            .Where(f => f.PublicToken == t && f.IsActive).Select(f => new { f.OrganizationId, f.ConsentText }).FirstOrDefaultAsync(ct);
+        return application?.OrganizationId is Guid org
+            ? (org, string.IsNullOrWhiteSpace(application.ConsentText) ? ClubApplicationService.DefaultConsentText : application.ConsentText)
+            : (null, null);
     }
 
     private static bool InRange(int? value, int max) => value == null || (value >= 1 && value <= max);

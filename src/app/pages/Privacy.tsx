@@ -160,7 +160,10 @@ function NoticeBody({ notice }: { notice: PrivacyNotice | null }) {
       </Section>
 
       <Section title="Who it goes to">
-        <p>The data is processed for the club by these services, and no one else; it is never sold.</p>
+        <p>
+          The data is processed for the club by these services, and by any the club connects itself (named here when the page
+          is opened from the club&apos;s form); it is never sold.
+        </p>
         <ul className="space-y-2">
           {notice.processors.map((p) => (
             <li key={p.name} className="rounded-lg border border-slate-200 p-3">
