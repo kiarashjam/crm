@@ -132,11 +132,10 @@ export function DateInput({ value, onChange, locale, className, disabled, id, ..
         onChange={(e) => {
           const next = e.target.value;
           setDraft(next);
-          if (next.trim() === '') onChange('');
-          else {
-            const day = parseDay(next, shownLocale);
-            if (day) onChange(day);
-          }
+          // As the browser's own date field does: the day once the text is one, and no day
+          // while it is not. Keeping the last day read instead left a page holding a day from
+          // half a year typed ("31.12.20" on the way to 2027 reads 2020) behind an error.
+          onChange(next.trim() === '' ? '' : parseDay(next, shownLocale) ?? '');
         }}
         onBlur={(e) => {
           // A day typed is written back the locale's way; anything else stays to be corrected.

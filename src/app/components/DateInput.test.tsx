@@ -63,6 +63,25 @@ describe('the date field', () => {
     expect(field).toHaveValue('03.04.2027');
   });
 
+  it('hands the page no day while what is typed is not one, as the browser’s own field did', async () => {
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    render(<Field initial="2026-12-31" onChange={onChange} />);
+
+    // Changing the year: on the way from 2026 to 2027 the text reads "31.12.20", a day in
+    // 2020. Left at "31.12.202", the page must not keep that day while the field says the
+    // text is not a date: a charge saved then would have been due in 2020.
+    const field = screen.getByLabelText('Due date');
+    await user.clear(field);
+    await user.type(field, '31.12.202');
+    expect(onChange).toHaveBeenLastCalledWith('');
+    await user.tab();
+    expect(field).toHaveValue('31.12.202');
+    expect(field).toHaveAttribute('aria-invalid', 'true');
+    await user.type(field, '7');
+    expect(onChange).toHaveBeenLastCalledWith('2027-12-31');
+  });
+
   it('says so when what was typed is not a day, and keeps it to be corrected', async () => {
     const onChange = vi.fn();
     const user = userEvent.setup();
