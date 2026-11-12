@@ -451,4 +451,25 @@ public class SsoSignInTests
         start.Headers.Location!.ToString().Should().Be($"{SsoApp.AppBase}/auth/sso#error=bad_request");
         (await app.Services.Read(db => db.AuthChallenges.Count())).Should().Be(0);
     }
+
+    [Fact]
+    public async Task AnOfficeSigningOnAtOnceFromOneAddressFits_AndAScriptIsStopped()
+    {
+        // Fifty sign-ons (start, callback and hand-back each) from one address in ten minutes:
+        // a whole team arriving at nine behind the office's one address. Here every request
+        // comes from the same (test) address, so the starts alone stand for them.
+        await using var app = new SsoApp();
+        var browser = new Browser(app);
+        for (var i = 0; i < 150; i++)
+        {
+            var start = await browser.Client.GetAsync($"/api/auth/sso/google/start?challenge={browser.Challenge}");
+            start.StatusCode.Should().Be(HttpStatusCode.Redirect, $"request {i + 1} of a busy morning");
+        }
+
+        var oneTooMany = await browser.Client.GetAsync($"/api/auth/sso/google/start?challenge={browser.Challenge}");
+        oneTooMany.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        oneTooMany.Headers.RetryAfter.Should().NotBeNull();
+        (await browser.Client.PostAsync("/api/auth/sso/complete", Body(new { code = new string('c', 43), verifier = browser.Verifier })))
+            .StatusCode.Should().Be(HttpStatusCode.TooManyRequests, "the hand-back shares the address's allowance");
+    }
 }

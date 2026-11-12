@@ -235,14 +235,16 @@ try
             }));
         // Single sign-on and passkey sign-in are anonymous too, so they also go by the address,
         // each with its own allowance. A sign-on is three requests (start, the provider's
-        // callback, the hand-back) and a passkey sign-in two; a club's team arriving at once
-        // behind one address fits easily, while a script trying codes or credentials stops.
+        // callback, the hand-back) and a passkey sign-in two. 150 per ten minutes is fifty
+        // sign-ons: a whole office behind one address signing in at nine still fits (at 60, the
+        // twenty-first person was turned away), while a script filling the table of sign-ons in
+        // progress stops; the state and the hand-back code are 256-bit secrets, not guessable.
         // Failed passkeys also count against the account they name (AuthAttemptLimiter).
         options.AddPolicy("sso", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
             "sso:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
             _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
             {
-                PermitLimit = 60,
+                PermitLimit = 150,
                 Window = TimeSpan.FromMinutes(10),
                 QueueLimit = 0,
             }));
