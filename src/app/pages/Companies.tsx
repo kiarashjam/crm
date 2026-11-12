@@ -65,6 +65,7 @@ import {
 } from '@/app/components/views';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import { useMoney } from '@/app/hooks/useMoney';
+import { useModules } from '@/app/hooks/useModules';
 import { PERMISSION } from '@/app/api/organizations';
 
 // Industries offered when a company is added or edited. The filter lists the ones the
@@ -191,7 +192,10 @@ export default function Companies() {
   const totalPages = companiesQuery.data?.totalPages ?? 0;
   // The figures help; the page still works without them.
   const summary: CompanySummary | null = useCompanySummary().data ?? null;
-  const deals: Deal[] = useDealsPage({ page: 1, pageSize: 500 }).data?.items ?? NO_DEALS;
+  // Deals are the Sales module's: with it turned off a company has none to show, and the
+  // server refuses to read them.
+  const salesOn = useModules().sales;
+  const deals: Deal[] = useDealsPage({ page: 1, pageSize: 500 }, salesOn).data?.items ?? NO_DEALS;
   const loading = companiesQuery.isPending;
   usePageLoading(loading);
   const reloadCompanies = () => { void companiesQuery.refetch(); };

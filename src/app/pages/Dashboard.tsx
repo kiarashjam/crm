@@ -66,8 +66,8 @@ export default function Dashboard() {
   const templatesQuery = useTemplates();
   // A template count nobody counted is left null, which the widget shows as a dash.
   const stats: CopyStats = {
-    sentThisWeek: copyStatsQuery.data?.sentThisWeek ?? 0,
-    totalSent: copyStatsQuery.data?.totalSent ?? 0,
+    sentThisWeek: copyStatsQuery.data?.sentThisWeek ?? null,
+    totalSent: copyStatsQuery.data?.totalSent ?? null,
     templateCount: templatesQuery.data ? templatesQuery.data.length : null,
   };
   const crmQuery = useDashboardStats();
@@ -82,6 +82,9 @@ export default function Dashboard() {
   /** Come back from the server (with figures or a failure), and failed with nothing to show. */
   const loadedOf = (q: { isPending: boolean }) => !q.isPending;
   const failedOf = (q: { isError: boolean; data: unknown }) => q.isError && q.data === undefined;
+  // Figures on screen whose refresh failed: kept, and said to be the last copy read.
+  // They used to stay with no word, so a dashboard could be hours old and look current.
+  const staleOf = (q: { isError: boolean; data: unknown }) => q.isError && q.data !== undefined;
   const retryOf = (q: { refetch: () => unknown }) => () => { void q.refetch(); };
 
   // Recipient selection states
@@ -222,6 +225,7 @@ export default function Dashboard() {
             stats={crmStats}
             loaded={loadedOf(crmQuery)}
             failed={failedOf(crmQuery)}
+            stale={staleOf(crmQuery)}
             onRetry={retryOf(crmQuery)}
             retrying={crmQuery.isFetching}
           />
@@ -234,7 +238,7 @@ export default function Dashboard() {
               
               {/* Pipeline by Stage - Extracted Component */}
               <StaggerItem index={0}>
-                <PipelineChart stages={pipelineByStage} loaded={loadedOf(stagesQuery)} failed={failedOf(stagesQuery)} onRetry={retryOf(stagesQuery)} retrying={stagesQuery.isFetching} />
+                <PipelineChart stages={pipelineByStage} loaded={loadedOf(stagesQuery)} failed={failedOf(stagesQuery)} stale={staleOf(stagesQuery)} onRetry={retryOf(stagesQuery)} retrying={stagesQuery.isFetching} />
               </StaggerItem>
 
               {/* Intelligent Sales Writer - Extracted Component */}
@@ -349,7 +353,7 @@ export default function Dashboard() {
 
               {/* Team Performance - Extracted Component */}
               <StaggerItem index={2}>
-                <TeamPerformance members={pipelineByAssignee} loaded={loadedOf(teamQuery)} failed={failedOf(teamQuery)} onRetry={retryOf(teamQuery)} retrying={teamQuery.isFetching} />
+                <TeamPerformance members={pipelineByAssignee} loaded={loadedOf(teamQuery)} failed={failedOf(teamQuery)} stale={staleOf(teamQuery)} onRetry={retryOf(teamQuery)} retrying={teamQuery.isFetching} />
               </StaggerItem>
             </div>
 
@@ -359,10 +363,16 @@ export default function Dashboard() {
                 <QuickNav />
               </StaggerItem>
               <StaggerItem index={2}>
-                <CopyStatsWidget stats={stats} />
+                <CopyStatsWidget
+                  stats={stats}
+                  failed={failedOf(copyStatsQuery)}
+                  stale={staleOf(copyStatsQuery)}
+                  onRetry={retryOf(copyStatsQuery)}
+                  retrying={copyStatsQuery.isFetching}
+                />
               </StaggerItem>
               <StaggerItem index={3}>
-                <RecentActivity items={recentActivity} loaded={loadedOf(activityQuery)} failed={failedOf(activityQuery)} onRetry={retryOf(activityQuery)} retrying={activityQuery.isFetching} />
+                <RecentActivity items={recentActivity} loaded={loadedOf(activityQuery)} failed={failedOf(activityQuery)} stale={staleOf(activityQuery)} onRetry={retryOf(activityQuery)} retrying={activityQuery.isFetching} />
               </StaggerItem>
             </div>
           </div>

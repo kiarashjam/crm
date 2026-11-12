@@ -29,6 +29,7 @@ import { OrganizationSection } from '@/app/pages/settings/components/Organizatio
 import { SecuritySection } from '@/app/pages/settings/components/SecuritySection';
 import { useOrg } from '@/app/contexts/OrgContext';
 import { useTheme } from '@/app/contexts/ThemeContext';
+import { useModules } from '@/app/hooks/useModules';
 import {
   createInvite,
   listPendingInvitesForOrg,
@@ -66,6 +67,9 @@ import PageHero from '@/app/components/PageHero';
 
 type SettingsTab = 'profile' | 'brand' | 'appearance' | 'notifications' | 'integrations' | 'welcome' | 'claude' | 'organization' | 'pipelines' | 'customFields' | 'security' | 'account';
 
+/** The tabs of the Sales module, left out while the workspace has it turned off. */
+const SALES_TABS: readonly SettingsTab[] = ['pipelines', 'welcome'];
+
 const TAB_CONFIG: { id: SettingsTab; label: string; icon: React.ElementType; description: string }[] = [
   { id: 'profile', label: 'Profile', icon: User, description: 'Personal information and preferences' },
   { id: 'brand', label: 'Brand & AI', icon: Sparkles, description: 'Brand voice and AI copy settings' },
@@ -85,6 +89,9 @@ export default function Settings() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { organizations, currentOrg, setCurrentOrg, refreshOrgs: _refreshOrgs } = useOrg();
   const themeContext = useTheme();
+  const salesOn = useModules().sales;
+  // Pipelines, and the welcome a deal's contact is handed over with, belong to Sales.
+  const tabsShown = TAB_CONFIG.filter((tab) => salesOn || !SALES_TABS.includes(tab.id));
 
   // Tab state
   const tabFromUrl = searchParams.get('tab') as SettingsTab | null;
@@ -206,12 +213,13 @@ export default function Settings() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- orgCan only reads isOwner, role and permissions (access)
   }, [currentOrg?.id, access]);
 
-  // Load pipelines: changing them takes managing the workspace's settings.
+  // Load pipelines: changing them takes managing the workspace's settings, and they are the
+  // Sales module's, which the server refuses while it is turned off.
   useEffect(() => {
-    if (servesDemoData() || !currentOrg?.id || !orgCan(currentOrg, PERMISSION.ManageSettings)) return;
+    if (servesDemoData() || !currentOrg?.id || !orgCan(currentOrg, PERMISSION.ManageSettings) || !salesOn) return;
     getPipelines().then(setPipelines).catch(() => setPipelines([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- orgCan only reads isOwner, role and permissions (access)
-  }, [currentOrg?.id, access]);
+  }, [currentOrg?.id, access, salesOn]);
 
   // Load pipeline stages when expanded
   useEffect(() => {
@@ -571,6 +579,13 @@ export default function Settings() {
       case 'integrations':
         return <IntegrationsSection currentOrg={currentOrg} />;
       case 'welcome':
+        if (!salesOn) {
+          return (
+            <div className="p-6 text-sm text-slate-600">
+              Welcome &amp; portal hands a deal&apos;s contact to your member portal, and deals belong to the Sales module, which this workspace has turned off. Turning it on again (Team) brings the settings back as they were.
+            </div>
+          );
+        }
         return <WelcomePortalSection currentOrg={currentOrg} />;
       case 'claude':
         return <ClaudeSection />;
@@ -599,6 +614,13 @@ export default function Settings() {
           />
         );
       case 'pipelines':
+        if (!salesOn) {
+          return (
+            <div className="p-6 text-sm text-slate-600">
+              Pipelines belong to the Sales module, which this workspace has turned off. Turning it on again (Team) brings them back as they were.
+            </div>
+          );
+        }
         return (
           <PipelinesSection
             pipelines={pipelines}
@@ -691,7 +713,7 @@ export default function Settings() {
             <nav className="lg:w-64 shrink-0">
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <div className="p-2">
-                  {TAB_CONFIG.map((tab) => {
+                  {tabsShown.map((tab) => {
                     const Icon = tab.icon;
                     const isActive = activeTab === tab.id;
                     return (

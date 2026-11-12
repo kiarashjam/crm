@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   Mail,
@@ -40,15 +40,16 @@ import type { Visit } from '@/app/api/visits';
 import type { Reservation } from '@/app/api/reservations';
 import type { EventAttendee } from '@/app/api/eventAttendees';
 import { type LoyaltyEntry, REASON_LABELS } from '@/app/api/loyalty';
-import { commStatusLabel, getCommunications, type Communication } from '@/app/api/communications';
+import { commStatusLabel, type Communication } from '@/app/api/communications';
 import type { GiftCard } from '@/app/api/giftCards';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import { ClubReadState } from '@/app/components/ClubReadState';
 import { MemberLinksCard } from '@/app/components/MembershipLinks';
 import {
-  NONE, useClubCharges, useClubMembers, useClubPayments, useClubReads, useClubVisits, useGiftCards, useLoyaltyLedger,
+  NONE, useClubCharges, useClubMembers, useClubPayments, useClubReads, useClubVisits, useCommunications, useGiftCards, useLoyaltyLedger,
   useMemberRegistrations, useReservations,
 } from '@/app/hooks/queries';
+import { LoadFailed } from '@/app/components/LoadFailed';
 import PageHero, { heroSecondary } from '@/app/components/PageHero';
 import { RecordAvatar } from '@/app/components/RecordCard';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
@@ -127,30 +128,15 @@ export default function MemberDetail() {
   const giftCards: GiftCard[] = giftCardsQuery.data ?? NONE;
   const memberReservations: Reservation[] = reservationsQuery.data ?? NONE;
   const registrations: EventAttendee[] = registrationsQuery.data ?? NONE;
-  const [comms, setComms] = useState<Communication[]>([]);
-  const [sideLoading, setSideLoading] = useState(true);
-  const loading = reads.loading || sideLoading;
+  // This member's messages, through the same cache as the communications pages: a message
+  // sent, a campaign that reached them, or a delivery the mail service reports shows here
+  // too. A failed read says so in the tab, with a retry, rather than "no messages".
+  const commsQuery = useCommunications(id ?? null);
+  const comms: Communication[] = commsQuery.data ?? NONE;
+  const loading = reads.loading;
   usePageLoading(loading);
   const [deleting, setDeleting] = useState(false);
   const [emailing, setEmailing] = useState(false);
-
-  // Messages keep their own read, of this member's, asked of the server by member.
-  useEffect(() => {
-    let live = true;
-    getCommunications(id ? { memberId: id } : {})
-      .then((comm) => {
-        if (live) setComms(comm);
-      })
-      .catch(() => {
-        if (live) toast.error('Could not load this member\'s messages');
-      })
-      .finally(() => {
-        if (live) setSideLoading(false);
-      });
-    return () => {
-      live = false;
-    };
-  }, [id]);
 
   const memberCharges = useMemo(
     () => charges.filter((c) => c.memberId === id),
@@ -634,7 +620,19 @@ export default function MemberDetail() {
                   </Button>
                 </div>
               </WriteOnly>
-              {memberComms.length === 0 ? (
+              {commsQuery.isError && (
+                <LoadFailed
+                  stale={commsQuery.data !== undefined}
+                  what="This member's messages"
+                  error={commsQuery.error}
+                  onRetry={() => void commsQuery.refetch()}
+                  retrying={commsQuery.isFetching}
+                  className="mb-3"
+                />
+              )}
+              {commsQuery.isPending && commsQuery.fetchStatus !== 'idle' ? (
+                <div className="flex justify-center py-8 text-slate-500"><Loader2 className="h-5 w-5 animate-spin" /></div>
+              ) : commsQuery.data === undefined ? null : memberComms.length === 0 ? (
                 <EmptyMini
                   icon={<MessageSquareText className="w-6 h-6" />}
                   text="No messages to this member yet."
@@ -668,7 +666,8 @@ export default function MemberDetail() {
               <EmailMemberDialog
                 member={member}
                 onClose={() => setEmailing(false)}
-                onSent={(message) => setComms((prev) => [message, ...prev])}
+                // The send refreshes this member's messages (api/dataChanged: communications).
+                onSent={() => undefined}
               />
             )}
 

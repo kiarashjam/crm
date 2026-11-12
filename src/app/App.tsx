@@ -13,6 +13,7 @@ import { ThemeProvider } from '@/app/contexts/ThemeContext';
 import { servesDemoData } from '@/app/api/apiClient';
 import { PageLoadingProvider } from '@/app/components/LoadingOverlay';
 import { RouteProgress } from '@/app/components/motion/RouteProgress';
+import { ModuleOutlet, SalesHome } from '@/app/components/ModuleOff';
 
 // Eager-loaded pages (critical path)
 import Homepage from '@/app/pages/Homepage';
@@ -190,22 +191,26 @@ export default function App() {
                   <Route path="/invites/accept" element={<AcceptInvite />} />
                   <Route path="/onboarding" element={<Navigate to="/settings" replace />} />
                   <Route element={<RequireOrgLayout />}>
-                    <Route path="/dashboard" element={<Dashboard />} />
-                    <Route path="/send" element={<SendToCrm />} />
+                    <Route path="/dashboard" element={<SalesHome><Dashboard /></SalesHome>} />
+                    {/* The Sales module's pages: with it turned off they say so (ModuleOutlet). */}
+                    <Route element={<ModuleOutlet module="sales" />}>
+                      <Route path="/send" element={<SendToCrm />} />
+                      <Route path="/history" element={<History />} />
+                      <Route path="/leads" element={<Leads />} />
+                      <Route path="/leads/webhook" element={<LeadWebhook />} />
+                      <Route path="/leads/import" element={<LeadImport />} />
+                      <Route path="/leads/routing" element={<LeadRouting />} />
+                      <Route path="/leads/:id" element={<LeadDetailPage />} />
+                      <Route path="/deals" element={<Pipeline />} />
+                      <Route path="/deals/:id" element={<DealDetail />} />
+                      <Route path="/sequences" element={<Sequences />} />
+                      <Route path="/reports" element={<Reports />} />
+                    </Route>
+                    {/* What both modules share. */}
                     <Route path="/templates" element={<Templates />} />
-                    <Route path="/history" element={<History />} />
-                    <Route path="/leads" element={<Leads />} />
-                    <Route path="/leads/webhook" element={<LeadWebhook />} />
-                    <Route path="/leads/import" element={<LeadImport />} />
-                    <Route path="/leads/routing" element={<LeadRouting />} />
-                    <Route path="/leads/:id" element={<LeadDetailPage />} />
-                    <Route path="/deals" element={<Pipeline />} />
-                    <Route path="/deals/:id" element={<DealDetail />} />
                     <Route path="/tasks" element={<Tasks />} />
                     <Route path="/tasks/:id" element={<TaskDetail />} />
                     <Route path="/activities" element={<Activities />} />
-                    <Route path="/sequences" element={<Sequences />} />
-                    <Route path="/reports" element={<Reports />} />
                     <Route path="/automations" element={<Automations />} />
                     <Route path="/duplicates" element={<Duplicates />} />
                     <Route path="/audit" element={<AuditLog />} />
@@ -216,32 +221,35 @@ export default function App() {
                     <Route path="/companies/import" element={<CompanyImport />} />
                     <Route path="/companies/:id" element={<CompanyDetail />} />
                     <Route path="/team" element={<Team />} />
-                    <Route path="/members" element={<Members />} />
-                    <Route path="/members/import" element={<MemberImport />} />
-                    <Route path="/members/:id" element={<MemberDetail />} />
-                    <Route path="/events" element={<Events />} />
-                    <Route path="/events/:id" element={<EventDetail />} />
-                    <Route path="/reservations" element={<Reservations />} />
-                    <Route path="/loyalty" element={<Loyalty />} />
-                    <Route path="/applications" element={<Applications />} />
-                    <Route path="/charges" element={<Charges />} />
-                    <Route path="/visits" element={<Visits />} />
-                    <Route path="/gift-cards" element={<GiftCards />} />
-                    <Route path="/communications" element={<Communications />} />
-                    <Route path="/portal" element={<MemberPortal />} />
-                    <Route path="/households" element={<Households />} />
-                    <Route path="/subscriptions" element={<Subscriptions />} />
-                    <Route path="/campaigns" element={<Campaigns />} />
-                    <Route path="/donations" element={<Donations />} />
                     <Route path="/calendar" element={<Calendar />} />
-                    <Route path="/statements" element={<Statements />} />
-                    <Route path="/club-payments" element={<ClubPayments />} />
-                    <Route path="/club-reports" element={<HospitalityReports />} />
-                    <Route path="/tabs" element={<TabsPage />} />
-                    <Route path="/pos" element={<PosTerminal />} />
-                    <Route path="/pos-tickets" element={<PosTickets />} />
-                    <Route path="/hospitality-settings" element={<HospitalitySettings />} />
-                    <Route path="/hospitality" element={<HospitalityDashboard />} />
+                    {/* The Club module's pages. */}
+                    <Route element={<ModuleOutlet module="club" />}>
+                      <Route path="/members" element={<Members />} />
+                      <Route path="/members/import" element={<MemberImport />} />
+                      <Route path="/members/:id" element={<MemberDetail />} />
+                      <Route path="/events" element={<Events />} />
+                      <Route path="/events/:id" element={<EventDetail />} />
+                      <Route path="/reservations" element={<Reservations />} />
+                      <Route path="/loyalty" element={<Loyalty />} />
+                      <Route path="/applications" element={<Applications />} />
+                      <Route path="/charges" element={<Charges />} />
+                      <Route path="/visits" element={<Visits />} />
+                      <Route path="/gift-cards" element={<GiftCards />} />
+                      <Route path="/communications" element={<Communications />} />
+                      <Route path="/portal" element={<MemberPortal />} />
+                      <Route path="/households" element={<Households />} />
+                      <Route path="/subscriptions" element={<Subscriptions />} />
+                      <Route path="/campaigns" element={<Campaigns />} />
+                      <Route path="/donations" element={<Donations />} />
+                      <Route path="/statements" element={<Statements />} />
+                      <Route path="/club-payments" element={<ClubPayments />} />
+                      <Route path="/club-reports" element={<HospitalityReports />} />
+                      <Route path="/tabs" element={<TabsPage />} />
+                      <Route path="/pos" element={<PosTerminal />} />
+                      <Route path="/pos-tickets" element={<PosTickets />} />
+                      <Route path="/hospitality-settings" element={<HospitalitySettings />} />
+                      <Route path="/hospitality" element={<HospitalityDashboard />} />
+                    </Route>
                     <Route path="/settings" element={<Settings />} />
                     <Route path="/mcp" element={<Navigate to="/settings?tab=claude" replace />} />
                   </Route>

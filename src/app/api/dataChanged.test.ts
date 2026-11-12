@@ -87,8 +87,23 @@ describe('what a write changes', () => {
   });
 
   it('a club write changes only its own records, whatever the query string', () => {
-    // A check-in writes the points it earns with the visit, so the loyalty ledger moves too.
-    expect(resourcesChangedBy('POST', 'https://api.example.com/api/visits?memberId=m-1')).toEqual(['visits', 'loyalty']);
+    // A check-in writes the points it earns with the visit, so the loyalty ledger moves too,
+    // and the day's check-ins on Today at the Club.
+    expect(resourcesChangedBy('POST', 'https://api.example.com/api/visits?memberId=m-1')).toEqual(['visits', 'loyalty', 'club-reports']);
+    expect(resourcesChangedBy('POST', '/api/donations')).toEqual(['donations']);
+  });
+
+  it("refreshes the club's reports after every write that moves the figures they sum", () => {
+    for (const [method, path] of [
+      ['POST', '/api/charges'], ['POST', '/api/payments'], ['POST', '/api/tabs/t-1/close'], ['POST', '/api/subscriptions/s-1/bill'],
+      ['POST', '/api/billing/run'], ['POST', '/api/events/e-1/attendees'], ['POST', '/api/reservations'],
+      ['POST', '/api/applications/a-1/approve'], ['POST', '/api/bank/imports'], ['POST', '/api/gift-cards/g-1/redeem'],
+      ['POST', '/api/loyalty/ledger'], ['POST', '/api/members'], ['POST', '/api/members/m-1/merge'], ['POST', '/api/members/m-1/card/charge'],
+      ['PUT', '/api/catalog/c-1'],
+    ] as const) {
+      expect(resourcesChangedBy(method, path), `${method} ${path}`).toContain('club-reports');
+    }
+    expect(resourcesChangedBy('POST', '/api/donations')).not.toContain('club-reports');
   });
 
   it("the club's money is one ledger: a charge, a payment or a tab moves balances and statements", () => {
@@ -171,6 +186,18 @@ describe('what a write changes', () => {
     expect(resourcesChangedBy('PUT', '/api/members/m-1')).not.toContain('reservations');
   });
 
+  it('deleting a club member takes them out of their household, which the households list then shows', () => {
+    expect(resourcesChangedBy('DELETE', '/api/members/m-1')).toContain('households');
+  });
+
+  it("billing's reminders and statements are logged in members' communications", () => {
+    expect(resourcesChangedBy('POST', '/api/billing/run')).toEqual(expect.arrayContaining(['billing', 'charges', 'communications']));
+  });
+
+  it("the workspace's currency and time zone refresh the club's reports, which they count in", () => {
+    expect(resourcesChangedBy('PUT', '/api/organizations/o-1')).toContain('club-reports');
+  });
+
   it('an approval refreshes the member it made, their dues, fee and welcome, and the lead and contact pages', () => {
     expect(resourcesChangedBy('POST', '/api/applications/a-1/approve')).toEqual(expect.arrayContaining([
       'applications', 'members', 'charges', 'subscriptions', 'statements', 'communications', 'households', 'leads', 'contacts',
@@ -190,6 +217,18 @@ describe('what a write changes', () => {
     expect(resourcesChangedBy('POST', '/api/contacts/c-1/relationships')).toContain('households');
     expect(resourcesChangedBy('DELETE', '/api/leads/l-1/relationships/r-1')).toContain('households');
     expect(resourcesChangedBy('PUT', '/api/contacts/c-1')).not.toContain('households');
+  });
+
+  it("countersigning a contract refreshes the member and the money its admission makes", () => {
+    expect(resourcesChangedBy('POST', '/api/contracts/k-1/countersign')).toEqual(expect.arrayContaining([
+      'contracts', 'deals', 'applications', 'members', 'charges', 'subscriptions', 'communications', 'households', 'club-reports',
+    ]));
+    expect(resourcesChangedBy('POST', '/api/contracts/k-1/send')).not.toContain('members');
+  });
+
+  it("handing a deal's contact to the portal can add them to the club's members", () => {
+    expect(resourcesChangedBy('POST', '/api/deals/d-1/onboarding')).toEqual(expect.arrayContaining(['deals', 'activities', 'contacts', 'members', 'club-reports']));
+    expect(resourcesChangedBy('PUT', '/api/deals/d-1')).not.toContain('members');
   });
 
   it("a club member's merge moves their applications and household links", () => {

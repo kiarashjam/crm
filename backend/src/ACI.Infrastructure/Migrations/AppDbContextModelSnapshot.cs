@@ -331,6 +331,9 @@ namespace ACI.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<int>("SendAttempts")
+                        .HasColumnType("int");
+
                     b.Property<DateTime?>("SendingStartedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -5533,6 +5536,9 @@ namespace ACI.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<bool>("ClubModuleOff")
+                        .HasColumnType("bit");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -5572,6 +5578,9 @@ namespace ACI.Infrastructure.Migrations
 
                     b.Property<Guid>("OwnerUserId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("SalesModuleOff")
+                        .HasColumnType("bit");
 
                     b.Property<string>("SendingAddress")
                         .HasMaxLength(256)

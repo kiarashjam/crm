@@ -39,6 +39,12 @@ export interface OpenTab {
   pointsAwarded?: number;
   total: number;
   notes?: string;
+  /**
+   * The server's version of the tab as it was read. Every change to it is sent with this
+   * (If-Match), so one made from an older copy is refused (409) instead of landing on a
+   * tab someone else has closed, voided or changed meanwhile.
+   */
+  version?: string;
 }
 
 export const TAB_VENUES: TabVenue[] = ['Bar', 'Dining', 'Spa', 'Rooftop', 'PoolDeck'];
@@ -159,14 +165,18 @@ export interface AddItemInput {
   unitPrice: number;
   /** A menu item or product from the catalogue: the server rings it up at its own name, price and VAT rate. */
   catalogItemId?: string;
+  /** The tab's version as it was read (see OpenTab.version). */
+  version?: string;
 }
 
 // Adding, removing and closing go to the server, which owns the tab and its total.
 // Only the demo works on this browser's copy.
 export async function addItemToTab(input: AddItemInput): Promise<OpenTab | null> {
   if (!servesDemoData()) {
+    const version = input.version;
     return authFetchJson<OpenTab>(`/api/tabs/${input.tabId}/items`, {
       method: 'POST',
+      headers: version ? { 'If-Match': `"${version}"` } : undefined,
       body: JSON.stringify({
         name: input.name,
         quantity: input.quantity,
@@ -189,11 +199,11 @@ export async function addItemToTab(input: AddItemInput): Promise<OpenTab | null>
   return tabStore.update(input.tabId, { items, total: calculateTotal(items) });
 }
 
-export async function removeItemFromTab(tabId: string, itemId: string): Promise<OpenTab | null> {
+export async function removeItemFromTab(tabId: string, itemId: string, version?: string): Promise<OpenTab | null> {
   // The server's answer is the tab as it now stands. This used to look the tab up in
   // the browser first, find nothing, and never send the request.
   if (!servesDemoData()) {
-    return authFetchJson<OpenTab>(`/api/tabs/${tabId}/items/${itemId}`, { method: 'DELETE' });
+    return authFetchJson<OpenTab>(`/api/tabs/${tabId}/items/${itemId}`, { method: 'DELETE', headers: version ? { 'If-Match': `"${version}"` } : undefined });
   }
   const tab = tabStore.byId(tabId);
   if (!tab || tab.status !== 'Open') return null;
@@ -206,10 +216,10 @@ export async function removeItemFromTab(tabId: string, itemId: string): Promise<
  * Close the tab. Converts the running total into a charge on the member's
  * house account and writes a loyalty entry sized by the total × multiplier.
  */
-export async function closeTab(tabId: string): Promise<OpenTab | null> {
+export async function closeTab(tabId: string, version?: string): Promise<OpenTab | null> {
   // The server posts the charge and the points itself.
   if (!servesDemoData()) {
-    return authFetchJson<OpenTab>(`/api/tabs/${tabId}/close`, { method: 'POST' });
+    return authFetchJson<OpenTab>(`/api/tabs/${tabId}/close`, { method: 'POST', headers: version ? { 'If-Match': `"${version}"` } : undefined });
   }
   const tab = tabStore.byId(tabId);
   if (!tab || tab.status !== 'Open') return null;
@@ -243,9 +253,9 @@ export async function closeTab(tabId: string): Promise<OpenTab | null> {
   });
 }
 
-export async function voidTab(tabId: string): Promise<OpenTab | null> {
+export async function voidTab(tabId: string, version?: string): Promise<OpenTab | null> {
   return apiWithFallback(
-    () => authFetchJson<OpenTab>(`/api/tabs/${tabId}/void`, { method: 'POST' }),
+    () => authFetchJson<OpenTab>(`/api/tabs/${tabId}/void`, { method: 'POST', headers: version ? { 'If-Match': `"${version}"` } : undefined }),
     async () => {
       await delay(100);
       return tabStore.update(tabId, { status: 'Voided' });

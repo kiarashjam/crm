@@ -30,6 +30,7 @@ public class EndpointPermissionTests
         // The organization is the route's, which need not be the header's, so the service
         // checks the caller's permissions in it (OrganizationService and friends).
         ["OrganizationsController.UpdateSettings"] = "OrganizationService: settings.manage",
+        ["OrganizationsController.UpdateModules"] = "WorkspaceModuleService: settings.manage",
         ["OrganizationsController.UpdateEmailSending"] = "EmailSendingService: settings.manage",
         ["OrganizationsController.LiftEmailSuppression"] = "EmailSendingService: settings.manage",
         ["OrganizationsController.AddMember"] = "OrganizationService: members.manage, and no more than the caller holds",

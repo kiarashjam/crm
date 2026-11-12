@@ -13,8 +13,10 @@ namespace ACI.Application.Services;
 /// reported it delivered. opened: reported opened (only where open tracking is on at the mail
 /// service). bounced: refused by the receiving server or dropped by the mail service.
 /// suppressed: not sent, because of consent, an unsubscribe, do not contact or the
-/// suppression list. failed: the outbox gave up, or it was taken back. skipped: not sent,
-/// for want of a usable address. logged: recorded by staff, not sent by Cadence.
+/// suppression list. failed: the outbox gave up, or a campaign could not queue it after
+/// several tries. cancelled: taken back before it went (its campaign was stopped, or the
+/// member removed). skipped: not sent, for want of a usable address. logged: recorded by
+/// staff, not sent by Cadence.
 /// </remarks>
 public static class MemberMessageStates
 {
@@ -27,6 +29,7 @@ public static class MemberMessageStates
     public const string Failed = "failed";
     public const string Skipped = "skipped";
     public const string Logged = "logged";
+    public const string Cancelled = "cancelled";
 
     public static string Of(string rowStatus, string? outboundStatus, string? deliveryStatus, bool opened)
     {
@@ -35,6 +38,8 @@ public static class MemberMessageStates
         {
             OutboundStatuses.Queued => Queued,
             OutboundStatuses.Suppressed => Suppressed,
+            // Taken back on purpose (the campaign stopped, the member removed): not a failure.
+            OutboundStatuses.Cancelled => Cancelled,
             OutboundStatuses.Sent => deliveryStatus is "bounced" or "dropped" or "blocked" ? Bounced
                 : opened ? Opened
                 : deliveryStatus is "delivered" or "spam_report" ? Delivered
@@ -267,8 +272,8 @@ public sealed class MemberMessageService : IMemberMessageService
             {
                 // Not handed to the outbox: the row says why.
                 MemberMessageStates.Skipped or MemberMessageStates.Suppressed when delivery == null => r.Reason,
-                // The outbox stopped it as it went, or gave up on it.
-                MemberMessageStates.Suppressed or MemberMessageStates.Failed =>
+                // The outbox stopped it as it went, took it back, or gave up on it.
+                MemberMessageStates.Suppressed or MemberMessageStates.Failed or MemberMessageStates.Cancelled =>
                     delivery?.LastError ?? r.Reason ?? (delivery == null ? "The outbox has no record of it, so it will not be sent." : null),
                 MemberMessageStates.Bounced => delivery?.DeliveryDetail ?? "The receiving mail server did not take it.",
                 _ => null,

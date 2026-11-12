@@ -8,7 +8,8 @@
 // to try again, and a refresh when a save changes that kind of record (invalidation.ts,
 // api/dataChanged).
 
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { getClubReport, getClubToday, type ClubReportRange } from '@/app/api/clubReports';
 import { getMembers } from '@/app/api/members';
 import { getCharges, getPayments, getMemberStatement } from '@/app/api/charges';
 import { getGiftCards, getRedemptions } from '@/app/api/giftCards';
@@ -90,9 +91,10 @@ export function useClubVisits() {
 // door; clashes and deposits). The pages read them here so a failed read shows as a failure
 // with a retry, not as an empty list, and a save on one screen refreshes the others.
 
-export function useClubEvents() {
+/** The club's events. Off with `enabled` false: a page both modules share, with the club turned off. */
+export function useClubEvents(enabled = true) {
   const ws = useWorkspaceScope();
-  return useQuery({ queryKey: queryKeys.club.events(ws), queryFn: ({ signal }) => timed(signal, (s) => getEvents({ signal: s })) });
+  return useQuery({ queryKey: queryKeys.club.events(ws), queryFn: ({ signal }) => timed(signal, (s) => getEvents({ signal: s })), enabled });
 }
 
 /** One event as the server keeps it now. Off while `id` is empty. */
@@ -131,12 +133,34 @@ export function useClubResources() {
 }
 
 /** Bookings: the club's, or one member's (asked of the server by member id, not matched by email). */
-export function useReservations(memberId: string | null = null) {
+export function useReservations(memberId: string | null = null, enabled = true) {
   const ws = useWorkspaceScope();
   return useQuery({
     queryKey: queryKeys.club.reservations(ws, memberId),
     queryFn: ({ signal }) => timed(signal, (s) => getReservations({ signal: s, memberId: memberId ?? undefined })),
+    enabled,
   });
+}
+
+/**
+ * Club Reports for a period, summed on the server. A new period keeps the last one's figures
+ * on screen while it is read (marked as the earlier copy), rather than blanking the page.
+ * No period (a custom one that ends before it starts) asks nothing and keeps the last figures.
+ */
+export function useClubReport(range: ClubReportRange | null) {
+  const ws = useWorkspaceScope();
+  return useQuery({
+    queryKey: queryKeys.club.report(ws, range ?? {}),
+    queryFn: ({ signal }) => timed(signal, (s) => getClubReport(range!, { signal: s })),
+    enabled: !!range,
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** What the club's day holds, counted on the server. */
+export function useClubToday() {
+  const ws = useWorkspaceScope();
+  return useQuery({ queryKey: queryKeys.club.today(ws), queryFn: ({ signal }) => timed(signal, (s) => getClubToday({ signal: s })) });
 }
 
 /** A member's statement for [fromUtc, toUtc), from the server's ledger. Off until a member is picked. */
@@ -298,6 +322,9 @@ export function useCampaigns() {
   return useQuery({
     queryKey: clubKeys.campaigns(ws),
     queryFn: ({ signal }) => timed(signal, (s) => getCampaigns({ signal: s })),
+    // Send answers at once and the server works through the members in the background:
+    // while a campaign is sending, its figures are read again every few seconds until it is done.
+    refetchInterval: (query) => (query.state.data?.some((c) => c.status === 'Sending') ? 4000 : false),
   });
 }
 

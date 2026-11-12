@@ -97,6 +97,9 @@ public static class ResultExtensions
 
         // A member's role does not let them (DomainErrors.Permission)
         var code when code.StartsWith("Permission.") => StatusCodes.Status403Forbidden,
+
+        // The workspace has turned that module off (DomainErrors.Modules.Off)
+        DomainErrors.Modules.OffCode => StatusCodes.Status403Forbidden,
         
         // Unauthorized/Authentication errors
         "Auth.InvalidCredentials" => StatusCodes.Status401Unauthorized,

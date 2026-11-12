@@ -66,6 +66,7 @@ public sealed class OnboardingService : IOnboardingService
     private readonly IWebhookTransport _transport;
     private readonly IActivityService _activities;
     private readonly ITenantContext _tenant;
+    private readonly IWorkspaceModules _modules;
     private readonly EmailSettings _settings;
     private readonly ILogger<OnboardingService> _logger;
 
@@ -81,6 +82,7 @@ public sealed class OnboardingService : IOnboardingService
         IWebhookTransport transport,
         IActivityService activities,
         ITenantContext tenant,
+        IWorkspaceModules modules,
         IOptions<EmailSettings> settings,
         ILogger<OnboardingService> logger)
     {
@@ -95,6 +97,7 @@ public sealed class OnboardingService : IOnboardingService
         _transport = transport;
         _activities = activities;
         _tenant = tenant;
+        _modules = modules;
         _settings = settings.Value;
         _logger = logger;
     }
@@ -312,7 +315,9 @@ public sealed class OnboardingService : IOnboardingService
         };
         AddStep(onboarding, "queued", now, null);
 
-        if (request.AddToClubMembers ?? settings!.AddToClubMembers)
+        // A workspace that has turned its club off has no members list to show them on: they
+        // would be kept where nobody sees them. The handoff, which is what was asked for, goes on.
+        if ((request.AddToClubMembers ?? settings!.AddToClubMembers) && await _modules.IsOnAsync(organizationId, WorkspaceModules.Club, ct))
             onboarding.ClubMemberId = await JoinClubAsync(onboarding, person, userId, ct);
 
         _onboarding.Add(onboarding);

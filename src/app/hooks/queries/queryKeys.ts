@@ -74,7 +74,6 @@ export const queryKeys = {
   activities: {
     page: (s: WorkspaceScope, params: object) => key(s, 'activities', 'page', params),
     forRecord: (s: WorkspaceScope, kind: 'lead' | 'deal' | 'contact', id: string) => key(s, 'activities', kind, id),
-    forLeads: (s: WorkspaceScope, leadIds: readonly string[]) => key(s, 'activities', 'leads', leadIds),
   },
   pipelines: {
     all: (s: WorkspaceScope) => key(s, 'pipelines', 'all'),
@@ -101,6 +100,13 @@ export const queryKeys = {
     notSame: (s: WorkspaceScope) => key(s, 'duplicates', 'not-same'),
   },
   workQueue: (s: WorkspaceScope, scope: WorkScope) => key(s, 'work-queue', scope),
+  /**
+   * The calendar's six weeks of tasks and meetings. It shows the same work as the work
+   * queue (tasks with a time, meetings logged, a lead's meeting date), so it is kept under
+   * that kind and read again whenever a write changes it.
+   */
+  calendar: (s: WorkspaceScope, scope: WorkScope, fromIso: string, toIso: string) =>
+    key(s, 'work-queue', 'calendar', scope, fromIso, toIso),
   templates: {
     all: (s: WorkspaceScope) => key(s, 'templates', 'all'),
   },
@@ -147,5 +153,10 @@ export const queryKeys = {
     memberHousehold: (s: WorkspaceScope, memberId: string) => key(s, 'households', 'member', memberId),
     memberLinks: (s: WorkspaceScope, memberId: string) => key(s, 'members', 'links', memberId),
     personMembership: (s: WorkspaceScope, kind: 'lead' | 'contact', id: string) => key(s, 'members', 'membership', kind, id),
+    // The club's figures, summed on the server from the ledger, the events and the members:
+    // every write that moves money, a member, a booking or a check-in refreshes them
+    // (api/dataChanged).
+    report: (s: WorkspaceScope, range: object) => key(s, 'club-reports', 'report', range),
+    today: (s: WorkspaceScope) => key(s, 'club-reports', 'today'),
   },
 } as const;

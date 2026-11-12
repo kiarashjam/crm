@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Activity, Phone, Mail, FileText, Users, Video, Presentation, CheckCircle, CalendarClock, Clock, TriangleAlert } from 'lucide-react';
 import type { Activity as ActivityType } from '@/app/api/types';
-import { RetryButton } from '@/app/components/LoadFailed';
+import { LoadFailed, RetryButton } from '@/app/components/LoadFailed';
 
 interface RecentActivityProps {
   /** Already sorted newest-first by `mostRecent`. */
@@ -13,6 +13,11 @@ interface RecentActivityProps {
   onRetry?: () => void;
   /** A retry is on its way. */
   retrying?: boolean;
+  /**
+   * The figures on screen are the last ones read: a refresh failed since. Said in a
+   * slim strip above them, as they may be out of date.
+   */
+  stale?: boolean;
 }
 
 function getActivityIcon(type: string) {
@@ -65,7 +70,7 @@ function getActivityIconColor(type: string) {
   }
 }
 
-export function RecentActivity({ items, loaded, failed, onRetry, retrying }: RecentActivityProps) {
+export function RecentActivity({ items, loaded, failed, onRetry, retrying, stale = false }: RecentActivityProps) {
   return (
     <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
       <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
@@ -76,6 +81,9 @@ export function RecentActivity({ items, loaded, failed, onRetry, retrying }: Rec
         <Link to="/activities" className="text-xs text-orange-700 hover:text-orange-800 font-medium">View all</Link>
       </div>
       <div className="p-5">
+        {stale && !failed && onRetry && (
+          <LoadFailed stale what="Recent activity" onRetry={onRetry} retrying={retrying} className="mb-3" />
+        )}
         {failed ? (
           <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
             <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden />

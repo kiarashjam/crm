@@ -633,6 +633,7 @@ export default function Charges() {
                   }
                   actionLabel={charges.length === 0 ? 'Post charge' : undefined}
                   onAction={charges.length === 0 ? openChargeDialog : undefined}
+                  actionPermission={PERMISSION.ManageMoney}
                   variant="teal"
                 />
               ) : (

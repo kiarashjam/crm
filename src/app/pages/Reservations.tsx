@@ -623,6 +623,7 @@ export default function Reservations() {
               }
               actionLabel={reservations.length === 0 && bookable.length > 0 ? 'New booking' : undefined}
               onAction={reservations.length === 0 && bookable.length > 0 ? openCreate : undefined}
+              actionPermission={PERMISSION.FrontDesk}
               variant="teal"
             />
           ) : (

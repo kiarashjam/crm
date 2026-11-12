@@ -1020,23 +1020,19 @@ export default function Leads() {
 
   // The dialog's save is checked against the version it opened with, and the row may be
   // hours old or behind this page's own inline assignment or referrer. So the dialog
-  // starts from the lead as it is now (see useFreshLeadOnOpen). The row itself is left
+  // starts from the lead as it is now (see useFreshLeadOnOpen): the fresh copy goes into
+  // the form, with its version, while nothing has been typed. The row itself is left
   // to the save: a change to the list re-runs the ?edit hand-over below, which opens
   // the dialog again on the row while its param lingers, over what is being typed.
+  const formOfLead = useCallback(
+    (lead: Lead) => leadEditForm(lead, sourceOptions, statusOptions),
+    [sourceOptions, statusOptions],
+  );
   useFreshLeadOnOpen(
     dialogOpen ? editingLead?.id : undefined,
-    () => !!editingLead && JSON.stringify(form) === JSON.stringify(leadEditForm(editingLead, sourceOptions, statusOptions)),
-    (fresh) => {
-      if (!editingLead) return;
-      const merged: Lead = {
-        ...editingLead,
-        ...fresh,
-        assignedToId: fresh.assignedToId ?? editingLead.assignedToId,
-        relationships: fresh.relationships ?? editingLead.relationships,
-      };
-      setEditingLead(merged);
-      setForm(leadEditForm(merged, sourceOptions, statusOptions));
-    },
+    editingLead ? formOfLead(editingLead) : null,
+    setForm,
+    formOfLead,
   );
 
   // Lead detail lives on its own page (/leads/:id). A click opens that page
@@ -1313,13 +1309,15 @@ export default function Leads() {
           description: form.description.trim() || null,
           lifecycleStage: form.lifecycleStage || null,
           // The dialog sends back every field it shows, so the save is refused, rather
-          // than written over, when someone saved the lead after the list was read.
-          version: editingLead.version,
+          // than written over, when someone saved the lead after the copy its fields came
+          // from was read (the list's, or the fresher one the dialog read as it opened).
+          version: form.version || undefined,
         });
         if (updated) {
-          // The referrer has its own endpoint, saved for the whole team.
+          // The referrer has its own endpoint, saved for the whole team; sent when it was
+          // changed from that copy's.
           const referredByContactId = form.referredByContactId || null;
-          const saved = referredByContactId !== (editingLead.referredByContactId ?? null)
+          const saved = referredByContactId !== (form.referredByContactIdAsRead || null)
             ? await setLeadReferral(editingLead.id, referredByContactId) ?? updated
             : updated;
           handleLeadUpdate({ ...updated, referredByContactId: saved.referredByContactId, referredByContactName: saved.referredByContactName });

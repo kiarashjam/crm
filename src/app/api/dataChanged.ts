@@ -94,7 +94,7 @@ const LINKED = ['leads', 'contacts', 'companies', 'deals', 'tasks', 'activities'
 const MEMBER_MERGE = [
   'members', 'campaigns', 'communications', 'duplicates', 'visits', 'loyalty', 'charges', 'payments', 'statements',
   'tabs', 'reservations', 'events', 'gift-cards', 'donations', 'subscriptions', 'households', 'applications',
-  'payment-profile', 'online-payments', 'bank', 'sales', 'pos', 'member-codes',
+  'payment-profile', 'online-payments', 'bank', 'sales', 'pos', 'member-codes', 'club-reports',
 ];
 
 /**
@@ -109,7 +109,7 @@ const HOUSEHOLD_WRITE = ['households', 'members', 'contacts', 'leads', 'duplicat
  * on the ledger before the answer comes back (settling charges, moving the balance and the
  * statement, perhaps putting back a member the billing lapsed), and the attempt is listed.
  */
-const SAVED_CARD_CHARGE = ['payment-profile', 'online-payments', 'payments', 'charges', 'members', 'statements'];
+const SAVED_CARD_CHARGE = ['payment-profile', 'online-payments', 'payments', 'charges', 'members', 'statements', 'club-reports'];
 
 /**
  * What a write under /api/<base> may change, beyond its own records. The server
@@ -137,10 +137,13 @@ const SAVED_CARD_CHARGE = ['payment-profile', 'online-payments', 'payments', 'ch
  *   payment for it becoming credit), give a member their check-in points, and email the
  *   next in line (logged in their communications). A booking can post or give back a
  *   deposit and a no-show fee; a resource's settings show on its bookings.
+ * - Club Reports and Today at the Club (club-reports) are summed on the server from the
+ *   ledger, the members, check-ins, bookings, tabs, gift cards and points: every write
+ *   that moves one of those refreshes them.
  *
- * A base not listed changes only its own records (the club's visits, gift cards,
- * donations…), which is why checking someone in no longer reloads the sales lists.
- * Add a base here when the server starts changing other records on its writes.
+ * A base not listed changes only its own records (the club's donations, resources…),
+ * which is why checking someone in does not reload the sales lists. Add a base here
+ * when the server starts changing other records on its writes.
  */
 const CHANGES: Readonly<Record<string, readonly string[]>> = {
   leads: ['leads', 'contacts', 'tasks', 'activities', 'sequences', 'duplicates', 'work-queue', 'reports'],
@@ -158,7 +161,8 @@ const CHANGES: Readonly<Record<string, readonly string[]>> = {
   dealstages: ['pipelines', 'deals', 'reports'],
   leadstatuses: ['lead-lookups', 'leads', 'reports'],
   leadsources: ['lead-lookups', 'leads', 'reports'],
-  organizations: ['team', 'organizations', 'leads', 'deals', 'tasks', 'work-queue', 'reports'],
+  // The workspace's currency and time zone decide how the club's reports are counted too.
+  organizations: ['team', 'organizations', 'leads', 'deals', 'tasks', 'work-queue', 'reports', 'club-reports'],
   invites: ['team'],
   joinrequests: ['team'],
   teams: ['team', 'reports'],
@@ -166,34 +170,39 @@ const CHANGES: Readonly<Record<string, readonly string[]>> = {
   // A balance set by hand on a member is an entry on the ledger, a member's tier or
   // status changes who a campaign reaches, and a member added can start their dues
   // subscription (due today, so billing now has it to bill) and be charged their initiation fee.
-  members: ['members', 'charges', 'payments', 'statements', 'campaigns', 'subscriptions', 'billing'],
+  members: ['members', 'charges', 'payments', 'statements', 'campaigns', 'subscriptions', 'billing', 'club-reports'],
   // A void or a payment can put back a member the billing lapsed (members).
-  charges: ['charges', 'members', 'statements'],
-  payments: ['payments', 'charges', 'members', 'statements'],
-  tabs: ['tabs', 'charges', 'members', 'loyalty', 'statements'],
-  subscriptions: ['subscriptions', 'charges', 'members', 'statements', 'billing'],
+  charges: ['charges', 'members', 'statements', 'club-reports'],
+  payments: ['payments', 'charges', 'members', 'statements', 'club-reports'],
+  tabs: ['tabs', 'charges', 'members', 'loyalty', 'statements', 'club-reports'],
+  subscriptions: ['subscriptions', 'charges', 'members', 'statements', 'billing', 'club-reports'],
   // A check-in writes the points it earned to the loyalty ledger.
-  visits: ['visits', 'loyalty'],
+  visits: ['visits', 'loyalty', 'club-reports'],
+  // Club Reports and Today at the Club count what is left on gift cards and the points
+  // members hold, so a card spent or a point given changes them too.
+  'gift-cards': ['gift-cards', 'club-reports'],
+  loyalty: ['loyalty', 'club-reports'],
   // A tier renamed in the catalogue is renamed on every member who has it.
-  catalog: ['catalog', 'members'],
-  // Billing posts charges, moves subscriptions on and members' balances, and is a run.
-  billing: ['billing', 'charges', 'subscriptions', 'members', 'statements'],
+  catalog: ['catalog', 'members', 'club-reports'],
+  // Billing posts charges, moves subscriptions on and members' balances, and is a run; its
+  // reminders and monthly statements are emailed, each logged in the member's communications.
+  billing: ['billing', 'charges', 'subscriptions', 'members', 'statements', 'communications', 'club-reports'],
   hospitality: ['hospitality'],
-  events: ['events', 'charges', 'payments', 'members', 'statements', 'loyalty', 'communications'],
-  reservations: ['reservations', 'charges', 'payments', 'members', 'statements'],
+  events: ['events', 'charges', 'payments', 'members', 'statements', 'loyalty', 'communications', 'club-reports'],
+  reservations: ['reservations', 'charges', 'payments', 'members', 'statements', 'club-reports'],
   resources: ['resources', 'reservations'],
   // Sending a campaign writes a message per member into the communications log.
   campaigns: ['campaigns', 'communications'],
   // An approval makes the member, starts their dues, charges the initiation fee, joins the
   // household, records their consent and queues the welcome (logged in their communications);
   // the lead's and the contact's pages show the application and the member.
-  applications: ['applications', 'members', 'charges', 'payments', 'subscriptions', 'statements', 'communications', 'households', 'billing', 'leads', 'contacts', 'campaigns'],
+  applications: ['applications', 'members', 'charges', 'payments', 'subscriptions', 'statements', 'communications', 'households', 'billing', 'leads', 'contacts', 'campaigns', 'club-reports'],
   households: HOUSEHOLD_WRITE,
   // The payment settings decide what the money screens offer (pay online, the QR-bill).
   'payment-settings': ['payment-settings'],
   // A bank file's matched transfers, and one allocated by hand, are payments on the ledger:
   // they settle charges, move balances and statements, and can put back a lapsed member.
-  bank: ['bank', 'payments', 'charges', 'members', 'statements'],
+  bank: ['bank', 'payments', 'charges', 'members', 'statements', 'club-reports'],
   // A sale posts its charges and what was paid at the till, moves the balance and the
   // statement, and earns its points.
   sales: ['sales', 'charges', 'payments', 'members', 'statements', 'loyalty'],
@@ -246,9 +255,10 @@ export function resourcesChangedBy(method: string | undefined, path: string, bod
   }
   // Deleting a member detaches their places on event lists and their bookings, which stay
   // under the name they were made in: a screen still showing the member on one would send
-  // the id of someone who is gone.
+  // the id of someone who is gone. They leave their household too, and a household nobody
+  // is left in goes with them.
   if (base === 'members' && segments.length === 2 && (method ?? 'GET').toUpperCase() === 'DELETE') {
-    return [...(CHANGES.members ?? ['members']), 'events', 'reservations', 'payment-profile'];
+    return [...(CHANGES.members ?? ['members']), 'events', 'reservations', 'payment-profile', 'households'];
   }
   // Households merge on their own: the people move to the household kept.
   if (base === 'households') return [...HOUSEHOLD_WRITE];
@@ -257,6 +267,15 @@ export function resourcesChangedBy(method: string | undefined, path: string, bod
   if ((base === 'contacts' || base === 'leads') && segments.includes('relationships')) {
     return [...new Set([...(CHANGES[base] ?? [base]), 'households', 'members'])];
   }
+  // Countersigning a contract approves the membership application of its lead or deal: the
+  // member is made or linked, their dues start, the initiation fee is charged, they join
+  // the household and are sent the welcome (logged in their communications).
+  if (base === 'contracts' && last === 'countersign') {
+    return [...new Set([...(CHANGES.contracts ?? []), ...(CHANGES.applications ?? [])])];
+  }
+  // Handing a deal's contact to the member portal notes it on the deal's and the contact's
+  // timelines, and can add them to the club's members.
+  if (base === 'deals' && last === 'onboarding') return [...(CHANGES.deals ?? []), 'members', 'club-reports'];
   // A merge moves everything linked to the record merged away; a conversion makes
   // a contact, a company and a deal from the lead.
   if (last === 'merge' || (base === 'leads' && last === 'convert')) return [...LINKED];

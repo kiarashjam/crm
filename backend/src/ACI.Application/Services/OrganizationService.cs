@@ -598,7 +598,8 @@ public sealed class OrganizationService : IOrganizationService
 
     private static OrganizationDto ToDto(Organization org, Guid userId, OrganizationMember member) =>
         new(org.Id, org.Name, org.OwnerUserId, org.OwnerUserId == userId, (int)member.Role, org.Currency, org.Locale, org.TimeZone, org.StaleDealDays,
-            MemberPermissions.PresetOf(member.Role, member.PermissionPreset).Key, Ordered(Permissions(member)));
+            MemberPermissions.PresetOf(member.Role, member.PermissionPreset).Key, Ordered(Permissions(member)),
+            SalesEnabled: !org.SalesModuleOff, ClubEnabled: !org.ClubModuleOff);
 
     private static IReadOnlySet<string> Permissions(OrganizationMember member) =>
         MemberPermissions.Effective(member.Role, member.PermissionPreset, member.Permissions);

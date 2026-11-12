@@ -241,7 +241,7 @@ export default function GiftCards() {
     }
     setVoidingId(c.id);
     try {
-      const ok = await voidGiftCard(c.id, reason.trim());
+      const ok = await voidGiftCard(c.id, reason.trim(), c.version);
       if (ok) {
         toast.success('Gift card voided');
         await load();
@@ -424,6 +424,7 @@ export default function GiftCards() {
                   }
                   actionLabel={cards.length === 0 ? 'Issue gift card' : undefined}
                   onAction={cards.length === 0 ? openIssueDialog : undefined}
+                  actionPermission={PERMISSION.ManageMoney}
                   variant="orange"
                 />
               ) : (

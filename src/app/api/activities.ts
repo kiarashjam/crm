@@ -2,7 +2,7 @@ import type { Activity, PagedResult } from './types';
 import { factsProblem, type ActivityDirection, type ActivityFactsPayload } from '@/app/lib/activityFacts';
 import { toLocalInputValue } from '@/app/lib/dateInputs';
 import { mockActivities } from './mockData';
-import { servesDemoData, authFetchJson, authFetch, type RequestOptions } from './apiClient';
+import { servesDemoData, authFetchJson, authFetch, ApiError, type RequestOptions } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 
 const activityStore = createMockStore<Activity>({
@@ -163,7 +163,17 @@ export async function getActivitiesByLead(leadId: string, req?: RequestOptions):
   return activityStore.list().filter((a) => a.leadId === leadId);
 }
 
-/** Activities for many leads in one request. Falls back to per-lead calls if the batch route is missing. */
+/** Not there: a server without the batch route, or (asked lead by lead) a lead deleted since. */
+function notThere(err: unknown): boolean {
+  return err instanceof ApiError && (err.status === 404 || err.status === 405);
+}
+
+/**
+ * Activities for many leads in one request. Falls back to per-lead calls if the batch
+ * route is missing, and only then: a read that was cancelled, timed out or refused is
+ * passed on. Answered with an empty list, as it was, it read as "no activities" and a
+ * cache kept it as the answer.
+ */
 export async function getActivitiesByLeadIds(leadIds: string[], req?: RequestOptions): Promise<Activity[]> {
   const ids = [...new Set(leadIds.filter(Boolean))];
   if (!ids.length) return [];
@@ -177,9 +187,13 @@ export async function getActivitiesByLeadIds(leadIds: string[], req?: RequestOpt
         try {
           const list = await authFetchJson<ActivityRaw[]>(`/api/activities/by-leads?${params.toString()}`, req);
           return Array.isArray(list) ? list.map(mapActivity) : [];
-        } catch {
+        } catch (err) {
+          if (req?.signal?.aborted || !notThere(err)) throw err;
           const perLead = await Promise.all(
-            chunk.map((id) => getActivitiesByLead(id, req).catch((): Activity[] => [])),
+            chunk.map((id) => getActivitiesByLead(id, req).catch((e: unknown): Activity[] => {
+              if (req?.signal?.aborted || !notThere(e)) throw e;
+              return [];
+            })),
           );
           return perLead.flat();
         }

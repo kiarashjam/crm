@@ -2,7 +2,10 @@
 //
 // The server sends them by email through its outbox, one message per member, now or at
 // a time set for them, and once: two presses of Send, or two servers, send it once, and
-// a campaign that has started sending can no longer be edited or sent again. A
+// a campaign that has started sending can no longer be edited or sent again. Send answers
+// at once and the server works through the members in the background, so the campaign
+// reads "Sending" until it is done; staff can stop it while it sends, and what had not
+// gone by then does not go. A
 // marketing campaign reaches only members who agreed to marketing by email (and carries
 // an unsubscribe link); a service one reaches everyone it is for. Each member's message
 // has its own status, and the campaign totals them. "Send a test to me" emails a copy
@@ -23,7 +26,7 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export type CampaignStatus = 'Draft' | 'Scheduled' | 'Sending' | 'Sent' | 'Logged';
+export type CampaignStatus = 'Draft' | 'Scheduled' | 'Sending' | 'Sent' | 'Stopped' | 'Logged';
 export type CampaignPurpose = 'marketing' | 'service';
 export type CampaignChannel = 'Email' | 'SMS' | 'Push';
 
@@ -34,6 +37,8 @@ export function campaignStatusLabel(status: CampaignStatus): string {
       return 'Logged, not delivered';
     case 'Sending':
       return 'Sending';
+    case 'Stopped':
+      return 'Stopped';
     default:
       return status;
   }
@@ -63,6 +68,8 @@ export interface CampaignTotals {
   suppressed: number;
   failed: number;
   skipped: number;
+  /** Taken back before they went: the campaign was stopped, or the member removed. */
+  cancelled?: number;
 }
 
 export interface Campaign {
@@ -102,6 +109,10 @@ export interface CampaignAudience {
   withAddress: number;
   agreed: number;
   willReceive: number;
+  /** Of those who may have it, how many are at an address on the suppression list (bounced, complained, unsubscribed). */
+  suppressed?: number;
+  /** For marketing: how many are at an address a contact marked do not contact holds. */
+  doNotContact?: number;
 }
 
 export interface CampaignTestResult {
@@ -164,6 +175,7 @@ function demoTotals(campaign: Campaign): CampaignTotals | null {
     suppressed: count('suppressed'),
     failed: count('failed'),
     skipped: count('skipped'),
+    cancelled: count('cancelled'),
   };
 }
 
@@ -299,7 +311,11 @@ export async function deleteCampaign(id: string): Promise<boolean> {
   );
 }
 
-/** Sends it now, once. Refused (409) when it is being sent or has been. */
+/**
+ * Sends it now, once. The server answers at once (202) with the campaign sending, and
+ * works through its members in the background. Refused (409) when it is being sent or
+ * has been, or changed since this copy was read.
+ */
 export async function sendCampaign(id: string, version?: string): Promise<Campaign> {
   return apiWithFallback(
     () => authFetchJson<Campaign>(`/api/campaigns/${encodeURIComponent(id)}/send`, {
@@ -312,6 +328,27 @@ export async function sendCampaign(id: string, version?: string): Promise<Campai
       if (!current) throw new Error('That campaign was not found.');
       if (!isEditable(current.status)) throw new Error('This campaign is being sent or has been, so it cannot be sent again.');
       return demoSend(current);
+    },
+  );
+}
+
+/**
+ * Stops a campaign that is sending: members it has not reached get nothing, and its emails
+ * still waiting do not go. Refused (409) when it is not sending, or changed since this copy
+ * was read.
+ */
+export async function stopCampaign(id: string, version?: string): Promise<Campaign> {
+  return apiWithFallback(
+    () => authFetchJson<Campaign>(`/api/campaigns/${encodeURIComponent(id)}/stop`, {
+      method: 'POST',
+      headers: version ? { 'If-Match': `"${version}"` } : undefined,
+    }),
+    async () => {
+      await delay(80);
+      const current = campaignStore.byId(id);
+      if (!current) throw new Error('That campaign was not found.');
+      if (current.status !== 'Sending') throw new Error('This campaign is not sending, so there is nothing to stop.');
+      return campaignStore.update(id, { status: 'Stopped', sentAtUtc: new Date().toISOString() })!;
     },
   );
 }
@@ -343,7 +380,7 @@ export function computeCampaignStats(campaigns: Campaign[]): CampaignStats {
   for (const c of campaigns) {
     if (c.status === 'Draft') drafts++;
     else if (c.status === 'Scheduled') scheduled++;
-    else if (c.status === 'Sent' || c.status === 'Sending') sent++;
+    else if (c.status === 'Sent' || c.status === 'Sending' || c.status === 'Stopped') sent++;
     emailsSent += c.totals?.sent ?? 0;
   }
   return { drafts, scheduled, sent, emailsSent };

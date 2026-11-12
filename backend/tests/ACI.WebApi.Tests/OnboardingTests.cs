@@ -155,6 +155,34 @@ public class OnboardingTests
     }
 
     [Fact]
+    public async Task WithTheClubTurnedOff_AHandoffAddsNobodyToTheClubsMembers_AndWithSalesOffThereIsNoHandoff()
+    {
+        await using var app = new App();
+        var (owner, org, _, dealId) = await SetUpAsync(app);
+
+        (await owner.PutAsync($"/api/organizations/{org}/modules", Body(new { club = false }))).StatusCode.Should().Be(HttpStatusCode.OK);
+        var started = await owner.PostAsync($"/api/deals/{dealId}/onboarding", Body(new { startUndetermined = true, language = "fr", addToClubMembers = true }));
+        started.StatusCode.Should().Be(HttpStatusCode.Created, await started.Content.ReadAsStringAsync());
+        (await JsonAsync(started)).GetProperty("clubMemberId").ValueKind.Should().Be(JsonValueKind.Null);
+        (await app.Services.Read(db => db.ClubMembers.IgnoreQueryFilters().Count()))
+            .Should().Be(0, "a workspace without its club has no members list to show them on");
+        await app.DispatchOutboxAsync();
+        app.Hook.Posts.Should().ContainSingle("the handoff itself, which is what was asked for, goes on");
+
+        (await owner.PutAsync($"/api/organizations/{org}/modules", Body(new { club = true, sales = false }))).StatusCode.Should().Be(HttpStatusCode.OK);
+        foreach (var refused in new[]
+        {
+            await owner.GetAsync("/api/onboarding/settings"),
+            await owner.GetAsync($"/api/deals/{dealId}/onboarding"),
+            await owner.PostAsync($"/api/deals/{dealId}/onboarding", Body(new { startUndetermined = true })),
+        })
+        {
+            refused.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+            (await JsonAsync(refused)).GetProperty("errorCode").GetString().Should().Be("Module.Off", "a handoff starts from a deal, which is Sales");
+        }
+    }
+
+    [Fact]
     public async Task ThePortalsReportsMoveItAlong_OnlyWithTheHandoffsToken()
     {
         await using var app = new App();

@@ -1,431 +1,457 @@
-// Hospitality-specific reports — revenue by venue, tier distribution, member
-// growth, top spenders, attendance trends, loyalty pool.
+// Club Reports: the club's money, members, visits and events for a period, summed on the
+// server from the ledger (GET /api/club-reports).
 //
-// This is separate from the existing Reports page (which covers leads/deals
-// sales analytics) so the sales surface stays untouched.
+// This page downloaded every member, charge, visit and loyalty entry and added them up
+// here. Revenue was what fully paid charges came to, so dues paid in three instalments
+// showed nothing for two months and everything in the third; everything was in dollars;
+// and when a request failed it showed zeros, which read as a dead month. Now: cash
+// revenue is the money received when it came, accrual revenue what was charged (voids
+// in their own period), receivables are aged by days past due, and gift cards, points
+// and subscriptions are what the club owes or will bill. Amounts are in the workspace's
+// currency, with any other currency listed apart, never added in. A failed read says so.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   BarChart3,
-  DollarSign,
+  CalendarHeart,
+  Coins,
   Crown,
+  Download,
+  Gift,
+  HandCoins,
+  Loader2,
+  Receipt,
+  Repeat2,
   ScanLine,
   Sparkles,
   TrendingUp,
-  CalendarHeart,
-  Loader2,
+  Wallet,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { getMembers, type Member, type MemberTier, MEMBER_TIERS } from '@/app/api/members';
-import { getCharges, isSale, type Charge, type ChargeKind } from '@/app/api/charges';
-import { getVisits, type VisitVenue } from '@/app/api/visits';
-import { getLoyaltyLedger } from '@/app/api/loyalty';
-import { getEvents } from '@/app/api/events';
-import { usePageLoading } from '@/app/components/LoadingOverlay';
-import PageHero from '@/app/components/PageHero';
+import PageHero, { heroSecondary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
-import { motion } from 'motion/react';
-import { useMotionPreference } from '@/app/hooks/useMotionPreference';
-import { useClubMoney } from '@/app/hooks/useClubMoney';
+import { LoadFailed } from '@/app/components/LoadFailed';
+import { Button } from '@/app/components/ui/button';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { useClubReport } from '@/app/hooks/queries/club';
+import { useRegional } from '@/app/hooks/useMoney';
+import { useOrgOptional } from '@/app/contexts/OrgContext';
+import { orgCan, PERMISSION } from '@/app/api/organizations';
+import { servesDemoData } from '@/app/api/apiClient';
+import {
+  downloadClubReportCsv,
+  type ClubMoneyFlow,
+  type ClubReport,
+  type ClubReportGrain,
+  type ClubReportPeriod,
+} from '@/app/api/clubReports';
+import { formatClubMoney } from '@/app/lib/clubMoney';
+import { customPeriod, dateInputValue, periodFor, PERIOD_LABELS, type PeriodPreset } from '@/app/pages/reports/reportFilters';
 
-const day = 86_400_000;
+type GrainChoice = 'auto' | ClubReportGrain;
 
-const TIER_COLOR: Record<MemberTier, string> = {
-  Bronze: 'bg-amber-400',
-  Silver: 'bg-slate-400',
-  Gold: 'bg-yellow-400',
-  Platinum: 'bg-indigo-500',
-};
+const PRESETS: PeriodPreset[] = ['this-month', 'last-month', 'last-30', 'last-90', 'this-quarter', 'this-year', 'last-year', 'custom'];
 
-const KIND_COLOR: Record<ChargeKind, string> = {
-  Dues: 'bg-indigo-500',
-  Dining: 'bg-orange-500',
-  Bar: 'bg-amber-500',
-  Event: 'bg-pink-500',
-  Spa: 'bg-rose-500',
-  Booking: 'bg-emerald-500',
-  Retail: 'bg-blue-500',
-  Other: 'bg-slate-500',
-};
+/** A period's first day (yyyy-MM-dd, the workspace's calendar) as its column says it. */
+function periodLabel(period: ClubReportPeriod, grain: ClubReportGrain): string {
+  const [y, m, d] = period.start.split('-').map(Number) as [number, number, number];
+  const day = new Date(y, m - 1, d);
+  if (grain === 'month') return day.toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
+  const short = day.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  return grain === 'week' ? `Wk ${short}` : short;
+}
 
-const VENUE_COLOR: Record<VisitVenue, string> = {
-  Dining: 'bg-orange-500',
-  Bar: 'bg-amber-500',
-  Spa: 'bg-pink-500',
-  Gym: 'bg-emerald-500',
-  Coworking: 'bg-blue-500',
-  Event: 'bg-fuchsia-500',
-  Lounge: 'bg-violet-500',
-  Rooftop: 'bg-teal-500',
-};
+function percent(rate: number | null): string {
+  return rate == null ? '—' : `${Math.round(rate * 100)}%`;
+}
 
 export default function HospitalityReports() {
-  const { format: formatCurrency } = useClubMoney();
-  const reduce = useMotionPreference();
-  const [members, setMembers] = useState<Member[]>([]);
-  const [charges, setCharges] = useState<Charge[]>([]);
-  const [visits, setVisits] = useState<Awaited<ReturnType<typeof getVisits>>>([]);
-  const [ledger, setLedger] = useState<Awaited<ReturnType<typeof getLoyaltyLedger>>>([]);
-  const [events, setEvents] = useState<Awaited<ReturnType<typeof getEvents>>>([]);
-  const [loading, setLoading] = useState(true);
-  usePageLoading(loading);
+  const regional = useRegional();
+  const org = useOrgOptional();
+  const canExport = orgCan(org?.currentOrg ?? null, PERMISSION.ExportRecords) && !servesDemoData();
+  const [preset, setPreset] = useState<PeriodPreset>('this-year');
+  const [customFrom, setCustomFrom] = useState(() => dateInputValue(new Date(Date.now() - 29 * 86_400_000), regional.timeZone));
+  const [customTo, setCustomTo] = useState(() => dateInputValue(new Date(), regional.timeZone));
+  const [grain, setGrain] = useState<GrainChoice>('auto');
+  const [exporting, setExporting] = useState(false);
 
-  const load = async () => {
+  // The period between the workspace's midnights; a custom one that ends before it starts is not asked.
+  const period = useMemo(
+    () => (preset === 'custom' ? customPeriod(customFrom, customTo, regional.timeZone) : periodFor(preset, regional.timeZone)),
+    [preset, customFrom, customTo, regional.timeZone],
+  );
+  const range = useMemo(() => (period ? {
+    fromUtc: period.from.toISOString(),
+    toUtc: period.to.toISOString(),
+    ...(grain === 'auto' ? {} : { grain }),
+  } : null), [period, grain]);
+  const query = useClubReport(range);
+  const report = query.data;
+  usePageLoading(query.isPending);
+
+  const money = (amount: number, currency: string) => formatClubMoney(amount, currency, regional.locale);
+
+  const exportCsv = async () => {
+    if (!range) return;
+    setExporting(true);
     try {
-      const [m, c, v, l, e] = await Promise.all([
-        getMembers(),
-        getCharges(),
-        getVisits(),
-        getLoyaltyLedger(),
-        getEvents(),
-      ]);
-      setMembers(m);
-      setCharges(c);
-      setVisits(v);
-      setLedger(l);
-      setEvents(e);
+      await downloadClubReportCsv(range);
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : 'The spreadsheet could not be made.');
     } finally {
-      setLoading(false);
+      setExporting(false);
     }
   };
 
-  useEffect(() => {
-    void load();
-  }, []);
-
-  // KPIs
-  const kpis = useMemo(() => {
-    const monthAgo = Date.now() - 30 * day;
-    const sixMonthsAgo = Date.now() - 180 * day;
-    let revenue30d = 0;
-    for (const c of charges) {
-      // A balance brought over or set by hand is owed like a charge, but paying it is not revenue.
-      if (!isSale(c)) continue;
-      if (c.status !== 'Voided' && c.paidAmount > 0 && c.paidAtUtc && Date.parse(c.paidAtUtc) >= monthAgo) {
-        revenue30d += c.paidAmount;
-      }
-    }
-    const activeCount = members.filter((m) => m.status === 'Active').length;
-    const lapsedCount = members.filter((m) => m.status === 'Lapsed').length;
-    const churn = activeCount + lapsedCount > 0 ? lapsedCount / (activeCount + lapsedCount) : 0;
-    const recentVisits = visits.filter((v) => Date.parse(v.visitedAtUtc) >= monthAgo).length;
-    const newMembers180d = members.filter((m) => Date.parse(m.joinedAtUtc) >= sixMonthsAgo).length;
-    const pointsOutstanding = ledger.reduce((s, e) => s + e.points, 0);
-    return {
-      revenue30d: Math.round(revenue30d * 100) / 100,
-      activeCount,
-      churn,
-      recentVisits,
-      newMembers180d,
-      pointsOutstanding,
-    };
-  }, [members, charges, visits, ledger]);
-
-  // Revenue by kind (paid, all-time)
-  const revenueByKind = useMemo(() => {
-    const map = new Map<ChargeKind, number>();
-    for (const c of charges) {
-      if (c.status === 'Voided' || !isSale(c)) continue;
-      map.set(c.kind, (map.get(c.kind) ?? 0) + c.paidAmount);
-    }
-    const entries = [...map.entries()].sort((a, b) => b[1] - a[1]);
-    const total = entries.reduce((s, [, v]) => s + v, 0);
-    return { entries, total };
-  }, [charges]);
-
-  // Visits by venue (last 30d)
-  const visitsByVenue = useMemo(() => {
-    const monthAgo = Date.now() - 30 * day;
-    const map = new Map<VisitVenue, number>();
-    for (const v of visits) {
-      if (Date.parse(v.visitedAtUtc) < monthAgo) continue;
-      map.set(v.venue, (map.get(v.venue) ?? 0) + 1);
-    }
-    const entries = [...map.entries()].sort((a, b) => b[1] - a[1]);
-    const max = Math.max(1, ...entries.map(([, v]) => v));
-    return { entries, max };
-  }, [visits]);
-
-  // Tier distribution
-  const tierDistribution = useMemo(() => {
-    const map = new Map<MemberTier, number>();
-    for (const t of MEMBER_TIERS) map.set(t, 0);
-    for (const m of members) {
-      if (m.status === 'Active') map.set(m.tier, (map.get(m.tier) ?? 0) + 1);
-    }
-    const entries = [...map.entries()];
-    const total = entries.reduce((s, [, v]) => s + v, 0) || 1;
-    return { entries, total };
-  }, [members]);
-
-  // Top spenders
-  const topSpenders = useMemo(() => {
-    const totals = new Map<string, { member: Member; amount: number }>();
-    for (const c of charges) {
-      if (c.status === 'Voided') continue;
-      const member = members.find((m) => m.id === c.memberId);
-      if (!member) continue;
-      const cur = totals.get(member.id) ?? { member, amount: 0 };
-      cur.amount += c.paidAmount;
-      totals.set(member.id, cur);
-    }
-    return [...totals.values()].sort((a, b) => b.amount - a.amount).slice(0, 8);
-  }, [charges, members]);
-
-  // Member growth - last 6 months bar chart
-  const memberGrowth = useMemo(() => {
-    const buckets: { label: string; count: number }[] = [];
-    const now = new Date();
-    for (let i = 5; i >= 0; i--) {
-      const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const monthStart = monthDate.getTime();
-      const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 1).getTime();
-      const count = members.filter(
-        (m) => {
-          const j = Date.parse(m.joinedAtUtc);
-          return j >= monthStart && j < monthEnd;
-        },
-      ).length;
-      buckets.push({
-        label: monthDate.toLocaleDateString(undefined, { month: 'short' }),
-        count,
-      });
-    }
-    const max = Math.max(1, ...buckets.map((b) => b.count));
-    return { buckets, max };
-  }, [members]);
-
-  // Event attendance (% capacity by event status published)
-  const eventAttendance = useMemo(() => {
-    const published = events.filter((e) => e.status === 'Published' || e.status === 'Completed');
-    // An event with no limit (capacity 0) has no seats to fill, so it is left out of the
-    // seats and of the share of them taken.
-    const limited = published.filter((e) => e.capacity > 0);
-    const totalCapacity = limited.reduce((s, e) => s + e.capacity, 0);
-    const totalReg = limited.reduce((s, e) => s + e.registeredCount, 0);
-    const totalWait = published.reduce((s, e) => s + e.waitlistCount, 0);
-    return {
-      utilization: totalCapacity > 0 ? totalReg / totalCapacity : 0,
-      totalReg,
-      totalCapacity,
-      totalWait,
-      count: published.length,
-    };
-  }, [events]);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-subtle">
-        <AppHeader />
-        <div className="flex items-center justify-center py-20 text-slate-500">
-          <Loader2 className="h-6 w-6 animate-spin" />
-        </div>
-      </div>
-    );
-  }
+  const controls = (
+    <div className="flex flex-wrap items-end gap-3 mb-6" role="group" aria-label="Period">
+      <label className="text-sm font-medium text-slate-700">
+        Period
+        <select
+          className="mt-1 block h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm"
+          value={preset}
+          onChange={(e) => setPreset(e.target.value as PeriodPreset)}
+        >
+          {PRESETS.map((p) => <option key={p} value={p}>{PERIOD_LABELS[p]}</option>)}
+        </select>
+      </label>
+      {preset === 'custom' && (
+        <>
+          <label className="text-sm font-medium text-slate-700">
+            From
+            <input type="date" className="mt-1 block h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
+          </label>
+          <label className="text-sm font-medium text-slate-700">
+            To
+            <input type="date" className="mt-1 block h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
+          </label>
+        </>
+      )}
+      <label className="text-sm font-medium text-slate-700">
+        By
+        <select
+          className="mt-1 block h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm"
+          value={grain}
+          onChange={(e) => setGrain(e.target.value as GrainChoice)}
+        >
+          <option value="auto">As suits the period</option>
+          <option value="day">Day</option>
+          <option value="week">Week</option>
+          <option value="month">Month</option>
+        </select>
+      </label>
+      {!period && <p role="alert" className="text-sm text-amber-800">Pick an end on or after the start.</p>}
+    </div>
+  );
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
       <PageTransition>
-        <main
-          id={MAIN_CONTENT_ID}
-          className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]"
-          tabIndex={-1}
-        >
+        <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
           <PageHero
             icon={BarChart3}
             tone="emerald"
             title="Club Reports"
-            subtitle="Revenue, attendance, retention, and loyalty — the operational picture."
-            stats={[
-              { label: 'Revenue', hint: '30d', value: kpis.revenue30d, icon: DollarSign, tone: 'emerald', format: formatCurrency },
-              { label: 'Active members', value: kpis.activeCount, icon: Crown, tone: 'indigo' },
-              { label: 'Churn rate', value: kpis.churn * 100, icon: TrendingUp, tone: 'rose', format: (n) => `${Math.round(n)}%` },
-              { label: 'Visits', hint: '30d', value: kpis.recentVisits, icon: ScanLine, tone: 'sky' },
-              { label: 'New', hint: '180d', value: kpis.newMembers180d, icon: Crown, tone: 'violet' },
-              { label: 'Points outstanding', value: kpis.pointsOutstanding, icon: Sparkles, tone: 'amber' },
-            ]}
+            subtitle={report
+              ? `Money received and charged, receivables, gift cards, points and events. Amounts in ${report.currency}; any other currency is listed apart, never added in.`
+              : 'Money received and charged, receivables, gift cards, points and events.'}
+            actions={canExport ? (
+              <Button type="button" variant="outline" className={heroSecondary} onClick={() => void exportCsv()} disabled={exporting || !report || !range}>
+                <Download className="h-4 w-4" aria-hidden="true" /> {exporting ? 'Exporting…' : 'Export CSV'}
+              </Button>
+            ) : undefined}
+            stats={report ? headline(report, money) : undefined}
           />
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            {/* Revenue by kind */}
-            <Card index={0} title="Revenue by category" icon={<DollarSign className="w-4 h-4" />}>
-              {revenueByKind.entries.length === 0 ? (
-                <Empty />
-              ) : (
-                <ul className="space-y-2">
-                  {revenueByKind.entries.map(([kind, val]) => {
-                    const pct = revenueByKind.total > 0 ? (val / revenueByKind.total) * 100 : 0;
-                    return (
-                      <li key={kind}>
-                        <div className="flex items-center justify-between text-sm mb-1">
-                          <span className="text-slate-700">{kind}</span>
-                          <span className="font-semibold text-slate-900">{formatCurrency(val)}</span>
-                        </div>
-                        <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full ${KIND_COLOR[kind]}`}
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
+          {controls}
+
+          {query.isPending ? (
+            <div className="flex items-center justify-center py-20 text-slate-500" role="status">
+              <Loader2 className="h-6 w-6 animate-spin" aria-hidden="true" /> <span className="sr-only">Loading the figures</span>
+            </div>
+          ) : query.isError && !report ? (
+            <LoadFailed what="The club's figures" error={query.error} onRetry={() => void query.refetch()} retrying={query.isFetching} />
+          ) : report ? (
+            <>
+              {query.isError && (
+                <LoadFailed stale what="The club's figures" error={query.error} onRetry={() => void query.refetch()} retrying={query.isFetching} className="mb-4" />
               )}
-            </Card>
-
-            {/* Visits by venue */}
-            <Card index={1} title="Visits by venue · 30d" icon={<ScanLine className="w-4 h-4" />}>
-              {visitsByVenue.entries.length === 0 ? (
-                <Empty />
-              ) : (
-                <ul className="space-y-2">
-                  {visitsByVenue.entries.map(([venue, count]) => {
-                    const pct = (count / visitsByVenue.max) * 100;
-                    return (
-                      <li key={venue}>
-                        <div className="flex items-center justify-between text-sm mb-1">
-                          <span className="text-slate-700">{venue}</span>
-                          <span className="font-semibold text-slate-900">{count}</span>
-                        </div>
-                        <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full ${VENUE_COLOR[venue]}`}
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </Card>
-
-            {/* Tier distribution */}
-            <Card index={2} title="Active tier distribution" icon={<Crown className="w-4 h-4" />}>
-              <ul className="space-y-2">
-                {tierDistribution.entries.map(([tier, count]) => {
-                  const pct = (count / tierDistribution.total) * 100;
-                  return (
-                    <li key={tier}>
-                      <div className="flex items-center justify-between text-sm mb-1">
-                        <span className="text-slate-700">{tier}</span>
-                        <span className="font-semibold text-slate-900">
-                          {count}{' '}
-                          <span className="text-xs text-slate-500">({Math.round(pct)}%)</span>
-                        </span>
-                      </div>
-                      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                        <div className={`h-full ${TIER_COLOR[tier]}`} style={{ width: `${pct}%` }} />
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            </Card>
-
-            {/* Member growth */}
-            <Card index={3} title="New members · last 6 months" icon={<TrendingUp className="w-4 h-4" />}>
-              <div className="flex items-end gap-2 h-32 mb-2">
-                {memberGrowth.buckets.map((b, i) => {
-                  const h = memberGrowth.max > 0 ? (b.count / memberGrowth.max) * 100 : 0;
-                  return (
-                    // Full height, so the bar's percentage has something to be a percentage of.
-                    <div key={b.label} className="flex h-full flex-1 flex-col items-center justify-end">
-                      <motion.div
-                        className="w-full rounded-t-lg bg-gradient-to-t from-emerald-500 to-teal-400"
-                        style={{ minHeight: b.count > 0 ? 4 : 0 }}
-                        initial={reduce ? false : { height: 0 }}
-                        animate={{ height: `${h}%` }}
-                        transition={{ duration: reduce ? 0 : 0.6, ease: [0.16, 1, 0.3, 1], delay: reduce ? 0 : 0.2 + i * 0.06 }}
-                        title={`${b.count} member${b.count === 1 ? '' : 's'}`}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="flex justify-between text-xs text-slate-500">
-                {memberGrowth.buckets.map((b) => (
-                  <span key={b.label}>
-                    {b.label} · {b.count}
-                  </span>
-                ))}
-              </div>
-            </Card>
-
-            {/* Top spenders */}
-            <Card index={4} title="Top spenders" icon={<DollarSign className="w-4 h-4" />}>
-              {topSpenders.length === 0 ? (
-                <Empty />
-              ) : (
-                <ol className="space-y-2">
-                  {topSpenders.map((row, idx) => (
-                    <li
-                      key={row.member.id}
-                      className="flex items-center justify-between gap-2 text-sm"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <span className="text-xs font-bold text-slate-500 w-5">{idx + 1}</span>
-                        <span className="font-medium text-slate-900 truncate">
-                          {row.member.firstName} {row.member.lastName}
-                        </span>
-                        <span className="text-xs text-slate-500">{row.member.tier}</span>
-                      </div>
-                      <span className="font-semibold text-emerald-700">
-                        {formatCurrency(row.amount)}
-                      </span>
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </Card>
-
-            {/* Event utilization */}
-            <Card index={5} title="Event utilization" icon={<CalendarHeart className="w-4 h-4" />}>
-              <div className="text-center py-4">
-                <p className="text-5xl font-bold text-pink-600">
-                  {Math.round(eventAttendance.utilization * 100)}%
-                </p>
-                <p className="text-sm text-slate-500 mt-2">
-                  {eventAttendance.totalReg} reserved across {eventAttendance.totalCapacity} seats
-                </p>
-                <p className="text-xs text-slate-500 mt-1">
-                  {eventAttendance.count} published events · {eventAttendance.totalWait} on waitlist
-                </p>
-              </div>
-            </Card>
-          </div>
+              <ReportBody report={report} money={money} />
+            </>
+          ) : null}
         </main>
       </PageTransition>
     </div>
   );
 }
 
-function Card({
-  title,
-  icon,
-  index,
-  children,
-}: {
-  title: string;
-  icon: React.ReactNode;
+type Money = (amount: number, currency: string) => string;
+
+/** The workspace's currency's figure in a per-currency list, or nothing. */
+function own<T extends { currency: string }>(rows: T[], currency: string): T | undefined {
+  return rows.find((r) => r.currency === currency);
+}
+
+function headline(report: ClubReport, money: Money) {
+  const c = report.currency;
+  const cash = own(report.cash, c)?.net ?? 0;
+  const accrual = own(report.accrual, c)?.net ?? 0;
+  const owed = own(report.receivables, c)?.total ?? 0;
+  const mrr = own(report.mrr, c)?.monthly ?? 0;
+  return [
+    { label: 'Cash revenue', hint: 'received, less paid back', value: cash, icon: Wallet, tone: 'emerald' as const, format: (n: number) => money(n, c) },
+    { label: 'Accrual revenue', hint: 'charged, less voided', value: accrual, icon: Receipt, tone: 'indigo' as const, format: (n: number) => money(n, c) },
+    { label: 'Receivables', hint: 'owed at the end', value: owed, icon: HandCoins, tone: 'rose' as const, format: (n: number) => money(n, c) },
+    { label: 'MRR', hint: 'subscriptions now', value: mrr, icon: Repeat2, tone: 'violet' as const, format: (n: number) => money(n, c) },
+  ];
+}
+
+function ReportBody({ report, money }: { report: ClubReport; money: Money }) {
+  const c = report.currency;
+  const others = (rows: { currency: string }[]) => rows.filter((r) => r.currency !== c).map((r) => r.currency);
+  const otherCurrencies = [...new Set([...others(report.cash), ...others(report.accrual), ...others(report.receivables), ...others(report.giftCards)])];
+  const giftCards = own(report.giftCards, c);
+  const ageing = own(report.receivables, c);
+  const kinds = report.accrualByKind.filter((k) => k.currency === c && k.net !== 0);
+  const kindTotal = kinds.reduce((s, k) => s + Math.max(0, k.net), 0);
+  const events = report.events;
+  const maxJoined = Math.max(1, ...report.members.joinedByPeriod);
+  const activeTotal = Math.max(1, report.members.activeByTier.reduce((s, t) => s + t.count, 0));
+  const maxVenue = Math.max(1, ...report.visits.byVenue.map((v) => v.count));
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+      <FlowCard index={0} title="Cash revenue" subtitle="Money received when it came, less refunds and payments taken back" icon={<Wallet className="w-4 h-4" />}
+        flow={own(report.cash, c)} report={report} money={money} inLabel="Received" outLabel="Paid back" />
+      <FlowCard index={1} title="Accrual revenue" subtitle="What was charged, less voids in their own period; balances brought over are not sales" icon={<Receipt className="w-4 h-4" />}
+        flow={own(report.accrual, c)} report={report} money={money} inLabel="Charged" outLabel="Voided" />
+
+      <Card index={2} title="Revenue by category" icon={<Coins className="w-4 h-4" />}>
+        {kinds.length === 0 ? <Empty /> : (
+          <ul className="space-y-2">
+            {kinds.map((k) => (
+              <li key={k.kind}>
+                <div className="flex items-center justify-between text-sm mb-1">
+                  <span className="text-slate-700">{k.kind}</span>
+                  <span className="font-semibold text-slate-900">{money(k.net, c)}</span>
+                </div>
+                <Bar share={kindTotal > 0 ? Math.max(0, k.net) / kindTotal : 0} tone="bg-emerald-500" />
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
+      <Card index={3} title="Receivables by age" icon={<HandCoins className="w-4 h-4" />}
+        note={`What members owed ${report.asOfUtc < report.toUtc ? 'now' : 'at the end of the period'}, by days past the due date.`}>
+        {!ageing ? <p className="text-sm text-slate-500">Nobody owes anything.</p> : (
+          <ul className="space-y-2">
+            {([
+              ['Not yet due', ageing.current], ['1–30 days', ageing.days1To30], ['31–60 days', ageing.days31To60],
+              ['61–90 days', ageing.days61To90], ['Over 90 days', ageing.over90],
+            ] as const).map(([label, amount]) => (
+              <li key={label}>
+                <div className="flex items-center justify-between text-sm mb-1">
+                  <span className="text-slate-700">{label}</span>
+                  <span className="font-semibold text-slate-900">{money(amount, c)}</span>
+                </div>
+                <Bar share={ageing.total > 0 ? amount / ageing.total : 0} tone={label === 'Not yet due' ? 'bg-slate-400' : 'bg-rose-500'} />
+              </li>
+            ))}
+            <li className="pt-1 text-xs text-slate-500">{ageing.openCharges} open charge{ageing.openCharges === 1 ? '' : 's'}, {money(ageing.total, c)} in all</li>
+          </ul>
+        )}
+      </Card>
+
+      <Card index={4} title="What the club owes and will bill" icon={<Gift className="w-4 h-4" />}>
+        <dl className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+          <div>
+            <dt className="text-slate-500">Left on gift cards</dt>
+            <dd className="text-lg font-semibold text-slate-900">{money(giftCards?.outstanding ?? 0, c)}</dd>
+            <dd className="text-xs text-slate-500">{giftCards?.cards ?? 0} card{giftCards?.cards === 1 ? '' : 's'} with value left</dd>
+          </div>
+          <div>
+            <dt className="text-slate-500">Loyalty points held</dt>
+            <dd className="text-lg font-semibold text-slate-900">{money(report.points.value, report.points.currency)}</dd>
+            <dd className="text-xs text-slate-500">{report.points.points.toLocaleString()} points at {report.points.pointsPerUnit} a {report.points.currency}</dd>
+          </div>
+          <div>
+            <dt className="text-slate-500">Subscriptions each month</dt>
+            <dd className="text-lg font-semibold text-slate-900">{money(own(report.mrr, c)?.monthly ?? 0, c)}</dd>
+            <dd className="text-xs text-slate-500">{own(report.mrr, c)?.subscriptions ?? 0} running, {money(own(report.mrr, c)?.yearly ?? 0, c)} a year</dd>
+          </div>
+        </dl>
+      </Card>
+
+      <Card index={5} title="Events" icon={<CalendarHeart className="w-4 h-4" />}>
+        <dl className="grid grid-cols-2 gap-4 text-sm">
+          <div>
+            <dt className="text-slate-500">Seats filled</dt>
+            <dd className="text-3xl font-bold text-pink-600">{percent(events.fillRate)}</dd>
+            <dd className="text-xs text-slate-500">{events.seatsTaken} of {events.capacity} seats, {events.limitedEvents} event{events.limitedEvents === 1 ? '' : 's'} with a limit</dd>
+          </div>
+          <div>
+            <dt className="text-slate-500">Did not come</dt>
+            <dd className="text-3xl font-bold text-rose-600">{percent(events.noShowRate)}</dd>
+            <dd className="text-xs text-slate-500">
+              {events.noShows} not come, {events.checkedIn} checked in{events.notMarked ? `, ${events.notMarked} not marked` : ''}
+            </dd>
+          </div>
+        </dl>
+        <p className="mt-3 text-xs text-slate-500">{events.events} event{events.events === 1 ? '' : 's'} in the period, {events.ended} over.</p>
+      </Card>
+
+      <Card index={6} title="Top spenders" icon={<TrendingUp className="w-4 h-4" />} note="Charges in the period, voids taken off; a household's rolled-up bill counts for who ran it up.">
+        {report.topSpenders.length === 0 ? <Empty /> : (
+          <ol className="space-y-2">
+            {report.topSpenders.map((s, i) => (
+              <li key={s.memberId} className="flex items-center justify-between gap-2 text-sm">
+                <span className="flex items-center gap-3 min-w-0">
+                  <span className="text-xs font-bold text-slate-500 w-5">{i + 1}</span>
+                  <span className="font-medium text-slate-900 truncate">{s.memberName}</span>
+                </span>
+                <span className="font-semibold text-emerald-700">{money(s.amount, s.currency)}</span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </Card>
+
+      <Card index={7} title="Members" icon={<Crown className="w-4 h-4" />}>
+        <p className="text-sm text-slate-600 mb-3">
+          {report.members.active} active, {report.members.lapsed} lapsed; {report.members.joined} joined in the period.
+        </p>
+        <ul className="space-y-2 mb-4">
+          {report.members.activeByTier.map((t) => (
+            <li key={t.name}>
+              <div className="flex items-center justify-between text-sm mb-1">
+                <span className="text-slate-700">{t.name}</span>
+                <span className="font-semibold text-slate-900">{t.count}</span>
+              </div>
+              <Bar share={t.count / activeTotal} tone="bg-indigo-500" />
+            </li>
+          ))}
+        </ul>
+        <div className="flex items-end gap-1 h-20" aria-label="Members who joined, by period">
+          {report.members.joinedByPeriod.map((n, i) => (
+            <div key={report.periods[i]?.start ?? i} className="flex h-full flex-1 flex-col items-center justify-end" title={`${periodLabel(report.periods[i]!, report.grain)}: ${n}`}>
+              <div className="w-full rounded-t bg-gradient-to-t from-emerald-500 to-teal-400" style={{ height: `${(n / maxJoined) * 100}%`, minHeight: n > 0 ? 3 : 0 }} />
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card index={8} title="Check-ins by venue" icon={<ScanLine className="w-4 h-4" />}>
+        {report.visits.byVenue.length === 0 ? <Empty /> : (
+          <ul className="space-y-2">
+            {report.visits.byVenue.map((v) => (
+              <li key={v.name}>
+                <div className="flex items-center justify-between text-sm mb-1">
+                  <span className="text-slate-700">{v.name}</span>
+                  <span className="font-semibold text-slate-900">{v.count}</span>
+                </div>
+                <Bar share={v.count / maxVenue} tone="bg-sky-500" />
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="mt-3 text-xs text-slate-500">{report.visits.checkIns} check-in{report.visits.checkIns === 1 ? '' : 's'} in the period.</p>
+      </Card>
+
+      {otherCurrencies.length > 0 && (
+        <Card index={9} title="Other currencies" icon={<Sparkles className="w-4 h-4" />} note="Listed apart: no amount is ever converted or added to another currency's.">
+          <ul className="space-y-1 text-sm">
+            {otherCurrencies.map((cur) => (
+              <li key={cur} className="flex flex-wrap gap-x-4 text-slate-700">
+                <span className="font-semibold">{cur}</span>
+                <span>Cash {money(own(report.cash, cur)?.net ?? 0, cur)}</span>
+                <span>Accrual {money(own(report.accrual, cur)?.net ?? 0, cur)}</span>
+                <span>Owed {money(own(report.receivables, cur)?.total ?? 0, cur)}</span>
+                <span>Gift cards {money(own(report.giftCards, cur)?.outstanding ?? 0, cur)}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function FlowCard({ index, title, subtitle, icon, flow, report, money, inLabel, outLabel }: {
   index: number;
-  children: React.ReactNode;
+  title: string;
+  subtitle: string;
+  icon: React.ReactNode;
+  flow: ClubMoneyFlow | undefined;
+  report: ClubReport;
+  money: Money;
+  inLabel: string;
+  outLabel: string;
 }) {
+  const c = report.currency;
+  const max = Math.max(1, ...(flow?.byPeriod ?? []).map((p) => Math.max(p.in, p.out)));
+  return (
+    <Card index={index} title={title} icon={icon} note={subtitle}>
+      {!flow ? <Empty /> : (
+        <>
+          <p className="text-sm text-slate-600 mb-3">
+            {inLabel} {money(flow.in, c)}, {outLabel.toLowerCase()} {money(flow.out, c)}: <span className="font-semibold text-slate-900">{money(flow.net, c)}</span>
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <caption className="sr-only">{title} by {report.grain}</caption>
+              <thead>
+                <tr className="text-left text-slate-500">
+                  <th scope="col" className="py-1 pr-2 font-medium">{report.grain === 'month' ? 'Month' : report.grain === 'week' ? 'Week' : 'Day'}</th>
+                  <th scope="col" className="py-1 pr-2 font-medium text-right">{inLabel}</th>
+                  <th scope="col" className="py-1 pr-2 font-medium text-right">{outLabel}</th>
+                  <th scope="col" className="py-1 font-medium text-right">Net</th>
+                </tr>
+              </thead>
+              <tbody>
+                {flow.byPeriod.map((p, i) => (
+                  <tr key={report.periods[i]?.start ?? i} className="border-t border-slate-100">
+                    <th scope="row" className="py-1 pr-2 font-normal text-slate-700 whitespace-nowrap">{report.periods[i] ? periodLabel(report.periods[i]!, report.grain) : ''}</th>
+                    <td className="py-1 pr-2 text-right">
+                      <span className="inline-block h-1.5 mr-1 align-middle rounded bg-emerald-400" style={{ width: `${(p.in / max) * 40}px` }} aria-hidden="true" />
+                      {money(p.in, c)}
+                    </td>
+                    <td className="py-1 pr-2 text-right text-rose-700">{p.out > 0 ? money(p.out, c) : '—'}</td>
+                    <td className="py-1 text-right font-semibold text-slate-900">{money(p.net, c)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </Card>
+  );
+}
+
+function Card({ title, icon, index, note, children }: { title: string; icon: React.ReactNode; index: number; note?: string; children: React.ReactNode }) {
   return (
     <StaggerItem index={index} className={`bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:border-emerald-200 ${liftOnHover}`}>
-      <h2 className="font-semibold text-slate-900 inline-flex items-center gap-2 mb-4">
-        {icon} {title}
-      </h2>
+      <h2 className="font-semibold text-slate-900 inline-flex items-center gap-2 mb-1">{icon} {title}</h2>
+      {note && <p className="text-xs text-slate-500 mb-3">{note}</p>}
+      {!note && <div className="mb-3" />}
       {children}
     </StaggerItem>
   );
 }
 
+function Bar({ share, tone }: { share: number; tone: string }) {
+  return (
+    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+      <div className={`h-full ${tone}`} style={{ width: `${Math.min(100, Math.max(0, share * 100))}%` }} />
+    </div>
+  );
+}
+
 function Empty() {
-  return <p className="text-sm text-slate-500">Not enough data yet.</p>;
+  return <p className="text-sm text-slate-500">Nothing in this period.</p>;
 }

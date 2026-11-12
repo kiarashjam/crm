@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { ArrowRight, Check, ChevronDown, Loader2, PenLine, RotateCw, Sparkles, X } from 'lucide-react';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
 import { useMotionPreference } from '@/app/hooks/useMotionPreference';
+import { useModules } from '@/app/hooks/useModules';
 import { cn } from '@/app/components/ui/utils';
 import { getCurrentUser } from '@/app/lib/auth';
 import { useAgentData, type AgentLists } from './agentData';
@@ -601,7 +602,11 @@ function RecordStrip({ href, step, items, lists, gaps, refreshing, chatOpen, onA
 export function NextActions() {
   const orgId = useOrgOptional()?.currentOrgId ?? null;
   const { pathname } = useLocation();
-  const scope = pageScope(pathname);
+  // The sales agent works the Sales module's leads and deals: with Sales turned off it has
+  // nothing to read (the server refuses), so it stays away rather than say it failed.
+  const salesOn = useModules().sales;
+  const pageScoped = pageScope(pathname);
+  const scope: PageScope = salesOn ? pageScoped : { mode: 'hidden' };
   const where: 'home' | 'page' = scope.mode === 'focus' && (pathname === '/dashboard' || pathname === '/') ? 'home' : 'page';
   const [open, setOpen] = useState(() => readOpen(where));
   const data = useAgentData(orgId, scope.mode !== 'hidden');

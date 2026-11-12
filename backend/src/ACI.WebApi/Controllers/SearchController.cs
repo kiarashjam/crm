@@ -41,6 +41,7 @@ public class SearchController : ControllerBase
     /// Results are limited to entities the user has access to.
     /// </remarks>
     /// <param name="q">Search query string.</param>
+    /// <param name="modules">Which modules the workspace has on: with Sales off, leads and deals are left out.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>Search results grouped by entity type.</returns>
     /// <response code="200">Returns search results.</response>
@@ -48,11 +49,16 @@ public class SearchController : ControllerBase
     [HttpGet]
     [ProducesResponseType(typeof(GlobalSearchResultDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<ActionResult<GlobalSearchResultDto>> Search([FromQuery] string? q, CancellationToken ct)
+    public async Task<ActionResult<GlobalSearchResultDto>> Search([FromQuery] string? q, [FromServices] IWorkspaceModules modules, CancellationToken ct)
     {
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
         var result = await _searchService.SearchAsync(userId.Value, _currentUser.CurrentOrganizationId, q ?? "", ct);
+        // Leads and deals are the Sales module's: with it turned off their pages say so, so a
+        // result that opened one would lead nowhere.
+        if (_currentUser.CurrentOrganizationId is Guid organizationId
+            && !await modules.IsOnAsync(organizationId, Domain.Common.WorkspaceModules.Sales, ct))
+            result = result with { Leads = [], Deals = [] };
         return Ok(result);
     }
 }

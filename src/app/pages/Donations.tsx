@@ -162,7 +162,7 @@ export default function Donations() {
 
   const acknowledge = async (d: Donation) => {
     try {
-      await acknowledgeDonation(d.id);
+      await acknowledgeDonation(d.id, d.version);
       toast.success('Acknowledged — thank-you logged');
       await load();
     } catch (err) {
@@ -346,6 +346,7 @@ export default function Donations() {
               }
               actionLabel={donations.length === 0 ? 'Record donation' : undefined}
               onAction={donations.length === 0 ? openCreate : undefined}
+              actionPermission={PERMISSION.ManageMoney}
               variant="orange"
             />
           ) : (

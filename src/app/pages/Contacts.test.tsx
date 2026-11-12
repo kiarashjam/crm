@@ -44,6 +44,9 @@ vi.mock('@/app/hooks/useMotionPreference', () => ({ useMotionPreference: () => t
 vi.mock('@/app/components/duplicates', () => ({ DuplicateMerge: () => null, CONTACT_DUPLICATES: {} }));
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn(), message: vi.fn() }));
 vi.mock('sonner', () => ({ toast }));
+// Which modules the workspace has on; both, unless a test turns one off.
+const modules = vi.hoisted(() => ({ sales: true, club: true }));
+vi.mock('@/app/hooks/useModules', () => ({ useModules: () => modules }));
 
 const Contacts = (await import('./Contacts')).default;
 
@@ -61,6 +64,8 @@ beforeEach(() => {
   for (const fn of [...Object.values(api), ...Object.values(contactsApi)]) fn.mockReset();
   for (const fn of Object.values(toast)) fn.mockReset();
   localStorage.clear();
+  modules.sales = true;
+  modules.club = true;
   api.getContactsPaged.mockImplementation(async (q: { status?: string }) => (q.status === 'archived'
     ? { items: [archivedPerson], totalCount: 1, page: 1, pageSize: 20, totalPages: 1, hasNextPage: false, hasPreviousPage: false }
     : { items: people, totalCount: 640, page: 1, pageSize: 20, totalPages: 32, hasNextPage: true, hasPreviousPage: false }));
@@ -78,6 +83,24 @@ describe('Contacts', () => {
     await waitFor(() => expect(tile('Total Contacts').textContent).toContain('640'));
     expect(tile('Total Contacts').textContent).not.toContain('20');
     await waitFor(() => expect(screen.getByRole('button', { name: /Need attention, 400/ }).textContent).toContain('400'));
+  });
+
+  it('reads the deals beside each contact, and shows how many in the table', async () => {
+    show();
+    await screen.findByText('Anna Keller');
+    fireEvent.click(screen.getByRole('button', { name: 'Show as table' }));
+    expect(await screen.findByRole('columnheader', { name: 'Deals' })).toBeTruthy();
+    await waitFor(() => expect(api.getDealsPaged).toHaveBeenCalled());
+  });
+
+  it('asks the server for no deals while Sales is turned off, which would refuse them, and drops their column', async () => {
+    modules.sales = false;
+    show();
+    await screen.findByText('Anna Keller');
+    fireEvent.click(screen.getByRole('button', { name: 'Show as table' }));
+    expect(await screen.findByRole('columnheader', { name: 'Email' })).toBeTruthy();
+    expect(screen.queryByRole('columnheader', { name: 'Deals' })).toBeNull();
+    expect(api.getDealsPaged).not.toHaveBeenCalled();
   });
 
   it('asks the server for the filters and the order kept in the address', async () => {

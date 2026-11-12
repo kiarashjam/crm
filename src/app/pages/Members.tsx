@@ -476,6 +476,7 @@ export default function Members() {
               }
               actionLabel={members.length === 0 ? 'Add member' : undefined}
               onAction={members.length === 0 ? openCreate : undefined}
+              actionPermission={PERMISSION.ClubMembers}
               variant="orange"
             />
           ) : (

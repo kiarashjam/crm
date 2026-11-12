@@ -1,6 +1,7 @@
 using System.Text.Json;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
+using ACI.Domain.Common;
 using ACI.Domain.Entities;
 using Microsoft.Extensions.Logging;
 
@@ -52,6 +53,7 @@ public sealed class AutomationEngine : IAutomationEngine
     private readonly IOrganizationRepository _organizations;
     private readonly ILogger<AutomationEngine> _logger;
     private readonly ICollaborationNotifier? _notifier;
+    private readonly IWorkspaceModules? _modules;
 
     public AutomationEngine(
         IAutomationRepository rules,
@@ -64,7 +66,8 @@ public sealed class AutomationEngine : IAutomationEngine
         ISequenceRepository targets,
         IOrganizationRepository organizations,
         ILogger<AutomationEngine> logger,
-        ICollaborationNotifier? notifier = null)
+        ICollaborationNotifier? notifier = null,
+        IWorkspaceModules? modules = null)
     {
         _rules = rules;
         _tasks = tasks;
@@ -77,6 +80,7 @@ public sealed class AutomationEngine : IAutomationEngine
         _organizations = organizations;
         _logger = logger;
         _notifier = notifier;
+        _modules = modules;
     }
 
     public async Task DispatchAsync(string trigger, AutomationEvent evt, CancellationToken ct = default)
@@ -270,6 +274,15 @@ public sealed class AutomationEngine : IAutomationEngine
     {
         if (!Guid.TryParse(Value(config, "sequenceId"), out var sequenceId)) return;
         if (evt.LeadId is not Guid leadId) return;
+        // Outreach sequences are the Sales module's. With it turned off a lead can still arrive
+        // (a website form keeps posting them), but enrolling it would start emails nobody could
+        // see or stop, the Sequences page being gone; turning Sales off is refused while a lead
+        // is in a sequence for that reason (WorkspaceModuleService).
+        if (evt.OrganizationId is Guid org && _modules != null && !await _modules.IsOnAsync(org, WorkspaceModules.Sales, ct))
+        {
+            _logger.LogInformation("Automation enrolled nobody for {Source}: the workspace has turned Sales off", evt.SourceKey);
+            return;
+        }
         await _sequences.EnrollAsync(evt.ActorUserId, evt.OrganizationId, new EnrollRequest(
             sequenceId, "lead", leadId, evt.RecordName ?? "", evt.Email), ct);
     }

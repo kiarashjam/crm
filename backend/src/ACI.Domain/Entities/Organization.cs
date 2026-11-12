@@ -54,6 +54,17 @@ public class Organization : Common.BaseEntity
     /// </summary>
     public int StaleDealDays { get; set; } = 30;
 
+    /// <summary>
+    /// Whether the Sales module is turned off (see <see cref="Common.WorkspaceModules"/>):
+    /// its pages leave the menu and its endpoints refuse. Kept as "off" rather than "on" so
+    /// the column's plain default, false, leaves every workspace that existed before the
+    /// switch, and every new one, with the module on.
+    /// </summary>
+    public bool SalesModuleOff { get; set; }
+
+    /// <summary>Whether the Club module is turned off, as <see cref="SalesModuleOff"/> is for Sales.</summary>
+    public bool ClubModuleOff { get; set; }
+
     public User OwnerUser { get; set; } = null!;
     public ICollection<OrganizationMember> Members { get; set; } = new List<OrganizationMember>();
     public ICollection<Invite> Invites { get; set; } = new List<Invite>();

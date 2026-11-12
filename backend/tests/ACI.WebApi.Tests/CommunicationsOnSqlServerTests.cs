@@ -36,6 +36,23 @@ public class CommunicationsOnSqlServerTests
         return JsonDocument.Parse(body).RootElement.Clone();
     }
 
+    /// <summary>
+    /// Waits for a campaign handed to the scheduler to finish: this host runs the scheduler in
+    /// the background, woken by Send, and the test may run it too; the claim lets one send it.
+    /// </summary>
+    private static async Task UntilFinishedAsync(SqlServerApp app, string database, Guid id)
+    {
+        for (var tries = 0; tries < 60; tries++)
+        {
+            using (var scope = app.Services.CreateScope())
+                await scope.ServiceProvider.GetRequiredService<ICampaignService>().RunDueAsync(DateTime.UtcNow);
+            if ((string?)await SqlServerApp.ScalarAsync(database, $"SELECT [Status] FROM [Campaigns] WHERE [Id] = '{id}'") is CampaignStatuses.Sent or CampaignStatuses.Stopped)
+                return;
+            await Task.Delay(250);
+        }
+        throw new TimeoutException($"Campaign {id} did not finish sending.");
+    }
+
     private static string Doc(Guid id, Guid? org, string kind, string payload) =>
         $"INSERT INTO [ClubDocuments] ([Id], [OrganizationId], [Kind], [Payload], [UpdatedAtUtc], [Version]) VALUES ('{id}', {(org == null ? "NULL" : $"'{org}'")}, N'{kind}', N'{payload.Replace("'", "''")}', '2026-10-20T08:00:00', NEWID());";
 
@@ -136,7 +153,8 @@ public class CommunicationsOnSqlServerTests
             // Send now, pressed twice at once: the conditional update lets one through.
             var now = (await Json(await owner.PostAsync("/api/campaigns", Body(new { name = "Now", purpose = "service", subject = "Closed Monday", body = "Closed." })), "create")).GetProperty("id").GetGuid();
             var presses = await Task.WhenAll(owner.PostAsync($"/api/campaigns/{now}/send", null), owner.PostAsync($"/api/campaigns/{now}/send", null));
-            presses.Select(p => p.StatusCode).Should().BeEquivalentTo([HttpStatusCode.OK, HttpStatusCode.Conflict]);
+            presses.Select(p => p.StatusCode).Should().BeEquivalentTo([HttpStatusCode.Accepted, HttpStatusCode.Conflict]);
+            await UntilFinishedAsync(app, database, now);
             (await SqlServerApp.ScalarAsync(database, $"SELECT COUNT(*) FROM [MemberMessages] WHERE [CampaignId] = '{now}'")).Should().Be(3);
             (await SqlServerApp.ScalarAsync(database, $"SELECT COUNT(*) FROM [OutboundMessages] WHERE [SourceId] = '{now}'")).Should().Be(3);
 
@@ -172,6 +190,68 @@ public class CommunicationsOnSqlServerTests
                 });
                 again.Should().BeFalse();
             }
+        }
+        finally
+        {
+            await SqlServerApp.DropDatabaseAsync(database);
+        }
+    }
+
+    [SqlServerFact]
+    public async Task RetriesAreCountedAStopIsOneConditionalUpdate_AndWhoItReachesIsReadInTheDatabase()
+    {
+        await SqlServerApp.WaitForServerAsync();
+        var database = await SqlServerApp.NewDatabaseAsync();
+        try
+        {
+            using var app = SqlServerApp.Start(database);
+            var (owner, _) = await SignInAsync(app, $"{Guid.NewGuid():N}@example.com");
+            var created = await owner.PostAsync("/api/organizations", Body(new { name = "Pavillon" }));
+            created.StatusCode.Should().Be(HttpStatusCode.Created, await created.Content.ReadAsStringAsync());
+            var org = JsonDocument.Parse(await created.Content.ReadAsStringAsync()).RootElement.GetProperty("id").GetGuid();
+            owner.In(org);
+            foreach (var name in new[] { "Anna", "Bruno", "Clara" })
+            {
+                var member = (await Json(await owner.PostAsync("/api/members", Body(new
+                {
+                    firstName = name, lastName = "Dupont", email = $"{name.ToLowerInvariant()}@example.ch", tier = "Gold", status = "Active",
+                })), "add member")).GetProperty("id").GetGuid();
+                await Json(await owner.PostAsync($"/api/members/{member}/consent", Body(new { channel = "email", purpose = "marketing", granted = true, source = "form" })), "consent");
+            }
+
+            // The suppression list and do not contact, read in the database, with addresses
+            // compared lower-cased as the outbox compares them.
+            await SqlServerApp.ExecuteAsync(database,
+                $"INSERT INTO [EmailSuppressions] ([Id], [OrganizationId], [Email], [Reason], [CreatedAtUtc]) VALUES (NEWID(), '{org}', N'bruno@example.ch', N'bounced', SYSUTCDATETIME());");
+            (await owner.PostAsync("/api/contacts", Body(new { name = "Clara Dupont", email = "CLARA@Example.ch", doNotContact = true }))).IsSuccessStatusCode.Should().BeTrue();
+            var audience = await Json(await owner.GetAsync("/api/campaigns/audience?purpose=marketing"), "audience");
+            audience.GetProperty("suppressed").GetInt32().Should().Be(1);
+            audience.GetProperty("doNotContact").GetInt32().Should().Be(1);
+            audience.GetProperty("willReceive").GetInt32().Should().Be(1);
+
+            // A campaign handed to the scheduler, stopped: one conditional update.
+            var id = (await Json(await owner.PostAsync("/api/campaigns", Body(new { name = "Gala", purpose = "service", subject = "Gala", body = "Join us" })), "create"))
+                .GetProperty("id").GetGuid();
+            await SqlServerApp.ExecuteAsync(database, $"UPDATE [Campaigns] SET [Status] = N'Sending', [ClaimedUntilUtc] = DATEADD(minute, 10, SYSUTCDATETIME()) WHERE [Id] = '{id}'");
+            using (var scope = app.Services.CreateScope())
+            {
+                using var acting = scope.ServiceProvider.GetRequiredService<ITenantContext>().ActFor(org, null);
+                var repository = scope.ServiceProvider.GetRequiredService<ICampaignRepository>();
+                (await repository.ExtendClaimAsync(id, DateTime.UtcNow.AddMinutes(10))).Should().BeTrue("it is sending");
+                await repository.ReleaseClaimAsync(id, DateTime.UtcNow.AddMinutes(4), 3);
+                (await SqlServerApp.ScalarAsync(database, $"SELECT [SendAttempts] FROM [Campaigns] WHERE [Id] = '{id}'")).Should().Be(3);
+
+                using var other = app.Services.CreateScope();
+                using var actingToo = other.ServiceProvider.GetRequiredService<ITenantContext>().ActFor(org, null);
+                var stops = await Task.WhenAll(
+                    repository.TryStopAsync(org, id, null, DateTime.UtcNow),
+                    other.ServiceProvider.GetRequiredService<ICampaignRepository>().TryStopAsync(org, id, null, DateTime.UtcNow));
+                stops.Count(s => s).Should().Be(1, "of two stops at once, one finds it sending");
+                (await repository.ExtendClaimAsync(id, DateTime.UtcNow.AddMinutes(10))).Should().BeFalse("a stopped campaign holds no claim");
+                (await repository.StatusAsync(org, id)).Should().Be(CampaignStatuses.Stopped);
+                (await repository.TryStopAsync(Guid.NewGuid(), id, null, DateTime.UtcNow)).Should().BeFalse("another workspace's campaign is not stopped");
+            }
+            (await SqlServerApp.ScalarAsync(database, $"SELECT [ClaimedUntilUtc] FROM [Campaigns] WHERE [Id] = '{id}'")).Should().BeNull("a stopped campaign holds no claim");
         }
         finally
         {

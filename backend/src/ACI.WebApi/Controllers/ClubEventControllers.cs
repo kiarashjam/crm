@@ -31,6 +31,7 @@ file static class Events
 [Authorize]
 [WorkspaceRequired]
 [Produces("application/json")]
+[InModule(WorkspaceModules.Club)]
 public class EventsController : ControllerBase
 {
     private readonly IClubEvents _events;
@@ -88,6 +89,7 @@ public class EventsController : ControllerBase
 [WorkspaceRequired]
 [Produces("application/json")]
 [Requires(MemberPermissions.ClubMembers, MemberPermissions.FrontDesk, Any = true, WritesOnly = true)]
+[InModule(WorkspaceModules.Club)]
 public class EventAttendeesController : ControllerBase
 {
     private readonly IClubEvents _events;

@@ -7,6 +7,7 @@ import { Switch } from '@/app/components/ui/switch';
 import { Textarea } from '@/app/components/ui/textarea';
 import { cn } from '@/app/components/ui/utils';
 import type { OnboardingSettings } from '@/app/api/onboarding';
+import { useModules } from '@/app/hooks/useModules';
 import type { WelcomeDraft } from './welcome';
 import { EmailImageTools } from './EmailImageTools';
 
@@ -68,6 +69,7 @@ export function WelcomeFields({
   showToggle?: boolean;
 }) {
   const set = (patch: Partial<WelcomeDraft>) => onChange({ ...draft, ...patch });
+  const clubOn = useModules().club;
   const configured = Boolean(settings?.configured);
   const open = !showToggle || draft.send;
   const hasTemplate = Boolean(settings?.emailHtml);
@@ -177,10 +179,13 @@ export function WelcomeFields({
                         ))}
                       </div>
                     </div>
-                    <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600">
-                      <Switch checked={draft.addToClubMembers} onCheckedChange={(v) => set({ addToClubMembers: v })} aria-label="Add to club members" />
-                      <Crown className="h-3.5 w-3.5 text-indigo-500" /> Add to club members
-                    </label>
+                    {/* With the club turned off there are no members to add them to (the server adds nobody). */}
+                    {clubOn && (
+                      <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600">
+                        <Switch checked={draft.addToClubMembers} onCheckedChange={(v) => set({ addToClubMembers: v })} aria-label="Add to club members" />
+                        <Crown className="h-3.5 w-3.5 text-indigo-500" /> Add to club members
+                      </label>
+                    )}
                   </div>
                 </div>
 

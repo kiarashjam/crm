@@ -20,6 +20,7 @@ import RelationshipsCard from '@/app/components/RelationshipsCard';
 import { PersonMembershipCard } from '@/app/components/MembershipLinks';
 import { useOrg } from '@/app/contexts/OrgContext';
 import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
+import { useModules } from '@/app/hooks/useModules';
 import { servesDemoData } from '@/app/api/apiClient';
 import { markNotSame } from '@/app/api/dedupe';
 import {
@@ -60,6 +61,7 @@ import { orgCan, PERMISSION } from '@/app/api/organizations';
 
 export default function ContactDetail() {
   const money = useMoney();
+  const salesOn = useModules().sales;
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [contact, setContact] = useState<Contact | null>(null);
@@ -137,9 +139,15 @@ export default function ContactDetail() {
       .finally(() => setTasksLoading(false));
   }, [id, recordRevision]);
 
-  // Load deals filtered by contactId (server-side)
+  // Load deals filtered by contactId (server-side). Deals are the Sales module's: with it
+  // turned off a contact has none to show, and the server refuses to read them.
   useEffect(() => {
     if (!id) return;
+    if (!salesOn) {
+      setDeals([]);
+      setDealsLoading(false);
+      return;
+    }
     setDealsLoading(true);
     getDealsPaged({ page: 1, pageSize: 100, contactId: id })
       .then((result) => {
@@ -147,7 +155,7 @@ export default function ContactDetail() {
       })
       .catch(() => setDeals([]))
       .finally(() => setDealsLoading(false));
-  }, [id, recordRevision]);
+  }, [id, recordRevision, salesOn]);
 
   const seedEditForm = (c: Contact) => setEditForm({
     name: c.name,
@@ -383,7 +391,7 @@ export default function ContactDetail() {
             }
             stats={[
               { label: 'Open tasks', value: openTaskCount, icon: CheckCircle2, tone: 'emerald', hint: `${contactTasks.length} in all` },
-              { label: 'Deals', value: deals.length, icon: Target, tone: 'violet', hint: dealsHint },
+              ...(salesOn ? [{ label: 'Deals', value: deals.length, icon: Target, tone: 'violet' as const, hint: dealsHint }] : []),
               { label: 'Activities', value: activities.length, icon: ActivityIcon, tone: 'sky', hint: lastActivityHint },
               { label: 'Contact since', value: createdLabel ?? '—', icon: Calendar, tone: 'amber', hint: contact.preferredContactMethod ? `prefers ${contact.preferredContactMethod}` : undefined },
             ]}
@@ -597,7 +605,7 @@ export default function ContactDetail() {
                 </div>
               </RecordCard>
 
-              <RecordCard title="Deals" icon={<Target className="h-3.5 w-3.5" />} tone="violet" count={deals.length} index={3}>
+              {salesOn && <RecordCard title="Deals" icon={<Target className="h-3.5 w-3.5" />} tone="violet" count={deals.length} index={3}>
                 {dealsLoading ? (
                   <div className="py-6 text-center">
                     <Spinner size={22} className="mx-auto mb-2" />
@@ -628,7 +636,7 @@ export default function ContactDetail() {
                     ))}
                   </ul>
                 )}
-              </RecordCard>
+              </RecordCard>}
 
               {/* Spouse or partner (the couples package) and family, from either side */}
               <RelationshipsCard
@@ -641,8 +649,8 @@ export default function ContactDetail() {
               {/* The club: the member this person is, their applications and household. */}
               <PersonMembershipCard kind="contact" id={contact.id} personName={contact.name} readOnly={isReadOnly || !!contact.isArchived} />
 
-              {/* Leads this person referred, each a link to that lead */}
-              <ReferredLeadsCard contactId={contact.id} contactName={contact.name} revision={recordRevision} />
+              {/* Leads this person referred, each a link to that lead (the Sales module's) */}
+              {salesOn && <ReferredLeadsCard contactId={contact.id} contactName={contact.name} revision={recordRevision} />}
 
               {/* Custom fields (renders only when fields are defined for contacts) */}
               <CustomFieldsCard

@@ -51,18 +51,26 @@ import {
 import { Button } from '@/app/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/app/components/ui/sheet';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
+import type { WorkspaceModule } from '@/app/api/organizations';
+import { useModules, type ModulesOn } from '@/app/hooks/useModules';
 import { cn } from './ui/utils';
 
 type NavLinkItem = {
   path: string;
   label: string;
   icon: LucideIcon;
+  /** The module the page belongs to: it leaves the menu while the workspace has that module off. */
+  module?: WorkspaceModule;
+  /** Shown only while this module is off: a shared page whose usual place is in that module's group. */
+  onlyWhenOff?: WorkspaceModule;
   children?: { path: string; label: string; icon: LucideIcon }[];
 };
 
 type NavGroup = {
   id: string;
   label: string;
+  /** What the group is called while Sales is off and only its shared pages are left in it. */
+  labelWithoutSales?: string;
   bar: string;
   chip: string;
   items: NavLinkItem[];
@@ -75,21 +83,24 @@ const GROUPS: NavGroup[] = [
     bar: 'bg-orange-500',
     chip: 'bg-orange-100 text-orange-700',
     items: [
-      { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+      { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, module: 'sales' },
     ],
   },
   {
     id: 'pipeline',
     label: 'Pipeline',
+    labelWithoutSales: 'Work',
     bar: 'bg-blue-500',
     chip: 'bg-blue-100 text-blue-700',
     items: [
-      { path: '/leads', label: 'Leads', icon: Users, children: [
+      { path: '/leads', label: 'Leads', icon: Users, module: 'sales', children: [
         { path: '/leads/import', label: 'Import leads', icon: FileUp },
         { path: '/leads/webhook', label: 'Lead webhook', icon: Webhook },
       ] },
-      { path: '/deals', label: 'Deals', icon: Kanban },
+      { path: '/deals', label: 'Deals', icon: Kanban, module: 'sales' },
       { path: '/tasks', label: 'Tasks', icon: CheckSquare },
+      // The calendar lives with the club's pages; without the club, it is here.
+      { path: '/calendar', label: 'Calendar', icon: CalendarDays, onlyWhenOff: 'club' },
       { path: '/activities', label: 'Activities', icon: Activity },
     ],
   },
@@ -114,10 +125,10 @@ const GROUPS: NavGroup[] = [
     bar: 'bg-violet-500',
     chip: 'bg-violet-100 text-violet-700',
     items: [
-      { path: '/send', label: 'Attach copy', icon: Paperclip },
-      { path: '/sequences', label: 'Sequences', icon: Workflow },
+      { path: '/send', label: 'Attach copy', icon: Paperclip, module: 'sales' },
+      { path: '/sequences', label: 'Sequences', icon: Workflow, module: 'sales' },
       { path: '/templates', label: 'Templates', icon: LayoutTemplate },
-      { path: '/history', label: 'History', icon: History },
+      { path: '/history', label: 'History', icon: History, module: 'sales' },
       { path: '/automations', label: 'Automations', icon: Zap },
     ],
   },
@@ -127,7 +138,7 @@ const GROUPS: NavGroup[] = [
     bar: 'bg-rose-500',
     chip: 'bg-rose-100 text-rose-700',
     items: [
-      { path: '/reports', label: 'Reports', icon: BarChart3 },
+      { path: '/reports', label: 'Reports', icon: BarChart3, module: 'sales' },
       { path: '/duplicates', label: 'Duplicates', icon: Copy },
       { path: '/audit', label: 'Audit', icon: ScrollText },
     ],
@@ -138,31 +149,31 @@ const GROUPS: NavGroup[] = [
     bar: 'bg-amber-500',
     chip: 'bg-amber-100 text-amber-800',
     items: [
-      { path: '/hospitality', label: 'Club today', icon: LayoutDashboard },
-      { path: '/pos', label: 'House charge', icon: Calculator },
-      { path: '/pos-tickets', label: 'POS tickets', icon: PlugZap },
-      { path: '/members', label: 'Members', icon: Crown, children: [
+      { path: '/hospitality', label: 'Club today', icon: LayoutDashboard, module: 'club' },
+      { path: '/pos', label: 'House charge', icon: Calculator, module: 'club' },
+      { path: '/pos-tickets', label: 'POS tickets', icon: PlugZap, module: 'club' },
+      { path: '/members', label: 'Members', icon: Crown, module: 'club', children: [
         { path: '/members/import', label: 'Import members', icon: FileUp },
       ] },
-      { path: '/households', label: 'Households', icon: Home },
-      { path: '/applications', label: 'Applications', icon: ClipboardList },
-      { path: '/calendar', label: 'Calendar', icon: CalendarDays },
-      { path: '/events', label: 'Events', icon: CalendarHeart },
-      { path: '/reservations', label: 'Reservations', icon: CalendarClock },
-      { path: '/visits', label: 'Visits', icon: ScanLine },
-      { path: '/tabs', label: 'Tabs', icon: Wine },
-      { path: '/charges', label: 'House accounts', icon: Receipt },
-      { path: '/subscriptions', label: 'Subscriptions', icon: Repeat2 },
-      { path: '/statements', label: 'Statements', icon: FileText },
-      { path: '/club-payments', label: 'Payments & bank', icon: Landmark },
-      { path: '/loyalty', label: 'Loyalty', icon: Gift },
-      { path: '/gift-cards', label: 'Gift cards', icon: Gift },
-      { path: '/donations', label: 'Donations', icon: HeartHandshake },
-      { path: '/campaigns', label: 'Campaigns', icon: Megaphone },
-      { path: '/communications', label: 'Communications', icon: MessageSquareText },
-      { path: '/club-reports', label: 'Club reports', icon: BarChart3 },
-      { path: '/portal', label: 'Member portal', icon: LayoutGrid },
-      { path: '/hospitality-settings', label: 'Club settings', icon: SlidersHorizontal },
+      { path: '/households', label: 'Households', icon: Home, module: 'club' },
+      { path: '/applications', label: 'Applications', icon: ClipboardList, module: 'club' },
+      { path: '/calendar', label: 'Calendar', icon: CalendarDays, module: 'club' },
+      { path: '/events', label: 'Events', icon: CalendarHeart, module: 'club' },
+      { path: '/reservations', label: 'Reservations', icon: CalendarClock, module: 'club' },
+      { path: '/visits', label: 'Visits', icon: ScanLine, module: 'club' },
+      { path: '/tabs', label: 'Tabs', icon: Wine, module: 'club' },
+      { path: '/charges', label: 'House accounts', icon: Receipt, module: 'club' },
+      { path: '/subscriptions', label: 'Subscriptions', icon: Repeat2, module: 'club' },
+      { path: '/statements', label: 'Statements', icon: FileText, module: 'club' },
+      { path: '/club-payments', label: 'Payments & bank', icon: Landmark, module: 'club' },
+      { path: '/loyalty', label: 'Loyalty', icon: Gift, module: 'club' },
+      { path: '/gift-cards', label: 'Gift cards', icon: Gift, module: 'club' },
+      { path: '/donations', label: 'Donations', icon: HeartHandshake, module: 'club' },
+      { path: '/campaigns', label: 'Campaigns', icon: Megaphone, module: 'club' },
+      { path: '/communications', label: 'Communications', icon: MessageSquareText, module: 'club' },
+      { path: '/club-reports', label: 'Club reports', icon: BarChart3, module: 'club' },
+      { path: '/portal', label: 'Member portal', icon: LayoutGrid, module: 'club' },
+      { path: '/hospitality-settings', label: 'Club settings', icon: SlidersHorizontal, module: 'club' },
     ],
   },
   {
@@ -197,16 +208,30 @@ function matchesPath(pathname: string, search: string, path: string): boolean {
   return pathname.startsWith(`${target}/`);
 }
 
-function groupForPath(pathname: string, search: string): string {
-  return GROUPS.find((group) => group.items.some((item) => itemMatches(pathname, search, item)))?.id ?? 'today';
+/**
+ * The menu for the modules the workspace has on: a module's pages leave it while that
+ * module is off, a group with nothing left goes, and a page whose usual place went with
+ * its module shows where it is kept instead.
+ */
+function groupsFor(modules: ModulesOn): NavGroup[] {
+  return GROUPS.map((group) => ({
+    ...group,
+    label: !modules.sales && group.labelWithoutSales ? group.labelWithoutSales : group.label,
+    items: group.items.filter((item) =>
+      (!item.module || modules[item.module]) && (!item.onlyWhenOff || !modules[item.onlyWhenOff])),
+  })).filter((group) => group.items.length > 0);
+}
+
+function groupForPath(groups: NavGroup[], pathname: string, search: string): string {
+  return groups.find((group) => group.items.some((item) => itemMatches(pathname, search, item)))?.id ?? groups[0]?.id ?? 'today';
 }
 
 function itemMatches(pathname: string, search: string, item: NavLinkItem): boolean {
   return matchesPath(pathname, search, item.path) || (item.children?.some((child) => matchesPath(pathname, search, child.path)) ?? false);
 }
 
-function currentItem(pathname: string, search: string): NavLinkItem | undefined {
-  for (const group of GROUPS) {
+function currentItem(groups: NavGroup[], pathname: string, search: string): NavLinkItem | undefined {
+  for (const group of groups) {
     for (const item of group.items) {
       const child = item.children?.find((entry) => matchesPath(pathname, search, entry.path));
       if (child) return child;
@@ -245,9 +270,11 @@ export function AppSideNav() {
 function SideNavBody({ onNavigate }: { onNavigate: () => void }) {
   const location = useLocation();
   const org = useOrgOptional();
+  const modules = useModules();
+  const groups = useMemo(() => groupsFor(modules), [modules]);
   const filterId = useId();
-  const activeGroup = groupForPath(location.pathname, location.search);
-  const here = currentItem(location.pathname, location.search);
+  const activeGroup = groupForPath(groups, location.pathname, location.search);
+  const here = currentItem(groups, location.pathname, location.search);
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState<Record<string, boolean>>(() => ({ [activeGroup]: true }));
 
@@ -257,8 +284,8 @@ function SideNavBody({ onNavigate }: { onNavigate: () => void }) {
 
   const needle = query.trim().toLowerCase();
   const visibleGroups = useMemo(() => {
-    if (!needle) return GROUPS;
-    return GROUPS.map((group) => ({
+    if (!needle) return groups;
+    return groups.map((group) => ({
       ...group,
       items: group.items.flatMap((item) => {
         const parentHit = item.label.toLowerCase().includes(needle);
@@ -270,7 +297,7 @@ function SideNavBody({ onNavigate }: { onNavigate: () => void }) {
         return [];
       }),
     })).filter((group) => group.items.length > 0);
-  }, [needle]);
+  }, [needle, groups]);
 
   return (
     <>

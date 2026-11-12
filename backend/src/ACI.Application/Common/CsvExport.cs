@@ -31,6 +31,28 @@ public sealed class CsvExport
         return this;
     }
 
+    /// <summary>
+    /// A row of text and numbers: a decimal or an int is written as a number, never given the
+    /// leading quote (a negative amount stays a number the spreadsheet can add up); anything
+    /// else is text, made safe as <see cref="Row"/> makes it.
+    /// </summary>
+    public CsvExport Mixed(params object?[] cells)
+    {
+        for (var i = 0; i < cells.Length; i++)
+        {
+            if (i > 0) _text.Append(',');
+            _text.Append(cells[i] switch
+            {
+                decimal d => Number(d),
+                int n => n.ToString(CultureInfo.InvariantCulture),
+                null => "",
+                var text => Cell(text.ToString()),
+            });
+        }
+        _text.Append("\r\n");
+        return this;
+    }
+
     /// <summary>One text cell, made safe and quoted when it needs to be.</summary>
     public static string Cell(string? value)
     {
@@ -40,7 +62,10 @@ public sealed class CsvExport
         return s.IndexOfAny(new[] { ',', '"', '\n', '\r' }) >= 0 ? "\"" + s.Replace("\"", "\"\"") + "\"" : s;
     }
 
-    /// <summary>A number, as a number: never given the leading quote a text cell can get.</summary>
+    /// <summary>
+    /// A number, as a number. Passed to <see cref="Row"/> it is a text cell like any other, so a
+    /// negative one gets the leading quote; <see cref="Mixed"/> keeps it a number.
+    /// </summary>
     public static string Number(decimal value) => value.ToString(CultureInfo.InvariantCulture);
 
     /// <summary>A moment, in UTC, as a spreadsheet reads it: 2026-11-09 14:05.</summary>

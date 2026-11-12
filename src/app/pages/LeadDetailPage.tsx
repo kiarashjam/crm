@@ -715,16 +715,22 @@ export default function LeadDetailPage() {
 
   // The editor's save is checked against the version it opened with, and this page's
   // own assignments, referrers and logged calls give the lead new versions it does not
-  // read back. So the editor starts from the lead as it is now (see useFreshLeadOnOpen).
+  // read back. So the editor starts from the lead as it is now (see useFreshLeadOnOpen):
+  // the fresh copy goes into the form, with its version, while nothing has been typed,
+  // and the page shows it either way.
+  const formOfLead = useCallback(
+    (l: Lead) => leadEditForm(l, sourceOptions, statusOptions),
+    [sourceOptions, statusOptions],
+  );
+  const showFreshLead = useCallback((fresh: Lead) => {
+    setLead((prev) => (prev && prev.id === fresh.id ? { ...prev, ...fresh, assignedToId: fresh.assignedToId ?? prev.assignedToId } : prev));
+  }, []);
   useFreshLeadOnOpen(
     editOpen ? lead?.id : undefined,
-    () => !!lead && JSON.stringify(editForm) === JSON.stringify(leadEditForm(lead, sourceOptions, statusOptions)),
-    (fresh) => {
-      if (!lead) return;
-      const merged = { ...lead, ...fresh, assignedToId: fresh.assignedToId ?? lead.assignedToId };
-      setLead(merged);
-      setEditForm(leadEditForm(merged, sourceOptions, statusOptions));
-    },
+    lead ? formOfLead(lead) : null,
+    setEditForm,
+    formOfLead,
+    showFreshLead,
   );
 
   const handleEditSubmit = async (e: React.FormEvent) => {
@@ -757,16 +763,18 @@ export default function LeadDetailPage() {
         description: editForm.description.trim() || null,
         lifecycleStage: editForm.lifecycleStage || null,
         // The editor sends back every field it shows, so the save is refused, rather
-        // than written over, when someone saved the lead after this page read it.
-        version: lead.version,
+        // than written over, when someone saved the lead after the copy its fields came
+        // from was read (this page's, or the fresher one the editor read as it opened).
+        version: editForm.version || undefined,
       });
       if (!updated) {
         toast.error(messages.errors.generic);
         return;
       }
-      // The referrer has its own endpoint: it can change on a converted lead too.
+      // The referrer has its own endpoint: it can change on a converted lead too. Sent
+      // when it was changed from the referrer of the copy the fields came from.
       const referredByContactId = editForm.referredByContactId || null;
-      const withReferral = referredByContactId !== (lead.referredByContactId ?? null)
+      const withReferral = referredByContactId !== (editForm.referredByContactIdAsRead || null)
         ? await setLeadReferral(lead.id, referredByContactId) ?? updated
         : updated;
       setLead((prev) => (prev ? { ...prev, ...updated, ...pickReferral(withReferral), assignedToId: prev.assignedToId } : prev));

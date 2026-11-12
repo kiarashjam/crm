@@ -109,6 +109,52 @@ public sealed class RequiresAttribute : Attribute, IAsyncActionFilter, IOrderedF
 }
 
 /// <summary>
+/// The controller's endpoints belong to one of the workspace's modules (Sales or Club, see
+/// WorkspaceModules), and answer one refusal while the workspace has that module turned off:
+/// 403 with errorCode Module.Off and the module named, whoever asks and whatever they ask.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Checked before anything else about the request (the caller's permissions, its body), so
+/// the answer is the same for everyone. A personal workspace has no modules to turn off.
+/// </para>
+/// <para>
+/// Endpoints people outside the workspace use are left out on purpose and keep answering
+/// with a module off: a pay link, a payment provider's webhook, a public application or
+/// capture form, an unsubscribe link, a contract sent for signing. Turning a module off
+/// hides it from the team; it does not refuse money coming in or people answering what was
+/// sent to them. EndpointModuleTests fails when a controller says neither which module it
+/// is in nor why it is in none.
+/// </para>
+/// </remarks>
+[AttributeUsage(AttributeTargets.Class)]
+public sealed class InModuleAttribute : Attribute, IAsyncActionFilter, IOrderedFilter
+{
+    /// <param name="module">WorkspaceModules.Sales or WorkspaceModules.Club.</param>
+    public InModuleAttribute(string module) => Module = module;
+
+    public string Module { get; }
+
+    /// <summary>Before the permission check (-3000) and the body's (-2000).</summary>
+    public int Order => -4000;
+
+    public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
+    {
+        var services = context.HttpContext.RequestServices;
+        var user = services.GetRequiredService<ICurrentUserService>();
+        if (user.CurrentOrganizationId is Guid organizationId
+            && !await services.GetRequiredService<IWorkspaceModules>().IsOnAsync(organizationId, Module, context.HttpContext.RequestAborted))
+        {
+            var refusal = ACI.WebApi.Extensions.ResultExtensions.ToProblemResult(DomainErrors.Modules.Off(Module));
+            if (refusal.Value is ProblemDetails problem) problem.Extensions["module"] = Module;
+            context.Result = refusal;
+            return;
+        }
+        await next();
+    }
+}
+
+/// <summary>
 /// The action works on the organization its route names (/api/organizations/{id}/…), which
 /// need not be the one in X-Organization-Id. When the caller belongs to it, the action
 /// reads as that organization, so what it reads is that organization's and nobody else's.

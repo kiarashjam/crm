@@ -23,6 +23,7 @@ import {
   FileText,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useModules } from '@/app/hooks/useModules';
 import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { KanbanSkeleton } from '@/app/components/PageSkeleton';
@@ -147,9 +148,11 @@ export default function Tasks() {
     recurrence: '' as TaskRecurrence | '',
   });
   // What the pickers offer. Each fails on its own and leaves its picker empty; none of
-  // them can blank the board, as one slow list used to.
-  const leads: Lead[] = useAllLeads().data ?? NO_LEADS;
-  const deals: Deal[] = useAllDeals().data ?? NO_DEALS;
+  // them can blank the board, as one slow list used to. Leads and deals are the Sales
+  // module's: with it turned off there are none to link a task to.
+  const salesOn = useModules().sales;
+  const leads: Lead[] = useAllLeads(salesOn).data ?? NO_LEADS;
+  const deals: Deal[] = useAllDeals(salesOn).data ?? NO_DEALS;
   const contacts: Contact[] = useAllContacts().data ?? NO_CONTACTS;
   const orgMembers: OrgMemberDto[] = useOrgMembers().data ?? NO_MEMBERS;
   const [saving, setSaving] = useState(false);

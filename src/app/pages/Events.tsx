@@ -412,6 +412,7 @@ export default function Events() {
               }
               actionLabel={events.length === 0 ? 'New event' : undefined}
               onAction={events.length === 0 ? openCreate : undefined}
+              actionPermission={PERMISSION.ClubMembers}
               variant="orange"
             />
           ) : (

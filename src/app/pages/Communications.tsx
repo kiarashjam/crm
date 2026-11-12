@@ -86,6 +86,7 @@ const COMM_STATUS_BADGE: Record<CommStatus, string> = {
   suppressed: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
   skipped: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
   failed: 'bg-rose-50 text-rose-700 ring-1 ring-rose-200',
+  cancelled: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
   logged: 'bg-slate-100 text-slate-500 ring-1 ring-slate-200',
 };
 
@@ -315,6 +316,7 @@ export default function Communications() {
                   }
                   actionLabel={comms.length === 0 ? 'Email a member' : undefined}
                   onAction={comms.length === 0 ? () => setEmailing(true) : undefined}
+                  actionPermission={PERMISSION.ClubMembers}
                   variant="orange"
                 />
               ) : (

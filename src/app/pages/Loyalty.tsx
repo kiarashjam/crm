@@ -388,6 +388,7 @@ export default function Loyalty() {
                   }
                   actionLabel={entries.length === 0 ? 'Add entry' : undefined}
                   onAction={entries.length === 0 ? openCreate : undefined}
+                  actionPermission={PERMISSION.ClubMembers}
                   variant="orange"
                 />
               ) : (
