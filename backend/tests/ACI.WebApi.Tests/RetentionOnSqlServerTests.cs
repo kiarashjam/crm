@@ -39,6 +39,18 @@ public class RetentionOnSqlServerTests
                 db.RecordsAuditTrail = false;
                 var lead = new Lead { Id = Guid.NewGuid(), UserId = ownerId, OrganizationId = org, Name = "Old Prospect", Email = "old@example.ch", Status = "New", CreatedAtUtc = old };
                 db.Leads.Add(lead);
+                // Just as old, but a guest at next week's gala under the same address: not stale.
+                var guestLead = new Lead { Id = Guid.NewGuid(), UserId = ownerId, OrganizationId = org, Name = "Gala Guest", Email = "Guest@Example.ch", Status = "New", CreatedAtUtc = old };
+                var gala = new ClubEvent
+                {
+                    Id = Guid.NewGuid(), OrganizationId = org, Name = "Gala", StartAtUtc = DateTime.UtcNow.AddDays(7), EndAtUtc = DateTime.UtcNow.AddDays(7).AddHours(3),
+                    Capacity = 40, Status = ClubEventStatuses.Published, CreatedAtUtc = old, UpdatedAtUtc = old,
+                };
+                db.AddRange(guestLead, gala, new ClubEventRegistration
+                {
+                    Id = Guid.NewGuid(), OrganizationId = org, EventId = gala.Id, Name = "Gala Guest", Email = " guest@example.ch", TicketTier = TicketTiers.Guest,
+                    Status = RegistrationStatuses.Reserved, RegisteredAtUtc = old, CreatedAtUtc = old, UpdatedAtUtc = old,
+                });
                 db.Activities.Add(new Activity { Id = Guid.NewGuid(), UserId = ownerId, OrganizationId = org, Type = "note", Body = "Long ago", LeadId = lead.Id, CreatedAtUtc = old, OccurredAtUtc = old });
                 db.ClubMembers.Add(new ClubMember
                 {
@@ -67,7 +79,8 @@ public class RetentionOnSqlServerTests
             run.GetProperty("status").GetString().Should().Be(RetentionRunStatuses.Succeeded, run.GetProperty("failures").ToString());
 
             async Task<int> Count(string sql) => Convert.ToInt32(await SqlServerApp.ScalarAsync(database, sql));
-            (await Count($"SELECT COUNT(*) FROM [Leads] WHERE [OrganizationId] = '{org}'")).Should().Be(0);
+            (await Count($"SELECT COUNT(*) FROM [Leads] WHERE [OrganizationId] = '{org}'")).Should().Be(1, "only the gala guest's lead stays");
+            (await Count($"SELECT COUNT(*) FROM [ClubEventRegistrations] WHERE [OrganizationId] = '{org}' AND [Status] = N'Reserved'")).Should().Be(1);
             (await Count($"SELECT COUNT(*) FROM [Activities] WHERE [OrganizationId] = '{org}'")).Should().Be(0);
             (await Count($"SELECT COUNT(*) FROM [ClubMembers] WHERE [OrganizationId] = '{org}' AND [ErasedAtUtc] IS NOT NULL AND [Email] = N''")).Should().Be(1);
             (await Count($"SELECT COUNT(*) FROM [OutboundMessages] WHERE [OrganizationId] = '{org}' AND [TextBody] IS NULL")).Should().Be(1);

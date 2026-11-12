@@ -28,6 +28,10 @@ public static partial class DomainErrors
             "Privacy.ReferenceHasPersonalData",
             "The reference is kept in the log of erasures, which names nobody: use a ticket number or a date, not the person's name or address.");
 
+        /// <summary>The retention settings found someone with a booking or an event place still to come: left, not cancelled.</summary>
+        public static readonly Error BookingsAhead = new(
+            "Privacy.BookingsAhead", "This person has a booking or an event place still to come, so the retention settings leave them.");
+
         public static readonly Error TooManyRecords = new(
             "Privacy.TooManyRecords", "That is more records than one person has. Choose only the ones that are this person's.");
 

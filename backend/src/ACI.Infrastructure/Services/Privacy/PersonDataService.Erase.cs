@@ -71,7 +71,13 @@ public sealed partial class PersonDataService
         if (reference != null && first.Value.Names.Any(n => reference.Contains(n, StringComparison.OrdinalIgnoreCase)))
             return DomainErrors.Privacy.ReferenceHasPersonalData;
         var now = DateTime.UtcNow;
-        var ahead = await CancelAheadAsync(organizationId, await PersonDossier.LoadAsync(_db, organizationId, first.Value, track: false, ct, mentions), now, ct);
+        var before = await PersonDossier.LoadAsync(_db, organizationId, first.Value, track: false, ct, mentions);
+        // The retention settings remove people nobody has heard from in years. Someone with a
+        // booking or an event place still to come is not one of them, whatever their lead says:
+        // the run leaves them, and never cancels anything of theirs (its rules look for this too).
+        if (trigger == PersonErasureTriggers.Retention && (UpcomingRegistrations(before, now).Any() || UpcomingReservations(before, now).Any()))
+            return DomainErrors.Privacy.BookingsAhead;
+        var ahead = await CancelAheadAsync(organizationId, before, now, ct);
         _db.ChangeTracker.Clear();
 
         for (var attempt = 1; ; attempt++)
@@ -454,16 +460,41 @@ public sealed partial class PersonDataService
         }
         _db.ConsentRecords.RemoveRange(d.Consent);
 
-        // The suppression list: what the mail service reported about their addresses goes, and a
-        // fingerprint of each takes its place, so the address is recognised if it comes back.
-        _db.EmailSuppressions.RemoveRange(d.Suppressions.Where(x => !ErasedAddresses.IsKey(x.Email)));
+        // The suppression list never keeps their address itself, only a fingerprint of it
+        // (ErasedAddresses), which still stops mail if the address comes back.
+        // On request: what the mail service reported goes, and a fingerprint marked "erased"
+        // takes its place, which also stops an import or a new member with the address.
+        // By the retention settings nobody asked to be forgotten, but an unsubscribe, a complaint
+        // or a bounce they gave must still hold after their lead goes: each such row keeps its
+        // reason, under the fingerprint instead of the address.
+        var held = d.Suppressions.Where(x => ErasedAddresses.IsKey(x.Email)).ToDictionary(x => x.Email, StringComparer.Ordinal);
+        foreach (var row in d.Suppressions.Where(x => !ErasedAddresses.IsKey(x.Email)))
+        {
+            var key = ErasedAddresses.Key(row.Email);
+            if (suppress || held.ContainsKey(key))
+            {
+                _db.EmailSuppressions.Remove(row);
+                continue;
+            }
+            row.Email = key;
+            row.Detail = Scrub(row.Detail);
+            held[key] = row;
+        }
         if (suppress)
         {
-            var held = d.Suppressions.Where(x => ErasedAddresses.IsKey(x.Email)).Select(x => x.Email).ToHashSet(StringComparer.Ordinal);
             foreach (var address in s.Addresses)
             {
                 var key = ErasedAddresses.Key(address);
-                if (held.Contains(key)) continue;
+                if (held.TryGetValue(key, out var existing))
+                {
+                    // An unsubscribe kept from an earlier retention run becomes an erasure, which
+                    // also stops an import or a new member with the address.
+                    if (existing.Reason == EmailSuppressionReasons.Erased) continue;
+                    existing.Reason = EmailSuppressionReasons.Erased;
+                    existing.Detail = $"Erased at their request ({pseudonym}).";
+                    existing.CreatedAtUtc = now;
+                    continue;
+                }
                 _db.EmailSuppressions.Add(new EmailSuppression
                 {
                     Id = Guid.NewGuid(),

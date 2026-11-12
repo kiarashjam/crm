@@ -53,7 +53,7 @@ public static class PersonDataInventory
         [typeof(InboundEmail)] = "Sender and subject removed.",
         [typeof(MemberMessage)] = "Anonymised; the campaign's totals stay.",
         [typeof(ConsentRecord)] = "Deleted.",
-        [typeof(EmailSuppression)] = "What the mail service reported goes; a fingerprint of each address takes its place.",
+        [typeof(EmailSuppression)] = "Never kept as the address: on request a fingerprint marked erased replaces each row; by the retention settings an unsubscribe, complaint or bounce keeps its reason under a fingerprint.",
         [typeof(AuditEvent)] = "Their name replaced by the pseudonym; who did what and when stays.",
         [typeof(ClubVisit)] = "Anonymised; kept for the club's figures.",
         [typeof(LoyaltyLedgerEntry)] = "Anonymised; kept for the club's figures.",

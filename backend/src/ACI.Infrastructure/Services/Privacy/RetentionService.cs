@@ -251,7 +251,15 @@ public sealed class RetentionService : IRetention
             && !_db.OutreachEnrollments.Any(e => e.TargetType == "lead" && e.TargetId == l.Id && (e.Status == "active" || e.Status == "paused"))
             && !_db.ClubMembers.Any(m => m.LeadId == l.Id)
             && !_db.ClubApplications.Any(a => a.LeadId == l.Id)
-            && !_db.Contracts.Any(c => c.LeadId == l.Id && (c.Status == ContractStatuses.SignedByClient || c.Status == ContractStatuses.Countersigned)));
+            && !_db.Contracts.Any(c => c.LeadId == l.Id && (c.Status == ContractStatuses.SignedByClient || c.Status == ContractStatuses.Countersigned))
+            // A member's guest at next week's gala, or someone who booked a table, has only an
+            // address on the booking: they are in touch with the club, and their lead is not stale.
+            // An erasure would cancel the booking, and a retention run cancels nobody's.
+            && (l.Email.Trim() == ""
+                || (!_db.ClubEventRegistrations.Any(r => r.Email != null && r.Email.Trim().ToLower() == l.Email.Trim().ToLower()
+                        && (r.RegisteredAtUtc >= cutoff || _db.ClubEvents.Any(e => e.Id == r.EventId && e.StartAtUtc >= cutoff)))
+                    && !_db.ClubReservations.Any(r => r.MemberEmail != null && r.MemberEmail.Trim().ToLower() == l.Email.Trim().ToLower()
+                        && (r.StartAtUtc >= cutoff || r.CreatedAtUtc >= cutoff)))));
 
     private async Task<int> DeleteStaleLeadsAsync(Guid organizationId, int months, DateTime now, CancellationToken ct)
     {
@@ -302,7 +310,13 @@ public sealed class RetentionService : IRetention
             && !_db.ClubReservations.Any(r => r.MemberId == m.Id && r.StartAtUtc >= cutoff)
             && !_db.ClubEventRegistrations.Any(r => r.MemberId == m.Id && r.RegisteredAtUtc >= cutoff)
             && !_db.MemberMessages.Any(x => x.MemberId == m.Id && x.CreatedAtUtc >= cutoff)
-            && !_db.AuditEvents.Any(e => e.EntityId == m.Id && e.CreatedAtUtc >= cutoff));
+            && !_db.AuditEvents.Any(e => e.EntityId == m.Id && e.CreatedAtUtc >= cutoff)
+            // Back as someone's guest, or booking a table, under the same address but no member.
+            && (m.Email.Trim() == ""
+                || (!_db.ClubEventRegistrations.Any(r => r.Email != null && r.Email.Trim().ToLower() == m.Email.Trim().ToLower()
+                        && (r.RegisteredAtUtc >= cutoff || _db.ClubEvents.Any(e => e.Id == r.EventId && e.StartAtUtc >= cutoff)))
+                    && !_db.ClubReservations.Any(r => r.MemberEmail != null && r.MemberEmail.Trim().ToLower() == m.Email.Trim().ToLower()
+                        && (r.StartAtUtc >= cutoff || r.CreatedAtUtc >= cutoff)))));
         if (!includeOpenMoney)
             query = query.Where(m => m.HouseAccountBalance == 0
                 && !_db.ClubSubscriptions.Any(s => s.MemberId == m.Id && s.Status != "Cancelled"));
@@ -375,8 +389,17 @@ public sealed class RetentionService : IRetention
 
     // ── Details around requests and the audit trail ─────────────────────────
 
+    /// <summary>
+    /// Audit lines older than <paramref name="cutoff"/> that still name what they were about.
+    /// The lines of erasures and retention runs name nobody (a pseudonym, "Retention"); the line
+    /// of an export names the person whose data was downloaded, like any other line.
+    /// </summary>
+    private IQueryable<AuditEvent> OldAuditLabels(Guid organizationId, DateTime cutoff) =>
+        _db.AuditEvents.Where(e => e.OrganizationId == organizationId && e.CreatedAtUtc < cutoff && e.EntityLabel != null
+            && (e.EntityType != "privacy" || e.Action == "exported"));
+
     private async Task<int> CountDetailsAsync(Guid organizationId, DateTime cutoff, CancellationToken ct) =>
-        await _db.AuditEvents.CountAsync(e => e.OrganizationId == organizationId && e.CreatedAtUtc < cutoff && e.EntityLabel != null && e.EntityType != "privacy", ct)
+        await OldAuditLabels(organizationId, cutoff).CountAsync(ct)
         + await _db.OutboundMessages.CountAsync(m => m.OrganizationId == organizationId && m.Channel == OutboundChannels.Webhook && m.CreatedAtUtc < cutoff && m.PayloadJson != null, ct)
         + await _db.ClubPosTickets.CountAsync(t => t.OrganizationId == organizationId && t.ImportedAtUtc < cutoff && t.DataJson != null, ct)
         + await _db.InboundEmails.CountAsync(i => i.OrganizationId == organizationId && i.ReceivedAtUtc < cutoff && i.Subject != null, ct)
@@ -385,9 +408,8 @@ public sealed class RetentionService : IRetention
     private async Task<int> PurgeDetailsAsync(Guid organizationId, DateTime cutoff, CancellationToken ct)
     {
         // An audit line keeps who did what kind of thing and when; the name of the record it
-        // was about goes. The privacy lines name nobody already.
-        var lines = await _db.AuditEvents.Where(e => e.OrganizationId == organizationId && e.CreatedAtUtc < cutoff && e.EntityLabel != null && e.EntityType != "privacy")
-            .OrderBy(e => e.CreatedAtUtc).Take(RowsPerRun).ToListAsync(ct);
+        // was about goes.
+        var lines = await OldAuditLabels(organizationId, cutoff).OrderBy(e => e.CreatedAtUtc).Take(RowsPerRun).ToListAsync(ct);
         foreach (var line in lines) line.EntityLabel = null;
         var hooks = await _db.OutboundMessages.Where(m => m.OrganizationId == organizationId && m.Channel == OutboundChannels.Webhook && m.CreatedAtUtc < cutoff && m.PayloadJson != null)
             .OrderBy(m => m.CreatedAtUtc).Take(RowsPerRun).ToListAsync(ct);

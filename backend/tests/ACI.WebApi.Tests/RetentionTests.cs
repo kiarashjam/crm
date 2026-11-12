@@ -164,6 +164,105 @@ public class RetentionTests
     }
 
     [Fact]
+    public async Task ALeadWhoseAddressHasABookingToComeIsNotStale_AndTheBookingIsLeftAlone()
+    {
+        var (factory, client, s) = await ClubAsync();
+        using var _ = factory;
+        // The old prospect never became a member, but a member brings them to next week's gala as
+        // a guest, and they booked the private dining room: a guest has only an address.
+        var now = DateTime.UtcNow;
+        var registrationId = Guid.NewGuid();
+        var reservationId = Guid.NewGuid();
+        await using (var db = factory.Services.EveryWorkspace())
+        {
+            var gala = new ClubEvent { Id = Guid.NewGuid(), OrganizationId = s.Org, Name = "Winter gala", StartAtUtc = now.AddDays(7), EndAtUtc = now.AddDays(7).AddHours(4), Capacity = 50, Status = ClubEventStatuses.Published, CreatedAtUtc = now, UpdatedAtUtc = now };
+            var room = new ClubResource { Id = Guid.NewGuid(), OrganizationId = s.Org, Name = "Private dining", Capacity = 10, CreatedAtUtc = now, UpdatedAtUtc = now };
+            db.AddRange(gala, room,
+                new ClubEventRegistration
+                {
+                    Id = registrationId, OrganizationId = s.Org, EventId = gala.Id, Name = "Old Prospect", Email = "Old@Example.ch", TicketTier = TicketTiers.Guest,
+                    HostMemberId = s.ActiveMember, HostName = "Still Former", Status = RegistrationStatuses.Reserved, RegisteredAtUtc = now.AddDays(-2), CreatedAtUtc = now, UpdatedAtUtc = now,
+                },
+                new ClubReservation
+                {
+                    Id = reservationId, OrganizationId = s.Org, ResourceId = room.Id, ResourceName = room.Name, MemberName = "Old Prospect", MemberEmail = "old@example.ch",
+                    PartySize = 4, StartAtUtc = now.AddDays(5), EndAtUtc = now.AddDays(5).AddHours(2), Status = ReservationStatuses.Confirmed, CreatedAtUtc = now.AddDays(-1),
+                });
+            await db.SaveChangesAsync();
+        }
+        await Ok(await client.PutAsync("/api/privacy/settings", Body(Periods(leads: 24))), "set the period");
+
+        var preview = await Ok(await client.GetAsync("/api/privacy/retention/preview"), "preview");
+        preview.GetProperty("rules").EnumerateArray().Single(r => r.GetProperty("rule").GetString() == "leads").GetProperty("count").GetInt32()
+            .Should().Be(0, "someone with a booking still to come is in touch with the club");
+        var run = await Ok(await client.PostAsync("/api/privacy/retention/run", null), "run now");
+        run.GetProperty("leadsDeleted").GetInt32().Should().Be(0);
+
+        await using var check = factory.Services.EveryWorkspace();
+        check.Leads.Any(l => l.Id == s.StaleLead).Should().BeTrue();
+        check.ClubEventRegistrations.Single(r => r.Id == registrationId).Status.Should().Be(RegistrationStatuses.Reserved, "a retention run cancels nobody's place");
+        check.ClubReservations.Single(r => r.Id == reservationId).Status.Should().Be(ReservationStatuses.Confirmed, "nor anybody's booking");
+    }
+
+    [Fact]
+    public async Task AnUnsubscribeOutlivesTheLeadTheRetentionSettingsRemove_AsAFingerprint()
+    {
+        var (factory, client, s) = await ClubAsync();
+        using var _ = factory;
+        await using (var db = factory.Services.EveryWorkspace())
+        {
+            db.EmailSuppressions.Add(new EmailSuppression
+            {
+                Id = Guid.NewGuid(), OrganizationId = s.Org, Email = "old@example.ch", Reason = EmailSuppressionReasons.Unsubscribed,
+                Detail = "old@example.ch used the unsubscribe link", CreatedAtUtc = DateTime.UtcNow.AddYears(-3),
+            });
+            await db.SaveChangesAsync();
+        }
+        await Ok(await client.PutAsync("/api/privacy/settings", Body(Periods(leads: 24))), "set the period");
+        var run = await Ok(await client.PostAsync("/api/privacy/retention/run", null), "run now");
+        run.GetProperty("leadsDeleted").GetInt32().Should().Be(1);
+
+        var suppressions = await factory.Services.Read(db => db.EmailSuppressions.Where(x => x.OrganizationId == s.Org).ToList());
+        suppressions.Should().ContainSingle("the person asked to hear nothing more; that holds after their lead goes");
+        suppressions[0].Email.Should().Be(ACI.Application.Common.ErasedAddresses.Key("old@example.ch"), "the address itself is not kept");
+        suppressions[0].Reason.Should().Be(EmailSuppressionReasons.Unsubscribed);
+        (suppressions[0].Detail ?? "").Should().NotContain("old@example.ch");
+
+        using var scope = factory.Services.CreateScope();
+        using var acting = scope.ServiceProvider.GetRequiredService<ACI.Application.Interfaces.ITenantContext>().ActFor(s.Org, null);
+        var refused = await scope.ServiceProvider.GetRequiredService<IOutbox>().QueueEmailAsync(new OutboundEmailRequest
+        {
+            OrganizationId = s.Org, Source = OutboundSources.Composer, To = ["old@example.ch"], Subject = "We have news", Body = "Come and see.",
+        });
+        refused.IsSuccess.Should().BeFalse("an imported list or a new lead with the address is still not mailed");
+        refused.Error.Code.Should().Be("Email.Suppressed");
+    }
+
+    [Fact]
+    public async Task TheDetailRuleAlsoTakesTheNameOffTheLineThatSaysSomeonesDataWasDownloaded()
+    {
+        var (factory, client, s) = await ClubAsync();
+        using var _ = factory;
+        var exportLine = Guid.NewGuid();
+        await using (var db = factory.Services.EveryWorkspace())
+        {
+            db.RecordsAuditTrail = false;
+            db.AuditEvents.Add(new AuditEvent
+            {
+                Id = exportLine, OrganizationId = s.Org, OwnerUserId = Guid.Empty, EntityType = "privacy", EntityId = Guid.NewGuid(), EntityLabel = "Old Prospect",
+                Action = "exported", Summary = "Everything held about this person downloaded (12 items from 2 records)", ActorName = "Olga", CreatedAtUtc = DateTime.UtcNow.AddYears(-3),
+            });
+            await db.SaveChangesAsync();
+        }
+        await Ok(await client.PutAsync("/api/privacy/settings", Body(Periods(details: 12))), "set the period");
+        await Ok(await client.PostAsync("/api/privacy/retention/run", null), "run now");
+
+        var line = await factory.Services.Read(db => db.AuditEvents.Single(e => e.Id == exportLine));
+        line.EntityLabel.Should().BeNull("an export's line names the person it was about, like any other line");
+        line.Summary.Should().Contain("downloaded", "what was done and when stay");
+    }
+
+    [Fact]
     public async Task TheDailyRunTakesEachWorkspacesDayOnce_AfterFourInTheMorningItsTime()
     {
         var (factory, client, s) = await ClubAsync();
