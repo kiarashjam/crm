@@ -289,15 +289,24 @@ messages to the kept member.
 Reading needs a workspace member; writing needs `club.members` (and `records.delete` to
 delete).
 
+Send answers at once: it claims the campaign and hands it to the campaign scheduler, which
+works through its members in the background (a large club's campaign used to run inside
+the request, past the ~230 seconds Azure's front end waits). A member whose message cannot
+be queued is tried again a little later each time (1, 2, 4, 8 minutes); after five tries
+they are recorded as `failed`, with why, and the campaign finishes for everyone else. Staff
+can stop a campaign while it sends: members it has not reached get nothing, and its emails
+still waiting in the outbox are not sent (they read `cancelled`).
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/api/campaigns` | Campaigns, newest first, each with its totals |
-| `GET` | `/api/campaigns/audience?purpose=&tiers=&statuses=` | Who a campaign for that segment would reach now: matching, with an address, agreed to marketing, emails it makes |
+| `GET` | `/api/campaigns/audience?purpose=&tiers=&statuses=` | Who a campaign for that segment would reach now: matching, with an address, agreed to marketing, those the outbox would still refuse (`suppressed`: on the suppression list; `doNotContact`: for marketing, an address a contact marked do not contact holds), and the emails it makes |
 | `GET` | `/api/campaigns/{id}/recipients` | Every member it was for and where their message stands |
 | `POST` | `/api/campaigns` | A draft, or a scheduled campaign with `scheduledAtUtc` |
 | `PUT` | `/api/campaigns/{id}` | Change a draft or scheduled one (merge-patch; `scheduledAtUtc: null` unschedules); 409 once it has started sending or changed meanwhile |
 | `DELETE` | `/api/campaigns/{id}` | Delete a draft or scheduled one; 409 once it has started sending |
-| `POST` | `/api/campaigns/{id}/send` | Send it now, once (`If-Match` with its version); 409 when it is being sent or has been |
+| `POST` | `/api/campaigns/{id}/send` | Send it now, once (`If-Match` with its version): 202 with the campaign `Sending`, sent in the background; 409 when it is being sent or has been |
+| `POST` | `/api/campaigns/{id}/stop` | Stop a campaign that is sending (`If-Match` honoured): it becomes `Stopped`; 409 when it is not sending |
 | `POST` | `/api/campaigns/{id}/test` | A copy marked as a test to the signed-in person |
 | `GET` | `/api/communications?memberId=` | The communications log, the club's or one member's |
 | `POST` | `/api/communications/send` | Email one member: `{ memberId, category, purpose, subject, body }`; a refusal comes back as a `suppressed` message with its reason |
