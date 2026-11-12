@@ -68,6 +68,8 @@ import { Checkbox } from '@/app/components/ui/checkbox';
 import { useClubCatalog } from '@/app/hooks/queries';
 import { CADENCE_LABEL, tierNamed, tiersOnSale, type CatalogItem } from '@/app/api/catalog';
 import { currentDateLocale } from '@/app/i18n/current';
+import { asLanguage, LANGUAGES, LANGUAGE_NAMES, type Language } from '@/app/i18n/languages';
+import { useRegional } from '@/app/hooks/useMoney';
 
 /** A tier's dues as a member's dues frequency: the catalogue bills the same four cadences. */
 function frequencyOf(tier: CatalogItem | undefined): DuesFrequency {
@@ -108,6 +110,8 @@ interface FormState {
   /** yyyy-mm-dd, or empty. */
   startsOn: string;
   startUndetermined: boolean;
+  /** The language the club writes to them in. */
+  language: Language;
 }
 
 const day = 86_400_000;
@@ -127,8 +131,11 @@ function StartBadge({ member }: { member: Member }) {
   );
 }
 
-/** A new member's form, on the club's first tier on sale and its dues from the catalogue. */
-function newForm(tier: CatalogItem | undefined): FormState {
+/**
+ * A new member's form, on the club's first tier on sale and its dues from the catalogue, and
+ * written to in the workspace's language (from its locale) unless staff pick another.
+ */
+function newForm(tier: CatalogItem | undefined, language: Language): FormState {
   return {
     firstName: '',
     lastName: '',
@@ -144,6 +151,7 @@ function newForm(tier: CatalogItem | undefined): FormState {
     chargeInitiationFee: false,
     startsOn: '',
     startUndetermined: false,
+    language,
   };
 }
 
@@ -173,7 +181,9 @@ export default function Members() {
   const catalogQuery = useClubCatalog('Membership');
   const catalog = catalogQuery.data;
   const tiers = useMemo(() => tiersOnSale(catalog ?? []), [catalog]);
-  const [form, setForm] = useState<FormState>(() => newForm(undefined));
+  // A new member is written to in the workspace's language unless staff pick another.
+  const workspaceLanguage = asLanguage(useRegional().locale) ?? 'en';
+  const [form, setForm] = useState<FormState>(() => newForm(undefined, workspaceLanguage));
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -260,7 +270,7 @@ export default function Members() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm(newForm(tiers[0]));
+    setForm(newForm(tiers[0], workspaceLanguage));
     setDialogOpen(true);
   };
 
@@ -295,6 +305,7 @@ export default function Members() {
       chargeInitiationFee: false,
       startsOn: m.startsOnUtc?.slice(0, 10) ?? '',
       startUndetermined: m.startUndetermined ?? false,
+      language: asLanguage(m.preferredLanguage) ?? 'en',
     });
     setDialogOpen(true);
   };
@@ -333,8 +344,13 @@ export default function Members() {
       };
       if (editing) {
         // An emptied phone or note is sent as null, which takes it off. Left out, as it
-        // was, the member kept the number they asked the club to delete.
-        await updateMember(editing.id, { ...payload, phone: payload.phone ?? null, notes: payload.notes ?? null });
+        // was, the member kept the number they asked the club to delete. The language is
+        // sent only when it was changed: one never set stays unset (English).
+        const languageChanged = form.language !== (asLanguage(editing.preferredLanguage) ?? 'en');
+        await updateMember(editing.id, {
+          ...payload, phone: payload.phone ?? null, notes: payload.notes ?? null,
+          ...(languageChanged ? { preferredLanguage: form.language } : {}),
+        });
         toast.success('Member updated');
       } else {
         // What adding them does to their account, said as it is: the fee is charged now;
@@ -345,6 +361,7 @@ export default function Members() {
         const duesStarted = form.startDues && (Number(form.duesAmount) || 0) > 0;
         await createMember({
           ...payload,
+          preferredLanguage: form.language,
           startDues: form.startDues || undefined,
           chargeInitiationFee: feeCharged || undefined,
         });
@@ -672,6 +689,19 @@ export default function Members() {
                 value={form.phone}
                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
               />
+            </div>
+            <div>
+              <Label htmlFor="member-language">Writes to them in</Label>
+              <select
+                id="member-language"
+                value={form.language}
+                onChange={(e) => setForm({ ...form, language: e.target.value as Language })}
+                className="h-9 w-full rounded-md border border-input bg-input-background px-3 text-sm"
+                aria-describedby="member-language-hint"
+              >
+                {LANGUAGES.map((code) => <option key={code} value={code} lang={code}>{LANGUAGE_NAMES[code]}</option>)}
+              </select>
+              <p id="member-language-hint" className="mt-1 text-xs text-slate-500">Their statements, reminders and the club&apos;s emails.</p>
             </div>
             <div>
               <Label>Tier</Label>

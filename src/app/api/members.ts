@@ -44,6 +44,11 @@ export interface Member {
   /** The deal and contact they joined through, when they came from a converted lead. */
   dealId?: string | null;
   contactId?: string | null;
+  /**
+   * The language the club writes to them in (en, de, fr): statements, reminders, the welcome
+   * and event emails. Null: English, as every member was written to before.
+   */
+  preferredLanguage?: string | null;
 }
 
 /** The tiers every club starts with, in order: what demo data and a club with no catalogue yet show. */

@@ -8,7 +8,7 @@ namespace ACI.Application.Services;
 /// <param name="BillingLapsedAtUtc">When the club's billing lapsed the member for a charge left unpaid; none otherwise.</param>
 /// <param name="ContactId">The member's CRM contact, when they are linked to one.</param>
 /// <param name="LeadId">The lead they came in as, when they joined through the sales pipeline.</param>
-/// <param name="PreferredLanguage">The language the club writes to them in ("en", "de", "fr"); null follows the workspace.</param>
+/// <param name="PreferredLanguage">The language the club writes to them in ("en", "de", "fr"); null is English.</param>
 public record MemberDto(
     Guid Id, string FirstName, string LastName, string Email, string? Phone,
     string Tier, string Status, DateTime JoinedAtUtc, DateTime RenewsAtUtc,
@@ -57,8 +57,8 @@ public class MemberWriteRequest : IMergePatchRequest
     public bool? StartUndetermined { get; set; }
 
     /// <summary>
-    /// The language the club writes to the member in: "en", "de" or "fr". Sent as null, the
-    /// member follows the workspace's language again.
+    /// The language the club writes to the member in: "en", "de" or "fr". Sent as null, it is
+    /// cleared, and the member is written to in English again.
     /// </summary>
     public string? PreferredLanguage { get; set; }
 
@@ -398,7 +398,7 @@ public sealed class ClubService : IClubService
             row.StartUndetermined = undetermined;
             if (undetermined) row.StartsOnUtc = null;
         }
-        // The language the club writes in; an explicit null (or empty) follows the workspace again.
+        // The language the club writes in; an explicit null (or empty) clears it (English again).
         if (!string.IsNullOrWhiteSpace(request.PreferredLanguage)) row.PreferredLanguage = AppLanguages.Normalise(request.PreferredLanguage);
         else if (request.PreferredLanguage != null || request.Clears(nameof(request.PreferredLanguage))) row.PreferredLanguage = null;
         await _club.SaveMemberAsync(row, ct);

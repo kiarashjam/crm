@@ -1,5 +1,6 @@
 using System.Text.Json;
 using ACI.Application.Common;
+using ACI.Application.Common.I18n;
 using ACI.Application.Configuration;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
@@ -486,6 +487,9 @@ public sealed class OnboardingService : IOnboardingService
                 LeadId = leadId,
                 StartsOnUtc = onboarding.StartsOnUtc,
                 StartUndetermined = onboarding.StartUndetermined,
+                // The language the portal welcomes them in ("fr" or "en"): the club's statements
+                // and reminders to them follow it.
+                PreferredLanguage = AppLanguages.Normalise(onboarding.Language),
             };
             var created = await _club.CreateMemberAsync(userId, onboarding.OrganizationId, Request(onboarding.LeadId), ct);
             // The lead came from the browser: one the club cannot link to is left off, not a reason to add nobody.
@@ -505,6 +509,8 @@ public sealed class OnboardingService : IOnboardingService
             member.StartsOnUtc = onboarding.StartsOnUtc;
             member.StartUndetermined = onboarding.StartUndetermined;
             member.ContactId ??= onboarding.ContactId;
+            // A member the club already had keeps the language staff set; one with none takes the handoff's.
+            member.PreferredLanguage ??= AppLanguages.Normalise(onboarding.Language);
         }
         member.DealId ??= onboarding.DealId;
         return member.Id;

@@ -155,6 +155,28 @@ public class OnboardingTests
     }
 
     [Fact]
+    public async Task TheMemberAHandoffAdds_IsWrittenToInTheLanguageThePortalWelcomesThemIn_AndOneTheClubHadKeepsTheirs()
+    {
+        await using var app = new App();
+        var (owner, _, _, dealId) = await SetUpAsync(app);
+
+        var started = await owner.PostAsync($"/api/deals/{dealId}/onboarding", Body(new { startUndetermined = true, language = "fr", addToClubMembers = true }));
+        started.StatusCode.Should().Be(HttpStatusCode.Created, await started.Content.ReadAsStringAsync());
+        // The portal is still sent "fr", the contract's own value.
+        await app.DispatchOutboxAsync();
+        JsonDocument.Parse(app.Hook.Posts.Single().Body).RootElement.GetProperty("payload").GetProperty("language").GetString().Should().Be("fr");
+        (await app.Services.Read(db => db.ClubMembers.Single())).PreferredLanguage.Should().Be("fr", "their statements and reminders follow the welcome's language");
+
+        // A second deal for someone the club already writes to in German: their language stays.
+        var member = await app.Services.Read(db => db.ClubMembers.Single());
+        (await owner.PutAsync($"/api/members/{member.Id}", Body(new { preferredLanguage = "de" }))).StatusCode.Should().Be(HttpStatusCode.OK);
+        var second = await JsonAsync(await owner.PostAsync("/api/deals", Body(new { name = "Second Jean", value = "100", contactId = member.ContactId })));
+        (await owner.PostAsync($"/api/deals/{second.GetProperty("id").GetGuid()}/onboarding", Body(new { startUndetermined = true, language = "en", addToClubMembers = true })))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+        (await app.Services.Read(db => db.ClubMembers.Single())).PreferredLanguage.Should().Be("de", "staff set it; a handoff does not overwrite it");
+    }
+
+    [Fact]
     public async Task WithTheClubTurnedOff_AHandoffAddsNobodyToTheClubsMembers_AndWithSalesOffThereIsNoHandoff()
     {
         await using var app = new App();

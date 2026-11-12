@@ -69,8 +69,9 @@ public class ClubMember : Common.BaseEntity
 
     /// <summary>
     /// The language the club writes to the member in, "en", "de" or "fr": their statements,
-    /// reminders, welcome and booking emails. Null means the workspace's language (from its
-    /// locale), then English. Set by staff, or from the language the member applied in.
+    /// reminders, welcome and event emails. Null means English, as every member was written to
+    /// before languages existed. Set by staff (the member form offers the workspace's language
+    /// for someone new), from the language they applied in, or from the welcome handoff's.
     /// </summary>
     public string? PreferredLanguage { get; set; }
 }
