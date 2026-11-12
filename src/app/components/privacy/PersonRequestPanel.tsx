@@ -73,7 +73,9 @@ export function PersonRequestPanel({
     const address = email.trim();
     if (!address) return;
     setErased(null);
-    setLookup({ email: address });
+    // The same address asked again is read again: what is found is what gets acted on.
+    if (lookup?.email === address && !lookup.leadId && !lookup.contactId && !lookup.memberId) void found.refetch();
+    else setLookup({ email: address });
   };
 
   const download = async () => {
@@ -101,7 +103,7 @@ export function PersonRequestPanel({
       <form onSubmit={find} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <Label htmlFor="privacy-email" className="mb-1 block font-semibold text-slate-900">Find a person</Label>
         <p className="mb-3 text-sm text-slate-600">
-          By the email address they wrote from, or open a lead, a contact or a member and choose <em>Privacy request</em> there.
+          By the email address they wrote from, or open their lead, contact or member page and choose <em>Privacy</em> there.
         </p>
         <div className="flex flex-col gap-2 sm:flex-row">
           <Input

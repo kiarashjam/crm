@@ -293,6 +293,28 @@ commit, treat it as compromised and rotate it in the SendGrid dashboard
 
 ---
 
+## 5b. The privacy notice: who runs the app
+
+The public privacy page (`/privacy`) and the terms print who runs the app from these
+Application settings. Without them the page says the operator has not entered its details
+yet; it never invents any. Each club enters its own details (the controller), its consent
+mode and its retention periods on **Privacy requests -> Settings** in the app.
+
+| Name | Value |
+|------|-------|
+| `Privacy__OperatorName` | The company that runs this deployment |
+| `Privacy__OperatorAddress` | Its postal address (line breaks allowed) |
+| `Privacy__OperatorEmail` | Where privacy questions about the app itself go |
+| `Privacy__DpoContact` | Optional: a data protection officer or advisor, or an EU representative |
+| `Privacy__Hosting` | Optional: where the app and database run. Defaults to Microsoft Azure, West Europe (the Netherlands); set it if the resources are elsewhere |
+
+The page lists only the services actually configured: SendGrid when `Email__SmtpHost` is
+SendGrid's, OpenAI (in the United States) when `OpenAI__ApiKey` is set, and for a club's own
+page Stripe and Lightspeed once that club connected them. The session length it states is
+`Jwt__ExpiryMinutes`.
+
+---
+
 ## 6. Quick check
 
 - [ ] `AZURE_STATIC_WEB_APPS_API_TOKEN` added  
@@ -303,6 +325,7 @@ commit, treat it as compromised and rotate it in the SendGrid dashboard
 - [ ] `OpenAI__ApiKey` added (optional, for Intelligent Sales Writer)
 - [ ] `Email__SmtpPassword` set in Azure **or** `SENDGRID_API_KEY` added as a GitHub secret, and `info@pavillon46.ch` verified in SendGrid
 - [ ] `Email__FrontendBaseUrl` set to the deployed SPA origin
+- [ ] `Privacy__OperatorName`, `Privacy__OperatorAddress` and `Privacy__OperatorEmail` set, so the privacy notice names who runs the app
 
 ---
 

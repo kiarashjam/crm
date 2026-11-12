@@ -28,8 +28,8 @@ function Lines({ lines }: { lines: ErasureLine[] }) {
   if (lines.length === 0) return <p className="text-sm text-slate-600">Nothing else is held about them.</p>;
   return (
     <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
-      {lines.map((line) => (
-        <li key={`${line.area}-${line.action}`} className="flex items-start gap-3 px-3 py-2 text-sm">
+      {lines.map((line, i) => (
+        <li key={`${i}-${line.area}-${line.action}`} className="flex items-start gap-3 px-3 py-2 text-sm">
           <span className={cn('mt-0.5 shrink-0 rounded-md px-1.5 py-0.5 text-xs font-semibold', ACTION[line.action]?.tone ?? ACTION.keep.tone)}>
             {ACTION[line.action]?.label ?? line.action}
           </span>

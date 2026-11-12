@@ -186,6 +186,10 @@ describe('a request', () => {
     await user.click(screen.getByRole('button', { name: 'Find' }));
     expect(await screen.findByText('3 records found')).toBeInTheDocument();
     expect(api.find).toHaveBeenCalledWith({ email: 'anna@example.ch' }, expect.anything());
+
+    // Asked again, it is read again: what is found is what a download or an erasure acts on.
+    await user.click(screen.getByRole('button', { name: 'Find' }));
+    await waitFor(() => expect(api.find).toHaveBeenCalledTimes(2));
   });
 
   it('erases only after showing what it would do and the word ERASE typed, then forgets the record it started from', async () => {
