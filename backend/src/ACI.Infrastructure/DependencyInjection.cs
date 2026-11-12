@@ -82,6 +82,12 @@ public static class DependencyInjection
         services.AddScoped<IClubAccounting, ACI.Infrastructure.Services.Payments.ClubAccountingService>();
         services.AddHttpClient(ACI.Infrastructure.Services.Payments.StripePaymentProvider.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(30));
         services.AddSingleton<IPaymentProvider, ACI.Infrastructure.Services.Payments.StripePaymentProvider>();
+        // The POS (Lightspeed Restaurant K-Series): its closed tickets come in and are posted to
+        // members as sales through the ledger above.
+        services.AddScoped<IClubPos, ACI.Infrastructure.Services.Pos.ClubPosService>();
+        services.AddSingleton<ACI.Infrastructure.Services.Pos.PosConnectState>();
+        services.AddHttpClient(ACI.Infrastructure.Services.Pos.LightspeedKSeriesProvider.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(60));
+        services.AddSingleton<IPosProvider, ACI.Infrastructure.Services.Pos.LightspeedKSeriesProvider>();
         services.AddScoped<IConsentRepository, ConsentRepository>();
         services.AddScoped<ICampaignRepository, CampaignRepository>();
         services.AddScoped<IImportRepository, ImportRepository>();

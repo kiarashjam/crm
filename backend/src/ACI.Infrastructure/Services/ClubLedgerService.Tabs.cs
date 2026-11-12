@@ -179,20 +179,39 @@ public sealed partial class ClubLedgerService
         var account = billTo != null ? await AccountAsync(organizationId, billTo.Id, ct) : null;
         await _reads.ReadAsync("tabs", ct);
 
-        ClubCharge? charge = null;
+        // One charge for each VAT rate on the tab, the first carrying the tab (whose unique key
+        // is the database's guard against posting a tab twice). A tab with drinks at 8.1% and a
+        // book at 2.6% used to post one charge with no rate, which the statement's VAT summary
+        // and the journal left out; items typed in by hand still have no rate to give.
+        var charges = new List<ClubCharge>();
         if (total > 0)
         {
-            charge = NewCharge(organizationId, billTo!, account!, ClubEntryTypes.Charge,
-                tab.Venue switch { "Bar" => "Bar", "Spa" => "Spa", _ => "Dining" },
-                $"{label} tab ({items.Count} items)", total);
-            charge.TabId = tab.Id;
-            IncurredBy(charge, rolledUpFrom);
-            // One VAT rate for the charge when every item on the tab came from the menu at
-            // that rate; a mixed tab, or one with items typed in by hand, records none.
-            var rates = items.Select(i => i.VatRate).Distinct().ToList();
-            charge.VatRate = rates.Count == 1 ? rates[0] : null;
+            var kind = tab.Venue switch { "Bar" => "Bar", "Spa" => "Spa", _ => "Dining" };
+            var groups = items.GroupBy(i => i.VatRate)
+                .Select(g => (Rate: g.Key, Amount: TotalOf(g), Count: g.Count()))
+                .Where(g => g.Amount > 0)
+                .ToList();
+            // Each part is rounded to the cent; what that leaves of the tab's total goes on the largest.
+            var gap = total - groups.Sum(g => g.Amount);
+            if (gap != 0 && groups.Count > 0)
+            {
+                var largest = groups.IndexOf(groups.MaxBy(g => g.Amount));
+                groups[largest] = groups[largest] with { Amount = groups[largest].Amount + gap };
+            }
+            foreach (var group in groups)
+            {
+                var words = groups.Count == 1 ? $"{label} tab ({items.Count} items)"
+                    : group.Rate is { } rate ? string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{label} tab ({group.Count} of {items.Count} items, VAT {rate:0.0#}%)")
+                    : $"{label} tab ({group.Count} of {items.Count} items, typed in)";
+                var part = NewCharge(organizationId, billTo!, account!, ClubEntryTypes.Charge, kind, words, group.Amount);
+                part.VatRate = group.Rate;
+                if (charges.Count == 0) part.TabId = tab.Id;
+                else part.Reference = $"Tab {tab.Id.ToString("N")[..8].ToUpperInvariant()}";
+                IncurredBy(part, rolledUpFrom);
+                charges.Add(part);
+            }
             Touch(account!);
-            tab.ChargeId = charge.Id;
+            tab.ChargeId = charges[0].Id;
         }
         // The base points per unit spent and the tier's multiplier are the club's settings:
         // they used to be 10 and a table written into this method, whatever the club saved.
@@ -229,9 +248,9 @@ public sealed partial class ClubLedgerService
         // refused before it posts anything.
         var saved = await SaveAsync(DomainErrors.Club.TabChanged, ct, async () =>
         {
-            if (charge != null)
+            if (charges.Count > 0)
             {
-                _db.ClubCharges.Add(charge);
+                _db.ClubCharges.AddRange(charges);
                 await StageBalanceAsync(organizationId, billTo, -total, ct);
             }
             if (earned != null) _db.LoyaltyLedger.Add(earned);

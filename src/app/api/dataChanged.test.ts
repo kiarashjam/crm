@@ -237,6 +237,33 @@ describe('what the signal carries', () => {
   });
 });
 
+describe('what a sale and the POS change', () => {
+  it('refreshes the money lists, the balance, the statement and the points after a sale', () => {
+    const changed = resourcesChangedBy('POST', '/api/sales');
+    for (const kind of ['sales', 'charges', 'payments', 'members', 'statements', 'loyalty']) expect(changed).toContain(kind);
+  });
+
+  it('refreshes them after a POS import or match, which post tickets as sales', () => {
+    for (const path of ['/api/pos/import', '/api/pos/tickets/t1/match', '/api/pos/tickets/t1/retry']) {
+      const changed = resourcesChangedBy('POST', path);
+      for (const kind of ['pos', 'sales', 'charges', 'members', 'loyalty']) expect(changed).toContain(kind);
+    }
+  });
+
+  it("refreshes the member's codes after a match, which remembers the POS customer as one", () => {
+    expect(resourcesChangedBy('POST', '/api/pos/tickets/t1/match')).toContain('member-codes');
+  });
+
+  it("refreshes only the member's codes when one is given or taken away", () => {
+    expect(resourcesChangedBy('POST', '/api/members/m1/codes')).toEqual(['member-codes']);
+    expect(resourcesChangedBy('DELETE', '/api/members/m1/codes/c1')).toEqual(['member-codes']);
+  });
+
+  it("moves the duplicate's codes, sales and POS tickets on a member merge", () => {
+    expect(resourcesChangedBy('POST', '/api/members/m1/merge')).toEqual(expect.arrayContaining(['sales', 'pos', 'member-codes']));
+  });
+});
+
 describe('the signal', () => {
   it('reaches listeners, and stops after unsubscribing', () => {
     const heard = vi.fn();

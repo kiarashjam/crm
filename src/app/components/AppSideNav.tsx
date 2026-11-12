@@ -31,6 +31,7 @@ import {
   Menu,
   MessageSquareText,
   Paperclip,
+  PlugZap,
   Receipt,
   Repeat2,
   ScanLine,
@@ -138,7 +139,8 @@ const GROUPS: NavGroup[] = [
     chip: 'bg-amber-100 text-amber-800',
     items: [
       { path: '/hospitality', label: 'Club today', icon: LayoutDashboard },
-      { path: '/pos', label: 'POS', icon: Calculator },
+      { path: '/pos', label: 'House charge', icon: Calculator },
+      { path: '/pos-tickets', label: 'POS tickets', icon: PlugZap },
       { path: '/members', label: 'Members', icon: Crown, children: [
         { path: '/members/import', label: 'Import members', icon: FileUp },
       ] },

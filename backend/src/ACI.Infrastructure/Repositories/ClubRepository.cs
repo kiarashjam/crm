@@ -69,6 +69,8 @@ public sealed class ClubRepository : IClubRepository
         }
         // Nothing more is charged to a card the member saved.
         await MemberPayments.ForgetDeletedMemberAsync(_db, id, organizationId, ct);
+        // And no code names them at the POS any more.
+        await MemberPos.ForgetDeletedMemberAsync(_db, id, organizationId, ct);
         _db.ClubMembers.Remove(row);
         await _db.SaveChangesAsync(ct);
         return true;
@@ -180,6 +182,9 @@ public sealed class ClubRepository : IClubRepository
             // Their online payments, QR references, bank transfers and saved card, so a payment
             // confirmed later still lands on an account.
             await MemberPayments.MoveToKeptMemberAsync(_db, keepId, dropId, organizationId, name, ct);
+
+            // Their codes at the POS, their sales and the POS tickets posted to them.
+            await MemberPos.MoveToKeptMemberAsync(_db, keepId, dropId, organizationId, name, ct);
 
             // Consent answers and messages are the person's, so they move too.
             await MemberCommunications.MoveToKeptMemberAsync(_db, keepId, dropId, organizationId, ct);

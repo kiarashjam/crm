@@ -1,12 +1,14 @@
-// POS terminal — one-screen staff workflow for member checkout.
+// House charge: the front desk's screen for clubs without a connected POS, or for what is not
+// rung up on it. Staff find a member, see their account at a glance, and ring up a sale: items
+// from the price catalogue with their VAT rates, where it was sold, how the member paid (on
+// their house account, by card, cash or TWINT) and a reason for any discount. The server posts
+// it through the ledger and gives the points by the club's settings. Checking a member in and
+// opening a tab stay one click away.
 //
-// Staff search for a member, see their account at a glance, and pick from
-// the common actions: log a visit, open a tab, or post a charge.
-//
-// Gift cards and loyalty points are not ways to pay here yet. Redeeming one used
-// up the card's value or the member's points, but no payment was recorded and no
-// charge or tab was settled, so the member was billed again at statement time.
-// The tiles stay, switched off, saying so, until a redemption settles a bill.
+// It used to post one charge typed in by hand, with no VAT and no way to say a bill was paid
+// at the table, beside gift card and points tiles switched off because they used up value
+// without paying anything. A club with Lightspeed connected has its tickets come in on their
+// own (the POS tickets page); this screen says so.
 
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -16,12 +18,12 @@ import {
   Sparkles,
   Receipt,
   Wine,
-  Gift,
   ScanLine,
   Crown,
   ArrowRight,
   Loader2,
   CheckCircle2,
+  PlugZap,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -45,44 +47,52 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/app/components/ui/select';
-import type { MemberTier } from '@/app/api/members';
 import { checkIn, VISIT_VENUES, type VisitVenue } from '@/app/api/visits';
 import { openTab, TAB_VENUES, VENUE_LABELS as TAB_VENUE_LABELS, type TabVenue } from '@/app/api/tabs';
-import { createCharge, CHARGE_KINDS, type ChargeKind } from '@/app/api/charges';
+import { TENDER_LABEL } from '@/app/api/sales';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import { ClubReadState } from '@/app/components/ClubReadState';
-import { NONE, useClubMembers, useClubReads, useLoyaltyLedger } from '@/app/hooks/queries';
+import { NONE, useClubMembers, useClubReads, useLoyaltyLedger, usePosStatus, useSales } from '@/app/hooks/queries';
 import PageHero from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { PERMISSION } from '@/app/api/organizations';
+import { SaleBuilder } from '@/app/components/pos/SaleBuilder';
 
-/** Why the gift card and points tiles are switched off. */
-const NOT_A_PAYMENT_YET = 'Not available yet: it would use up the value without paying any bill.';
-
-// The server says why it refused (a member who has left, an amount it will not take), and
-// the sentence is what staff at the till need to see.
+// The server says why it refused (a member who has left, an item taken off sale), and the
+// sentence is what staff at the till need to see.
 function errorText(err: unknown, fallback: string): string {
   return err instanceof Error && err.message ? err.message : fallback;
 }
 
-const TIER_RING: Record<MemberTier, string> = {
+/** The tiers every club starts with; a tier the club added later gets the plain ring. */
+const TIER_RING: Record<string, string> = {
   Bronze: 'ring-amber-400',
   Silver: 'ring-slate-400',
   Gold: 'ring-yellow-400',
   Platinum: 'ring-indigo-500',
 };
+const ringOf = (tier: string) => TIER_RING[tier] ?? 'ring-cyan-300';
+
+function formatWhen(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return iso;
+  }
+}
 
 export default function PosTerminal() {
-  const { format: formatCurrency, currency } = useClubMoney();
+  const { format: formatCurrency } = useClubMoney();
   // Read through the app's cache: a failed read says so with a way to try again, rather
-  // than looking like a club with no members; a charge posted here refreshes the balance.
+  // than looking like a club with no members; a sale posted here refreshes the balance.
   const membersQuery = useClubMembers();
   const loyaltyQuery = useLoyaltyLedger();
   const reads = useClubReads(membersQuery, loyaltyQuery);
   const members = membersQuery.data ?? NONE;
   const ledger = loyaltyQuery.data ?? NONE;
+  const pos = usePosStatus().data;
   const pointsByMember = useMemo(() => {
     const points = new Map<string, number>();
     for (const e of ledger) points.set(e.memberId, (points.get(e.memberId) ?? 0) + e.points);
@@ -93,21 +103,16 @@ export default function PosTerminal() {
   // they had when they were picked.
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = members.find((m) => m.id === selectedId) ?? null;
+  const salesQuery = useSales(selectedId);
+  const recentSales = (salesQuery.data ?? NONE).slice(0, 5);
   const loading = reads.loading;
   usePageLoading(loading);
   const load = reads.reload;
   const [busy, setBusy] = useState(false);
-  const [actionDialog, setActionDialog] = useState<
-    null | 'visit' | 'tab' | 'charge'
-  >(null);
+  const [actionDialog, setActionDialog] = useState<null | 'visit' | 'tab'>(null);
 
   const [visitForm, setVisitForm] = useState({ venue: 'Dining' as VisitVenue, guests: '0' });
   const [tabForm, setTabForm] = useState({ venue: 'Bar' as TabVenue });
-  const [chargeForm, setChargeForm] = useState({
-    kind: 'Dining' as ChargeKind,
-    description: '',
-    amount: '',
-  });
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -134,6 +139,8 @@ export default function PosTerminal() {
       if (v) toast.success(`Checked in · +${v.pointsAwarded} loyalty points`);
       setActionDialog(null);
       await load();
+    } catch (err) {
+      toast.error(errorText(err, 'Could not check the member in'));
     } finally {
       setBusy(false);
     }
@@ -153,37 +160,6 @@ export default function PosTerminal() {
     }
   };
 
-  const postCharge = async () => {
-    if (!selected) return;
-    const amount = Number(chargeForm.amount);
-    if (!amount || amount <= 0) {
-      toast.error('Amount must be positive');
-      return;
-    }
-    if (!chargeForm.description.trim()) {
-      toast.error('Description required');
-      return;
-    }
-    setBusy(true);
-    try {
-      await createCharge({
-        memberId: selected.id,
-        memberName: `${selected.firstName} ${selected.lastName}`,
-        kind: chargeForm.kind,
-        description: chargeForm.description.trim(),
-        amount,
-      });
-      toast.success(`Posted ${formatCurrency(amount)} to house account`);
-      setActionDialog(null);
-      setChargeForm({ kind: 'Dining', description: '', amount: '' });
-      await load();
-    } catch (err) {
-      toast.error(errorText(err, 'Could not post the charge'));
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
@@ -197,10 +173,25 @@ export default function PosTerminal() {
           <PageHero
             icon={Calculator}
             tone="cyan"
-            title="POS Terminal"
-            subtitle="Look up a member, check in, open a tab or post a charge — one-screen staff flow."
+            title="House charge"
+            subtitle="Find a member and ring up what they had: items from the catalogue, paid on their house account, by card, cash or TWINT."
             noAgentSlot
           />
+
+          {pos?.connected && (
+            <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-900">
+              <PlugZap className="w-4 h-4 shrink-0" />
+              <span className="flex-1 min-w-0">
+                {pos.importing
+                  ? `Lightspeed's tickets${pos.locationName ? ` from ${pos.locationName}` : ''} come in on their own. Ring up here only what is not rung up on the POS.`
+                  : 'Lightspeed is connected, but its tickets are not being imported yet.'}
+                {pos.needsAttention > 0 && ` ${pos.needsAttention} ticket${pos.needsAttention === 1 ? '' : 's'} wait for staff.`}
+              </span>
+              <Link to="/pos-tickets" className="inline-flex items-center gap-1 font-medium hover:underline">
+                POS tickets <ArrowRight className="w-3 h-3" />
+              </Link>
+            </div>
+          )}
 
           <ClubReadState reads={reads} what="Members">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -236,7 +227,7 @@ export default function PosTerminal() {
                           }`}
                         >
                           <div
-                            className={`w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-100 to-emerald-100 flex items-center justify-center text-cyan-800 font-semibold text-sm shrink-0 ring-2 ring-offset-2 ring-offset-white ${TIER_RING[m.tier]}`}
+                            className={`w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-100 to-emerald-100 flex items-center justify-center text-cyan-800 font-semibold text-sm shrink-0 ring-2 ring-offset-2 ring-offset-white ${ringOf(m.tier)}`}
                           >
                             {(m.firstName[0] ?? '') + (m.lastName[0] ?? '')}
                           </div>
@@ -257,7 +248,7 @@ export default function PosTerminal() {
               )}
             </StaggerItem>
 
-            {/* Selected member + actions */}
+            {/* Selected member, the sale, and the other actions */}
             <StaggerItem as="section" index={1} className="lg:col-span-2">
               {!selected ? (
                 <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-16 text-center">
@@ -270,7 +261,7 @@ export default function PosTerminal() {
                   <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 mb-4">
                     <div className="flex items-start gap-4">
                       <div
-                        className={`w-16 h-16 rounded-2xl bg-gradient-to-br from-cyan-500 to-emerald-500 flex items-center justify-center text-white text-2xl font-bold shrink-0 ring-4 ring-offset-2 ring-offset-white ${TIER_RING[selected.tier]}`}
+                        className={`w-16 h-16 rounded-2xl bg-gradient-to-br from-cyan-500 to-emerald-500 flex items-center justify-center text-white text-2xl font-bold shrink-0 ring-4 ring-offset-2 ring-offset-white ${ringOf(selected.tier)}`}
                       >
                         {(selected.firstName[0] ?? '') + (selected.lastName[0] ?? '')}
                       </div>
@@ -318,8 +309,10 @@ export default function PosTerminal() {
                     </div>
                   </div>
 
-                  {/* Action grid */}
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  <SaleBuilder key={selected.id} member={selected} />
+
+                  {/* The other things the desk does for a member */}
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
                     <WriteOnly permission={PERMISSION.FrontDesk}>
                       <ActionTile
                         icon={<ScanLine className="w-5 h-5" />}
@@ -344,34 +337,6 @@ export default function PosTerminal() {
                         color="amber"
                       />
                     </WriteOnly>
-                    <WriteOnly permission={PERMISSION.ManageMoney}>
-                      <ActionTile
-                        icon={<Receipt className="w-5 h-5" />}
-                        title="Post charge"
-                        desc="One-time charge to house account"
-                        onClick={() => {
-                          setChargeForm({ kind: 'Dining', description: '', amount: '' });
-                          setActionDialog('charge');
-                        }}
-                        color="emerald"
-                      />
-                    </WriteOnly>
-                    <ActionTile
-                      icon={<Gift className="w-5 h-5" />}
-                      title="Redeem gift card"
-                      desc={NOT_A_PAYMENT_YET}
-                      onClick={() => undefined}
-                      color="rose"
-                      disabled
-                    />
-                    <ActionTile
-                      icon={<Sparkles className="w-5 h-5" />}
-                      title="Redeem points"
-                      desc={NOT_A_PAYMENT_YET}
-                      onClick={() => undefined}
-                      color="violet"
-                      disabled
-                    />
                     <ActionTile
                       icon={<Crown className="w-5 h-5" />}
                       title="View profile"
@@ -381,6 +346,26 @@ export default function PosTerminal() {
                       href={`/members/${selected.id}`}
                     />
                   </div>
+
+                  {recentSales.length > 0 && (
+                    <section aria-label="Recent sales" className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                      <h3 className="text-sm font-semibold text-slate-900 mb-2">Recent sales</h3>
+                      <ul className="divide-y divide-slate-100">
+                        {recentSales.map((sale) => (
+                          <li key={sale.id} className="py-2 flex items-center gap-3 text-sm">
+                            <span className="text-slate-500 w-28 shrink-0">{formatWhen(sale.soldAtUtc)}</span>
+                            <span className="flex-1 min-w-0 truncate text-slate-800">
+                              {sale.lines.map((l) => (l.quantity === 1 ? l.name : `${l.quantity} × ${l.name}`)).join(', ')}
+                              {sale.source !== 'desk' && <span className="ml-1 text-xs text-slate-500">(POS)</span>}
+                            </span>
+                            <span className="text-xs text-slate-500">{TENDER_LABEL[sale.tender]}</span>
+                            <span className="font-medium text-slate-900">{formatCurrency(sale.total)}</span>
+                            {sale.pointsAwarded > 0 && <span className="text-xs text-amber-700">+{sale.pointsAwarded.toLocaleString()} pts</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                  )}
                 </>
               )}
             </StaggerItem>
@@ -478,63 +463,6 @@ export default function PosTerminal() {
         </DialogContent>
       </Dialog>
 
-      {/* Charge */}
-      <Dialog open={actionDialog === 'charge'} onOpenChange={(o) => !o && setActionDialog(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Post charge</DialogTitle>
-            <DialogDescription>Add a single charge to the house account.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div>
-              <Label>Kind</Label>
-              <Select
-                value={chargeForm.kind}
-                onValueChange={(v) => setChargeForm({ ...chargeForm, kind: v as ChargeKind })}
-              >
-                <SelectTrigger aria-label="Kind">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {CHARGE_KINDS.map((k) => (
-                    <SelectItem key={k} value={k}>
-                      {k}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Description</Label>
-              <Input aria-label="Description"
-                value={chargeForm.description}
-                onChange={(e) => setChargeForm({ ...chargeForm, description: e.target.value })}
-              />
-            </div>
-            <div>
-              <Label>Amount ({currency})</Label>
-              <Input aria-label={`Amount (${currency})`}
-                type="number"
-                min="0"
-                step="0.01"
-                value={chargeForm.amount}
-                onChange={(e) => setChargeForm({ ...chargeForm, amount: e.target.value })}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setActionDialog(null)} disabled={busy}>
-              Cancel
-            </Button>
-            <WriteOnly permission={PERMISSION.ManageMoney}>
-              <Button onClick={postCharge} disabled={busy}>
-                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Post charge'}
-              </Button>
-            </WriteOnly>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
     </div>
   );
 }
@@ -564,9 +492,6 @@ function Mini({
 const COLOR: Record<string, string> = {
   cyan: 'from-cyan-500 to-blue-500 text-cyan-600',
   amber: 'from-amber-500 to-orange-500 text-amber-700',
-  emerald: 'from-emerald-500 to-teal-500 text-emerald-700',
-  rose: 'from-rose-500 to-pink-500 text-rose-600',
-  violet: 'from-violet-500 to-purple-500 text-violet-600',
   slate: 'from-slate-500 to-slate-700 text-slate-600',
 };
 
@@ -576,7 +501,6 @@ function ActionTile({
   desc,
   onClick,
   color,
-  disabled,
   href,
 }: {
   icon: React.ReactNode;
@@ -584,11 +508,10 @@ function ActionTile({
   desc: string;
   onClick: () => void;
   color: string;
-  disabled?: boolean;
   href?: string;
 }) {
   const cls =
-    `group rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm hover:border-slate-300 disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-sm ${liftOnHover}`;
+    `group rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm hover:border-slate-300 ${liftOnHover}`;
   const colorClass = COLOR[color] ?? COLOR.slate ?? 'from-slate-500 to-slate-700 text-slate-600';
   const content = (
     <>
@@ -609,7 +532,7 @@ function ActionTile({
     );
   }
   return (
-    <button type="button" onClick={onClick} disabled={disabled} className={cls}>
+    <button type="button" onClick={onClick} className={cls}>
       {content}
     </button>
   );

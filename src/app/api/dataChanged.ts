@@ -94,7 +94,7 @@ const LINKED = ['leads', 'contacts', 'companies', 'deals', 'tasks', 'activities'
 const MEMBER_MERGE = [
   'members', 'campaigns', 'communications', 'duplicates', 'visits', 'loyalty', 'charges', 'payments', 'statements',
   'tabs', 'reservations', 'events', 'gift-cards', 'donations', 'subscriptions', 'households', 'applications',
-  'payment-profile', 'online-payments', 'bank',
+  'payment-profile', 'online-payments', 'bank', 'sales', 'pos', 'member-codes',
 ];
 
 /**
@@ -194,6 +194,13 @@ const CHANGES: Readonly<Record<string, readonly string[]>> = {
   // A bank file's matched transfers, and one allocated by hand, are payments on the ledger:
   // they settle charges, move balances and statements, and can put back a lapsed member.
   bank: ['bank', 'payments', 'charges', 'members', 'statements'],
+  // A sale posts its charges and what was paid at the till, moves the balance and the
+  // statement, and earns its points.
+  sales: ['sales', 'charges', 'payments', 'members', 'statements', 'loyalty'],
+  // An import, a match or a retry posts tickets as sales; the settings and the connection
+  // decide what the POS screens show. A match also remembers the POS customer as one of the
+  // member's codes.
+  pos: ['pos', 'sales', 'charges', 'payments', 'members', 'statements', 'loyalty', 'member-codes'],
 };
 
 /** Which records an activity is about, from the body it was saved with. */
@@ -232,6 +239,8 @@ export function resourcesChangedBy(method: string | undefined, path: string, bod
   // turned on or off, or the card charged (a payment on the ledger when Stripe answers at once).
   if (base === 'members' && segments.length >= 3) {
     const sub = segments[2];
+    // A member's codes at the POS are theirs alone; matching a ticket remembers one too (under /pos).
+    if (sub === 'codes') return ['member-codes'];
     if (sub === 'card' && last === 'charge') return [...SAVED_CARD_CHARGE];
     if (sub === 'card' || sub === 'autopay' || sub === 'pay-link') return ['payment-profile'];
   }
