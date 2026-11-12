@@ -115,8 +115,8 @@ X-Organization-Id: your-org-guid
 Besides the password, a person can sign in with Google or Microsoft Entra ID (OpenID Connect,
 authorization code flow with PKCE) and with passkeys (WebAuthn). Every way ends in the same
 session token as a password sign-in: signed with `Jwt:SecretKey`, carrying the user's security
-stamp, so a password reset, a 2FA change or "sign out everywhere" ends it like any other. The
-token says how the session began in its `signin` claim (`password`, `sso` or `passkey`); a token
+stamp, so a password reset or a 2FA change ends it like any other (removing a passkey or
+unlinking a provider does not end the sessions they began; a reset does). The token says how the session began in its `signin` claim (`password`, `sso` or `passkey`); a token
 from before this claim reads as `password`. `GET /api/auth/sign-in-options` answers
 `{ "sso": [{ "id": "google", "name": "Google" }, ...], "passkeys": true }` for the sign-in
 page: a provider appears only once it is configured (see SECRETS_SETUP.md, section 5c).
