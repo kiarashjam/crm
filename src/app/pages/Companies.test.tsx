@@ -29,6 +29,9 @@ vi.mock('@/app/components/AppHeader', () => ({ default: () => null }));
 vi.mock('@/app/components/duplicates', () => ({ DuplicateMerge: () => null, COMPANY_DUPLICATES: {} }));
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn(), message: vi.fn() }));
 vi.mock('sonner', () => ({ toast }));
+// Which modules the workspace has on; both, unless a test turns one off.
+const modules = vi.hoisted(() => ({ sales: true, club: true }));
+vi.mock('@/app/hooks/useModules', () => ({ useModules: () => modules }));
 
 const Companies = (await import('./Companies')).default;
 
@@ -46,6 +49,8 @@ beforeEach(() => {
   for (const fn of [...Object.values(api), ...Object.values(companiesApi)]) fn.mockReset();
   for (const fn of Object.values(toast)) fn.mockReset();
   localStorage.clear();
+  modules.sales = true;
+  modules.club = true;
   api.getCompaniesPaged.mockResolvedValue({ items: rows, totalCount: 312, page: 1, pageSize: 20, totalPages: 16, hasNextPage: true, hasPreviousPage: false });
   api.getDealsPaged.mockResolvedValue({ items: [], totalCount: 0, page: 1, pageSize: 500, totalPages: 0, hasNextPage: false, hasPreviousPage: false });
   companiesApi.getCompanySummary.mockResolvedValue(summary);
@@ -60,6 +65,19 @@ describe('Companies', () => {
     await waitFor(() => expect(tile('Total Companies').textContent).toContain('312'));
     await waitFor(() => expect(tile('With Contacts').textContent).toContain('200'));
     expect(screen.getByRole('button', { name: /Top industry, Hospitality, 140 companies/ })).toBeTruthy();
+  });
+
+  it('reads the deals to list under each company', async () => {
+    show();
+    await screen.findByText('Hotel Bellevue');
+    await waitFor(() => expect(api.getDealsPaged).toHaveBeenCalled());
+  });
+
+  it('reads no deals while Sales is turned off, as the server would refuse them', async () => {
+    modules.sales = false;
+    show();
+    await screen.findByText('Hotel Bellevue');
+    expect(api.getDealsPaged).not.toHaveBeenCalled();
   });
 
   it('asks the server for the filters and the order kept in the address', async () => {

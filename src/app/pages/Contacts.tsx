@@ -66,6 +66,7 @@ import {
 } from '@/app/components/views';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import { useMoney } from '@/app/hooks/useMoney';
+import { useModules } from '@/app/hooks/useModules';
 import { PERMISSION } from '@/app/api/organizations';
 
 const SORTS: ContactSortField[] = ['name', 'email', 'lastActivity', 'createdAt'];
@@ -170,8 +171,10 @@ export default function Contacts() {
   // The figures help; the page still works without them.
   const stats: ContactStats | null = useContactStats().data ?? null;
   const companies: Company[] = useAllCompanies().data ?? NO_COMPANIES;
-  // HP-9: Deals linked to contacts (the server gives at most 100 a page).
-  const allDeals: Deal[] = useDealsPage({ page: 1, pageSize: 100 }).data?.items ?? NO_DEALS;
+  // HP-9: Deals linked to contacts (the server gives at most 100 a page). Deals are the Sales
+  // module's: with it turned off there are none to show, and the server refuses to read them.
+  const salesOn = useModules().sales;
+  const allDeals: Deal[] = useDealsPage({ page: 1, pageSize: 100 }, salesOn).data?.items ?? NO_DEALS;
   // HP-12: Task visibility on contacts
   const allTasks: TaskItem[] = useTasksList().data ?? NO_TASKS;
   // Only the first load blanks the list and holds the overlay; a search keystroke or a
@@ -409,7 +412,7 @@ export default function Contacts() {
     { id: 'phone', label: 'Phone', cell: (c) => c.phone || '—' },
     { id: 'jobTitle', label: 'Job title', cell: (c) => c.jobTitle || '—' },
     { id: 'company', label: 'Company', cell: (c) => (c.companyId ? companyName(c.companyId) || '—' : '—') },
-    { id: 'deals', label: 'Deals', numeric: true, cell: (c) => getDealsForContact(c.id).length || '—' },
+    ...(salesOn ? [{ id: 'deals', label: 'Deals', numeric: true, cell: (c: Contact) => getDealsForContact(c.id).length || '—' }] : []),
     { id: 'tasks', label: 'Tasks', numeric: true, byDefault: false, cell: (c) => getTasksForContact(c.id).length || '—' },
     { id: 'lastActivity', label: 'Last activity', cell: (c) => shortDate(c.lastActivityAtUtc) },
     { id: 'added', label: 'Added', byDefault: false, cell: (c) => shortDate(c.createdAtUtc) },
