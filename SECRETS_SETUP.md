@@ -326,7 +326,7 @@ value, for example `https://mango-moss-0804bb403.1.azurestaticapps.net` or your 
 
 | Name | Value |
 |------|-------|
-| `Sso__ApiBaseUrl` | `<api>`, no trailing slash. Without it `Email__ApiBaseUrl` is used; with neither, no provider is offered. |
+| `Sso__ApiBaseUrl` | `<api>`, no trailing slash. Without it `Email__ApiBaseUrl` is used. Set one of them: left at its default (`http://localhost:5160`), the buttons still show but Google and Microsoft are sent a localhost callback and refuse the sign-in. |
 | `Email__FrontendBaseUrl` | `<app>` (already set for the emails). The API sends people back to `<app>/auth/sso`. |
 
 ### Google

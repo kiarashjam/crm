@@ -589,6 +589,8 @@ Signing in another way (all off until set; SECRETS_SETUP.md, section 5c, says wh
 `Sso:ApiBaseUrl` falls back to `Email:ApiBaseUrl`; the providers send people back to
 `{ApiBaseUrl}/api/auth/sso/{google|microsoft}/callback`, and the API sends them on to
 `{Email:FrontendBaseUrl}/auth/sso`, so both must be absolute for any provider to be offered.
+Both have localhost defaults (`http://localhost:5160` and `http://localhost:5173`), which count
+as absolute: on a server, set them, or the providers are sent a callback they refuse.
 `Sso:Microsoft:Tenant` is `organizations` (any work or school account, the default), `common`
 (those and personal Microsoft accounts), `consumers`, or one tenant's id (only that directory).
 
