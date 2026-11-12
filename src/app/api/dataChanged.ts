@@ -140,6 +140,8 @@ const SAVED_CARD_CHARGE = ['payment-profile', 'online-payments', 'payments', 'ch
  * - Club Reports and Today at the Club (club-reports) are summed on the server from the
  *   ledger, the members, check-ins, bookings, tabs, gift cards and points: every write
  *   that moves one of those refreshes them.
+ * - A member added, a booking made, a place taken on an event's list and an approval run
+ *   the workspace's automations too, which can add a task.
  *
  * A base not listed changes only its own records (the club's donations, resources…),
  * which is why checking someone in does not reload the sales lists. Add a base here
@@ -170,7 +172,7 @@ const CHANGES: Readonly<Record<string, readonly string[]>> = {
   // A balance set by hand on a member is an entry on the ledger, a member's tier or
   // status changes who a campaign reaches, and a member added can start their dues
   // subscription (due today, so billing now has it to bill) and be charged their initiation fee.
-  members: ['members', 'charges', 'payments', 'statements', 'campaigns', 'subscriptions', 'billing', 'club-reports'],
+  members: ['members', 'charges', 'payments', 'statements', 'campaigns', 'subscriptions', 'billing', 'club-reports', 'tasks'],
   // A void or a payment can put back a member the billing lapsed (members).
   charges: ['charges', 'members', 'statements', 'club-reports'],
   payments: ['payments', 'charges', 'members', 'statements', 'club-reports'],
@@ -188,15 +190,15 @@ const CHANGES: Readonly<Record<string, readonly string[]>> = {
   // reminders and monthly statements are emailed, each logged in the member's communications.
   billing: ['billing', 'charges', 'subscriptions', 'members', 'statements', 'communications', 'club-reports'],
   hospitality: ['hospitality'],
-  events: ['events', 'charges', 'payments', 'members', 'statements', 'loyalty', 'communications', 'club-reports'],
-  reservations: ['reservations', 'charges', 'payments', 'members', 'statements', 'club-reports'],
+  events: ['events', 'charges', 'payments', 'members', 'statements', 'loyalty', 'communications', 'club-reports', 'tasks'],
+  reservations: ['reservations', 'charges', 'payments', 'members', 'statements', 'club-reports', 'tasks'],
   resources: ['resources', 'reservations'],
   // Sending a campaign writes a message per member into the communications log.
   campaigns: ['campaigns', 'communications'],
   // An approval makes the member, starts their dues, charges the initiation fee, joins the
   // household, records their consent and queues the welcome (logged in their communications);
   // the lead's and the contact's pages show the application and the member.
-  applications: ['applications', 'members', 'charges', 'payments', 'subscriptions', 'statements', 'communications', 'households', 'billing', 'leads', 'contacts', 'campaigns', 'club-reports'],
+  applications: ['applications', 'members', 'charges', 'payments', 'subscriptions', 'statements', 'communications', 'households', 'billing', 'leads', 'contacts', 'campaigns', 'club-reports', 'tasks'],
   households: HOUSEHOLD_WRITE,
   // The payment settings decide what the money screens offer (pay online, the QR-bill).
   'payment-settings': ['payment-settings'],
