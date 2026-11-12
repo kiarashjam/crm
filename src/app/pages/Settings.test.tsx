@@ -5,6 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { withQueries } from '@/test/queryWrapper';
 
 const twoFactorSetup = vi.fn(async () => ({ enabled: true, secret: 'JBSWY3DPEHPK3PXP', otpauthUri: 'otpauth://totp/x' }));
 const twoFactorStatus = vi.fn(async () => ({ enabled: true }));
@@ -49,11 +50,11 @@ beforeEach(() => {
 
 describe('opening Settings', () => {
   it('asks only whether 2FA is on, never for the secret', async () => {
-    render(
+    render(withQueries(
       <MemoryRouter initialEntries={['/settings?tab=security']}>
         <Settings />
       </MemoryRouter>,
-    );
+    ));
 
     expect(await screen.findByText('Enabled')).toBeInTheDocument();
     expect(twoFactorStatus).toHaveBeenCalledTimes(1);
@@ -65,11 +66,11 @@ describe('opening Settings', () => {
 describe('the Sales module turned off', () => {
   it('leaves its tabs out of Settings: pipelines, and the welcome a deal is handed over with', async () => {
     currentOrg = { id: 'org-1', name: 'Pavillon 46', role: 'owner', salesEnabled: false, clubEnabled: true };
-    render(
+    render(withQueries(
       <MemoryRouter initialEntries={['/settings?tab=profile']}>
         <Settings />
       </MemoryRouter>,
-    );
+    ));
 
     expect((await screen.findAllByText('Team')).length).toBeGreaterThan(0);
     expect(screen.queryByText('Pipelines')).toBeNull();
@@ -78,11 +79,11 @@ describe('the Sales module turned off', () => {
 
   it('offers them while it is on', async () => {
     currentOrg = { id: 'org-1', name: 'Pavillon 46', role: 'owner', salesEnabled: true, clubEnabled: true };
-    render(
+    render(withQueries(
       <MemoryRouter initialEntries={['/settings?tab=profile']}>
         <Settings />
       </MemoryRouter>,
-    );
+    ));
 
     expect((await screen.findAllByText('Pipelines')).length).toBeGreaterThan(0);
     expect(screen.getAllByText('Welcome & portal').length).toBeGreaterThan(0);
