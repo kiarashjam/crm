@@ -155,12 +155,13 @@ public class ClubBillingRunTests
         (await ChargesAsync(client, memberId)).Should().HaveCount(3, "every period is billed once, however often billing runs");
 
         var runs = (await Json(await client.GetAsync("/api/billing/runs"), "runs")).EnumerateArray().ToList();
-        runs.Should().HaveCount(2);
-        var manual = runs[0];
-        (manual.GetProperty("trigger").GetString(), manual.GetProperty("chargesPosted").GetInt32()).Should().Be(("manual", 0));
+        runs.Select(r => r.GetProperty("trigger").GetString()).Should().BeEquivalentTo(["manual", "schedule"], "one run went by hand and one on schedule");
+        // Found by trigger, not by place in the newest-first list: in the small hours the daily
+        // run is dated 03:01 (see RunTime), later than the run started by hand after it.
+        var manual = runs.Single(r => r.GetProperty("trigger").GetString() == "manual");
+        manual.GetProperty("chargesPosted").GetInt32().Should().Be(0);
         manual.GetProperty("startedByName").GetString().Should().NotBeNullOrEmpty();
-        var daily = runs[1];
-        daily.GetProperty("trigger").GetString().Should().Be("schedule");
+        var daily = runs.Single(r => r.GetProperty("trigger").GetString() == "schedule");
         daily.GetProperty("status").GetString().Should().Be("succeeded");
         (daily.GetProperty("subscriptionsBilled").GetInt32(), daily.GetProperty("chargesPosted").GetInt32(), daily.GetProperty("amountBilled").GetDecimal())
             .Should().Be((1, 3, 300m));
