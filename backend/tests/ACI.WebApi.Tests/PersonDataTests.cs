@@ -414,6 +414,28 @@ public class PersonDataTests
     }
 
     [Fact]
+    public async Task ALeadKeptOutOfAnErasureDoesNotBringTheErasedContactBack()
+    {
+        var (factory, client, s) = await ClubAsync();
+        using var _ = factory;
+        // Staff erase the contact and the member but keep the lead (another person shares the
+        // record's history, say). Every lead with a name and an email is given a contact on its
+        // next save, which would have made Anna's contact again.
+        await Ok(await client.PostAsync("/api/privacy/erasure", Body(new
+        {
+            contactIds = new[] { s.ContactId }, memberIds = new[] { s.MemberId }, applicationIds = new[] { s.ApplicationId }, confirm = "ERASE",
+        })), "erase the contact");
+
+        var lead = await factory.Services.Read(db => db.Leads.Single(l => l.Id == s.LeadId));
+        lead.ConvertedToContactId.Should().BeNull();
+        lead.PersonContactRemovedAtUtc.Should().NotBeNull("the lead remembers that its contact was removed on purpose");
+
+        (await client.PutAsync($"/api/leads/{s.LeadId}", Body(new { phone = "+41 79 765 43 21" }))).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await factory.Services.Read(db => db.Contacts.Count(c => c.OrganizationId == s.Org && c.Email == AnnaEmail))).Should().Be(0,
+            "saving the lead does not make the erased contact again");
+    }
+
+    [Fact]
     public async Task AReferenceThatNamesThePersonIsRefused()
     {
         var (factory, client, s) = await ClubAsync();

@@ -38,6 +38,10 @@ internal sealed class PersonDossier
     public List<ContactRelationship> Relationships { get; private set; } = new();
     public List<DuplicateDecision> DuplicateDecisions { get; private set; } = new();
     public List<Lead> LeadsReferredByThem { get; private set; } = new();
+    /// <summary>Contacts made from one of their leads that staff left out of the selection: they stay, unlinked.</summary>
+    public List<Contact> ContactsFromTheirLeads { get; private set; } = new();
+    /// <summary>Leads whose person contact is one of theirs, left out of the selection: they stay, and get no new contact.</summary>
+    public List<Lead> LeadsOfTheirContacts { get; private set; } = new();
     public List<Contract> Contracts { get; private set; } = new();
     public List<ContractEvent> ContractEvents { get; private set; } = new();
     public List<DealOnboarding> Onboardings { get; private set; } = new();
@@ -150,6 +154,12 @@ internal sealed class PersonDossier
             .Where(x => recordIds.Contains(x.RecordIdA) || recordIds.Contains(x.RecordIdB)).ToListAsync(ct);
         d.LeadsReferredByThem = await Q(db.Leads)
             .Where(l => l.ReferredByContactId != null && contactIds.Contains(l.ReferredByContactId.Value) && !leadIds.Contains(l.Id))
+            .ToListAsync(ct);
+        d.ContactsFromTheirLeads = await Q(db.Contacts)
+            .Where(c => c.ConvertedFromLeadId != null && leadIds.Contains(c.ConvertedFromLeadId.Value) && !contactIds.Contains(c.Id))
+            .ToListAsync(ct);
+        d.LeadsOfTheirContacts = await Q(db.Leads)
+            .Where(l => l.ConvertedToContactId != null && contactIds.Contains(l.ConvertedToContactId.Value) && !leadIds.Contains(l.Id))
             .ToListAsync(ct);
         d.Contracts = await Q(db.Contracts).Where(c =>
                 (c.LeadId != null && leadIds.Contains(c.LeadId.Value))

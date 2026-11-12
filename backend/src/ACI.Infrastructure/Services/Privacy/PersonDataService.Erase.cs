@@ -313,6 +313,15 @@ public sealed partial class PersonDataService
         _db.Notifications.RemoveRange(d.Notifications);
         _db.CustomFieldValues.RemoveRange(d.CustomFieldValues);
         foreach (var lead in d.LeadsReferredByThem) lead.ReferredByContactId = null;
+        // Records of theirs that staff kept out of the selection stay, but stop pointing at what
+        // goes. A lead whose contact goes is marked so no new contact is made for it on its next
+        // save (EnsurePersonContactAsync), which would bring the person back.
+        foreach (var contact in d.ContactsFromTheirLeads) contact.ConvertedFromLeadId = null;
+        foreach (var lead in d.LeadsOfTheirContacts)
+        {
+            lead.ConvertedToContactId = null;
+            lead.PersonContactRemovedAtUtc ??= now;
+        }
 
         foreach (var deal in s.Deals)
         {
