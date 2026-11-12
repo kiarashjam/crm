@@ -105,8 +105,10 @@ public sealed partial class PersonDataService
                 RowsOf(tasksById.GetValueOrDefault(t.Id)))).ToList()),
             new("timeline/lead-status-history.json", "How the status of their leads changed.", d.LeadStatusEvents.Select(e => Row(e)).ToList()),
             new("timeline/notifications.json", "Alerts staff were shown about them.", d.Notifications.Select(n => Row(n)).ToList()),
-            new("mail/sent.json", "Emails sent to them, and events about them posted to the workspace's integrations.", d.Outbound.Select(m => Row(m)).ToList()),
-            new("mail/sent-before-the-outbox.json", "Emails sent to them by the older email composer.", d.SentMessages.Select(m => Row(m)).ToList()),
+            new("mail/sent.json", "Emails sent to them, and events about them posted to the workspace's integrations.",
+                d.Outbound.Select(m => With(Row(m), "bcc", OwnBlindCopy(m.Bcc, s))).ToList()),
+            new("mail/sent-before-the-outbox.json", "Emails sent to them by the older email composer.",
+                d.SentMessages.Select(m => With(Row(m), "bcc", OwnBlindCopy(m.Bcc, s))).ToList()),
             new("mail/received.json", "Replies received from them.", d.Inbound.Select(i => Row(i)).ToList()),
             new("mail/member-messages.json", "Club messages and campaigns sent to them, with how each went.", d.MemberMessages.Select(m => Row(m)).ToList()),
             new("outreach/sequence-enrolments.json", "Email sequences they were enrolled in.", d.Enrollments.Select(e => Row(e)).ToList()),
@@ -183,6 +185,19 @@ public sealed partial class PersonDataService
             or "WebhookKey" or "PublicToken"
         || name.EndsWith("Hash", StringComparison.Ordinal)
         || name.EndsWith("Protected", StringComparison.Ordinal);
+
+    /// <summary>
+    /// The blind copies of an email as the person may see them: their own address, when they
+    /// were one. The others were copied without the person being shown, and an access request
+    /// does not hand over other people's data they never saw.
+    /// </summary>
+    private static string? OwnBlindCopy(string? bcc, PersonSubject s)
+    {
+        var own = (bcc ?? "").Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(entry => PersonSubject.Address(entry) is var address && (s.Addresses.Contains(address) || s.SharedAddresses.Contains(address)))
+            .ToList();
+        return own.Count == 0 ? null : string.Join(", ", own);
+    }
 
     private List<object> RowsOf<T>(IEnumerable<T>? items) where T : class =>
         items?.Select(i => (object)Row(i)).ToList() ?? new List<object>();

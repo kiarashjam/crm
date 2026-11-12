@@ -243,7 +243,8 @@ internal sealed class PersonDossier
                 || (m.DealId != null && dealIds.Contains(m.DealId.Value)))
             .ToListAsync(ct);
         foreach (var address in addresses)
-            sent.AddRange(await Q(db.SentMessages).Where(m => m.To.Contains(address) || (m.Cc != null && m.Cc.Contains(address))).ToListAsync(ct));
+            sent.AddRange(await Q(db.SentMessages).Where(m => m.To.Contains(address) || (m.Cc != null && m.Cc.Contains(address))
+                || (m.Bcc != null && m.Bcc.Contains(address))).ToListAsync(ct));
         d.SentMessages = sent.DistinctBy(m => m.Id)
             .Where(m => m.LeadId is Guid l && leadIds.Contains(l) || m.ContactId is Guid c && contactIds.Contains(c)
                 || m.DealId is Guid dd && dealIds.Contains(dd) || subject.Addressed(m.To) || subject.Addressed(m.Cc) || subject.Addressed(m.Bcc))

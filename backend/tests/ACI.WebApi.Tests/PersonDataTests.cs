@@ -239,6 +239,50 @@ public class PersonDataTests
     }
 
     [Fact]
+    public async Task TheExportShowsNobodyCopiedInSecret_ButTheirOwnBlindCopy()
+    {
+        var (factory, client, s) = await ClubAsync();
+        using var _ = factory;
+        var now = DateTime.UtcNow;
+        await using (var db = factory.Services.EveryWorkspace())
+        {
+            // To Anna, with the treasurer copied without her knowing; and one where she was the
+            // blind copy herself.
+            db.OutboundMessages.AddRange(
+                new OutboundMessage
+                {
+                    Id = Guid.NewGuid(), OrganizationId = s.Org, Source = OutboundSources.Composer, Status = OutboundStatuses.Sent, To = AnnaEmail,
+                    Bcc = "treasurer@pavillon46.ch", Subject = "Your dues", Body = "Your dues are due.", CreatedAtUtc = now, SentAtUtc = now,
+                },
+                new OutboundMessage
+                {
+                    Id = Guid.NewGuid(), OrganizationId = s.Org, Source = OutboundSources.Composer, Status = OutboundStatuses.Sent, To = "committee@pavillon46.ch",
+                    Bcc = $"secretary@pavillon46.ch, {AnnaEmail}", Subject = "The gala", Body = "Details of the gala.", CreatedAtUtc = now, SentAtUtc = now,
+                });
+            db.SentMessages.Add(new SentMessage
+            {
+                Id = Guid.NewGuid(), SentByUserId = s.Owner, OrganizationId = s.Org, To = AnnaEmail, Bcc = "auditor@pavillon46.ch", Subject = "Welcome", Body = "Welcome to the club.",
+                SentAtUtc = now.AddDays(-1),
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var res = await client.PostAsync("/api/privacy/export", Body(AnnaSelection(s)));
+        res.StatusCode.Should().Be(HttpStatusCode.OK, await res.Content.ReadAsStringAsync());
+        using var zip = new ZipArchive(await res.Content.ReadAsStreamAsync(), ZipArchiveMode.Read);
+        string Read(string path)
+        {
+            using var reader = new StreamReader(zip.GetEntry(path)!.Open());
+            return reader.ReadToEnd();
+        }
+        var mail = Read("mail/sent.json") + Read("mail/sent-before-the-outbox.json");
+        mail.Should().NotContainAny(["treasurer@pavillon46.ch", "secretary@pavillon46.ch", "auditor@pavillon46.ch"],
+            "who else was copied in secret is theirs to know, not hers");
+        mail.Should().Contain("Details of the gala.", "the email she was the blind copy of is hers");
+        mail.Should().Contain("committee@pavillon46.ch", "she saw who it was addressed to");
+    }
+
+    [Fact]
     public async Task ThePreviewSaysWhatWouldHappen_AndChangesNothing()
     {
         var (factory, client, s) = await ClubAsync();
