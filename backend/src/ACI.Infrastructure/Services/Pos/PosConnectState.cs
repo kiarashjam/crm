@@ -7,11 +7,12 @@ namespace ACI.Infrastructure.Services.Pos;
 /// <summary>
 /// The OAuth state that goes to Lightspeed and comes back with the browser: which workspace is
 /// connecting and who started it, encrypted and authenticated by Data Protection, with an end
-/// date inside. The callback trusts nothing else, as it is an anonymous request.
+/// date inside. Connecting is finished only by that person, signed in, in that workspace
+/// (IClubPos.CompleteConnectAsync compares the two).
 /// </summary>
 /// <remarks>
-/// Without it, a code from anyone's Lightspeed account could be sent to the callback and
-/// connected to any workspace, whose members' accounts its tickets would then be posted to.
+/// Without it, a code from anyone's Lightspeed account could be connected to any workspace,
+/// whose members' accounts its tickets would then be posted to.
 /// </remarks>
 public sealed class PosConnectState
 {
