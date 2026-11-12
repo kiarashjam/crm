@@ -102,7 +102,12 @@ internal sealed class PersonDossier
             .ToHashSet();
 
     /// <summary>Reads everything about <paramref name="subject"/>; <paramref name="track"/> for an erasure.</summary>
-    public static async Task<PersonDossier> LoadAsync(AppDbContext db, Guid organizationId, PersonSubject subject, bool track, CancellationToken ct)
+    /// <param name="mentions">
+    /// Whether to search records that are not the person's for mentions of them. An erasure on
+    /// request does; the retention job, which removes stale records by the hundred, does not:
+    /// each search reads whole tables of notes and mail.
+    /// </param>
+    public static async Task<PersonDossier> LoadAsync(AppDbContext db, Guid organizationId, PersonSubject subject, bool track, CancellationToken ct, bool mentions = true)
     {
         var d = new PersonDossier { Subject = subject };
         IQueryable<T> Q<T>(IQueryable<T> query) where T : class => track ? query : query.AsNoTracking();
@@ -113,7 +118,7 @@ internal sealed class PersonDossier
         var applicationIds = subject.ApplicationIds.ToList();
         var dealIds = subject.DealIds.ToList();
         var addresses = subject.Addresses.ToList();
-        var needles = subject.Needles.ToList();
+        var needles = mentions ? subject.Needles.ToList() : new List<string>();
 
         // ── Sales: what hangs off their leads, contacts and deals ───────────
         d.Activities = await Q(db.Activities).Where(a =>

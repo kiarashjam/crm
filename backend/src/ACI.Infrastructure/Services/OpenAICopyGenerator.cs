@@ -408,15 +408,18 @@ public sealed class OpenAICopyGenerator : ICopyGenerator
             """;
     }
 
+    /// <remarks>
+    /// The recipient's email address is never sent: no copy needs it, and every field that goes
+    /// to OpenAI goes to a processor in the United States, as the privacy page says. Their name,
+    /// company, title and the deal's stage are what make the copy personal.
+    /// </remarks>
     private static string BuildRecipientInfo(RecipientContext? recipient, string fence)
     {
         if (recipient == null) return "";
-        
+
         var parts = new List<string>();
         if (!string.IsNullOrWhiteSpace(recipient.Name))
             parts.Add($"- Name: {OneLine(recipient.Name, 200)}");
-        if (!string.IsNullOrWhiteSpace(recipient.Email))
-            parts.Add($"- Email: {OneLine(recipient.Email, 200)}");
         if (!string.IsNullOrWhiteSpace(recipient.Company))
             parts.Add($"- Company: {OneLine(recipient.Company, 200)}");
         if (!string.IsNullOrWhiteSpace(recipient.Title))

@@ -60,14 +60,18 @@ public sealed partial class PersonDataService
     /// </para>
     /// </remarks>
     internal async Task<Result<ErasureResultDto>> EraseAsync(
-        Guid organizationId, PersonSelection selection, string trigger, Guid? userId, string? actor, string? reference, CancellationToken ct)
+        Guid organizationId, PersonSelection selection, string trigger, Guid? userId, string? actor, string? reference, CancellationToken ct,
+        string? retentionNote = null)
     {
+        // The retention job removes stale records by the hundred: it leaves out the search of
+        // everyone else's notes and mail for mentions, which reads whole tables each time.
+        var mentions = trigger == PersonErasureTriggers.Request;
         var first = await SubjectAsync(organizationId, selection, track: false, ct);
         if (!first.IsSuccess) return first.Error;
         if (reference != null && first.Value.Names.Any(n => reference.Contains(n, StringComparison.OrdinalIgnoreCase)))
             return DomainErrors.Privacy.ReferenceHasPersonalData;
         var now = DateTime.UtcNow;
-        var ahead = await CancelAheadAsync(organizationId, await PersonDossier.LoadAsync(_db, organizationId, first.Value, track: false, ct), now, ct);
+        var ahead = await CancelAheadAsync(organizationId, await PersonDossier.LoadAsync(_db, organizationId, first.Value, track: false, ct, mentions), now, ct);
         _db.ChangeTracker.Clear();
 
         for (var attempt = 1; ; attempt++)
@@ -84,7 +88,7 @@ public sealed partial class PersonDataService
                         refused = subject.Error;
                         return false;
                     }
-                    var d = await PersonDossier.LoadAsync(_db, organizationId, subject.Value, track: true, ct);
+                    var d = await PersonDossier.LoadAsync(_db, organizationId, subject.Value, track: true, ct, mentions);
                     var number = (await _db.PersonErasures.Where(e => e.OrganizationId == organizationId).MaxAsync(e => (int?)e.Number, ct) ?? 0) + 1;
                     var pseudonym = (d.Subject.Members.Count > 0 ? "Erased member " : "Erased person ") + number.ToString(CultureInfo.InvariantCulture);
                     var lines = Lines(d, now, ahead);
@@ -114,7 +118,7 @@ public sealed partial class PersonDataService
                         Action = "erased",
                         Summary = Clip(trigger == PersonErasureTriggers.Request
                             ? $"A person was erased at their request ({d.Subject.RecordCount} {Plural(d.Subject.RecordCount, "record")}, erasure {number}{(reference == null ? "" : $", reference {reference}")})"
-                            : $"A former member was anonymised by the retention settings (erasure {number})", 500),
+                            : $"{retentionNote ?? "Removed by the retention settings"} (erasure {number})", 500),
                         ActorUserId = userId,
                         ActorName = Clip(actor ?? AuditVocabulary.SystemActor, 200),
                         CreatedAtUtc = now.AddTicks(1),

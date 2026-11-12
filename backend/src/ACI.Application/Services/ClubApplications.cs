@@ -196,7 +196,8 @@ public sealed record PublicApplicationReceipt(string Message);
 /// <summary>A tier the public form offers: its name and dues.</summary>
 public sealed record PublicTierDto(string Name, decimal Price, string Cadence, decimal? InitiationFee, string Currency);
 
-public sealed record PublicApplicationFormDto(string ClubName, string? Intro, string ConsentText, IReadOnlyList<PublicTierDto> Tiers);
+/// <param name="MarketingConsent">off, optional or required: whether the form shows the marketing checkbox, and must have it ticked (the workspace's privacy settings).</param>
+public sealed record PublicApplicationFormDto(string ClubName, string? Intro, string ConsentText, IReadOnlyList<PublicTierDto> Tiers, string MarketingConsent = "optional");
 
 public sealed record ApplicationFormDto(Guid Id, string PublicToken, string PublicPath, bool IsActive, string? Intro, string? SuccessMessage, string ConsentText, DateTime CreatedAtUtc);
 

@@ -95,6 +95,9 @@ public static class DependencyInjection
         // A person's data rights (export, erasure) across every module.
         services.AddScoped<ACI.Infrastructure.Services.Privacy.PersonDataService>();
         services.AddScoped<IPersonData>(sp => sp.GetRequiredService<ACI.Infrastructure.Services.Privacy.PersonDataService>());
+        // The workspace's privacy settings, the public privacy page, and the retention run.
+        services.AddScoped<IPrivacySettings, ACI.Infrastructure.Services.Privacy.PrivacySettingsService>();
+        services.AddScoped<IRetention, ACI.Infrastructure.Services.Privacy.RetentionService>();
         services.AddScoped<IConsentRepository, ConsentRepository>();
         services.AddScoped<ICampaignRepository, CampaignRepository>();
         services.AddScoped<IImportRepository, ImportRepository>();

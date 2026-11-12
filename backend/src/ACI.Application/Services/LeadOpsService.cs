@@ -49,6 +49,8 @@ public sealed class LeadOpsService : ILeadOpsService
     private readonly IOrganizationRepository? _organizations;
     private readonly ICollaborationNotifier? _collaboration;
     private readonly ITenantContext? _tenant;
+    private readonly IPrivacySettings? _privacy;
+    private readonly IConsentRepository? _consent;
 
     public LeadOpsService(
         ILeadOpsRepository ops,
@@ -59,7 +61,9 @@ public sealed class LeadOpsService : ILeadOpsService
         IActivityService activities,
         IOrganizationRepository? organizations = null,
         ICollaborationNotifier? collaboration = null,
-        ITenantContext? tenant = null)
+        ITenantContext? tenant = null,
+        IPrivacySettings? privacy = null,
+        IConsentRepository? consent = null)
     {
         _ops = ops;
         _leads = leads;
@@ -70,6 +74,8 @@ public sealed class LeadOpsService : ILeadOpsService
         _organizations = organizations;
         _collaboration = collaboration;
         _tenant = tenant;
+        _privacy = privacy;
+        _consent = consent;
     }
 
     public async Task<IReadOnlyList<ScoringRuleDto>> GetScoringRulesAsync(Guid? organizationId, CancellationToken ct = default)
@@ -208,7 +214,40 @@ public sealed class LeadOpsService : ILeadOpsService
     public async Task<PublicCaptureFormDto?> GetPublicFormAsync(string token, CancellationToken ct = default)
     {
         var form = await _ops.GetFormByTokenAsync(token, ct);
-        return form == null ? null : new PublicCaptureFormDto(form.Name, form.SuccessMessage);
+        if (form == null) return null;
+        var consent = await ConsentAsync(form, ct);
+        return new PublicCaptureFormDto(form.Name, form.SuccessMessage, consent.Mode,
+            consent.Mode == MarketingConsentModes.Off ? null : consent.Text);
+    }
+
+    /// <summary>Whether and how the form's workspace asks for marketing consent; optional when it set nothing.</summary>
+    private async Task<FormConsentDto> ConsentAsync(LeadCaptureForm form, CancellationToken ct) =>
+        _privacy != null && form.OrganizationId is Guid org
+            ? await _privacy.FormConsentAsync(org, ct)
+            : new FormConsentDto(MarketingConsentModes.Optional, FormConsentDefaults.Text);
+
+    /// <summary>
+    /// What the visitor said about news and offers, recorded on their lead through the consent
+    /// records (source "form", with the words they were shown), whichever answer they gave.
+    /// </summary>
+    private async Task RecordConsentAsync(LeadCaptureForm form, FormConsentDto consent, Guid leadId, PublicCaptureRequest request, CancellationToken ct)
+    {
+        if (_consent == null || form.OrganizationId is not Guid org || consent.Mode == MarketingConsentModes.Off) return;
+        var detail = $"Capture form \"{form.Name}\": \"{consent.Text}\"";
+        await _consent.AddCurrentAsync(new ConsentRecord
+        {
+            Id = Guid.NewGuid(),
+            OrganizationId = org,
+            SubjectType = ConsentSubjects.Lead,
+            SubjectId = leadId,
+            Channel = ConsentChannels.Email,
+            Purpose = ConsentPurposes.Marketing,
+            Granted = request.MarketingConsent == true,
+            Source = ConsentSources.Form,
+            Address = request.Email.Trim().ToLowerInvariant(),
+            Detail = detail.Length <= 500 ? detail : detail[..499] + "…",
+            RecordedAtUtc = DateTime.UtcNow,
+        }, ct);
     }
 
     /// <summary>
@@ -241,13 +280,22 @@ public sealed class LeadOpsService : ILeadOpsService
         // The hidden honeypot field: a person never sees it, a bot fills it.
         if (!string.IsNullOrWhiteSpace(request.Website)) return receipt;
 
+        // A form whose whole point is to sign up for news may require the box; the page
+        // shows it required, and a post without it is refused rather than kept half-agreed.
+        var consent = await ConsentAsync(form, ct);
+        if (consent.Mode == MarketingConsentModes.Required && request.MarketingConsent != true)
+            return new Error("Lead.ConsentRequired", "Please tick the box to say you would like to hear from us: this form signs you up for news.");
+
         // Leads.Source is nvarchar(64) and a form name may be up to 120. Unclipped,
         // a form with a long name failed on every single submission.
         var source = Clip(form.Name.Trim(), 64);
         var summary = Summary(request);
 
-        if (await AttachInquiryAsync(form.OrganizationId, form.CreatedByUserId, request.Email, source, summary, ct) != null)
+        if (await AttachInquiryAsync(form.OrganizationId, form.CreatedByUserId, request.Email, source, summary, ct) is Guid existing)
+        {
+            await RecordConsentAsync(form, consent, existing, request, ct);
             return receipt;
+        }
 
         var created = await _leads.CreateAsync(form.CreatedByUserId, form.OrganizationId, new CreateLeadRequest
         {
@@ -263,9 +311,10 @@ public sealed class LeadOpsService : ILeadOpsService
             // duplicate the lead list can merge, not a reason to lose the inquiry.
             AllowDuplicate = true,
         }, ct);
-        return created.IsSuccess
-            ? receipt
-            : new Error("Lead.CaptureFailed", "That could not be saved. Please check the details and try again.");
+        if (!created.IsSuccess)
+            return new Error("Lead.CaptureFailed", "That could not be saved. Please check the details and try again.");
+        await RecordConsentAsync(form, consent, created.Value.Id, request, ct);
+        return receipt;
     }
 
     public async Task<Guid?> AttachInquiryAsync(Guid? organizationId, Guid actingUserId, string email, string source, string summary, CancellationToken ct = default)

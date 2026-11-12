@@ -382,6 +382,8 @@ try
     builder.Services.AddHostedService<ACI.WebApi.Services.ClubBillingBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.ClubPaymentsBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.ClubPosBackgroundService>();
+    // Each workspace's retention settings, once a day; nothing runs for one that set no period.
+    builder.Services.AddHostedService<ACI.WebApi.Services.RetentionBackgroundService>();
 
     // HTTP Context accessor for current user service
     builder.Services.AddHttpContextAccessor();

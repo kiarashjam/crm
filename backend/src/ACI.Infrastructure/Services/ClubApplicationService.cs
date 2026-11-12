@@ -56,11 +56,12 @@ public sealed class ClubApplicationService : IClubApplications
     private readonly ILogger<ClubApplicationService> _logger;
     private readonly ILedgerReadObserver _reads;
     private readonly IWorkspaceModules _modules;
+    private readonly IPrivacySettings? _privacy;
 
     public ClubApplicationService(AppDbContext db, IClubLedger ledger, IClubCatalog catalog, IClubRules rules, IOutbox outbox,
         IConsentRepository consent, IPermissionService permissions, IWorkspaceRecords records, ILeadService leads,
         ILeadOpsService leadOps, INotificationService notifications, ITenantContext tenant, ILogger<ClubApplicationService> logger,
-        ILedgerReadObserver reads, IWorkspaceModules modules)
+        ILedgerReadObserver reads, IWorkspaceModules modules, IPrivacySettings? privacy = null)
     {
         _db = db;
         _ledger = ledger;
@@ -77,7 +78,12 @@ public sealed class ClubApplicationService : IClubApplications
         _logger = logger;
         _reads = reads;
         _modules = modules;
+        _privacy = privacy;
     }
+
+    /// <summary>Whether the workspace's public forms ask for marketing consent (its privacy settings); optional when it set nothing.</summary>
+    private async Task<string> ConsentModeAsync(Guid organizationId, CancellationToken ct) =>
+        _privacy == null ? MarketingConsentModes.Optional : (await _privacy.FormConsentAsync(organizationId, ct)).Mode;
 
     // ── reads ────────────────────────────────────────────────────────────────
 
@@ -991,7 +997,7 @@ public sealed class ClubApplicationService : IClubApplications
         var club = await _db.Organizations.AsNoTracking().Where(o => o.Id == organizationId).Select(o => o.Name).FirstOrDefaultAsync(ct) ?? "";
         var tiers = (await _catalog.TiersAsync(organizationId, ct)).Where(t => t.IsActive)
             .Select(t => new PublicTierDto(t.Name, t.Price, Cadence(t.Cadence), t.InitiationFee, t.Currency)).ToList();
-        return new PublicApplicationFormDto(club, form.Intro, form.ConsentText ?? DefaultConsentText, tiers);
+        return new PublicApplicationFormDto(club, form.Intro, form.ConsentText ?? DefaultConsentText, tiers, await ConsentModeAsync(organizationId, ct));
     }
 
     public async Task<Result<PublicApplicationReceipt>> SubmitAsync(string token, PublicApplicationRequest request, CancellationToken ct = default)
@@ -1010,6 +1016,11 @@ public sealed class ClubApplicationService : IClubApplications
         var last = request.LastName.Trim();
         var email = request.Email.Trim();
         if (first.Length == 0 || last.Length == 0 || email.Length == 0) return DomainErrors.Application.NameRequired;
+        // The workspace's privacy settings say whether the form asks for marketing consent at all,
+        // and whether the box must be ticked (meant for a form that signs people up for news).
+        var consentMode = await ConsentModeAsync(organizationId, ct);
+        if (consentMode == MarketingConsentModes.Required && !request.MarketingConsent)
+            return new Error("Application.ConsentRequired", "Please tick the box to say you would like to hear from the club: this form signs you up for its news.");
         if (!ValidationHelper.IsValidEmail(email)) return DomainErrors.Application.EmailInvalid;
         var tiers = await _catalog.TiersAsync(organizationId, ct);
         var tier = tiers.FirstOrDefault(t => t.IsActive && string.Equals(t.Name, request.RequestedTier?.Trim(), StringComparison.OrdinalIgnoreCase));
@@ -1065,21 +1076,25 @@ public sealed class ClubApplicationService : IClubApplications
         _db.ClubApplications.Add(row);
         await _db.SaveChangesAsync(ct);
 
-        // Their answer to news and offers by email, as they gave it, with the words they were shown.
-        await _consent.AddCurrentAsync(new ConsentRecord
+        // Their answer to news and offers by email, as they gave it, with the words they were shown;
+        // nothing when the form does not ask.
+        if (consentMode != MarketingConsentModes.Off)
         {
-            Id = Guid.NewGuid(),
-            OrganizationId = organizationId,
-            SubjectType = ConsentSubjects.Application,
-            SubjectId = row.Id,
-            Channel = ConsentChannels.Email,
-            Purpose = ConsentPurposes.Marketing,
-            Granted = request.MarketingConsent,
-            Source = ConsentSources.Form,
-            Address = email.ToLowerInvariant(),
-            Detail = Clip($"Membership application form: \"{form.ConsentText ?? DefaultConsentText}\"", 500),
-            RecordedAtUtc = now,
-        }, ct);
+            await _consent.AddCurrentAsync(new ConsentRecord
+            {
+                Id = Guid.NewGuid(),
+                OrganizationId = organizationId,
+                SubjectType = ConsentSubjects.Application,
+                SubjectId = row.Id,
+                Channel = ConsentChannels.Email,
+                Purpose = ConsentPurposes.Marketing,
+                Granted = request.MarketingConsent,
+                Source = ConsentSources.Form,
+                Address = email.ToLowerInvariant(),
+                Detail = Clip($"Membership application form: \"{form.ConsentText ?? DefaultConsentText}\"", 500),
+                RecordedAtUtc = now,
+            }, ct);
+        }
 
         await _notifications.CreateAsync(form.CreatedByUserId, organizationId, new CreateNotificationRequest(
             "club_application",

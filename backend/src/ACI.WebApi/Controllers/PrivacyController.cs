@@ -27,12 +27,69 @@ namespace ACI.WebApi.Controllers;
 public class PrivacyController : ControllerBase
 {
     private readonly IPersonData _people;
+    private readonly IPrivacySettings _settings;
+    private readonly IRetention _retention;
     private readonly ICurrentUserService _currentUser;
 
-    public PrivacyController(IPersonData people, ICurrentUserService currentUser)
+    public PrivacyController(IPersonData people, IPrivacySettings settings, IRetention retention, ICurrentUserService currentUser)
     {
         _people = people;
+        _settings = settings;
+        _retention = retention;
         _currentUser = currentUser;
+    }
+
+    /// <summary>The workspace's privacy settings: who answers for its data, the forms' consent, the retention periods.</summary>
+    [HttpGet("settings")]
+    [ProducesResponseType(typeof(PrivacySettingsDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<PrivacySettingsDto>> GetSettings(CancellationToken ct)
+    {
+        if (_currentUser.CurrentOrganizationId is not Guid org) return Unauthorized();
+        var settings = await _settings.GetAsync(org, ct);
+        Response.SetETag(settings.Version);
+        return Ok(settings);
+    }
+
+    /// <summary>Saves the privacy settings. Send If-Match with the version read; a stale one gets 409.</summary>
+    [HttpPut("settings")]
+    [ProducesResponseType(typeof(PrivacySettingsDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<object>> SaveSettings([FromBody] PrivacySettingsRequest request, CancellationToken ct)
+    {
+        if (_currentUser.CurrentOrganizationId is not Guid org || _currentUser.UserId is not Guid user) return Unauthorized();
+        var (expected, badVersion) = Request.ExpectedVersion(null);
+        if (badVersion != null) return badVersion.ToProblemResult();
+        var result = await _settings.SaveAsync(org, user, request, expected, ct);
+        if (!result.IsSuccess) return result.Error.ToProblemResult();
+        Response.SetETag(result.Value.Version);
+        return Ok(result.Value);
+    }
+
+    /// <summary>What the retention settings would remove if they ran now, counted without removing anything.</summary>
+    [HttpGet("retention/preview")]
+    [ProducesResponseType(typeof(RetentionPreviewDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<RetentionPreviewDto>> RetentionPreview(CancellationToken ct)
+    {
+        if (_currentUser.CurrentOrganizationId is not Guid org) return Unauthorized();
+        return Ok(await _retention.PreviewAsync(org, ct));
+    }
+
+    /// <summary>Runs the retention settings now, as the daily run would, and returns what the run removed.</summary>
+    [HttpPost("retention/run")]
+    [ProducesResponseType(typeof(RetentionRunDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<object>> RunRetention(CancellationToken ct)
+    {
+        if (_currentUser.CurrentOrganizationId is not Guid org || _currentUser.UserId is not Guid user) return Unauthorized();
+        var result = await _retention.RunNowAsync(org, user, ct);
+        return result.IsSuccess ? Ok(result.Value) : result.Error.ToProblemResult();
+    }
+
+    /// <summary>The log of retention runs, newest first: what each removed, in counts.</summary>
+    [HttpGet("retention/runs")]
+    [ProducesResponseType(typeof(IReadOnlyList<RetentionRunDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<RetentionRunDto>>> RetentionRuns(CancellationToken ct)
+    {
+        if (_currentUser.CurrentOrganizationId is not Guid org) return Unauthorized();
+        return Ok(await _retention.RunsAsync(org, ct));
     }
 
     /// <summary>Records that look like the person: by an email address, or from one of their records.</summary>
