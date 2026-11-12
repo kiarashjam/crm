@@ -381,6 +381,30 @@ public class ClubPosTests
         (await Club.BalanceAsync(client, jean)).Should().Be(-18.50m, "a new ticket is worked out before the ones already waiting are tried again");
     }
 
+    [Fact]
+    public async Task AScheduledImportLateInItsRound_StillHoldsTheWorkspaceForAWholeLease()
+    {
+        using var app = new PosApp();
+        var (client, _, _) = await ConnectedClubAsync(app);
+        app.Lightspeed.HoldSales = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // The round of scheduled imports began twenty minutes ago (the workspaces before this one
+        // took that long), and only now reaches this one.
+        using var scope = app.Services.CreateScope();
+        var scheduled = scope.ServiceProvider.GetRequiredService<IClubPos>().ImportDueAsync(DateTime.UtcNow.AddMinutes(-20));
+        try
+        {
+            await app.Lightspeed.SalesAsked.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            var now = await client.PostAsync("/api/pos/import", null).WaitAsync(TimeSpan.FromSeconds(20));
+            now.StatusCode.Should().Be(HttpStatusCode.Conflict, "the scheduled import holds the workspace until it is done");
+        }
+        finally
+        {
+            app.Lightspeed.HoldSales.SetResult();
+        }
+        (await scheduled).Should().Be(0);
+    }
+
     // ── staff deal with what waits ───────────────────────────────────────────
 
     [Fact]

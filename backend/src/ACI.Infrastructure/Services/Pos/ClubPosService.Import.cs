@@ -76,8 +76,12 @@ public sealed partial class ClubPosService
         var imported = 0;
         foreach (var workspace in due)
         {
-            var until = utcNow.Add(Lease);
-            if (!await TryClaimAsync(workspace.Id, utcNow, until, ct)) continue;
+            // The lease runs from when this workspace is claimed, not from when the round began:
+            // late in a long round, a lease from its start had run out already, and "Import now"
+            // or another server started a second import beside this one.
+            var claimedAt = DateTime.UtcNow;
+            var until = claimedAt.Add(Lease);
+            if (!await TryClaimAsync(workspace.Id, claimedAt, until, ct)) continue;
             _db.ChangeTracker.Clear();
             using var acting = _db.ActFor(workspace.OrganizationId, null);
             var result = await RunClaimedAsync(workspace.OrganizationId, workspace.Id, until, ct);
