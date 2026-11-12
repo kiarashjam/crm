@@ -17,7 +17,6 @@ describe('Settings > Profile > Timezone', () => {
         settings={{ timezone: 'Europe/Zurich', language: 'en' } as UserSettings}
         updateSettings={vi.fn()}
         timezones={[{ id: 'Europe/Zurich', displayName: 'Zurich', utcOffset: 60 }]}
-        languages={[{ code: 'en', name: 'English', nativeName: 'English' }]}
       />,
     );
 

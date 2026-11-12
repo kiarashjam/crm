@@ -14,10 +14,10 @@ import LoadingSpinner from '@/app/components/LoadingSpinner';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import {
   getUserSettings, saveUserSettings, resetUserSettings,
-  getTimezones, getLanguages,
+  getTimezones,
   twoFactorSetup, twoFactorStatus, twoFactorEnable, twoFactorDisable,
 } from '@/app/api';
-import type { UserSettings, UpdateUserSettingsRequest, TimezoneOption, LanguageOption } from '@/app/api/types';
+import type { UserSettings, UpdateUserSettingsRequest, TimezoneOption } from '@/app/api/types';
 import { messages } from '@/app/api/messages';
 import { ProfileSection } from '@/app/pages/settings/components/ProfileSection';
 import { NotificationsSection } from '@/app/pages/settings/components/NotificationsSection';
@@ -112,7 +112,6 @@ export default function Settings() {
 
   // Options data
   const [timezones, setTimezones] = useState<TimezoneOption[]>([]);
-  const [languages, setLanguages] = useState<LanguageOption[]>([]);
 
   // 2FA state
   const [twoFaEnabled, setTwoFaEnabled] = useState<boolean | null>(null);
@@ -179,7 +178,6 @@ export default function Settings() {
       }));
 
     getTimezones().then(setTimezones).catch(() => {});
-    getLanguages().then(setLanguages).catch(() => {});
 
     // Only whether 2FA is on. Opening Settings used to ask for "setup", which sent the
     // live secret to the browser on every visit; setup is asked for when starting it.
@@ -569,7 +567,7 @@ export default function Settings() {
   const renderTabContent = () => {
     switch (activeTab) {
       case 'profile':
-        return <ProfileSection settings={settings} updateSettings={updateSettings} timezones={timezones} languages={languages} />;
+        return <ProfileSection settings={settings} updateSettings={updateSettings} timezones={timezones} />;
       case 'brand':
         return <BrandSection settings={settings} updateSettings={updateSettings} />;
       case 'appearance':

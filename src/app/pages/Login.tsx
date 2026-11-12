@@ -17,16 +17,26 @@ import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import { cn } from '@/app/components/ui/utils';
 import { invitationToResume } from '@/app/lib/inviteLink';
 import { BrandName } from '@/app/components/BrandName';
+import { useT, type Language, type MessageKey } from '@/app/i18n';
+import { LanguageSwitcher } from '@/app/i18n/LanguageSwitcher';
+import { saveMyLanguage } from '@/app/api/language';
 
-const HIGHLIGHTS = [
-  { icon: Bot, title: 'AI that writes with you', body: 'Draft emails, follow-ups and notes in your voice.' },
-  { icon: Workflow, title: 'Sequences & automation', body: 'Put follow-ups on autopilot so nothing slips.' },
-  { icon: BarChart3, title: 'Pipeline & forecasting', body: 'See what’s real and what’s closing, at a glance.' },
+const HIGHLIGHTS: { icon: typeof Bot; title: MessageKey; body: MessageKey }[] = [
+  { icon: Bot, title: 'login.highlight1Title', body: 'login.highlight1Body' },
+  { icon: Workflow, title: 'login.highlight2Title', body: 'login.highlight2Body' },
+  { icon: BarChart3, title: 'login.highlight3Title', body: 'login.highlight3Body' },
 ];
 
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { t } = useT();
+  // A language picked on this page is the person's latest choice: it goes onto their account
+  // once they are signed in. One they did not touch leaves whatever the account has.
+  const [pickedLanguage, setPickedLanguage] = useState<Language | null | undefined>(undefined);
+  const keepPickedLanguage = () => {
+    if (pickedLanguage !== undefined) void saveMyLanguage(pickedLanguage).catch(() => undefined);
+  };
   // An invitation link opened while signed out: go back to it, token and all.
   const resumeInvitation = invitationToResume(location.state);
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -58,6 +68,7 @@ export default function Login() {
         const res = await loginWithTwoFactor(twoFactorToken!, code);
         if (!res.token || !res.user) throw new Error('Login failed');
         setSession(res.token, res.user);
+        keepPickedLanguage();
         toast.success(messages.auth.signedIn);
         navigate(resumeInvitation ?? '/dashboard', { replace: true });
         return;
@@ -77,6 +88,7 @@ export default function Login() {
 
       if (!res.token || !res.user) throw new Error('Login failed');
       setSession(res.token, res.user);
+      keepPickedLanguage();
       toast.success(mode === 'register' ? messages.auth.accountCreated : messages.auth.signedIn);
       navigate(resumeInvitation ?? (isUsingRealApi() ? '/organizations' : '/dashboard'), { replace: true });
     } catch (e) {
@@ -107,7 +119,7 @@ export default function Login() {
         <div aria-hidden className="pointer-events-none absolute inset-0 opacity-[0.07] [background-image:radial-gradient(circle,white_1px,transparent_1px)] [background-size:22px_22px]" />
 
         <div className="relative">
-          <Link to="/" className="inline-flex items-center gap-2 text-white/90 transition-colors hover:text-white" aria-label="CadenceE home">
+          <Link to="/" className="inline-flex items-center gap-2 text-white/90 transition-colors hover:text-white" aria-label={t('login.homeAria')}>
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20 ring-1 ring-white/30 backdrop-blur">
               <Sparkles className="h-5 w-5" />
             </span>
@@ -117,10 +129,10 @@ export default function Login() {
 
         <div className="relative max-w-md">
           <h2 className="text-4xl font-bold leading-tight tracking-tight">
-            The CRM that writes with you.
+            {t('login.brandHeading')}
           </h2>
           <p className="mt-4 text-lg text-white/85">
-            Capture leads, draft outreach with AI, and keep every deal moving — all in one calm, fast workspace.
+            {t('login.brandText')}
           </p>
           <ul className="mt-10 space-y-5">
             {HIGHLIGHTS.map((h) => (
@@ -129,8 +141,8 @@ export default function Login() {
                   <h.icon className="h-5 w-5" />
                 </span>
                 <div>
-                  <p className="font-semibold">{h.title}</p>
-                  <p className="text-sm text-white/80">{h.body}</p>
+                  <p className="font-semibold">{t(h.title)}</p>
+                  <p className="text-sm text-white/80">{t(h.body)}</p>
                 </div>
               </li>
             ))}
@@ -139,20 +151,22 @@ export default function Login() {
 
         <div className="relative flex items-center gap-3 text-sm text-white/80">
           <ShieldCheck className="h-4 w-4" />
-          Secure sign-in · Your data stays yours
+          {t('login.secure')}
         </div>
       </aside>
 
       {/* ---------- Form panel ---------- */}
       <div className="flex min-h-screen flex-col lg:min-h-0">
-        <header className="px-[var(--page-padding)] py-[var(--header-block-padding-y)]" role="banner">
+        <header className="flex items-center justify-between gap-3 px-[var(--page-padding)] py-[var(--header-block-padding-y)]" role="banner">
           <Link
             to="/"
             className="inline-flex items-center gap-2 rounded-lg text-sm text-slate-500 transition-colors hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
-            aria-label="Back to home"
+            aria-label={t('login.backHome')}
           >
-            <ArrowLeft className="h-4 w-4" aria-hidden /> Back to home
+            <ArrowLeft className="h-4 w-4" aria-hidden /> {t('login.backHome')}
           </Link>
+          {/* The language, before anyone signs in: applied at once, kept in this browser, and on the account after sign-in. */}
+          <LanguageSwitcher onChosen={setPickedLanguage} />
         </header>
 
         <main id={MAIN_CONTENT_ID} className="flex flex-1 items-center justify-center px-[var(--page-padding)] pb-10" tabIndex={-1}>
@@ -167,14 +181,14 @@ export default function Login() {
 
             <div className="mb-7 text-center lg:text-left">
               <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
-                {requires2fa ? 'Two-factor verification' : mode === 'register' ? 'Create your account' : 'Welcome back'}
+                {requires2fa ? t('login.title2fa') : mode === 'register' ? t('login.titleRegister') : t('login.titleLogin')}
               </h1>
               <p className="mt-2 text-slate-500">
                 {requires2fa
-                  ? 'Enter the 6-digit code from your authenticator app.'
+                  ? t('login.lead2fa')
                   : mode === 'register'
-                    ? 'Start qualifying and closing leads in minutes.'
-                    : 'Sign in to pick up right where you left off.'}
+                    ? t('login.leadRegister')
+                    : t('login.leadLogin')}
               </p>
             </div>
 
@@ -185,7 +199,7 @@ export default function Login() {
                   className="space-y-4"
                 >
                   {/* Segmented mode toggle */}
-                  <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1" role="tablist" aria-label="Authentication mode">
+                  <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1" role="tablist" aria-label={t('login.modeLabel')}>
                     {(['login', 'register'] as const).map((m) => (
                       <button
                         key={m}
@@ -198,7 +212,7 @@ export default function Login() {
                           mode === m ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700',
                         )}
                       >
-                        {m === 'login' ? 'Sign in' : 'Create account'}
+                        {m === 'login' ? t('login.signIn') : t('login.createAccount')}
                       </button>
                     ))}
                   </div>
@@ -211,7 +225,7 @@ export default function Login() {
                   )}
 
                   {mode === 'register' && (
-                    <Field label="Name" htmlFor="name" icon={<UserIcon className="h-4 w-4" />}>
+                    <Field label={t('login.name')} htmlFor="name" icon={<UserIcon className="h-4 w-4" />}>
                       <input
                         id="name"
                         value={name}
@@ -224,7 +238,7 @@ export default function Login() {
                     </Field>
                   )}
 
-                  <Field label="Email" htmlFor="email" icon={<Mail className="h-4 w-4" />}>
+                  <Field label={t('login.email')} htmlFor="email" icon={<Mail className="h-4 w-4" />}>
                     <input
                       id="email"
                       type="email"
@@ -239,12 +253,12 @@ export default function Login() {
                   </Field>
 
                   <Field
-                    label="Password"
+                    label={t('login.password')}
                     htmlFor="password"
                     icon={<Lock className="h-4 w-4" />}
                     action={mode === 'login' ? (
                       <Link to="/forgot-password" className="text-xs font-medium text-orange-700 hover:text-orange-800 focus-visible:underline">
-                        Forgot?
+                        {t('login.forgot')}
                       </Link>
                     ) : undefined}
                   >
@@ -260,7 +274,7 @@ export default function Login() {
                     <button
                       type="button"
                       onClick={() => setShowPassword((s) => !s)}
-                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      aria-label={showPassword ? t('login.hidePassword') : t('login.showPassword')}
                       className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-500 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
                       tabIndex={-1}
                     >
@@ -274,15 +288,15 @@ export default function Login() {
                     className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-600 to-orange-500 font-semibold text-white shadow-lg shadow-orange-500/25 transition-all hover:from-orange-500 hover:to-orange-400 disabled:cursor-not-allowed disabled:from-slate-200 disabled:to-slate-200 disabled:text-slate-400 disabled:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
                   >
                     {submitting ? (
-                      <><Loader2 className="h-4 w-4 animate-spin" /> Please wait…</>
+                      <><Loader2 className="h-4 w-4 animate-spin" /> {t('login.pleaseWait')}</>
                     ) : (
-                      <>{mode === 'register' ? 'Create account' : 'Sign in'} <ArrowRight className="h-4 w-4" /></>
+                      <>{mode === 'register' ? t('login.createAccount') : t('login.signIn')} <ArrowRight className="h-4 w-4" /></>
                     )}
                   </button>
 
                   <div className="flex items-center gap-3 py-1" role="presentation" aria-hidden>
                     <div className="h-px flex-1 bg-slate-200" />
-                    <span className="text-xs font-medium uppercase tracking-wider text-slate-500">or</span>
+                    <span className="text-xs font-medium uppercase tracking-wider text-slate-500">{t('login.or')}</span>
                     <div className="h-px flex-1 bg-slate-200" />
                   </div>
 
@@ -291,14 +305,14 @@ export default function Login() {
                     onClick={startDemo}
                     className="flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
                   >
-                    <Play className="h-4 w-4" aria-hidden /> Explore the demo
+                    <Play className="h-4 w-4" aria-hidden /> {t('login.demo')}
                   </button>
-                  <p className="text-center text-xs text-slate-500">No account needed — sample data, saved in your browser.</p>
+                  <p className="text-center text-xs text-slate-500">{t('login.demoNote')}</p>
                 </form>
               ) : (
                 <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }} className="space-y-5">
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-slate-700">Authentication code</label>
+                    <label className="mb-2 block text-sm font-medium text-slate-700">{t('login.code')}</label>
                     <InputOTP maxLength={6} value={code} onChange={setCode} autoFocus containerClassName="justify-center">
                       <InputOTPGroup>
                         {Array.from({ length: 6 }).map((_, i) => (
@@ -320,7 +334,7 @@ export default function Login() {
                     disabled={!canSubmit || submitting}
                     className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-600 to-orange-500 font-semibold text-white shadow-lg shadow-orange-500/25 transition-all hover:from-orange-500 hover:to-orange-400 disabled:cursor-not-allowed disabled:from-slate-200 disabled:to-slate-200 disabled:text-slate-400 disabled:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
                   >
-                    {submitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Verifying…</> : 'Verify & sign in'}
+                    {submitting ? <><Loader2 className="h-4 w-4 animate-spin" /> {t('login.verifying')}</> : t('login.verify')}
                   </button>
 
                   <button
@@ -328,18 +342,18 @@ export default function Login() {
                     onClick={() => { setRequires2fa(false); setTwoFactorToken(null); setCode(''); setError(null); }}
                     className="h-11 w-full rounded-xl border border-slate-200 font-medium text-slate-600 transition-colors hover:bg-slate-50"
                   >
-                    Back
+                    {t('login.back')}
                   </button>
                 </form>
               )}
             </div>
 
-            <nav className="mt-6 flex items-center justify-center gap-3 text-xs text-slate-500" aria-label="Legal links">
-              <Link to="/privacy" className="hover:text-slate-600 focus-visible:underline">Privacy</Link>
+            <nav className="mt-6 flex items-center justify-center gap-3 text-xs text-slate-500" aria-label={t('login.legal')}>
+              <Link to="/privacy" className="hover:text-slate-600 focus-visible:underline">{t('login.privacy')}</Link>
               <span aria-hidden>·</span>
-              <Link to="/terms" className="hover:text-slate-600 focus-visible:underline">Terms</Link>
+              <Link to="/terms" className="hover:text-slate-600 focus-visible:underline">{t('login.terms')}</Link>
               <span aria-hidden>·</span>
-              <Link to="/help" className="hover:text-slate-600 focus-visible:underline">Help</Link>
+              <Link to="/help" className="hover:text-slate-600 focus-visible:underline">{t('login.help')}</Link>
             </nav>
           </div>
         </main>
@@ -394,51 +408,14 @@ function classifyAuthError(raw: string, was2fa: boolean): AuthErrorKind {
   return 'generic';
 }
 
-const AUTH_ERROR_COPY: Record<AuthErrorKind, {
-  icon: React.ElementType; tone: string; title: string; what: string; how: string;
-}> = {
-  credentials: {
-    icon: Lock, tone: 'bg-amber-100 text-amber-700',
-    title: "Those details didn't match",
-    what: "We couldn't sign you in with that email and password.",
-    how: 'This usually means the email or password was mistyped, caps lock is on, or the account doesn’t exist yet. Create an account or reset your password to continue.',
-  },
-  network: {
-    icon: WifiOff, tone: 'bg-rose-100 text-rose-600',
-    title: "Couldn't reach the server",
-    what: 'The app tried to sign you in but never got a response.',
-    how: 'This happens when your connection drops, you’re offline, or the CadenceE API isn’t reachable right now. Check your connection and try again.',
-  },
-  config: {
-    icon: Info, tone: 'bg-blue-100 text-blue-600',
-    title: 'This is a demo build',
-    what: 'Live sign-in needs a connected backend, which isn’t configured here.',
-    how: 'The app has no API URL set (VITE_API_URL), so real authentication is unavailable. Use “Explore the demo” to try everything with sample data.',
-  },
-  twofactor: {
-    icon: ShieldAlert, tone: 'bg-violet-100 text-violet-600',
-    title: "That code didn't work",
-    what: 'The six-digit code was rejected.',
-    how: 'Authenticator codes rotate every ~30 seconds and can only be used once. Open your authenticator, grab the current code, and enter it promptly.',
-  },
-  ratelimit: {
-    icon: Clock, tone: 'bg-orange-100 text-orange-700',
-    title: 'Too many attempts',
-    what: 'Sign-in is paused for a moment.',
-    how: 'After several failed attempts we temporarily block sign-in to protect the account. Wait a minute, then try again.',
-  },
-  server: {
-    icon: ServerCrash, tone: 'bg-rose-100 text-rose-600',
-    title: 'Something went wrong on our end',
-    what: 'The server hit an error while completing your request.',
-    how: 'This is almost always temporary and not caused by anything you did. Trying again in a moment usually works.',
-  },
-  generic: {
-    icon: AlertTriangle, tone: 'bg-slate-100 text-slate-600',
-    title: "We couldn't sign you in",
-    what: 'An unexpected error interrupted sign-in.',
-    how: 'The exact technical detail is shown below — it’s the best clue to what happened. Try again, or use the demo to keep exploring.',
-  },
+const AUTH_ERROR_COPY: Record<AuthErrorKind, { icon: React.ElementType; tone: string }> = {
+  credentials: { icon: Lock, tone: 'bg-amber-100 text-amber-700' },
+  network: { icon: WifiOff, tone: 'bg-rose-100 text-rose-600' },
+  config: { icon: Info, tone: 'bg-blue-100 text-blue-600' },
+  twofactor: { icon: ShieldAlert, tone: 'bg-violet-100 text-violet-600' },
+  ratelimit: { icon: Clock, tone: 'bg-orange-100 text-orange-700' },
+  server: { icon: ServerCrash, tone: 'bg-rose-100 text-rose-600' },
+  generic: { icon: AlertTriangle, tone: 'bg-slate-100 text-slate-600' },
 };
 
 /** Explained, dismissible failure dialog: what happened, why it happens, and the raw detail. */
@@ -450,9 +427,11 @@ function AuthErrorDialog({
   onRetry: () => void;
   onDemo: () => void;
 }) {
+  const { t } = useT();
   const kind = info ? classifyAuthError(info.message, info.was2fa) : 'generic';
   const copy = AUTH_ERROR_COPY[kind];
   const Icon = copy.icon;
+  const words = (part: 'title' | 'what' | 'how') => t(`login.err.${kind}.${part}` as MessageKey);
 
   return (
     <Dialog open={!!info} onOpenChange={(o) => { if (!o) onClose(); }}>
@@ -462,20 +441,20 @@ function AuthErrorDialog({
             <span className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-xl', copy.tone)}>
               <Icon className="h-5 w-5" />
             </span>
-            <DialogTitle className="text-left text-lg">{copy.title}</DialogTitle>
+            <DialogTitle className="text-left text-lg">{words('title')}</DialogTitle>
           </div>
-          <DialogDescription className="text-left text-slate-600">{copy.what}</DialogDescription>
+          <DialogDescription className="text-left text-slate-600">{words('what')}</DialogDescription>
         </DialogHeader>
 
         <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-slate-500">Why this happens</p>
-          <p className="text-sm text-slate-600">{copy.how}</p>
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-slate-500">{t('login.why')}</p>
+          <p className="text-sm text-slate-600">{words('how')}</p>
         </div>
 
         {info?.message && (
           <details className="group rounded-xl border border-slate-200 bg-white">
             <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-700">
-              Technical details
+              {t('login.technical')}
               <span className="text-slate-500 transition-transform group-open:rotate-180">⌄</span>
             </summary>
             <pre className="overflow-x-auto whitespace-pre-wrap break-words border-t border-slate-100 px-3 py-2 font-mono text-[11px] leading-relaxed text-slate-500">
@@ -487,20 +466,20 @@ function AuthErrorDialog({
         <DialogFooter className="gap-2 sm:gap-2">
           {kind === 'config' ? (
             <>
-              <button type="button" onClick={onClose} className="h-10 rounded-lg border border-slate-200 px-4 text-sm font-medium text-slate-600 hover:bg-slate-50">Close</button>
+              <button type="button" onClick={onClose} className="h-10 rounded-lg border border-slate-200 px-4 text-sm font-medium text-slate-600 hover:bg-slate-50">{t('login.close')}</button>
               <button type="button" onClick={onDemo} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-500">
-                <Play className="h-4 w-4" /> Explore the demo
+                <Play className="h-4 w-4" /> {t('login.demo')}
               </button>
             </>
           ) : (
             <>
               {kind === 'credentials' && (
                 <Link to="/forgot-password" onClick={onClose} className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-200 px-4 text-sm font-medium text-slate-600 hover:bg-slate-50">
-                  Reset password
+                  {t('login.resetPassword')}
                 </Link>
               )}
               <button type="button" onClick={onRetry} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-orange-600 to-orange-500 px-4 text-sm font-semibold text-white hover:from-orange-500 hover:to-orange-400">
-                <RefreshCw className="h-4 w-4" /> Try again
+                <RefreshCw className="h-4 w-4" /> {t('login.tryAgain')}
               </button>
             </>
           )}

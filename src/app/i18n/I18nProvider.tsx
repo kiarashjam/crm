@@ -17,6 +17,7 @@ import {
   asLanguage, dateLocaleFor, DEFAULT_LANGUAGE, resolveLanguage, type Language, type LanguageSource,
 } from './languages';
 import { renderRich, type RichParams } from './rich';
+import { setCurrentLanguage } from './current';
 
 const DEVICE_KEY = 'cadence.language';
 
@@ -57,6 +58,11 @@ export interface I18nValue {
   choose: (language: Language | null) => Promise<void>;
   /** What a public page knows about its reader's language (see {@link usePageLanguage}). */
   setPageLanguage: (language: string | null) => void;
+  /**
+   * The app picked a language other than English for someone signed in who never chose one
+   * (their workspace's, or their browser's): the app shell says so once and offers the others.
+   */
+  suggestChoice: boolean;
 }
 
 function makeValue(
@@ -65,12 +71,13 @@ function makeValue(
   workspaceLocale: string | null | undefined,
   choose: I18nValue['choose'],
   setPageLanguage: I18nValue['setPageLanguage'],
+  suggestChoice = false,
 ): I18nValue {
   const numberLocale = workspaceLocale || language;
   const dateLocale = dateLocaleFor(language, workspaceLocale);
   const t = (key: MessageKey, params?: MessageParams) => formatMessage(language, messageFor(language, key), params, numberLocale);
   const tx = (key: MessageKey, params?: RichParams) => renderRich(language, messageFor(language, key), params, numberLocale);
-  return { language, source, numberLocale, dateLocale, t, tx, choose, setPageLanguage };
+  return { language, source, numberLocale, dateLocale, t, tx, choose, setPageLanguage, suggestChoice };
 }
 
 // Outside a provider (a component rendered on its own, as most tests do) the app is in
@@ -80,19 +87,7 @@ const ENGLISH = makeValue(DEFAULT_LANGUAGE, 'default', null, noop, () => {});
 
 const I18nContext = createContext<I18nValue>(ENGLISH);
 
-// For code that is not a component (an API helper's message, a toast from a plain
-// function): the language the app is in right now.
-let current: I18nValue = ENGLISH;
-
-/** The words for a key in the app's current language, for code outside components. */
-export function translate(key: MessageKey, params?: MessageParams): string {
-  return current.t(key, params);
-}
-
-/** The locale dates are written in right now, for date helpers outside components. */
-export function currentDateLocale(): string | undefined {
-  return current === ENGLISH ? undefined : current.dateLocale;
-}
+export { translate, currentDateLocale } from './current';
 
 export function I18nProvider({ children, initialLanguage }: { children: ReactNode; initialLanguage?: Language }) {
   const workspaceLocale = useOrgOptional()?.currentOrg?.locale ?? null;
@@ -173,11 +168,15 @@ export function I18nProvider({ children, initialLanguage }: { children: ReactNod
     }
   }, []);
 
+  // Signed in, the account has no choice, and the app went with the workspace's or the
+  // browser's language rather than English: worth saying, once.
+  const suggestChoice = accountChoice === null && (source === 'workspace' || source === 'browser') && language !== DEFAULT_LANGUAGE;
   const value = useMemo(
-    () => makeValue(shown, shown === language ? source : 'default', workspaceLocale, choose, setPageLanguage),
-    [shown, language, source, workspaceLocale, choose],
+    () => makeValue(shown, shown === language ? source : 'default', workspaceLocale, choose, setPageLanguage, suggestChoice),
+    [shown, language, source, workspaceLocale, choose, suggestChoice],
   );
-  current = value;
+  // Code outside components (toasts from API helpers, date helpers) follows the same language.
+  setCurrentLanguage({ language: value.language, numberLocale: value.numberLocale, dateLocale: value.dateLocale });
 
   // The page says what language it is in: screen readers pronounce it, and the browser
   // hyphenates and offers translation by it.

@@ -15,6 +15,7 @@ import { PageLoadingProvider } from '@/app/components/LoadingOverlay';
 import { RouteProgress } from '@/app/components/motion/RouteProgress';
 import { ModuleOutlet, SalesHome } from '@/app/components/ModuleOff';
 import { I18nProvider } from '@/app/i18n';
+import { LanguageNotice } from '@/app/i18n/LanguageNotice';
 
 // Eager-loaded pages (critical path)
 import Homepage from '@/app/pages/Homepage';
@@ -92,6 +93,7 @@ const MemberImport = lazy(() => import('@/app/pages/MemberImport'));
 function ProtectedLayout() {
   return (
     <RequireAuth>
+      <LanguageNotice />
       <Suspense fallback={<PageLoader />}>
         <Outlet />
       </Suspense>
