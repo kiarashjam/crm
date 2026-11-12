@@ -56,6 +56,7 @@ import { type Permission, type WorkspaceModule, PERMISSION } from '@/app/api/org
 import { mayIn } from '@/app/hooks/useMay';
 import { useModules, type ModulesOn } from '@/app/hooks/useModules';
 import { cn } from './ui/utils';
+import { useT, type MessageKey } from '@/app/i18n';
 
 type NavLinkItem = {
   path: string;
@@ -80,117 +81,129 @@ type NavGroup = {
   items: NavLinkItem[];
 };
 
-const GROUPS: NavGroup[] = [
+/** A menu entry as written below: its words are catalogue keys, read in the person's language when the menu is built. */
+type NavItemDef = Omit<NavLinkItem, 'label' | 'children'> & {
+  label: MessageKey;
+  children?: { path: string; label: MessageKey; icon: LucideIcon }[];
+};
+
+type NavGroupDef = Omit<NavGroup, 'label' | 'labelWithoutSales' | 'items'> & {
+  label: MessageKey;
+  labelWithoutSales?: MessageKey;
+  items: NavItemDef[];
+};
+
+const GROUPS: NavGroupDef[] = [
   {
     id: 'today',
-    label: 'Today',
+    label: 'nav.group.today',
     bar: 'bg-orange-500',
     chip: 'bg-orange-100 text-orange-700',
     items: [
-      { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, module: 'sales' },
+      { path: '/dashboard', label: 'nav.dashboard', icon: LayoutDashboard, module: 'sales' },
     ],
   },
   {
     id: 'pipeline',
-    label: 'Pipeline',
-    labelWithoutSales: 'Work',
+    label: 'nav.group.pipeline',
+    labelWithoutSales: 'nav.group.work',
     bar: 'bg-blue-500',
     chip: 'bg-blue-100 text-blue-700',
     items: [
-      { path: '/leads', label: 'Leads', icon: Users, module: 'sales', children: [
-        { path: '/leads/import', label: 'Import leads', icon: FileUp },
-        { path: '/leads/webhook', label: 'Lead webhook', icon: Webhook },
+      { path: '/leads', label: 'nav.leads', icon: Users, module: 'sales', children: [
+        { path: '/leads/import', label: 'nav.importLeads', icon: FileUp },
+        { path: '/leads/webhook', label: 'nav.leadWebhook', icon: Webhook },
       ] },
-      { path: '/deals', label: 'Deals', icon: Kanban, module: 'sales' },
-      { path: '/tasks', label: 'Tasks', icon: CheckSquare },
+      { path: '/deals', label: 'nav.deals', icon: Kanban, module: 'sales' },
+      { path: '/tasks', label: 'nav.tasks', icon: CheckSquare },
       // The calendar lives with the club's pages; without the club, it is here.
-      { path: '/calendar', label: 'Calendar', icon: CalendarDays, onlyWhenOff: 'club' },
-      { path: '/activities', label: 'Activities', icon: Activity },
+      { path: '/calendar', label: 'nav.calendar', icon: CalendarDays, onlyWhenOff: 'club' },
+      { path: '/activities', label: 'nav.activities', icon: Activity },
     ],
   },
   {
     id: 'people',
-    label: 'People',
+    label: 'nav.group.people',
     bar: 'bg-emerald-500',
     chip: 'bg-emerald-100 text-emerald-700',
     items: [
-      { path: '/contacts', label: 'Contacts', icon: UserCircle, children: [
-        { path: '/contacts/import', label: 'Import contacts', icon: FileUp },
+      { path: '/contacts', label: 'nav.contacts', icon: UserCircle, children: [
+        { path: '/contacts/import', label: 'nav.importContacts', icon: FileUp },
       ] },
-      { path: '/companies', label: 'Companies', icon: Building2, children: [
-        { path: '/companies/import', label: 'Import companies', icon: FileUp },
+      { path: '/companies', label: 'nav.companies', icon: Building2, children: [
+        { path: '/companies/import', label: 'nav.importCompanies', icon: FileUp },
       ] },
-      { path: '/team', label: 'Team', icon: UsersRound },
+      { path: '/team', label: 'nav.team', icon: UsersRound },
     ],
   },
   {
     id: 'outreach',
-    label: 'Outreach',
+    label: 'nav.group.outreach',
     bar: 'bg-violet-500',
     chip: 'bg-violet-100 text-violet-700',
     items: [
-      { path: '/send', label: 'Attach copy', icon: Paperclip, module: 'sales' },
-      { path: '/sequences', label: 'Sequences', icon: Workflow, module: 'sales' },
-      { path: '/templates', label: 'Templates', icon: LayoutTemplate },
-      { path: '/history', label: 'History', icon: History, module: 'sales' },
-      { path: '/automations', label: 'Automations', icon: Zap },
+      { path: '/send', label: 'nav.attachCopy', icon: Paperclip, module: 'sales' },
+      { path: '/sequences', label: 'nav.sequences', icon: Workflow, module: 'sales' },
+      { path: '/templates', label: 'nav.templates', icon: LayoutTemplate },
+      { path: '/history', label: 'nav.history', icon: History, module: 'sales' },
+      { path: '/automations', label: 'nav.automations', icon: Zap },
     ],
   },
   {
     id: 'insight',
-    label: 'Insight',
+    label: 'nav.group.insight',
     bar: 'bg-rose-500',
     chip: 'bg-rose-100 text-rose-700',
     items: [
-      { path: '/reports', label: 'Reports', icon: BarChart3, module: 'sales' },
-      { path: '/duplicates', label: 'Duplicates', icon: Copy },
-      { path: '/audit', label: 'Audit', icon: ScrollText },
-      { path: '/privacy-requests', label: 'Privacy requests', icon: ShieldCheck, permission: PERMISSION.ManagePrivacy },
+      { path: '/reports', label: 'nav.reports', icon: BarChart3, module: 'sales' },
+      { path: '/duplicates', label: 'nav.duplicates', icon: Copy },
+      { path: '/audit', label: 'nav.audit', icon: ScrollText },
+      { path: '/privacy-requests', label: 'nav.privacyRequests', icon: ShieldCheck, permission: PERMISSION.ManagePrivacy },
     ],
   },
   {
     id: 'club',
-    label: 'Club',
+    label: 'nav.group.club',
     bar: 'bg-amber-500',
     chip: 'bg-amber-100 text-amber-800',
     items: [
-      { path: '/hospitality', label: 'Club today', icon: LayoutDashboard, module: 'club' },
-      { path: '/pos', label: 'House charge', icon: Calculator, module: 'club' },
-      { path: '/pos-tickets', label: 'POS tickets', icon: PlugZap, module: 'club' },
-      { path: '/members', label: 'Members', icon: Crown, module: 'club', children: [
-        { path: '/members/import', label: 'Import members', icon: FileUp },
+      { path: '/hospitality', label: 'nav.clubToday', icon: LayoutDashboard, module: 'club' },
+      { path: '/pos', label: 'nav.houseCharge', icon: Calculator, module: 'club' },
+      { path: '/pos-tickets', label: 'nav.posTickets', icon: PlugZap, module: 'club' },
+      { path: '/members', label: 'nav.members', icon: Crown, module: 'club', children: [
+        { path: '/members/import', label: 'nav.importMembers', icon: FileUp },
       ] },
-      { path: '/households', label: 'Households', icon: Home, module: 'club' },
-      { path: '/applications', label: 'Applications', icon: ClipboardList, module: 'club' },
-      { path: '/calendar', label: 'Calendar', icon: CalendarDays, module: 'club' },
-      { path: '/events', label: 'Events', icon: CalendarHeart, module: 'club' },
-      { path: '/reservations', label: 'Reservations', icon: CalendarClock, module: 'club' },
-      { path: '/visits', label: 'Visits', icon: ScanLine, module: 'club' },
-      { path: '/tabs', label: 'Tabs', icon: Wine, module: 'club' },
-      { path: '/charges', label: 'House accounts', icon: Receipt, module: 'club' },
-      { path: '/subscriptions', label: 'Subscriptions', icon: Repeat2, module: 'club' },
-      { path: '/statements', label: 'Statements', icon: FileText, module: 'club' },
-      { path: '/club-payments', label: 'Payments & bank', icon: Landmark, module: 'club' },
-      { path: '/loyalty', label: 'Loyalty', icon: Gift, module: 'club' },
-      { path: '/gift-cards', label: 'Gift cards', icon: Gift, module: 'club' },
-      { path: '/donations', label: 'Donations', icon: HeartHandshake, module: 'club' },
-      { path: '/campaigns', label: 'Campaigns', icon: Megaphone, module: 'club' },
-      { path: '/communications', label: 'Communications', icon: MessageSquareText, module: 'club' },
-      { path: '/club-reports', label: 'Club reports', icon: BarChart3, module: 'club' },
-      { path: '/portal', label: 'Member portal', icon: LayoutGrid, module: 'club' },
-      { path: '/hospitality-settings', label: 'Club settings', icon: SlidersHorizontal, module: 'club' },
+      { path: '/households', label: 'nav.households', icon: Home, module: 'club' },
+      { path: '/applications', label: 'nav.applications', icon: ClipboardList, module: 'club' },
+      { path: '/calendar', label: 'nav.calendar', icon: CalendarDays, module: 'club' },
+      { path: '/events', label: 'nav.events', icon: CalendarHeart, module: 'club' },
+      { path: '/reservations', label: 'nav.reservations', icon: CalendarClock, module: 'club' },
+      { path: '/visits', label: 'nav.visits', icon: ScanLine, module: 'club' },
+      { path: '/tabs', label: 'nav.tabs', icon: Wine, module: 'club' },
+      { path: '/charges', label: 'nav.houseAccounts', icon: Receipt, module: 'club' },
+      { path: '/subscriptions', label: 'nav.subscriptions', icon: Repeat2, module: 'club' },
+      { path: '/statements', label: 'nav.statements', icon: FileText, module: 'club' },
+      { path: '/club-payments', label: 'nav.payments', icon: Landmark, module: 'club' },
+      { path: '/loyalty', label: 'nav.loyalty', icon: Gift, module: 'club' },
+      { path: '/gift-cards', label: 'nav.giftCards', icon: Gift, module: 'club' },
+      { path: '/donations', label: 'nav.donations', icon: HeartHandshake, module: 'club' },
+      { path: '/campaigns', label: 'nav.campaigns', icon: Megaphone, module: 'club' },
+      { path: '/communications', label: 'nav.communications', icon: MessageSquareText, module: 'club' },
+      { path: '/club-reports', label: 'nav.clubReports', icon: BarChart3, module: 'club' },
+      { path: '/portal', label: 'nav.memberPortal', icon: LayoutGrid, module: 'club' },
+      { path: '/hospitality-settings', label: 'nav.clubSettings', icon: SlidersHorizontal, module: 'club' },
     ],
   },
   {
     id: 'workspace',
-    label: 'Workspace',
+    label: 'nav.group.workspace',
     bar: 'bg-cyan-500',
     chip: 'bg-cyan-100 text-cyan-800',
     items: [
-      { path: '/organizations', label: 'Workspaces', icon: ArrowRightLeft },
-      { path: '/settings', label: 'Settings', icon: Settings },
-      { path: '/settings?tab=claude', label: 'Claude', icon: Bot },
-      { path: '/help', label: 'Help', icon: HelpCircle },
+      { path: '/organizations', label: 'nav.workspaces', icon: ArrowRightLeft },
+      { path: '/settings', label: 'nav.settings', icon: Settings },
+      { path: '/settings?tab=claude', label: 'nav.claude', icon: Bot },
+      { path: '/help', label: 'nav.help', icon: HelpCircle },
     ],
   },
 ];
@@ -218,13 +231,20 @@ function matchesPath(pathname: string, search: string, path: string): boolean {
  * module is off, a group with nothing left goes, and a page whose usual place went with
  * its module shows where it is kept instead.
  */
-function groupsFor(modules: ModulesOn, may: (permission: Permission) => boolean): NavGroup[] {
+function groupsFor(modules: ModulesOn, may: (permission: Permission) => boolean, t: (key: MessageKey) => string): NavGroup[] {
   return GROUPS.map((group) => ({
     ...group,
-    label: !modules.sales && group.labelWithoutSales ? group.labelWithoutSales : group.label,
-    items: group.items.filter((item) =>
-      (!item.module || modules[item.module]) && (!item.onlyWhenOff || !modules[item.onlyWhenOff])
-      && (!item.permission || may(item.permission))),
+    label: t(!modules.sales && group.labelWithoutSales ? group.labelWithoutSales : group.label),
+    labelWithoutSales: undefined,
+    items: group.items
+      .filter((item) =>
+        (!item.module || modules[item.module]) && (!item.onlyWhenOff || !modules[item.onlyWhenOff])
+        && (!item.permission || may(item.permission)))
+      .map((item) => ({
+        ...item,
+        label: t(item.label),
+        children: item.children?.map((child) => ({ ...child, label: t(child.label) })),
+      })),
   })).filter((group) => group.items.length > 0);
 }
 
@@ -249,6 +269,7 @@ function currentItem(groups: NavGroup[], pathname: string, search: string): NavL
 
 export function AppSideNav() {
   const [open, setOpen] = useState(false);
+  const { t } = useT();
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -257,10 +278,10 @@ export function AppSideNav() {
           type="button"
           variant="ghost"
           className="h-11 w-11 gap-0 rounded-xl px-0 text-slate-700 hover:bg-white hover:text-slate-900 focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] sm:w-auto sm:gap-2 sm:px-3 dark:text-slate-200 dark:hover:bg-slate-800"
-          aria-label="Open menu"
+          aria-label={t('nav.openMenu')}
         >
           <Menu className="h-5 w-5" aria-hidden="true" />
-          <span className="hidden text-sm font-semibold sm:inline">Menu</span>
+          <span className="hidden text-sm font-semibold sm:inline">{t('nav.menu')}</span>
         </Button>
       </SheetTrigger>
       <SheetContent
@@ -277,10 +298,11 @@ function SideNavBody({ onNavigate }: { onNavigate: () => void }) {
   const location = useLocation();
   const org = useOrgOptional();
   const modules = useModules();
+  const { t } = useT();
   const groups = useMemo(
     // A page behind a permission needs a workspace too: a personal one has no such page.
-    () => groupsFor(modules, (permission) => !!org?.currentOrg && mayIn(org, permission)),
-    [modules, org],
+    () => groupsFor(modules, (permission) => !!org?.currentOrg && mayIn(org, permission), t),
+    [modules, org, t],
   );
   const filterId = useId();
   const activeGroup = groupForPath(groups, location.pathname, location.search);
@@ -315,30 +337,30 @@ function SideNavBody({ onNavigate }: { onNavigate: () => void }) {
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--brand-primary)]">CadenceE · Cadence Engine</p>
           <SheetTitle className="mt-1 text-left text-lg text-slate-950 dark:text-white">
-            {org?.currentOrg?.name ?? 'Menu'}
+            {org?.currentOrg?.name ?? t('nav.menu')}
           </SheetTitle>
           <SheetDescription className="sr-only">
-            {here ? `You are in ${here.label}` : 'Choose where to go'}
+            {here ? t('nav.youAreIn', { page: here.label }) : t('nav.chooseWhere')}
           </SheetDescription>
         </div>
         <div>
-          <label htmlFor={filterId} className="sr-only">Find a page</label>
+          <label htmlFor={filterId} className="sr-only">{t('nav.findPage')}</label>
           <div className="relative">
             <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-500" aria-hidden="true" />
             <input
               id={filterId}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Find a page"
+              placeholder={t('nav.findPage')}
               className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pr-3 pl-9 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus-visible:border-[var(--brand-primary)] focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)]/30 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
             />
           </div>
         </div>
       </SheetHeader>
 
-      <nav className="flex-1 overflow-y-auto px-3 py-3" aria-label="Main navigation">
+      <nav className="flex-1 overflow-y-auto px-3 py-3" aria-label={t('nav.main')}>
         {visibleGroups.length === 0 ? (
-          <p className="px-2 py-8 text-sm text-slate-500">No pages match “{query.trim()}”.</p>
+          <p className="px-2 py-8 text-sm text-slate-500">{t('nav.noMatch', { query: query.trim() })}</p>
         ) : (
           <ul>
             {visibleGroups.map((group) => (

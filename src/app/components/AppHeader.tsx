@@ -39,10 +39,12 @@ import { AppSideNav } from './AppSideNav';
 import { NextActions } from '@/app/salesAgent/NextActions';
 import { useMoney } from '@/app/hooks/useMoney';
 import { BrandName } from '@/app/components/BrandName';
+import { useT } from '@/app/i18n';
 
 // HP-9: Global search bar component
 function GlobalSearchBar() {
   const money = useMoney();
+  const { t } = useT();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -129,7 +131,7 @@ function GlobalSearchBar() {
         className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full text-sm text-slate-500 dark:text-slate-500 bg-white/50 dark:bg-slate-800/50 ring-1 ring-slate-200/60 dark:ring-slate-700/60 hover:ring-slate-300 dark:hover:ring-slate-600 hover:text-slate-600 dark:hover:text-slate-300 transition-all duration-200 shrink-0"
       >
         <Search className="w-3.5 h-3.5" />
-        <span>Search...</span>
+        <span>{t('header.search')}</span>
         <kbd className="hidden lg:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-500 border border-slate-200/80 dark:border-slate-600/80">
           <span className="text-xs">⌘</span>K
         </kbd>
@@ -146,7 +148,7 @@ function GlobalSearchBar() {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search contacts, companies, deals..."
+          placeholder={t('header.searchPlaceholder')}
           className="flex-1 bg-transparent text-sm text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none py-1.5"
           autoFocus
         />
@@ -159,6 +161,7 @@ function GlobalSearchBar() {
         <button
           type="button"
           onClick={() => { setOpen(false); setQuery(''); setResults(null); }}
+          aria-label={t('header.closeSearch')}
           className="p-0.5 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
         >
           <X className="w-3.5 h-3.5" />
@@ -170,7 +173,7 @@ function GlobalSearchBar() {
         <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-800 rounded-xl shadow-2xl shadow-slate-200/60 dark:shadow-slate-900/60 border border-slate-200/80 dark:border-slate-700/80 max-h-[400px] overflow-y-auto z-50">
           {totalResults === 0 ? (
             <div className="px-4 py-6 text-center text-sm text-slate-500">
-              No results found for &quot;{query}&quot;
+              {t('header.noResults', { query })}
             </div>
           ) : (
             <div className="py-1.5">
@@ -178,7 +181,7 @@ function GlobalSearchBar() {
               {results.contacts.length > 0 && (
                 <div>
                   <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-500">
-                    Contacts ({results.contacts.length})
+                    {t('header.resultsContacts', { count: results.contacts.length })}
                   </div>
                   {results.contacts.map((c) => (
                     <button
@@ -201,7 +204,7 @@ function GlobalSearchBar() {
               {results.companies.length > 0 && (
                 <div>
                   <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-500">
-                    Companies ({results.companies.length})
+                    {t('header.resultsCompanies', { count: results.companies.length })}
                   </div>
                   {results.companies.map((c) => (
                     <button
@@ -221,7 +224,7 @@ function GlobalSearchBar() {
               {results.deals.length > 0 && (
                 <div>
                   <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-500">
-                    Deals ({results.deals.length})
+                    {t('header.resultsDeals', { count: results.deals.length })}
                   </div>
                   {results.deals.map((d) => (
                     <button
@@ -243,7 +246,7 @@ function GlobalSearchBar() {
               {results.tasks.length > 0 && (
                 <div>
                   <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-500">
-                    Tasks ({results.tasks.length})
+                    {t('header.resultsTasks', { count: results.tasks.length })}
                   </div>
                   {results.tasks.map((t) => (
                     <button
@@ -265,7 +268,7 @@ function GlobalSearchBar() {
               {results.activities.length > 0 && (
                 <div>
                   <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-500">
-                    Activities ({results.activities.length})
+                    {t('header.resultsActivities', { count: results.activities.length })}
                   </div>
                   {results.activities.map((a) => (
                     <button
@@ -288,7 +291,7 @@ function GlobalSearchBar() {
               {results.leads.length > 0 && (
                 <div>
                   <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-500">
-                    Leads ({results.leads.length})
+                    {t('header.resultsLeads', { count: results.leads.length })}
                   </div>
                   {results.leads.map((l) => (
                     <button
@@ -317,6 +320,7 @@ function GlobalSearchBar() {
 export default function AppHeader() {
   const user = getCurrentUser();
   const org = useOrgOptional();
+  const { t } = useT();
 
   const handleLogout = useSignOut();
 
@@ -342,7 +346,7 @@ export default function AppHeader() {
             <Link
               to="/dashboard"
               className="group flex items-center gap-2.5 shrink-0 rounded-xl transition-all duration-200 hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-50"
-              aria-label="Go to dashboard"
+              aria-label={t('header.goToDashboard')}
             >
               <div
                 className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500 via-orange-500 to-amber-600 shadow-lg shadow-amber-500/25 ring-1 ring-white/20 transition-transform duration-200 group-hover:scale-105"
@@ -388,7 +392,7 @@ export default function AppHeader() {
                     </AvatarFallback>
                   </Avatar>
                   <span className="hidden max-w-[120px] truncate text-sm font-medium sm:inline">
-                    {user?.name ?? 'Account'}
+                    {user?.name ?? t('header.account')}
                   </span>
                   <ChevronDown className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-500 transition-transform [[data-state=open]_&]:rotate-180" />
                 </Button>
@@ -399,7 +403,7 @@ export default function AppHeader() {
               >
                 <div className="px-3 py-2.5">
                   <p className="truncate text-sm font-semibold text-slate-900 dark:text-white">
-                    {user?.name ?? 'Account'}
+                    {user?.name ?? t('header.account')}
                   </p>
                   <p className="truncate text-xs text-slate-500 dark:text-slate-400">{user?.email ?? ''}</p>
                 </div>
@@ -408,14 +412,14 @@ export default function AppHeader() {
                   <DropdownMenuItem asChild>
                     <Link to="/organizations" className="flex cursor-pointer items-center gap-2 rounded-lg dark:text-slate-200 dark:hover:bg-slate-700">
                       <Building2 className="h-4 w-4" />
-                      {org.currentOrg.name} — Switch org
+                      {t('header.switchOrg', { org: org.currentOrg.name })}
                     </Link>
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem asChild>
                   <Link to="/settings" className="flex cursor-pointer items-center gap-2 rounded-lg dark:text-slate-200 dark:hover:bg-slate-700">
                     <User className="h-4 w-4" />
-                    Settings
+                    {t('nav.settings')}
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator className="bg-slate-100 dark:bg-slate-700" />
@@ -424,7 +428,7 @@ export default function AppHeader() {
                   className="cursor-pointer rounded-lg text-red-600 dark:text-red-400 focus:text-red-600 dark:focus:text-red-400"
                 >
                   <LogOut className="h-4 w-4" />
-                  Sign out
+                  {t('header.signOut')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

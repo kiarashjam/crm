@@ -137,6 +137,28 @@ describe('the menu', () => {
     expect(nav.getByText('Contacts')).toBeInTheDocument();
   });
 
+  it('reads in the person’s language, and says what is left of the pipeline in it', async () => {
+    const { I18nProvider, loadCatalogue } = await import('@/app/i18n');
+    await loadCatalogue('de');
+    localStorage.setItem('cadence.language', 'de');
+    try {
+      workspace({ sales: false });
+      render(<I18nProvider><MemoryRouter initialEntries={['/members']}><AppSideNav /></MemoryRouter></I18nProvider>);
+      await userEvent.click(screen.getByRole('button', { name: 'Menü öffnen' }));
+      const nav = within(screen.getByRole('navigation', { name: 'Hauptnavigation' }));
+      expect(nav.getByRole('button', { name: /^Arbeit$/ })).toBeInTheDocument();
+      expect(nav.getByText('Mitglieder')).toBeInTheDocument();
+      expect(nav.getByText('Clubkonten')).toBeInTheDocument();
+      expect(nav.queryByText('Leads')).not.toBeInTheDocument();
+      // The page filter matches the words shown.
+      await userEvent.type(screen.getByPlaceholderText('Seite suchen'), 'abonn');
+      expect(nav.getByText('Abonnemente')).toBeInTheDocument();
+      expect(nav.queryByText('Mitglieder')).not.toBeInTheDocument();
+    } finally {
+      localStorage.removeItem('cadence.language');
+    }
+  });
+
   it('offers privacy requests only to someone who may handle them', async () => {
     workspace({ permissions: [PERMISSION.EditRecords, PERMISSION.DeleteRecords, PERMISSION.ExportRecords] });
     const { unmount } = render(<MemoryRouter initialEntries={['/contacts']}><AppSideNav /></MemoryRouter>);
