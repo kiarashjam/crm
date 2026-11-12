@@ -814,6 +814,12 @@ public static partial class DomainErrors
         public static readonly Error WrongPassword = new(
             "Auth.WrongPassword", "The password is incorrect");
 
+        // An account single sign-on made, or one whose unconfirmed password went when the
+        // address's owner signed on, has no password to confirm a change with. Also 400:
+        // the person is signed in.
+        public static readonly Error NoPassword = new(
+            "Auth.NoPassword", "Your account has no password yet: you sign in with Google, Microsoft or a passkey. Set a password first (Forgot password on the sign-in page sends you a link), then turn on two-factor sign-in.");
+
         public static readonly Error TwoFactorRequired = new(
             "Auth.TwoFactorRequired", "Two-factor authentication is required");
         

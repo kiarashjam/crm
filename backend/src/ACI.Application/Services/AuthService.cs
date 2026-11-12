@@ -301,12 +301,17 @@ public class AuthService : IAuthService
     public async Task<Result<string>> EnableTwoFactorAsync(Guid userId, TwoFactorEnableRequest request, string? signInMethod = null, CancellationToken ct = default)
     {
         _logger.LogInformation("Enabling 2FA for user {UserId}", userId);
-        
+
         var user = await _userRepository.GetByIdAsync(userId, ct);
-        if (user == null || user.PasswordHash == null)
+        if (user == null)
         {
             _logger.LogWarning("Enable 2FA failed: user {UserId} not found", userId);
             return DomainErrors.Auth.EmailNotFound;
+        }
+        if (user.PasswordHash == null)
+        {
+            _logger.LogInformation("Enable 2FA refused: user {UserId} has no password to confirm it with", userId);
+            return DomainErrors.Auth.NoPassword;
         }
 
         // The password as well as a code. Turning 2FA on signs out every other session,
@@ -360,12 +365,17 @@ public class AuthService : IAuthService
     public async Task<Result<string>> DisableTwoFactorAsync(Guid userId, TwoFactorDisableRequest request, string? signInMethod = null, CancellationToken ct = default)
     {
         _logger.LogInformation("Disabling 2FA for user {UserId}", userId);
-        
+
         var user = await _userRepository.GetByIdAsync(userId, ct);
-        if (user == null || user.PasswordHash == null)
+        if (user == null)
         {
             _logger.LogWarning("Disable 2FA failed: user {UserId} not found", userId);
             return DomainErrors.Auth.EmailNotFound;
+        }
+        if (user.PasswordHash == null)
+        {
+            _logger.LogInformation("Disable 2FA refused: user {UserId} has no password to confirm it with", userId);
+            return DomainErrors.Auth.NoPassword;
         }
 
         // The same password and code that sign in, so guesses here count against the

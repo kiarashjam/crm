@@ -340,6 +340,30 @@ public class SsoSignInTests
     }
 
     [Fact]
+    public async Task AnAccountMadeBySso_IsToldToSetAPasswordBeforeTurningOnTwoFactor_AndStaysSignedIn()
+    {
+        // Turning 2FA on takes the password, which an account single sign-on made has none of.
+        // It used to answer 401 "No account found with this email", and the app signs out on
+        // any 401, so trying to turn 2FA on signed the person out.
+        await using var app = new SsoApp();
+        var browser = new Browser(app);
+        var landing = Fragment(await browser.SignOnAsync("google", n => FakeOidcProvider.GoogleClaims("google-new", "newcomer@gmail.com", n)));
+        using var done = await OkJson(await browser.CompleteAsync(landing["code"]));
+        var session = As(app, done.RootElement.GetProperty("token").GetString()!);
+
+        using var setup = await OkJson(await session.PostAsync("/api/auth/2fa/setup", null));
+        var code = AuthenticatorApp.CodeNow(setup.RootElement.GetProperty("secret").GetString()!);
+        var enable = await session.PostAsync("/api/auth/2fa/enable", Body(new { password = "a guess 1", code }));
+        var body = await enable.Content.ReadAsStringAsync();
+        enable.StatusCode.Should().Be(HttpStatusCode.BadRequest, body);
+        body.Should().Contain("Auth.NoPassword").And.Contain("Forgot password");
+        (await session.GetAsync("/api/auth/me")).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var disable = await session.PostAsync("/api/auth/2fa/disable", Body(new { password = "a guess 1", code }));
+        disable.StatusCode.Should().Be(HttpStatusCode.BadRequest, await disable.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
     public async Task AnUnconfirmedAccountWithTheAddress_IsTakenBackByTheAddresssOwner()
     {
         // Someone registered anna's address before she did, chose its password, and never
