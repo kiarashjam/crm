@@ -17,6 +17,9 @@ import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import { cn } from '@/app/components/ui/utils';
 import { invitationToResume } from '@/app/lib/inviteLink';
 import { BrandName } from '@/app/components/BrandName';
+import { AlternativeSignIn } from '@/app/components/auth/AlternativeSignIn';
+import { passkeySecondFactor, passkeysSupported, safeReturnTo } from '@/app/api/signIn';
+import type { LoginResponse } from '@/app/api/auth';
 
 const HIGHLIGHTS = [
   { icon: Bot, title: 'AI that writes with you', body: 'Draft emails, follow-ups and notes in your voice.' },
@@ -29,6 +32,9 @@ export default function Login() {
   const location = useLocation();
   // An invitation link opened while signed out: go back to it, token and all.
   const resumeInvitation = invitationToResume(location.state);
+  // Back from single sign-on with two-factor sign-in on: the code (or a passkey) is next.
+  const fromSso = location.state as { twoFactorToken?: string; returnTo?: string | null } | null;
+  const afterSignIn = resumeInvitation ?? safeReturnTo(fromSso?.returnTo);
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -36,8 +42,8 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const [requires2fa, setRequires2fa] = useState(false);
-  const [twoFactorToken, setTwoFactorToken] = useState<string | null>(null);
+  const [requires2fa, setRequires2fa] = useState(Boolean(fromSso?.twoFactorToken));
+  const [twoFactorToken, setTwoFactorToken] = useState<string | null>(fromSso?.twoFactorToken ?? null);
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [errorModal, setErrorModal] = useState<{ message: string; was2fa: boolean } | null>(null);
@@ -59,7 +65,7 @@ export default function Login() {
         if (!res.token || !res.user) throw new Error('Login failed');
         setSession(res.token, res.user);
         toast.success(messages.auth.signedIn);
-        navigate(resumeInvitation ?? '/dashboard', { replace: true });
+        navigate(afterSignIn ?? '/dashboard', { replace: true });
         return;
       }
 
@@ -84,6 +90,36 @@ export default function Login() {
       setError(msg);
       // Surface a detailed, explained failure dialog (what happened + why).
       setErrorModal({ message: msg, was2fa: requires2fa });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  /** A sign-in another way (a passkey, or a passkey in place of the code) handed back a session or the 2FA step. */
+  const signedInAnotherWay = (res: LoginResponse) => {
+    if (res.requiresTwoFactor && res.twoFactorToken) {
+      setRequires2fa(true);
+      setTwoFactorToken(res.twoFactorToken);
+      toast.message(messages.auth.twoFactorCodeRequired);
+      return;
+    }
+    if (!res.token || !res.user) {
+      setError(messages.errors.generic);
+      return;
+    }
+    setSession(res.token, res.user);
+    toast.success(messages.auth.signedIn);
+    navigate(afterSignIn ?? (isUsingRealApi() ? '/organizations' : '/dashboard'), { replace: true });
+  };
+
+  const answerWithPasskey = async () => {
+    if (!twoFactorToken || submitting) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      signedInAnotherWay(await passkeySecondFactor(twoFactorToken));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : messages.errors.generic);
     } finally {
       setSubmitting(false);
     }
@@ -286,6 +322,13 @@ export default function Login() {
                     <div className="h-px flex-1 bg-slate-200" />
                   </div>
 
+                  <AlternativeSignIn
+                    onSignedIn={signedInAnotherWay}
+                    onError={setError}
+                    withPasskey={mode === 'login'}
+                    returnTo={afterSignIn}
+                  />
+
                   <button
                     type="button"
                     onClick={startDemo}
@@ -322,6 +365,17 @@ export default function Login() {
                   >
                     {submitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Verifying…</> : 'Verify & sign in'}
                   </button>
+
+                  {passkeysSupported() && (
+                    <button
+                      type="button"
+                      onClick={() => void answerWithPasskey()}
+                      disabled={submitting}
+                      className="h-11 w-full rounded-xl border border-slate-200 font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60"
+                    >
+                      Use a passkey instead
+                    </button>
+                  )}
 
                   <button
                     type="button"

@@ -6,6 +6,7 @@ import { orgCan, PERMISSION, PRESET_LABELS, type InviteDto, type JoinRequestDto,
 import { RegionalSettingsCard } from './RegionalSettingsCard';
 import { ModulesCard } from './ModulesCard';
 import { EmailSendingCard } from './EmailSendingCard';
+import { SingleSignOnCard } from './SingleSignOnCard';
 
 export interface OrganizationSectionProps {
   organizations: { id: string; name: string; isOwner: boolean; role?: number }[];
@@ -96,6 +97,8 @@ export function OrganizationSection({
       <RegionalSettingsCard />
 
       <EmailSendingCard />
+
+      <SingleSignOnCard />
 
       {!servesDemoData() && Boolean(currentOrg) && orgCan(currentOrg, PERMISSION.ManageMembers) && (
         <>

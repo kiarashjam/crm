@@ -24,6 +24,10 @@ export interface Organization {
   salesEnabled?: boolean;
   /** Whether the Club module is on (members, house accounts, events, campaigns…). Older servers send none: on. */
   clubEnabled?: boolean;
+  /** Whether the owner requires the team to sign in with Google or Microsoft here. */
+  ssoRequired?: boolean;
+  /** Whether this workspace refuses the current session (it began with a password or a passkey): sign in with SSO to open it. */
+  ssoSignInNeeded?: boolean;
 }
 
 /**

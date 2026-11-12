@@ -81,7 +81,7 @@ const TAB_CONFIG: { id: SettingsTab; label: string; icon: React.ElementType; des
   { id: 'organization', label: 'Team', icon: Users, description: 'Organization and team members' },
   { id: 'pipelines', label: 'Pipelines', icon: Kanban, description: 'Sales pipeline stages' },
   { id: 'customFields', label: 'Custom Fields', icon: SlidersHorizontal, description: 'Add your own fields to records' },
-  { id: 'security', label: 'Security', icon: Shield, description: 'Two-factor authentication' },
+  { id: 'security', label: 'Security', icon: Shield, description: 'Two-factor sign-in, passkeys and single sign-on' },
   { id: 'account', label: 'Account', icon: Settings2, description: 'Account management and data' },
 ];
 

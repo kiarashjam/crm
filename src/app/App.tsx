@@ -87,6 +87,7 @@ const PosTickets = lazy(() => import('@/app/pages/PosTickets'));
 const HospitalitySettings = lazy(() => import('@/app/pages/HospitalitySettings'));
 const HospitalityDashboard = lazy(() => import('@/app/pages/HospitalityDashboard'));
 const MemberImport = lazy(() => import('@/app/pages/MemberImport'));
+const SsoCallback = lazy(() => import('@/app/pages/SsoCallback'));
 
 function ProtectedLayout() {
   return (
@@ -129,6 +130,12 @@ export default function App() {
                 <Route path="/login" element={<Login />} />
                 <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
+                {/* Where single sign-on lands with its one-time code: not signed in yet. */}
+                <Route path="/auth/sso" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <SsoCallback />
+                  </Suspense>
+                } />
                 <Route path="/verify-email" element={
                   <Suspense fallback={<PageLoader />}>
                     <VerifyEmail />
