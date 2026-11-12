@@ -198,8 +198,9 @@ const CHANGES: Readonly<Record<string, readonly string[]>> = {
   // statement, and earns its points.
   sales: ['sales', 'charges', 'payments', 'members', 'statements', 'loyalty'],
   // An import, a match or a retry posts tickets as sales; the settings and the connection
-  // decide what the POS screens show.
-  pos: ['pos', 'sales', 'charges', 'payments', 'members', 'statements', 'loyalty'],
+  // decide what the POS screens show. A match also remembers the POS customer as one of the
+  // member's codes.
+  pos: ['pos', 'sales', 'charges', 'payments', 'members', 'statements', 'loyalty', 'member-codes'],
 };
 
 /** Which records an activity is about, from the body it was saved with. */

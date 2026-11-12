@@ -250,6 +250,10 @@ describe('what a sale and the POS change', () => {
     }
   });
 
+  it("refreshes the member's codes after a match, which remembers the POS customer as one", () => {
+    expect(resourcesChangedBy('POST', '/api/pos/tickets/t1/match')).toContain('member-codes');
+  });
+
   it("refreshes only the member's codes when one is given or taken away", () => {
     expect(resourcesChangedBy('POST', '/api/members/m1/codes')).toEqual(['member-codes']);
     expect(resourcesChangedBy('DELETE', '/api/members/m1/codes/c1')).toEqual(['member-codes']);
