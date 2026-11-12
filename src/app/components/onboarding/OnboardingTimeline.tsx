@@ -38,6 +38,8 @@ export function stagesOf(o: Onboarding): { state: StageState; at?: string; detai
       for (let i = reached; i < r; i++) at[i] ??= s.atUtc;
       reached = Math.max(reached, r);
       if (s.key === 'account_existing') detail[1] = 'They already had one';
+      // The portal says who it went out from: "Sent from Pavillon 46 <hello@…>".
+      if (s.key === 'email_sent' && s.detail) detail[2] = s.detail;
     }
   }
   const failedStep = o.status === 'failed' ? [...steps].reverse().find((s) => ['undeliverable', 'email_failed', 'failed'].includes(s.key)) : undefined;

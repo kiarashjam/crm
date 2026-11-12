@@ -4,7 +4,7 @@ import { AlertTriangle, ArrowLeft, CalendarDays, Languages, Send, Sparkles, User
 import { Button } from '@/app/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/app/components/ui/dialog';
 import { Spinner } from '@/app/components/motion/CadenceLoader';
-import { previewOnboarding, type OnboardingPreview, type OnboardingPreviewRequest } from '@/app/api/onboarding';
+import { previewOnboarding, senderLabel, type OnboardingPreview, type OnboardingPreviewRequest } from '@/app/api/onboarding';
 import { EmailPreviewFrame } from './EmailPreviewFrame';
 import { startLabel } from './welcome';
 
@@ -108,7 +108,13 @@ export function WelcomeConfirmDialog({
                   No email of your own yet, so the portal sends its own welcome design with your message in it. This is close to what it looks like.
                 </p>
               )}
-              <EmailPreviewFrame subject={preview.subject} html={preview.html} to={recipient.email} />
+              <EmailPreviewFrame
+                subject={preview.subject}
+                html={preview.html}
+                from={senderLabel(preview.fromName, preview.fromEmail) || undefined}
+                to={recipient.email}
+                replyTo={preview.replyTo ?? undefined}
+              />
               <p className="text-xs text-slate-500">
                 The button and links point at the portal once it sends: it puts in the link to set a password, valid for a few days.
               </p>

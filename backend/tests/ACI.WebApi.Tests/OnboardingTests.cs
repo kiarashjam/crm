@@ -8,6 +8,7 @@ using ACI.Domain.Enums;
 using ACI.WebApi.Tests.Helpers;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using static ACI.WebApi.Tests.Helpers.Workspaces;
 
@@ -25,12 +26,14 @@ public class OnboardingTests
     {
         public readonly List<(Uri Url, string Body, IReadOnlyDictionary<string, string> Headers)> Posts = new();
         public readonly Queue<int> Answers = new();
+        public string? AnswerBody { get; set; }
 
         public Task<WebhookPostResult> PostAsync(Uri url, string body, IReadOnlyDictionary<string, string> headers, CancellationToken ct = default)
         {
             lock (Posts) Posts.Add((url, body, headers));
             var status = Answers.Count > 0 ? Answers.Dequeue() : 200;
-            return Task.FromResult(new WebhookPostResult(status, status is >= 200 and < 300 ? null : $"The receiver answered {status}"));
+            var ok = status is >= 200 and < 300;
+            return Task.FromResult(new WebhookPostResult(status, ok ? null : $"The receiver answered {status}", ok ? AnswerBody : null));
         }
     }
 
@@ -250,6 +253,60 @@ public class OnboardingTests
         settings.GetProperty("configured").GetBoolean().Should().BeTrue();
         settings.GetProperty("hasSecret").GetBoolean().Should().BeTrue();
         settings.TryGetProperty("webhookSecret", out _).Should().BeFalse("the secret is shown once, when it is made");
+    }
+
+    [Fact]
+    public async Task TheWelcomeIsFromTheOrganization_ByNameAndWithItsRepliesComingBack()
+    {
+        await using var app = new App();
+        var (owner, org, _, dealId) = await SetUpAsync(app);
+
+        // Nothing set: the organization's name, and its own sending address for replies.
+        using (var scope = app.Services.CreateScope())
+        {
+            await using var db = scope.ServiceProvider.EveryWorkspace();
+            (await db.Organizations.IgnoreQueryFilters().SingleAsync(o => o.Id == org)).SendingAddress = "membres@pavillon46.ch";
+            await db.SaveChangesAsync();
+        }
+        var settings = await JsonAsync(await owner.GetAsync("/api/onboarding/settings"));
+        settings.GetProperty("defaultSenderName").GetString().Should().Be("Pavillon 46");
+        settings.GetProperty("defaultReplyTo").GetString().Should().Be("membres@pavillon46.ch");
+
+        (await owner.PutAsync("/api/onboarding/settings", Body(new { webhookUrl = Portal, senderName = "Pavillon 46\r\nBcc: x@evil.test" })))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest, "a name is one line: nothing slips into the email's headers");
+        (await owner.PutAsync("/api/onboarding/settings", Body(new { webhookUrl = Portal, replyTo = "a@b.ch, c@d.ch" })))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await owner.PutAsync("/api/onboarding/settings", Body(new { webhookUrl = Portal, senderName = "Le Pavillon", senderEmail = "Bienvenue@Pavillon46.ch" })))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var preview = await JsonAsync(await owner.PostAsync("/api/onboarding/preview", Body(new { dealId })));
+        preview.GetProperty("fromName").GetString().Should().Be("Le Pavillon");
+        preview.GetProperty("fromEmail").GetString().Should().Be("bienvenue@pavillon46.ch");
+        preview.GetProperty("replyTo").GetString().Should().Be("membres@pavillon46.ch", "replies still come back to the organization");
+
+        await owner.PostAsync($"/api/deals/{dealId}/onboarding", Body(new { }));
+        await app.DispatchOutboxAsync();
+        using var doc = JsonDocument.Parse(app.Hook.Posts.Single().Body);
+        var from = doc.RootElement.GetProperty("payload").GetProperty("from");
+        from.GetProperty("name").GetString().Should().Be("Le Pavillon");
+        from.GetProperty("email").GetString().Should().Be("bienvenue@pavillon46.ch");
+        from.GetProperty("replyTo").GetString().Should().Be("membres@pavillon46.ch");
+    }
+
+    [Fact]
+    public async Task TheTestSaysWhoThePortalSendsFrom()
+    {
+        await using var app = new App();
+        var (owner, _, _, _) = await SetUpAsync(app);
+        app.Hook.AnswerBody = """{"ok":true,"from":{"name":"Pavillon 46","email":"hello@pavillon46.ch"}}""";
+        var test = await JsonAsync(await owner.PostAsync("/api/onboarding/settings/test", null));
+        test.GetProperty("ok").GetBoolean().Should().BeTrue();
+        test.GetProperty("fromName").GetString().Should().Be("Pavillon 46");
+        test.GetProperty("fromEmail").GetString().Should().Be("hello@pavillon46.ch");
+
+        app.Hook.AnswerBody = "not json";
+        (await JsonAsync(await owner.PostAsync("/api/onboarding/settings/test", null))).GetProperty("ok").GetBoolean()
+            .Should().BeTrue("a portal that says nothing about its sender still answered");
     }
 
     [Fact]

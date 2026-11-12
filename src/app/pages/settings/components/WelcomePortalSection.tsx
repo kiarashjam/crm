@@ -6,7 +6,7 @@ import { Link } from 'react-router-dom';
 import { servesDemoData } from '@/app/api/apiClient';
 import { orgCan, PERMISSION, type Organization } from '@/app/api/organizations';
 import {
-  getOnboardingSettings, newOnboardingSecret, previewOnboarding, saveOnboardingSettings, testOnboardingPortal,
+  getOnboardingSettings, newOnboardingSecret, previewOnboarding, saveOnboardingSettings, senderLabel, testOnboardingPortal,
   type OnboardingLanguage, type OnboardingPreview, type OnboardingSettings,
 } from '@/app/api/onboarding';
 import { Button } from '@/app/components/ui/button';
@@ -62,6 +62,9 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
   const [enabled, setEnabled] = useState(true);
   const [language, setLanguage] = useState<OnboardingLanguage>('fr');
   const [addToMembers, setAddToMembers] = useState(true);
+  const [senderName, setSenderName] = useState('');
+  const [senderEmail, setSenderEmail] = useState('');
+  const [replyTo, setReplyTo] = useState('');
   const [subject, setSubject] = useState('');
   const [html, setHtml] = useState('');
   const [saving, setSaving] = useState(false);
@@ -79,6 +82,9 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
     setEnabled(s.enabled);
     setLanguage(s.defaultLanguage);
     setAddToMembers(s.addToClubMembers);
+    setSenderName(s.senderName ?? '');
+    setSenderEmail(s.senderEmail ?? '');
+    setReplyTo(s.replyTo ?? '');
     setSubject(s.emailSubject ?? '');
     setHtml(s.emailHtml ?? '');
   };
@@ -113,7 +119,12 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
   const dirty = useMemo(() => Boolean(settings) && (
     url !== (settings?.webhookUrl ?? '') || enabled !== settings?.enabled || language !== settings?.defaultLanguage
     || addToMembers !== settings?.addToClubMembers || subject !== (settings?.emailSubject ?? '') || html !== (settings?.emailHtml ?? '')
-  ), [settings, url, enabled, language, addToMembers, subject, html]);
+    || senderName !== (settings?.senderName ?? '') || senderEmail !== (settings?.senderEmail ?? '') || replyTo !== (settings?.replyTo ?? '')
+  ), [settings, url, enabled, language, addToMembers, subject, html, senderName, senderEmail, replyTo]);
+
+  // Who it is from, as typed: what the preview shows before anything is saved.
+  const fromShown = senderLabel(senderName.trim() || settings?.defaultSenderName, senderEmail.trim() || null);
+  const replyShown = replyTo.trim() || settings?.defaultReplyTo || '';
 
   const save = async () => {
     setSaving(true);
@@ -121,6 +132,7 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
       take(await saveOnboardingSettings({
         webhookUrl: url.trim() || null, enabled, defaultLanguage: language, addToClubMembers: addToMembers,
         emailSubject: subject.trim() || null, emailHtml: html.trim() || null,
+        senderName: senderName.trim() || null, senderEmail: senderEmail.trim() || null, replyTo: replyTo.trim() || null,
       }));
       toast.success('Welcome & portal saved');
     } catch (e) {
@@ -148,9 +160,18 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
     setTest(null);
     try {
       const r = await testOnboardingPortal();
-      setTest(r.ok
-        ? { ok: true, text: `The portal answered ${r.statusCode}: it checked the signature and is ready.` }
-        : { ok: false, text: r.error ?? `The portal answered ${r.statusCode}.` });
+      if (!r.ok) {
+        setTest({ ok: false, text: r.error ?? `The portal answered ${r.statusCode}.` });
+        return;
+      }
+      const sends = r.fromEmail ? ` It sends from ${senderLabel(r.fromName, r.fromEmail)}.` : '';
+      // A from address the portal's mail service may not use: it sends from its own, and replies come to you.
+      const domain = (e?: string | null) => e?.split('@')[1]?.toLowerCase();
+      const own = senderEmail.trim() || settings?.senderEmail;
+      const mismatch = own && r.fromEmail && domain(own) !== domain(r.fromEmail)
+        ? ` ${own} is not on its domain (${domain(r.fromEmail)}), so it will send from ${r.fromEmail} under your name, with replies to ${replyShown || own}.`
+        : '';
+      setTest({ ok: true, text: `The portal answered ${r.statusCode}: it checked the signature and is ready.${sends}${mismatch}` });
     } catch (e) {
       setTest({ ok: false, text: e instanceof Error ? e.message : 'The test could not be sent.' });
     } finally {
@@ -286,6 +307,59 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
       </section>
 
       <section className="space-y-3">
+        <div>
+          <h3 className="font-semibold text-slate-900">Sent from</h3>
+          <p className="text-sm text-slate-500">
+            The portal sends the welcome through its own mail service, as your organization: under this name, with replies coming back to you.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div>
+            <Label htmlFor="sender-name">Name</Label>
+            <Input
+              id="sender-name"
+              value={senderName}
+              onChange={(e) => setSenderName(e.target.value)}
+              placeholder={settings?.defaultSenderName ?? 'Your organization'}
+              maxLength={100}
+              disabled={!canEdit}
+              className="mt-1.5"
+            />
+          </div>
+          <div>
+            <Label htmlFor="sender-email">From address</Label>
+            <Input
+              id="sender-email"
+              type="email"
+              value={senderEmail}
+              onChange={(e) => setSenderEmail(e.target.value)}
+              placeholder="The portal's own address"
+              maxLength={256}
+              disabled={!canEdit}
+              className="mt-1.5"
+            />
+          </div>
+          <div>
+            <Label htmlFor="reply-to">Replies go to</Label>
+            <Input
+              id="reply-to"
+              type="email"
+              value={replyTo}
+              onChange={(e) => setReplyTo(e.target.value)}
+              placeholder={settings?.defaultReplyTo ?? 'e.g. members@your-club.ch'}
+              maxLength={256}
+              disabled={!canEdit}
+              className="mt-1.5"
+            />
+          </div>
+        </div>
+        <p className="text-xs text-slate-500">
+          A from address works only on a domain the portal's mail service is set up to send for (for Pavillon 46, its own domain).
+          Any other, and it sends from its own address under your name, with replies still coming to you. Send a test to see which it uses.
+        </p>
+      </section>
+
+      <section className="space-y-3">
         <h3 className="font-semibold text-slate-900">When a lead is converted</h3>
         <label className="flex items-center gap-3 text-sm text-slate-700">
           <Switch checked={enabled} onCheckedChange={setEnabled} disabled={!canEdit} aria-label="Offer the welcome by default" />
@@ -368,7 +442,7 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
                 {preview.unknown.length > 0 && (
                   <p className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">Nothing fills {preview.unknown.join(', ')}.</p>
                 )}
-                <EmailPreviewFrame subject={preview.subject} html={preview.html} to={SAMPLE.email} />
+                <EmailPreviewFrame subject={preview.subject} html={preview.html} from={fromShown || undefined} to={SAMPLE.email} replyTo={replyShown || undefined} />
               </>
             ) : (
               <div className="flex h-60 items-center justify-center rounded-xl border border-dashed border-slate-200 text-slate-400"><Loader2 className="h-5 w-5 animate-spin" /></div>

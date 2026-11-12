@@ -276,9 +276,9 @@ start date or "to be decided".
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/api/onboarding/settings` | The portal address, whether there is a signing secret (never the secret), the welcome template and defaults |
-| `PUT` | `/api/onboarding/settings` | `{ webhookUrl, enabled, emailSubject, emailHtml, defaultLanguage, addToClubMembers }` (Manage settings). The address must be public https |
+| `PUT` | `/api/onboarding/settings` | `{ webhookUrl, enabled, emailSubject, emailHtml, defaultLanguage, addToClubMembers, senderName, senderEmail, replyTo }` (Manage settings). The address must be public https |
 | `POST` | `/api/onboarding/settings/secret` | Makes a new signing secret and returns it this once (Manage settings) |
-| `POST` | `/api/onboarding/settings/test` | Posts a signed `onboarding.ping` now and returns what the portal answered (Manage settings) |
+| `POST` | `/api/onboarding/settings/test` | Posts a signed `onboarding.ping` now and returns what the portal answered, with who it sends from when it says (`{ from: { name, email } }`) (Manage settings) |
 | `POST` | `/api/onboarding/preview` | The welcome email filled for a deal's contact (or a name and email), the portal's links as stand-ins; lists placeholders nothing fills |
 | `POST` | `/api/deals/{dealId}/onboarding` | Hands the deal's contact over: `{ welcomeMessage, startsOnUtc \| startUndetermined, language, emailSubject?, emailHtml?, addToClubMembers?, leadId? }`. One per deal (409 after) |
 | `GET` | `/api/deals/{dealId}/onboarding` | The deal's handoffs with their steps and delivery state |
@@ -290,13 +290,20 @@ posted to the portal's address, signed with its secret as above. Its `payload`:
 `{ version: 1, onboardingId, deal { id, name, amount, currency, stage }, contact { id, name,
 firstName, lastName, email, phone, company }, membership { startsOn: "yyyy-MM-dd" | null,
 startUndetermined, clubMemberId }, language, welcomeMessage, email { subject, html } | null,
-callback { url, token }, sentBy { name }, workspace { id, name } }`. In `email`, CadenceE's
+callback { url, token }, sentBy { name }, workspace { id, name }, from { name, email, replyTo } }`. In `email`, CadenceE's
 placeholders (`{{firstName}}`, `{{lastName}}`, `{{name}}`, `{{email}}`, `{{company}}`,
 `{{dealName}}`, `{{welcomeMessage}}`, `{{startDate}}`, `{{senderName}}`, `{{workspace}}`) are
 filled and HTML-encoded; `{{setPasswordUrl}}`, `{{portalUrl}}` and `{{loginEmail}}` are left
 for the portal. The callback token is derived from the secret, so making a new secret
 retires the tokens of earlier handoffs. A copied organization keeps the template but not the
 portal address or secret.
+
+The welcome is from the organization: `from.name` is the sender name set in Settings (else the
+organization's name), `from.replyTo` the reply-to set there (else the organization's sending
+address), and `from.email` a from address, if one is set. The portal sends through its own
+mail service, so it uses that address only on a domain it may send for (Pavillon 46: the domain
+of its `FROM_EMAIL`), and otherwise its own address under the organization's name, with replies
+to the organization. Its `email_sent` report says which address it used, on the deal's timeline.
 
 Images for the welcome email are kept by the workspace and served at public addresses,
 because mail apps show only images they can fetch (most block embedded `data:` images, and

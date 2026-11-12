@@ -6,11 +6,12 @@ import { cn } from '@/app/components/ui/utils';
  * An email as the person will see it, in a sandbox: no script runs, no form posts, and
  * nothing in it can reach this page. The height follows the content.
  */
-export function EmailPreviewFrame({ subject, html, from, to, className }: {
+export function EmailPreviewFrame({ subject, html, from, to, replyTo, className }: {
   subject?: string;
   html: string;
   from?: string;
   to?: string;
+  replyTo?: string;
   className?: string;
 }) {
   const frame = useRef<HTMLIFrameElement>(null);
@@ -40,6 +41,7 @@ export function EmailPreviewFrame({ subject, html, from, to, className }: {
       <div className="space-y-1 border-b border-slate-100 bg-slate-50/80 px-4 py-3 text-xs dark:border-slate-700 dark:bg-slate-800/60">
         {from && <p className="text-slate-500"><span className="inline-block w-14 font-medium text-slate-400">From</span>{from}</p>}
         {to && <p className="text-slate-500"><span className="inline-block w-14 font-medium text-slate-400">To</span>{to}</p>}
+        {replyTo && <p className="text-slate-500"><span className="inline-block w-14 font-medium text-slate-400">Reply to</span>{replyTo}</p>}
         <p className="flex items-center gap-1.5 text-sm font-semibold text-slate-800 dark:text-slate-100">
           <Mail className="h-3.5 w-3.5 text-orange-500" aria-hidden />
           {subject || <span className="font-normal italic text-slate-400">The portal's own subject</span>}

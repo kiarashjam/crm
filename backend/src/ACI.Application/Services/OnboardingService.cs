@@ -99,7 +99,7 @@ public sealed class OnboardingService : IOnboardingService
     // ── Settings ──────────────────────────────────────────────────────────────
 
     public async Task<Result<OnboardingSettingsDto>> GetSettingsAsync(Guid organizationId, CancellationToken ct = default) =>
-        ToDto(await _onboarding.GetSettingsAsync(organizationId, ct));
+        ToDto(await _onboarding.GetSettingsAsync(organizationId, ct), await _organizations.GetByIdAsync(organizationId, ct));
 
     public async Task<Result<OnboardingSettingsDto>> SaveSettingsAsync(Guid organizationId, Guid userId, SaveOnboardingSettingsRequest request, CancellationToken ct = default)
     {
@@ -115,6 +115,12 @@ public sealed class OnboardingService : IOnboardingService
             return new Error("Onboarding.Language", "The language is \"fr\" or \"en\".");
         if (UnknownPlaceholders(request.EmailSubject, request.EmailHtml) is { Count: > 0 } unknown)
             return Unknown(unknown);
+        if (Blank(request.SenderName) is { } senderName && (senderName.Length > 100 || senderName.Any(char.IsControl)))
+            return new Error("Onboarding.Sender", "The sender's name can be at most 100 characters, on one line.");
+        if (Blank(request.SenderEmail) is { } senderEmail && !IsEmail(senderEmail))
+            return new Error("Onboarding.Sender", "The from address is not an email address.");
+        if (Blank(request.ReplyTo) is { } replyTo && !IsEmail(replyTo))
+            return new Error("Onboarding.Sender", "The reply-to address is not an email address.");
 
         var settings = await _onboarding.GetSettingsAsync(organizationId, ct);
         if (settings == null)
@@ -128,10 +134,13 @@ public sealed class OnboardingService : IOnboardingService
         settings.EmailHtml = string.IsNullOrWhiteSpace(request.EmailHtml) ? null : request.EmailHtml;
         if (request.DefaultLanguage != null) settings.DefaultLanguage = Language(request.DefaultLanguage)!;
         if (request.AddToClubMembers is bool add) settings.AddToClubMembers = add;
+        settings.SenderName = Blank(request.SenderName);
+        settings.SenderEmail = Blank(request.SenderEmail)?.ToLowerInvariant();
+        settings.ReplyTo = Blank(request.ReplyTo)?.ToLowerInvariant();
         settings.UpdatedAtUtc = DateTime.UtcNow;
         settings.UpdatedByUserId = userId;
         await _onboarding.SaveAsync(ct);
-        return ToDto(settings);
+        return ToDto(settings, await _organizations.GetByIdAsync(organizationId, ct));
     }
 
     public async Task<Result<OnboardingSecretDto>> NewSecretAsync(Guid organizationId, Guid userId, CancellationToken ct = default)
@@ -173,8 +182,25 @@ public sealed class OnboardingService : IOnboardingService
             occurredAtUtc = now,
         });
         var answer = await _transport.PostAsync(new Uri(settings.WebhookUrl!.Trim()), body, Headers(PingEvent, id, settings.WebhookSecret!, body), ct);
-        return new OnboardingPingDto(answer.Succeeded, answer.StatusCode,
-            answer.Succeeded ? null : answer.Error ?? $"The portal answered {answer.StatusCode}.");
+        if (!answer.Succeeded)
+            return new OnboardingPingDto(false, answer.StatusCode, answer.Error ?? $"The portal answered {answer.StatusCode}.");
+        // A portal may say who its email goes out from: { "from": { "name", "email" } }.
+        string? fromName = null, fromEmail = null;
+        try
+        {
+            using var said = JsonDocument.Parse(answer.Body ?? "{}");
+            if (said.RootElement.ValueKind == JsonValueKind.Object
+                && said.RootElement.TryGetProperty("from", out var from) && from.ValueKind == JsonValueKind.Object)
+            {
+                fromName = Clip(Text(from, "name"), 100);
+                fromEmail = Text(from, "email") is { } e && IsEmail(e) ? e : null;
+            }
+        }
+        catch (JsonException)
+        {
+            // Not JSON, or not this: the portal took the ping, which is what was asked.
+        }
+        return new OnboardingPingDto(true, answer.StatusCode, null, fromName, fromEmail);
     }
 
     // ── Preview ───────────────────────────────────────────────────────────────
@@ -199,17 +225,20 @@ public sealed class OnboardingService : IOnboardingService
         var subjectTemplate = Blank(request.EmailSubject) ?? settings?.EmailSubject;
         var htmlTemplate = string.IsNullOrWhiteSpace(request.EmailHtml) ? settings?.EmailHtml : request.EmailHtml;
 
+        var sender = Sender(settings, await _organizations.GetByIdAsync(organizationId, ct));
         var subject = OnboardingTemplate.Fill(subjectTemplate ?? DefaultSubject(language, values.Workspace), values, html: false, out var unknownInSubject);
         if (string.IsNullOrWhiteSpace(htmlTemplate))
         {
-            return new OnboardingPreviewDto(subject, StandIn(values, language), UsesReceiverDesign: true, unknownInSubject);
+            return new OnboardingPreviewDto(subject, StandIn(values, language), UsesReceiverDesign: true, unknownInSubject,
+                sender.Name, sender.Email, sender.ReplyTo);
         }
         var html = OnboardingTemplate.Fill(htmlTemplate, values, html: true, out var unknownInHtml);
         return new OnboardingPreviewDto(
             OnboardingTemplate.WithSampleReceiverValues(subject, values.Email, html: false),
             OnboardingTemplate.WithSampleReceiverValues(html, values.Email, html: true),
             UsesReceiverDesign: false,
-            unknownInSubject.Concat(unknownInHtml).Distinct(StringComparer.OrdinalIgnoreCase).ToList());
+            unknownInSubject.Concat(unknownInHtml).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+            sender.Name, sender.Email, sender.ReplyTo);
     }
 
     // ── Handing over ──────────────────────────────────────────────────────────
@@ -454,6 +483,7 @@ public sealed class OnboardingService : IOnboardingService
     /// <summary>Queue the handoff for the outbox, which posts it, signed, and retries until it is taken.</summary>
     private async Task<OutboundMessage?> QueueAsync(DealOnboarding onboarding, Person person, OnboardingSettings settings, OnboardingTemplate.Values values, CancellationToken ct)
     {
+        var sender = Sender(settings, await _organizations.GetByIdAsync(onboarding.OrganizationId, ct));
         var space = onboarding.Name.IndexOf(' ');
         var payload = new
         {
@@ -487,6 +517,10 @@ public sealed class OnboardingService : IOnboardingService
                 token = WebhookSigning.CallbackToken(settings.WebhookSecret!, onboarding.Id),
             },
             sentBy = new { name = values.SenderName },
+            // Who the email is from: the organization, by name, with its replies coming
+            // back to it. The portal sends from this address only on a domain its mail
+            // service may send for, and otherwise from its own, replying here.
+            from = new { name = sender.Name, email = sender.Email, replyTo = sender.ReplyTo },
             workspace = new { id = onboarding.OrganizationId, name = values.Workspace },
         };
         var now = DateTime.UtcNow;
@@ -649,7 +683,15 @@ public sealed class OnboardingService : IOnboardingService
             o.StartsOnUtc, o.StartUndetermined, status, steps, delivery, o.ExternalAccountId, canResend, o.CreatedAtUtc, o.UpdatedAtUtc);
     }
 
-    private static OnboardingSettingsDto ToDto(OnboardingSettings? s) => new(
+    private sealed record SenderInfo(string? Name, string? Email, string? ReplyTo);
+
+    /// <summary>Who the welcome is from: what the workspace set, or the organization's name and its own sending address.</summary>
+    private static SenderInfo Sender(OnboardingSettings? s, Organization? workspace) => new(
+        Blank(s?.SenderName) ?? Blank(workspace?.Name),
+        Blank(s?.SenderEmail),
+        Blank(s?.ReplyTo) ?? (Blank(workspace?.SendingAddress) is { } own && IsEmail(own) ? own : null));
+
+    private static OnboardingSettingsDto ToDto(OnboardingSettings? s, Organization? workspace) => new(
         s?.WebhookUrl,
         !string.IsNullOrWhiteSpace(s?.WebhookSecret),
         string.IsNullOrWhiteSpace(s?.WebhookSecret) ? null : s!.WebhookSecret![^4..],
@@ -661,7 +703,12 @@ public sealed class OnboardingService : IOnboardingService
         NotSetUp(s) == null,
         s?.UpdatedAtUtc,
         OnboardingTemplate.CadenceFields,
-        OnboardingTemplate.ReceiverFields);
+        OnboardingTemplate.ReceiverFields,
+        s?.SenderName,
+        s?.SenderEmail,
+        s?.ReplyTo,
+        Blank(workspace?.Name),
+        Blank(workspace?.SendingAddress) is { } own && IsEmail(own) ? own : null);
 
     // ── Rules ─────────────────────────────────────────────────────────────────
 
@@ -733,6 +780,18 @@ public sealed class OnboardingService : IOnboardingService
     }
 
     private static string? Blank(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+    /// <summary>One plain address: no name, no list, no line breaks, a dot in the domain.</summary>
+    private static bool IsEmail(string value)
+    {
+        var v = value.Trim();
+        if (v.Length > 256 || v.Any(c => char.IsControl(c) || char.IsWhiteSpace(c) || c is ',' or ';' or '<' or '>')) return false;
+        var at = v.IndexOf('@');
+        return at > 0 && at == v.LastIndexOf('@') && v.IndexOf('.', at) > at + 1 && !v.EndsWith('.');
+    }
+
+    private static string? Text(JsonElement e, string name) =>
+        e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? Blank(v.GetString()) : null;
 
     private static string? Clip(string? s, int max) => s == null ? null : s.Length <= max ? s : s[..max];
 }

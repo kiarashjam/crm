@@ -15,6 +15,9 @@ internal sealed class OnboardingSettingsConfiguration : IEntityTypeConfiguration
         builder.Property(e => e.EmailSubject).HasMaxLength(300);
         // EmailHtml is nvarchar(max): a designed email runs to tens of kilobytes.
         builder.Property(e => e.DefaultLanguage).HasMaxLength(5).IsRequired();
+        builder.Property(e => e.SenderName).HasMaxLength(100);
+        builder.Property(e => e.SenderEmail).HasMaxLength(256);
+        builder.Property(e => e.ReplyTo).HasMaxLength(256);
         // One row per organization.
         builder.HasIndex(e => e.OrganizationId).IsUnique().HasDatabaseName("IX_OnboardingSettings_OrganizationId");
     }

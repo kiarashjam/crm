@@ -26,6 +26,14 @@ export interface OnboardingSettings {
   cadenceFields: string[];
   /** Placeholders the portal fills: the set-password link, the portal's address, the login. */
   receiverFields: string[];
+  /** Who the welcome is from. Empty: the organization's name (defaultSenderName). */
+  senderName?: string | null;
+  /** The address it is from. Empty: the portal's own; used only on a domain the portal may send for. */
+  senderEmail?: string | null;
+  /** Where replies go. Empty: the organization's sending address (defaultReplyTo). */
+  replyTo?: string | null;
+  defaultSenderName?: string | null;
+  defaultReplyTo?: string | null;
 }
 
 export interface SaveOnboardingSettings {
@@ -35,6 +43,9 @@ export interface SaveOnboardingSettings {
   emailHtml?: string | null;
   defaultLanguage?: OnboardingLanguage;
   addToClubMembers?: boolean;
+  senderName?: string | null;
+  senderEmail?: string | null;
+  replyTo?: string | null;
 }
 
 export interface OnboardingPreviewRequest {
@@ -58,6 +69,10 @@ export interface OnboardingPreview {
   usesReceiverDesign: boolean;
   /** Placeholders nobody fills, as written. */
   unknown: string[];
+  fromName?: string | null;
+  /** The address asked for; none means the portal's own. */
+  fromEmail?: string | null;
+  replyTo?: string | null;
 }
 
 export interface StartOnboardingRequest {
@@ -139,7 +154,9 @@ export async function newOnboardingSecret(): Promise<string> {
   return (await authFetchJson<{ secret: string }>('/api/onboarding/settings/secret', { method: 'POST' })).secret;
 }
 
-export async function testOnboardingPortal(): Promise<{ ok: boolean; statusCode?: number | null; error?: string | null }> {
+export async function testOnboardingPortal(): Promise<{
+  ok: boolean; statusCode?: number | null; error?: string | null; fromName?: string | null; fromEmail?: string | null;
+}> {
   if (servesDemoData()) throw new Error(DEMO_MESSAGE);
   return authFetchJson('/api/onboarding/settings/test', { method: 'POST' });
 }
@@ -162,6 +179,12 @@ export async function getDealOnboarding(dealId: string): Promise<Onboarding[]> {
 export async function resendOnboarding(id: string): Promise<Onboarding> {
   if (servesDemoData()) throw new Error(DEMO_MESSAGE);
   return authFetchJson<Onboarding>(`/api/onboarding/${id}/resend`, { method: 'POST' });
+}
+
+/** "Pavillon 46 <hello@pavillon46.ch>", or the name alone when the portal uses its own address. */
+export function senderLabel(name?: string | null, email?: string | null): string {
+  if (name && email) return `${name} <${email}>`;
+  return name || email || '';
 }
 
 /** Whether the portal has nothing more to report for now: they are in, or it stopped. */

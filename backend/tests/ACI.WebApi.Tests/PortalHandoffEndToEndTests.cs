@@ -56,7 +56,10 @@ public class PortalHandoffEndToEndTests
             try
             {
                 using var answer = await Http.SendAsync(request, ct);
-                return new WebhookPostResult((int)answer.StatusCode, answer.IsSuccessStatusCode ? null : await answer.Content.ReadAsStringAsync(ct));
+                var text = await answer.Content.ReadAsStringAsync(ct);
+                return answer.IsSuccessStatusCode
+                    ? new WebhookPostResult((int)answer.StatusCode, null, text)
+                    : new WebhookPostResult((int)answer.StatusCode, text);
             }
             catch (HttpRequestException ex)
             {
@@ -119,6 +122,9 @@ public class PortalHandoffEndToEndTests
 
         var ping = await JsonDocument.ParseAsync(await (await owner.PostAsync("/api/onboarding/settings/test", null)).Content.ReadAsStreamAsync());
         ping.RootElement.GetProperty("ok").GetBoolean().Should().BeTrue(ping.RootElement.ToString());
+        // When the portal says who it sends from (CADENCE_E2E_PORTAL_FROM, its FROM_EMAIL), the test shows it.
+        if (Environment.GetEnvironmentVariable("CADENCE_E2E_PORTAL_FROM") is { Length: > 0 } portalFrom)
+            ping.RootElement.GetProperty("fromEmail").GetString().Should().Be(portalFrom);
 
         var email = $"e2e-{Guid.NewGuid():N}@example.com";
         var contact = JsonDocument.Parse(await (await owner.PostAsync("/api/contacts", Body(new { name = "Camille Laurent", email }))).Content.ReadAsStringAsync()).RootElement;
