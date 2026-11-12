@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Repeat2,
   Plus,
@@ -36,12 +36,11 @@ import {
   SelectValue,
 } from '@/app/components/ui/select';
 import {
-  getSubscriptions,
   createSubscription,
   updateSubscription,
   deleteSubscription,
   runBillingCycle,
-  runDueBillingCycles,
+  isNotDue,
   computeSubscriptionStats,
   SUBSCRIPTION_CADENCES,
   SUBSCRIPTION_STATUSES,
@@ -49,8 +48,11 @@ import {
   type SubscriptionCadence,
   type SubscriptionStatus,
 } from '@/app/api/subscriptions';
-import { getMembers, type Member } from '@/app/api/members';
+import { runBillingNow } from '@/app/api/billing';
+import { CADENCE_LABEL } from '@/app/api/catalog';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { ClubReadState } from '@/app/components/ClubReadState';
+import { NONE, useClubCatalog, useClubMembers, useClubReads, useClubSubscriptions } from '@/app/hooks/queries';
 import PageHero, { heroPrimary, heroSecondary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import {
@@ -84,38 +86,52 @@ function daysUntil(iso: string): number {
   return Math.ceil((Date.parse(iso) - Date.now()) / 86_400_000);
 }
 
+/** Today as a date field holds it. */
+function today(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
+interface SubscriptionForm {
+  memberId: string;
+  /** The tier or dues item it starts from; '' for one typed in. */
+  catalogItemId: string;
+  name: string;
+  amount: string;
+  cadence: SubscriptionCadence;
+  /** The day the first period starts and is billed. */
+  firstBilling: string;
+}
+
+const emptyForm = (): SubscriptionForm => ({
+  memberId: '', catalogItemId: '', name: '', amount: '', cadence: 'Monthly', firstBilling: today(),
+});
+
 export default function Subscriptions() {
   const { format: formatCurrency, currency } = useClubMoney();
-  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
-  const [members, setMembers] = useState<Member[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Read through the app's cache: a failed read says so with a way to try again, rather
+  // than looking like nobody subscribes to anything.
+  const subscriptionsQuery = useClubSubscriptions();
+  const membersQuery = useClubMembers();
+  const reads = useClubReads(subscriptionsQuery, membersQuery);
+  const subscriptions: Subscription[] = subscriptionsQuery.data ?? NONE;
+  const members = membersQuery.data ?? NONE;
+  const loading = reads.loading;
   usePageLoading(loading);
+  const load = reads.reload;
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | SubscriptionStatus>('All');
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [form, setForm] = useState({
-    memberId: '',
-    name: '',
-    amount: '',
-    cadence: 'Monthly' as SubscriptionCadence,
-  });
+  const [form, setForm] = useState<SubscriptionForm>(emptyForm);
+  // The tiers and dues on sale a subscription can start from, with their prices.
+  const catalogQuery = useClubCatalog();
+  const recurringItems = useMemo(
+    () => (catalogQuery.data ?? NONE).filter((i) => (i.kind === 'Membership' || i.kind === 'Dues') && i.isActive),
+    [catalogQuery.data],
+  );
   const [busy, setBusy] = useState(false);
   const [runningId, setRunningId] = useState<string | null>(null);
   const [runningAll, setRunningAll] = useState(false);
-
-  const load = async () => {
-    try {
-      const [s, m] = await Promise.all([getSubscriptions(), getMembers()]);
-      setSubscriptions(s);
-      setMembers(m);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void load();
-  }, []);
 
   const stats = useMemo(() => computeSubscriptionStats(subscriptions), [subscriptions]);
 
@@ -129,8 +145,24 @@ export default function Subscriptions() {
   }, [subscriptions, search, statusFilter]);
 
   const openCreate = () => {
-    setForm({ memberId: '', name: '', amount: '', cadence: 'Monthly' });
+    setForm(emptyForm());
     setDialogOpen(true);
+  };
+
+  /** Picking a tier or dues item fills in its name, price and cadence, which can still be changed. */
+  const pickItem = (id: string) => {
+    const item = recurringItems.find((i) => i.id === id);
+    if (!item) {
+      setForm({ ...form, catalogItemId: '' });
+      return;
+    }
+    setForm({
+      ...form,
+      catalogItemId: item.id,
+      name: item.kind === 'Membership' ? `${item.name} dues` : item.name,
+      amount: String(item.price),
+      cadence: item.cadence ?? 'Monthly',
+    });
   };
 
   const submit = async () => {
@@ -156,56 +188,106 @@ export default function Subscriptions() {
         name: form.name.trim(),
         amount,
         cadence: form.cadence,
+        catalogItemId: form.catalogItemId || undefined,
+        nextChargeAtUtc: form.firstBilling || undefined,
       });
       toast.success('Subscription created');
       setDialogOpen(false);
       await load();
+    } catch (err) {
+      // A tier taken off sale, or in another currency than the member's account: the server says which.
+      toast.error(err instanceof Error && err.message ? err.message : 'Could not create the subscription');
     } finally {
       setBusy(false);
     }
   };
 
+  // A refusal carries the server's sentence (changed somewhere else at the same moment,
+  // or billed already and so cancelled rather than deleted). Uncaught, it went nowhere and
+  // the button seemed to do nothing.
+  const refused = (err: unknown, fallback: string) =>
+    toast.error(err instanceof Error && err.message ? err.message : fallback);
+
   const togglePause = async (s: Subscription) => {
     const newStatus: SubscriptionStatus = s.status === 'Paused' ? 'Active' : 'Paused';
-    await updateSubscription(s.id, { status: newStatus });
-    toast.success(`Subscription ${newStatus.toLowerCase()}`);
-    await load();
+    try {
+      await updateSubscription(s.id, { status: newStatus });
+      toast.success(`Subscription ${newStatus.toLowerCase()}`);
+      await load();
+    } catch (err) {
+      refused(err, 'Could not change the subscription');
+    }
   };
 
   const cancel = async (s: Subscription) => {
     if (!confirm(`Cancel ${s.name} for ${s.memberName}?`)) return;
-    await updateSubscription(s.id, { status: 'Cancelled' });
-    toast.success('Cancelled');
-    await load();
+    try {
+      await updateSubscription(s.id, { status: 'Cancelled' });
+      toast.success('Cancelled');
+      await load();
+    } catch (err) {
+      refused(err, 'Could not cancel the subscription');
+    }
   };
 
+  // One that has billed a charge is cancelled instead: its charges name it.
   const remove = async (s: Subscription) => {
     if (!confirm(`Delete ${s.name} for ${s.memberName}?`)) return;
-    await deleteSubscription(s.id);
-    toast.success('Deleted');
-    await load();
+    try {
+      await deleteSubscription(s.id);
+      toast.success('Deleted');
+      await load();
+    } catch (err) {
+      refused(err, 'Could not delete the subscription');
+    }
   };
 
   const charge = async (s: Subscription) => {
     setRunningId(s.id);
     try {
       await runBillingCycle(s.id);
-      toast.success('Cycle charged');
+      toast.success('Period billed');
       await load();
     } catch (err) {
+      if (isNotDue(err)) {
+        // Its next period has not started. Billing it now is billing early, which the
+        // server does only when asked (one period ahead at most), so ask.
+        if (confirm(`${err.message}\n\nBill it early?`)) {
+          try {
+            await runBillingCycle(s.id, { early: true });
+            toast.success('Next period billed early');
+          } catch (early) {
+            refused(early, 'Could not bill it early');
+          }
+        }
+        await load();
+        return;
+      }
       // Billed from another screen at the same moment, say: the server says so, and nothing was charged twice.
-      toast.error(err instanceof Error && err.message ? err.message : 'Could not charge this cycle');
+      refused(err, 'Could not bill this period');
       await load();
     } finally {
       setRunningId(null);
     }
   };
 
+  // The server's billing run: every period that has started, once each, in one request.
+  // This used to be the browser billing each subscription in turn, stopping at the first refusal.
   const chargeDue = async () => {
     setRunningAll(true);
     try {
-      const count = await runDueBillingCycles();
-      toast.success(`Ran ${count} due cycle${count === 1 ? '' : 's'}`);
+      const run = await runBillingNow();
+      toast.success(run.chargesPosted === 0
+        ? 'Nothing was due: every period that has started is billed'
+        : `Billed ${run.chargesPosted} period${run.chargesPosted === 1 ? '' : 's'} for ${run.subscriptionsBilled} subscription${run.subscriptionsBilled === 1 ? '' : 's'}`);
+      // One that could not be billed does not stop the others: say which, and why.
+      const failed = run.failures[0];
+      if (failed) {
+        toast.error(`${run.failures.length} could not be billed. ${failed.name}: ${failed.error}`);
+      }
+      await load();
+    } catch (err) {
+      refused(err, 'Could not bill what is due');
       await load();
     } finally {
       setRunningAll(false);
@@ -339,7 +421,7 @@ export default function Subscriptions() {
             icon={Repeat2}
             tone="blue"
             title="Subscriptions"
-            subtitle="Recurring dues and add-ons. Bill the cycle to drop a charge automatically."
+            subtitle="Recurring dues and add-ons, billed in advance once a period: by the daily run when the club turns automatic billing on, or here."
             actions={
               <>
                 <WriteOnly permission={PERMISSION.ManageMoney}>
@@ -351,11 +433,11 @@ export default function Subscriptions() {
                   >
                     {runningAll ? (
                       <>
-                        <Loader2 className="h-4 w-4 animate-spin" /> Running
+                        <Loader2 className="h-4 w-4 animate-spin" /> Billing
                       </>
                     ) : (
                       <>
-                        <Zap className="h-4 w-4" /> Run due cycles
+                        <Zap className="h-4 w-4" /> Bill what is due
                       </>
                     )}
                   </Button>
@@ -404,6 +486,7 @@ export default function Subscriptions() {
             <ViewSwitcher view={view} columns={columnChoices(subscriptionColumns)} className="md:ml-auto" />
           </div>
 
+          <ClubReadState reads={reads} what="Subscriptions">
           {loading ? (
             <div className="flex items-center justify-center py-20 text-slate-500">
               <Loader2 className="h-6 w-6 animate-spin" />
@@ -475,6 +558,7 @@ export default function Subscriptions() {
               )}
             </ViewTransition>
           )}
+          </ClubReadState>
         </main>
       </PageTransition>
 
@@ -500,6 +584,24 @@ export default function Subscriptions() {
                 </SelectContent>
               </Select>
             </div>
+            {recurringItems.length > 0 && (
+              <div>
+                <Label>From the price catalogue</Label>
+                <Select value={form.catalogItemId || 'none'} onValueChange={(v) => pickItem(v === 'none' ? '' : v)}>
+                  <SelectTrigger aria-label="From the price catalogue">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None: type it in</SelectItem>
+                    {recurringItems.map((i) => (
+                      <SelectItem key={i.id} value={i.id}>
+                        {i.kind === 'Membership' ? `${i.name} dues` : i.name} — {formatCurrency(i.price)}/{CADENCE_LABEL[i.cadence ?? 'Monthly']}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div>
               <Label>Name</Label>
               <Input aria-label="Name"
@@ -537,6 +639,17 @@ export default function Subscriptions() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+            <div>
+              <Label>First billing date</Label>
+              <Input aria-label="First billing date"
+                type="date"
+                value={form.firstBilling}
+                onChange={(e) => setForm({ ...form, firstBilling: e.target.value })}
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Billed in advance: the first period starts on this day and is billed then, the next one a period later.
+              </p>
             </div>
           </div>
           <DialogFooter>

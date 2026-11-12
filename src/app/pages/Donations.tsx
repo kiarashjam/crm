@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   HeartHandshake,
   Plus,
   Search,
-  Trash2,
+  Ban,
   CheckCircle2,
   DollarSign,
   Users,
@@ -35,18 +35,18 @@ import {
   SelectValue,
 } from '@/app/components/ui/select';
 import {
-  getDonations,
   recordDonation,
   acknowledgeDonation,
-  deleteDonation,
+  voidDonation,
   computeDonationStats,
   DONATION_CAUSES,
   CAUSE_LABELS,
   type Donation,
   type DonationCause,
 } from '@/app/api/donations';
-import { getMembers, type Member } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { ClubReadState } from '@/app/components/ClubReadState';
+import { NONE, useClubDonations, useClubMembers, useClubReads } from '@/app/hooks/queries';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import {
@@ -55,7 +55,9 @@ import {
 } from '@/app/components/views';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
 import { WriteOnly } from '@/app/components/WriteOnly';
-import { PERMISSION } from '@/app/api/organizations';
+import { orgCan, PERMISSION } from '@/app/api/organizations';
+import { servesDemoData } from '@/app/api/apiClient';
+import { useOrgOptional } from '@/app/contexts/OrgContext';
 
 const CAUSE_COLOR: Record<DonationCause, string> = {
   StaffSupport: 'bg-orange-50 text-orange-700 ring-1 ring-orange-200',
@@ -81,10 +83,16 @@ function formatDate(iso: string): string {
 
 export default function Donations() {
   const { format: formatCurrency, currency } = useClubMoney();
-  const [donations, setDonations] = useState<Donation[]>([]);
-  const [members, setMembers] = useState<Member[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Read through the app's cache: a failed read says so with a way to try again, rather
+  // than looking like nobody has given.
+  const donationsQuery = useClubDonations();
+  const membersQuery = useClubMembers();
+  const reads = useClubReads(donationsQuery, membersQuery);
+  const donations: Donation[] = donationsQuery.data ?? NONE;
+  const members = membersQuery.data ?? NONE;
+  const loading = reads.loading;
   usePageLoading(loading);
+  const load = reads.reload;
   const [search, setSearch] = useState('');
   const [causeFilter, setCauseFilter] = useState<'All' | DonationCause>('All');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -96,20 +104,12 @@ export default function Donations() {
     message: '',
   });
   const [busy, setBusy] = useState(false);
-
-  const load = async () => {
-    try {
-      const [d, m] = await Promise.all([getDonations(), getMembers()]);
-      setDonations(d);
-      setMembers(m);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void load();
-  }, []);
+  const [voidingId, setVoidingId] = useState<string | null>(null);
+  // Voiding a donation takes money.void and money.manage, as voiding a charge does: the
+  // server refuses anyone without both.
+  const org = useOrgOptional();
+  const canVoid = servesDemoData()
+    || (Boolean(org?.currentOrg) && orgCan(org?.currentOrg, PERMISSION.ManageMoney) && orgCan(org?.currentOrg, PERMISSION.VoidMoney));
 
   const stats = useMemo(() => computeDonationStats(donations), [donations]);
 
@@ -153,22 +153,42 @@ export default function Donations() {
       toast.success('Donation recorded');
       setDialogOpen(false);
       await load();
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : 'Could not record the donation');
     } finally {
       setBusy(false);
     }
   };
 
   const acknowledge = async (d: Donation) => {
-    await acknowledgeDonation(d.id);
-    toast.success('Acknowledged — thank-you logged');
-    await load();
+    try {
+      await acknowledgeDonation(d.id);
+      toast.success('Acknowledged — thank-you logged');
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : 'Could not acknowledge the donation');
+    }
   };
 
-  const remove = async (d: Donation) => {
-    if (!confirm(`Delete this donation entry?`)) return;
-    await deleteDonation(d.id);
-    toast.success('Deleted');
-    await load();
+  // A donation is money received: it is voided with a reason, never deleted. It stays on
+  // the list saying why, and leaves the giving totals.
+  const voidOne = async (d: Donation) => {
+    const reason = window.prompt(`Why is this ${formatCurrency(d.amount)} donation being voided? The reason stays on the record.`);
+    if (reason === null) return;
+    if (!reason.trim()) {
+      toast.error('A reason is needed to void it');
+      return;
+    }
+    setVoidingId(d.id);
+    try {
+      await voidDonation(d.id, reason.trim());
+      toast.success('Donation voided');
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : 'Could not void the donation');
+    } finally {
+      setVoidingId(null);
+    }
   };
 
   // How this person likes donations shown, saved for them. A table, as it always was, until they choose.
@@ -176,7 +196,11 @@ export default function Donations() {
   const donorName = (d: Donation) => (d.isAnonymous ? 'Anonymous' : d.memberName);
 
   const status = (d: Donation) =>
-    d.acknowledged ? (
+    d.status === 'Voided' ? (
+      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500 ring-1 ring-slate-200">
+        Voided{d.voidReason ? `: ${d.voidReason}` : ''}
+      </span>
+    ) : d.acknowledged ? (
       <span className="inline-flex items-center gap-1 text-xs text-emerald-700">
         <CheckCircle2 className="w-3 h-3" /> Acknowledged
       </span>
@@ -186,26 +210,32 @@ export default function Donations() {
       </span>
     );
 
-  /** Acknowledge and delete, the same on a row, a card and a table line. */
+  const amount = (d: Donation, className: string) =>
+    d.status === 'Voided'
+      ? <span className={`${className} text-slate-500 line-through`}>{formatCurrency(d.amount)}</span>
+      : <span className={`${className} text-rose-700`}>{formatCurrency(d.amount)}</span>;
+
+  /** Acknowledge and void, the same on a row, a card and a table line. */
   const donationActions = (d: Donation) => (
     <>
-      {!d.acknowledged && (
+      {!d.acknowledged && d.status !== 'Voided' && (
         <WriteOnly permission={PERMISSION.ManageMoney}>
           <Button size="sm" variant="outline" onClick={() => acknowledge(d)}>
             Acknowledge
           </Button>
         </WriteOnly>
       )}
-      <WriteOnly permission={[PERMISSION.ManageMoney, PERMISSION.DeleteRecords]} all>
+      {canVoid && d.status !== 'Voided' && (
         <button
           type="button"
-          onClick={() => remove(d)}
-          className="rounded p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600"
-          aria-label={`Delete donation from ${donorName(d)}`}
+          onClick={() => voidOne(d)}
+          disabled={voidingId === d.id}
+          className="rounded p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+          aria-label={`Void donation from ${donorName(d)}`}
         >
-          <Trash2 className="w-4 h-4" />
+          {voidingId === d.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4" />}
         </button>
-      </WriteOnly>
+      )}
     </>
   );
 
@@ -231,7 +261,7 @@ export default function Donations() {
         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${CAUSE_COLOR[d.cause]}`}>{CAUSE_LABELS[d.cause]}</span>
       ),
     },
-    { id: 'amount', label: 'Amount', numeric: true, cell: (d) => <span className="font-semibold text-rose-700">{formatCurrency(d.amount)}</span> },
+    { id: 'amount', label: 'Amount', numeric: true, cell: (d) => amount(d, 'font-semibold') },
     { id: 'received', label: 'Received', cell: (d) => <span className="whitespace-nowrap">{formatDate(d.receivedAtUtc)}</span> },
     { id: 'status', label: 'Status', cell: status },
   ];
@@ -300,6 +330,7 @@ export default function Donations() {
             <ViewSwitcher view={view} columns={columnChoices(donationColumns)} className="md:ml-auto" />
           </div>
 
+          <ClubReadState reads={reads} what="Donations">
           {loading ? (
             <div className="flex items-center justify-center py-20 text-slate-500">
               <Loader2 className="h-6 w-6 animate-spin" />
@@ -345,7 +376,7 @@ export default function Donations() {
                           <p className="truncate font-semibold text-slate-900">{donorName(d)}</p>
                           <p className="text-xs text-slate-500">{formatDate(d.receivedAtUtc)}</p>
                         </div>
-                        <p className="shrink-0 text-lg font-bold text-rose-700">{formatCurrency(d.amount)}</p>
+                        <p className="shrink-0 text-lg font-bold">{amount(d, '')}</p>
                       </div>
                       <div className="mt-3 flex flex-wrap items-center gap-2">
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${CAUSE_COLOR[d.cause]}`}>{CAUSE_LABELS[d.cause]}</span>
@@ -368,6 +399,7 @@ export default function Donations() {
               )}
             </ViewTransition>
           )}
+          </ClubReadState>
         </main>
       </PageTransition>
 

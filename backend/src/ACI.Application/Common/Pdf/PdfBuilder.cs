@@ -73,6 +73,12 @@ public sealed class PdfBuilder
     /// <summary>How many pages have been started.</summary>
     public int PageCount => _pages.Count;
 
+    /// <summary>
+    /// A page already started, to draw on again: a running footer that says "Page 2 of 3"
+    /// can only be written once the last page is known.
+    /// </summary>
+    public PdfCanvas Page(int index) => _pages[index];
+
     /// <summary>The finished file.</summary>
     public byte[] Build()
     {

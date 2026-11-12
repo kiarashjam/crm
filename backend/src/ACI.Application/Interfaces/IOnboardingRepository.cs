@@ -30,8 +30,6 @@ public interface IOnboardingRepository
     /// <summary>The workspace's club member with this email, tracked, if there is one.</summary>
     Task<ClubMember?> ClubMemberByEmailAsync(Guid organizationId, string email, CancellationToken ct = default);
 
-    void AddClubMember(ClubMember member);
-
     /// <summary>Keeps every change made through this repository; a concurrent change to a handoff throws ConcurrencyConflictException.</summary>
     Task SaveAsync(CancellationToken ct = default);
 

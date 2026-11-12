@@ -69,6 +69,7 @@ import { ScoreGauge } from './leads/detail/ScoreGauge';
 import { SalesTrackerCard } from './leads/detail/SalesTrackerCard';
 import { ReferralCard } from './leads/detail/ReferralCard';
 import RelationshipsCard from '@/app/components/RelationshipsCard';
+import { PersonMembershipCard } from '@/app/components/MembershipLinks';
 import AiNextActionCard from '@/app/components/AiNextActionCard';
 import SaveLeadAsContactDialog from '@/app/components/SaveLeadAsContactDialog';
 import CustomFieldsCard from '@/app/components/CustomFieldsCard';
@@ -1464,6 +1465,11 @@ export default function LeadDetailPage() {
                   </motion.div>
                 </>
               )}
+
+              {/* The club: the member this lead became, their applications and household. */}
+              <motion.div {...card(2)}>
+                <PersonMembershipCard kind="lead" id={lead.id} personName={lead.name} readOnly={isReadOnly} />
+              </motion.div>
 
               {/* Contact: the fields edit in place. */}
               {!place && (

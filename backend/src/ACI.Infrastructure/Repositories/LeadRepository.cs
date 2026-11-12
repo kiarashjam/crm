@@ -411,6 +411,11 @@ public sealed class LeadRepository : ILeadRepository
                 message.LeadId = keepId;
             foreach (var contract in await _db.Contracts.Where(c => c.LeadId == dropId).ToListAsync(ct))
                 contract.LeadId = keepId;
+            // The member the lead became, and the applications it made, came from the person kept.
+            foreach (var member in await _db.ClubMembers.Where(m => m.LeadId == dropId).ToListAsync(ct))
+                member.LeadId = keepId;
+            foreach (var application in await _db.ClubApplications.Where(a => a.LeadId == dropId).ToListAsync(ct))
+                application.LeadId = keepId;
 
             await RecordMerge.MoveEnrollmentsAsync(_db, "lead", keepId, dropId, ct);
 

@@ -2,7 +2,6 @@ using System.Text.RegularExpressions;
 using ACI.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.SqlServer.TransactSql.ScriptDom;
 
 namespace ACI.WebApi.Tests;
@@ -71,7 +70,7 @@ public class ClubSchemaTests
     public void TheCreateTableDeclaresEveryColumnAsEfWouldWriteIt(string table)
     {
         var block = Between(ProgramDdl(), $"CREATE TABLE [{table}]", ");");
-        var expected = Between(BaselineScript(), $"CREATE TABLE [{table}]", "CONSTRAINT");
+        var expected = Between(EfCreateScript(), $"CREATE TABLE [{table}]", "CONSTRAINT");
 
         var columns = 0;
         foreach (var line in expected.Split('\n'))
@@ -100,7 +99,7 @@ public class ClubSchemaTests
             .UseSqlServer("Server=not-connected;Database=none;Trusted_Connection=True;")
             .Options;
         using var db = new AppDbContext(options);
-        var baseline = ACI.WebApi.SchemaBaseline.BaselineModel(db);
+        var baseline = ACI.WebApi.SchemaBaseline.BaselineModel(db).GetRelationalModel();
         var today = db.GetService<Microsoft.EntityFrameworkCore.Metadata.IDesignTimeModel>().Model.GetRelationalModel();
 
         baseline.Tables.Should().Contain(t => t.Name == "ClubMembers");
@@ -132,14 +131,24 @@ public class ClubSchemaTests
         return File.ReadAllText(Path.Combine(dir!.FullName, "backend", "src", "ACI.WebApi", "Program.cs"));
     }
 
-    /// <summary>What the migrations up to the baseline write, with no database involved.</summary>
-    internal static string BaselineScript()
+    /// <summary>
+    /// What EF itself writes for the schema as the baseline migration makes it, with no
+    /// database involved.
+    /// </summary>
+    /// <remarks>
+    /// The baseline's, not the model's as it is now: the start-up DDL stopped growing at the
+    /// baseline and only brings an old database up to it, and a column a later migration adds
+    /// is made by that migration. Compared with the current model, the first such column
+    /// would have had to go into the DDL, which nothing may be added to any more.
+    /// </remarks>
+    internal static string EfCreateScript()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseSqlServer("Server=not-connected;Database=none;Trusted_Connection=True;")
             .Options;
         using var db = new AppDbContext(options);
-        return db.GetService<IMigrator>().GenerateScript(fromMigration: null, toMigration: ACI.WebApi.SchemaBaseline.MigrationId);
+        return db.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>()
+            .GenerateScript(Microsoft.EntityFrameworkCore.Migrations.Migration.InitialDatabase, SchemaBaseline.MigrationId);
     }
 
     internal static string Between(string text, string start, string end)

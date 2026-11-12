@@ -466,7 +466,7 @@ export default function Calendar() {
                             <div className="min-w-0 flex-1">
                               <p className="text-sm font-medium text-slate-900 truncate">{e.name}</p>
                               <p className="text-xs text-slate-500">
-                                {formatTime(e.startAtUtc)} · {e.registeredCount}/{e.capacity}
+                                {formatTime(e.startAtUtc)} · {e.capacity > 0 ? `${e.registeredCount}/${e.capacity}` : `${e.registeredCount} registered`}
                               </p>
                             </div>
                           </Link>

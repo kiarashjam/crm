@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Receipt,
   Plus,
@@ -8,7 +8,9 @@ import {
   AlertTriangle,
   CheckCircle2,
   CreditCard,
+  FileDown,
   Loader2,
+  Undo2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -40,28 +42,31 @@ import {
   TabsContent,
 } from '@/app/components/ui/tabs';
 import {
-  getCharges,
-  getPayments,
   createCharge,
   recordPayment,
   voidCharge,
   voidPayment,
+  refundPayment,
   computeChargeStats,
   CHARGE_KINDS,
   CHARGE_STATUSES,
   PAYMENT_METHODS,
   PAYMENT_METHOD_LABELS,
+  PAYMENT_PROVIDER_LABELS,
   type Charge,
   type ChargeKind,
   type ChargeStatus,
   type Payment,
 } from '@/app/api/charges';
-import { getMembers, type Member } from '@/app/api/members';
 import { orgCan, PERMISSION } from '@/app/api/organizations';
 import { servesDemoData } from '@/app/api/apiClient';
+import { downloadChargeInvoicePdf } from '@/app/api/billing';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
 import { endOfLocalDay } from '@/app/lib/dateInputs';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { ClubReadState } from '@/app/components/ClubReadState';
+import { NONE, useClubCatalog, useClubCharges, useClubMembers, useClubPayments, useClubReads } from '@/app/hooks/queries';
+import { CATALOG_KIND_LABEL } from '@/app/api/catalog';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import {
@@ -101,11 +106,18 @@ function formatDate(iso?: string): string {
 
 export default function Charges() {
   const { format: formatCurrency, currency } = useClubMoney();
-  const [charges, setCharges] = useState<Charge[]>([]);
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [members, setMembers] = useState<Member[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Read through the app's cache: a failed read says so with a way to try again instead
+  // of looking like no charges, and a payment taken elsewhere refreshes these lists.
+  const chargesQuery = useClubCharges();
+  const paymentsQuery = useClubPayments();
+  const membersQuery = useClubMembers();
+  const reads = useClubReads(chargesQuery, paymentsQuery, membersQuery);
+  const charges: Charge[] = chargesQuery.data ?? NONE;
+  const payments: Payment[] = paymentsQuery.data ?? NONE;
+  const members = membersQuery.data ?? NONE;
+  const loading = reads.loading;
   usePageLoading(loading);
+  const load = reads.reload;
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | ChargeStatus>('All');
   const [memberFilter, setMemberFilter] = useState<string>('All');
@@ -119,7 +131,28 @@ export default function Charges() {
     description: '',
     amount: '',
     dueAtUtc: '',
+    /** A priced item from the catalogue; '' for a charge typed in. */
+    catalogItemId: '',
   });
+  // The one-off prices on sale (fees, products, tickets, menu items) a charge can be rung up
+  // from: the server then charges the catalogue's price, kind and VAT rate.
+  const catalogQuery = useClubCatalog();
+  const priced = useMemo(
+    () => (catalogQuery.data ?? NONE).filter((i) => i.kind !== 'Membership' && i.kind !== 'Dues' && i.isActive),
+    [catalogQuery.data],
+  );
+  const pickPriced = (id: string) => {
+    const item = priced.find((i) => i.id === id);
+    setChargeForm(item
+      ? {
+        ...chargeForm,
+        catalogItemId: item.id,
+        description: item.name,
+        amount: String(item.price),
+        kind: (CHARGE_KINDS as readonly string[]).includes(item.chargeKind) ? item.chargeKind as ChargeKind : chargeForm.kind,
+      }
+      : { ...chargeForm, catalogItemId: '' });
+  };
   const [paymentForm, setPaymentForm] = useState({
     amount: '',
     method: 'CardOnFile' as Payment['method'],
@@ -127,28 +160,12 @@ export default function Charges() {
   });
   const [saving, setSaving] = useState(false);
   const [voidingId, setVoidingId] = useState<string | null>(null);
+  const [invoicingId, setInvoicingId] = useState<string | null>(null);
   // Voiding takes money.void and, like every change to the club's money, money.manage:
   // the server refuses anyone without both.
   const org = useOrgOptional();
   const canVoid = servesDemoData()
     || (Boolean(org?.currentOrg) && orgCan(org?.currentOrg, PERMISSION.ManageMoney) && orgCan(org?.currentOrg, PERMISSION.VoidMoney));
-
-  const load = async () => {
-    try {
-      const [c, p, m] = await Promise.all([getCharges(), getPayments(), getMembers()]);
-      setCharges(c);
-      setPayments(p);
-      setMembers(m);
-    } catch {
-      toast.error('Failed to load charges');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void load();
-  }, []);
 
   const stats = useMemo(() => computeChargeStats(charges), [charges]);
 
@@ -176,6 +193,7 @@ export default function Charges() {
       description: '',
       amount: '',
       dueAtUtc: '',
+      catalogItemId: '',
     });
     setChargeDialog(true);
   };
@@ -205,12 +223,14 @@ export default function Charges() {
         amount,
         // Due by the end of the chosen day: the server counts it overdue once that has passed.
         dueAtUtc: endOfLocalDay(chargeForm.dueAtUtc),
+        catalogItemId: chargeForm.catalogItemId || undefined,
       });
       toast.success('Charge posted');
       setChargeDialog(false);
       await load();
-    } catch {
-      toast.error('Failed to post charge');
+    } catch (err) {
+      // An item taken off sale meanwhile, say: the server says so in a sentence.
+      toast.error(err instanceof Error && err.message ? err.message : 'Failed to post charge');
     } finally {
       setSaving(false);
     }
@@ -260,14 +280,27 @@ export default function Charges() {
   };
 
   /** Asks why; null when the person cancels or gives no reason. */
-  const askReason = (what: string): string | null => {
-    const reason = window.prompt(`Why is ${what} being voided? The reason stays on the record.`);
+  const askReason = (what: string, done: 'voided' | 'refunded' = 'voided'): string | null => {
+    const reason = window.prompt(`Why is ${what} being ${done}? The reason stays on the record.`);
     if (reason === null) return null;
     if (!reason.trim()) {
-      toast.error('A reason is needed to void it');
+      toast.error(done === 'voided' ? 'A reason is needed to void it' : 'A reason is needed to refund it');
       return null;
     }
     return reason.trim();
+  };
+
+  // An invoice for one charge, built on the server: what is still owed on it, with a QR-bill
+  // whose reference pays that charge once the club's bank details are set.
+  const downloadInvoice = async (c: Charge) => {
+    setInvoicingId(c.id);
+    try {
+      await downloadChargeInvoicePdf(c.id);
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : 'Could not build the invoice');
+    } finally {
+      setInvoicingId(null);
+    }
   };
 
   // Charges and payments are voided, never deleted: the record stays, with who and why.
@@ -287,6 +320,12 @@ export default function Charges() {
   };
 
   const voidOnePayment = async (p: Payment) => {
+    // A void says the payment was recorded in error. Stripe's money is real: voiding takes it
+    // off the ledger and leaves it with the club; a refund is what pays it back.
+    if (p.provider === 'stripe' && !window.confirm(
+      'Stripe took this payment. Voiding it only takes it off the ledger: the member is not paid back. '
+      + 'To pay the money back, refund it instead. Void it anyway?',
+    )) return;
     const reason = askReason(`this ${formatCurrency(p.amount)} payment`);
     if (!reason) return;
     setVoidingId(p.id);
@@ -296,6 +335,36 @@ export default function Charges() {
       await load();
     } catch (err) {
       toast.error(err instanceof Error && err.message ? err.message : 'Could not void the payment');
+    } finally {
+      setVoidingId(null);
+    }
+  };
+
+  // Money paid back, part or all of a payment, with a reason: an entry of its own on the
+  // ledger. What the payment left unused goes back first; beyond that its charges owe again.
+  const refundOnePayment = async (p: Payment) => {
+    const left = Math.round((p.amount - (p.refundedAmount ?? 0)) * 100) / 100;
+    // A payment Stripe took is paid back through Stripe, to the card or account it came from.
+    const how = p.provider === 'stripe' ? ' Stripe pays it back to the card or account it came from.' : '';
+    const typed = window.prompt(
+      `How much of this ${formatCurrency(p.amount)} payment is being paid back?${how} Up to ${formatCurrency(left)}.`,
+      left.toFixed(2),
+    );
+    if (typed === null) return;
+    const amount = Math.round(Number(typed) * 100) / 100;
+    if (!amount || amount <= 0 || amount > left) {
+      toast.error(`Enter an amount up to ${formatCurrency(left)}`);
+      return;
+    }
+    const reason = askReason(`this ${formatCurrency(amount)} refund`, 'refunded');
+    if (!reason) return;
+    setVoidingId(p.id);
+    try {
+      await refundPayment(p.id, amount, reason);
+      toast.success(`Refunded ${formatCurrency(amount)}`);
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : 'Could not refund the payment');
     } finally {
       setVoidingId(null);
     }
@@ -323,9 +392,21 @@ export default function Charges() {
     );
   };
 
-  /** Pay and void, the same in every layout. */
+  /** Pay, the invoice and void, the same in every layout. */
   const chargeActions = (c: Charge) => (
     <div className="flex items-center justify-end gap-1">
+      {!servesDemoData() && c.status !== 'Voided' && (
+        <button
+          type="button"
+          onClick={() => void downloadInvoice(c)}
+          disabled={invoicingId === c.id}
+          className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800 disabled:opacity-50"
+          aria-label={`Invoice for ${c.description}`}
+          title="Invoice (PDF)"
+        >
+          {invoicingId === c.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+        </button>
+      )}
       {(c.status === 'Pending' || c.status === 'PartiallyPaid' || c.status === 'Overdue') && (
         <WriteOnly permission={PERMISSION.ManageMoney}>
           <Button size="sm" variant="outline" onClick={() => openPaymentDialog(c)}>
@@ -349,8 +430,17 @@ export default function Charges() {
   );
 
   const paymentActions = (p: Payment) =>
-    canVoid && p.status !== 'Voided' ? (
+    canVoid && p.status !== 'Voided' && p.status !== 'Refunded' ? (
       <div className="flex items-center justify-end">
+        <button
+          type="button"
+          onClick={() => refundOnePayment(p)}
+          disabled={voidingId === p.id}
+          className="rounded p-1.5 text-slate-500 hover:bg-amber-50 hover:text-amber-700 disabled:opacity-50"
+          aria-label={`Refund payment of ${formatCurrency(p.amount)}`}
+        >
+          <Undo2 className="h-4 w-4" />
+        </button>
         <button
           type="button"
           onClick={() => voidOnePayment(p)}
@@ -363,11 +453,33 @@ export default function Charges() {
       </div>
     ) : null;
 
+  /** How it was paid, and who took it when it came from outside the club (Stripe, the bank's file). */
+  const paymentMethod = (p: Payment) => (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      <span>{PAYMENT_METHOD_LABELS[p.method]}</span>
+      {p.provider && (
+        <span
+          className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700 ring-1 ring-indigo-200"
+          title={p.providerPaymentId}
+        >
+          {PAYMENT_PROVIDER_LABELS[p.provider] ?? p.provider}
+        </span>
+      )}
+    </span>
+  );
+  const paymentMethodText = (p: Payment) =>
+    p.provider ? `${PAYMENT_METHOD_LABELS[p.method]} · ${PAYMENT_PROVIDER_LABELS[p.provider] ?? p.provider}` : PAYMENT_METHOD_LABELS[p.method];
+
   const paymentAmount = (p: Payment) =>
     p.status === 'Voided' ? (
       <span className="block text-right">
         <span className="block text-slate-500 line-through">{formatCurrency(p.amount)}</span>
         <span className="block text-xs text-slate-500">Voided{p.voidReason ? `: ${p.voidReason}` : ''}</span>
+      </span>
+    ) : p.refundedAmount ? (
+      <span className="block text-right">
+        <span className="block font-semibold text-emerald-700">+{formatCurrency(p.amount)}</span>
+        <span className="block text-xs text-slate-500">{formatCurrency(p.refundedAmount)} refunded</span>
       </span>
     ) : (
       <span className="font-semibold text-emerald-700">+{formatCurrency(p.amount)}</span>
@@ -391,6 +503,7 @@ export default function Charges() {
       cell: (c) => (
         <span className="block">
           <span className="block text-slate-700">{c.description}</span>
+          {c.incurredByName && <span className="mt-0.5 block text-xs text-teal-700">Incurred by {c.incurredByName}</span>}
           {c.reference && <span className="mt-0.5 block text-xs text-slate-500">{c.reference}</span>}
           {c.status === 'Voided' && c.voidReason && (
             <span className="mt-0.5 block text-xs text-slate-500">
@@ -418,7 +531,7 @@ export default function Charges() {
         </span>
       ),
     },
-    { id: 'method', label: 'Method', cell: (p) => PAYMENT_METHOD_LABELS[p.method] },
+    { id: 'method', label: 'Method', cell: paymentMethod },
     { id: 'reference', label: 'Reference', cell: (p) => <span className="font-mono text-xs text-slate-500">{p.reference ?? '—'}</span> },
     { id: 'amount', label: 'Amount', numeric: true, cell: paymentAmount },
     { id: 'received', label: 'Received', cell: (p) => <span className="whitespace-nowrap">{formatDate(p.receivedAtUtc)}</span> },
@@ -454,6 +567,7 @@ export default function Charges() {
             ]}
           />
 
+          <ClubReadState reads={reads} what="House accounts">
           {/* Filters */}
           <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 mb-6">
             <div className="relative flex-1 max-w-md">
@@ -602,7 +716,7 @@ export default function Charges() {
                         getKey={(p) => p.id}
                         leading={(p) => <InitialsAvatar name={p.memberName} />}
                         title={(p) => p.memberName}
-                        subtitle={(p) => `+${formatCurrency(p.amount)} · ${PAYMENT_METHOD_LABELS[p.method]}`}
+                        subtitle={(p) => `+${formatCurrency(p.amount)} · ${paymentMethodText(p)}`}
                         columns={paymentColumns}
                         actions={paymentActions}
                       />
@@ -618,7 +732,7 @@ export default function Charges() {
                               <InitialsAvatar name={p.memberName} />
                               <div className="min-w-0 flex-1">
                                 <p className="truncate font-semibold text-slate-900">{p.memberName}</p>
-                                <p className="text-xs text-slate-500">{PAYMENT_METHOD_LABELS[p.method]}</p>
+                                <p className="text-xs text-slate-500">{paymentMethod(p)}</p>
                               </div>
                               <div className="shrink-0 font-bold">{paymentAmount(p)}</div>
                             </div>
@@ -645,6 +759,7 @@ export default function Charges() {
               )}
             </TabsContent>
           </Tabs>
+          </ClubReadState>
         </main>
       </PageTransition>
 
@@ -676,12 +791,34 @@ export default function Charges() {
                 </SelectContent>
               </Select>
             </div>
+            {priced.length > 0 && (
+              <div>
+                <Label>From the price catalogue</Label>
+                <Select value={chargeForm.catalogItemId || 'typed'} onValueChange={(v) => pickPriced(v === 'typed' ? '' : v)}>
+                  <SelectTrigger aria-label="From the price catalogue">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="typed">None: type the amount in</SelectItem>
+                    {priced.map((i) => (
+                      <SelectItem key={i.id} value={i.id}>
+                        {CATALOG_KIND_LABEL[i.kind]}: {i.name} — {formatCurrency(i.price)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {chargeForm.catalogItemId && (
+                  <p className="mt-1 text-xs text-slate-500">Charged at the catalogue&apos;s price, kind and VAT rate.</p>
+                )}
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Kind</Label>
                 <Select
                   value={chargeForm.kind}
                   onValueChange={(v) => setChargeForm({ ...chargeForm, kind: v as ChargeKind })}
+                  disabled={!!chargeForm.catalogItemId}
                 >
                   <SelectTrigger aria-label="Kind">
                     <SelectValue />
@@ -703,6 +840,7 @@ export default function Charges() {
                   step="0.01"
                   value={chargeForm.amount}
                   onChange={(e) => setChargeForm({ ...chargeForm, amount: e.target.value })}
+                  disabled={!!chargeForm.catalogItemId}
                 />
               </div>
             </div>

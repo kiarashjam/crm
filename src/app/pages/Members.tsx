@@ -45,10 +45,8 @@ import {
   updateMember,
   deleteMember,
   computeMemberStats,
-  MEMBER_TIERS,
   MEMBER_STATUSES,
   DUES_FREQUENCIES,
-  TIER_DUES,
   type Member,
   type MemberTier,
   type MemberStatus,
@@ -65,6 +63,17 @@ import {
 import { useClubMoney } from '@/app/hooks/useClubMoney';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { PERMISSION } from '@/app/api/organizations';
+import { Checkbox } from '@/app/components/ui/checkbox';
+import { useClubCatalog } from '@/app/hooks/queries';
+import { CADENCE_LABEL, tierNamed, tiersOnSale, type CatalogItem } from '@/app/api/catalog';
+
+/** A tier's dues as a member's dues frequency: the catalogue bills the same four cadences. */
+function frequencyOf(tier: CatalogItem | undefined): DuesFrequency {
+  return tier?.cadence ?? 'Monthly';
+}
+
+/** The tier's badge: one of the four every club starts with, or a plain one for a tier of the club's own. */
+const tierBadge = (tier: string) => TIER_BADGE[tier] ?? 'bg-slate-100 text-slate-700 ring-1 ring-slate-200';
 
 const TIER_BADGE: Record<MemberTier, string> = {
   Bronze: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
@@ -91,6 +100,9 @@ interface FormState {
   duesFrequency: DuesFrequency;
   renewsAtUtc: string;
   notes: string;
+  /** On adding: start their dues today, and charge the tier's initiation fee. */
+  startDues: boolean;
+  chargeInitiationFee: boolean;
   /** yyyy-mm-dd, or empty. */
   startsOn: string;
   startUndetermined: boolean;
@@ -113,18 +125,21 @@ function StartBadge({ member }: { member: Member }) {
   );
 }
 
-function newForm(): FormState {
+/** A new member's form, on the club's first tier on sale and its dues from the catalogue. */
+function newForm(tier: CatalogItem | undefined): FormState {
   return {
     firstName: '',
     lastName: '',
     email: '',
     phone: '',
-    tier: 'Silver',
+    tier: tier?.name ?? '',
     status: 'Pending',
-    duesAmount: String(TIER_DUES.Silver),
-    duesFrequency: 'Monthly',
+    duesAmount: tier ? String(tier.price) : '',
+    duesFrequency: frequencyOf(tier),
     renewsAtUtc: new Date(Date.now() + 365 * day).toISOString().slice(0, 10),
     notes: '',
+    startDues: false,
+    chargeInitiationFee: false,
     startsOn: '',
     startUndetermined: false,
   };
@@ -152,7 +167,11 @@ export default function Members() {
   const [statusFilter, setStatusFilter] = useState<'All' | MemberStatus>('All');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Member | null>(null);
-  const [form, setForm] = useState<FormState>(newForm());
+  // The tiers and their dues are the club's own, from the price catalogue.
+  const catalogQuery = useClubCatalog('Membership');
+  const catalog = catalogQuery.data;
+  const tiers = useMemo(() => tiersOnSale(catalog ?? []), [catalog]);
+  const [form, setForm] = useState<FormState>(() => newForm(undefined));
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -189,7 +208,7 @@ export default function Members() {
         </span>
       ),
     },
-    { id: 'tier', label: 'Tier', cell: (m) => <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${TIER_BADGE[m.tier]}`}>{m.tier}</span> },
+    { id: 'tier', label: 'Tier', cell: (m) => <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${tierBadge(m.tier)}`}>{m.tier}</span> },
     { id: 'status', label: 'Status', cell: (m) => <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[m.status]}`}>{m.status}</span> },
     { id: 'email', label: 'Email', cell: (m) => m.email || '—' },
     { id: 'phone', label: 'Phone', byDefault: false, cell: (m) => m.phone || '—' },
@@ -239,9 +258,23 @@ export default function Members() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm(newForm());
+    setForm(newForm(tiers[0]));
     setDialogOpen(true);
   };
+
+  // The tiers a member can be put on: those on sale, and the one an edited member has.
+  const tierChoices = useMemo(() => {
+    const names = tiers.map((t) => t.name);
+    if (editing && !names.some((n) => n.toLowerCase() === editing.tier.toLowerCase())) names.push(editing.tier);
+    return names;
+  }, [tiers, editing]);
+  // Every tier a member is on or the club has, for the list's filter.
+  const tierFilterChoices = useMemo(() => {
+    const names = (catalog ?? []).map((t) => t.name);
+    for (const m of members) if (!names.includes(m.tier)) names.push(m.tier);
+    return names;
+  }, [catalog, members]);
+  const formTier = tierNamed(catalog ?? [], form.tier);
 
   const openEdit = (m: Member) => {
     setEditing(m);
@@ -256,6 +289,8 @@ export default function Members() {
       duesFrequency: m.duesFrequency,
       renewsAtUtc: m.renewsAtUtc.slice(0, 10),
       notes: m.notes ?? '',
+      startDues: false,
+      chargeInitiationFee: false,
       startsOn: m.startsOnUtc?.slice(0, 10) ?? '',
       startUndetermined: m.startUndetermined ?? false,
     });
@@ -269,6 +304,10 @@ export default function Members() {
     }
     if (!form.email.trim()) {
       toast.error('Email is required');
+      return;
+    }
+    if (!form.tier) {
+      toast.error('Pick a tier');
       return;
     }
     setSaving(true);
@@ -296,13 +335,27 @@ export default function Members() {
         await updateMember(editing.id, { ...payload, phone: payload.phone ?? null, notes: payload.notes ?? null });
         toast.success('Member updated');
       } else {
-        await createMember(payload);
-        toast.success('Member added');
+        // What adding them does to their account, said as it is: the fee is charged now;
+        // starting the dues starts a subscription, whose first period the billing bills
+        // (the daily run, or "Bill what is due"). A fee box ticked for a tier switched
+        // since to one without a fee is not sent.
+        const feeCharged = form.chargeInitiationFee && (formTier?.initiationFee ?? 0) > 0;
+        const duesStarted = form.startDues && (Number(form.duesAmount) || 0) > 0;
+        await createMember({
+          ...payload,
+          startDues: form.startDues || undefined,
+          chargeInitiationFee: feeCharged || undefined,
+        });
+        toast.success(feeCharged && duesStarted ? 'Member added: initiation fee charged, and their dues start today'
+          : feeCharged ? 'Member added and initiation fee charged'
+            : duesStarted ? 'Member added: their dues start today'
+              : 'Member added');
       }
       setDialogOpen(false);
       await load();
-    } catch {
-      toast.error('Failed to save member');
+    } catch (err) {
+      // A tier no longer offered, or no right to bill: the server says so in a sentence.
+      toast.error(err instanceof Error && err.message ? err.message : 'Failed to save member');
     } finally {
       setSaving(false);
     }
@@ -319,6 +372,11 @@ export default function Members() {
       } else {
         toast.error('Failed to remove member');
       }
+    } catch (err) {
+      // A member who still owes the club, is owed by it, or has a tab or a subscription
+      // running is refused, and the server says what to do instead. Uncaught, the refusal
+      // went nowhere and the button seemed to do nothing.
+      toast.error(err instanceof Error && err.message ? err.message : 'Failed to remove member');
     } finally {
       setDeletingId(null);
     }
@@ -376,7 +434,7 @@ export default function Members() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="All">All tiers</SelectItem>
-                {MEMBER_TIERS.map((t) => (
+                {tierFilterChoices.map((t) => (
                   <SelectItem key={t} value={t}>
                     {t}
                   </SelectItem>
@@ -450,7 +508,7 @@ export default function Members() {
                       </div>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-1.5">
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${TIER_BADGE[m.tier]}`}>{m.tier}</span>
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${tierBadge(m.tier)}`}>{m.tier}</span>
                       <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[m.status]}`}>{m.status}</span>
                     </div>
                     <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-3 text-sm">
@@ -492,7 +550,7 @@ export default function Members() {
                             <h3 className="font-semibold text-slate-900 truncate">
                               {m.firstName} {m.lastName}
                             </h3>
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${TIER_BADGE[m.tier]}`}>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${tierBadge(m.tier)}`}>
                               {m.tier}
                             </span>
                             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[m.status]}`}>
@@ -616,23 +674,29 @@ export default function Members() {
               <Label>Tier</Label>
               <Select
                 value={form.tier}
-                onValueChange={(v) =>
+                onValueChange={(v) => {
+                  const tier = tierNamed(catalog ?? [], v);
+                  // A tier picked brings its dues from the catalogue; they can still be changed.
                   setForm({
                     ...form,
-                    tier: v as MemberTier,
-                    duesAmount: String(TIER_DUES[v as MemberTier]),
-                  })
-                }
+                    tier: v,
+                    duesAmount: tier ? String(tier.price) : form.duesAmount,
+                    duesFrequency: tier ? frequencyOf(tier) : form.duesFrequency,
+                  });
+                }}
               >
                 <SelectTrigger aria-label="Tier">
-                  <SelectValue />
+                  <SelectValue placeholder={catalogQuery.isError ? 'The tiers could not be read' : 'Pick a tier'} />
                 </SelectTrigger>
                 <SelectContent>
-                  {MEMBER_TIERS.map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {t} — {formatCurrency(TIER_DUES[t])}/mo
-                    </SelectItem>
-                  ))}
+                  {tierChoices.map((t) => {
+                    const tier = tierNamed(catalog ?? [], t);
+                    return (
+                      <SelectItem key={t} value={t}>
+                        {tier && tier.cadence ? `${t} — ${formatCurrency(tier.price)}/${CADENCE_LABEL[tier.cadence]}` : t}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </div>
@@ -700,14 +764,38 @@ export default function Members() {
               />
             </div>
             <label className="flex items-end gap-2 pb-2 text-sm text-slate-600">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-slate-300 accent-orange-500"
+              <Checkbox
                 checked={form.startUndetermined}
-                onChange={(e) => setForm({ ...form, startUndetermined: e.target.checked })}
+                onCheckedChange={(v) => setForm({ ...form, startUndetermined: v === true })}
+                aria-label="Start still to be decided"
               />
               Start still to be decided
             </label>
+            {!editing && (
+              <WriteOnly permission={PERMISSION.ManageMoney}>
+                <div className="md:col-span-2 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <Checkbox
+                      checked={form.startDues}
+                      onCheckedChange={(v) => setForm({ ...form, startDues: v === true })}
+                      aria-label="Start their dues today"
+                    />
+                    Start their dues today ({formatCurrency(Number(form.duesAmount) || 0)} a{' '}
+                    {CADENCE_LABEL[form.duesFrequency] ?? 'month'})
+                  </label>
+                  {formTier?.initiationFee ? (
+                    <label className="flex items-center gap-2 text-sm text-slate-700">
+                      <Checkbox
+                        checked={form.chargeInitiationFee}
+                        onCheckedChange={(v) => setForm({ ...form, chargeInitiationFee: v === true })}
+                        aria-label="Charge the initiation fee"
+                      />
+                      Charge the {formTier.name} initiation fee ({formatCurrency(formTier.initiationFee)})
+                    </label>
+                  ) : null}
+                </div>
+              </WriteOnly>
+            )}
             <div className="md:col-span-2">
               <Label htmlFor="notes">Notes</Label>
               <Textarea

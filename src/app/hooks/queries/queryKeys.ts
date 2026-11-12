@@ -107,4 +107,45 @@ export const queryKeys = {
   copyHistory: {
     stats: (s: WorkspaceScope) => key(s, 'copy-history', 'stats'),
   },
+  // The club: its members, and its money on the ledger. A charge, a payment, a tab's close
+  // or a bill moves a member's balance, so writes to those refresh the members list too
+  // (api/dataChanged).
+  club: {
+    members: (s: WorkspaceScope) => key(s, 'members', 'all'),
+    charges: (s: WorkspaceScope) => key(s, 'charges', 'all'),
+    payments: (s: WorkspaceScope) => key(s, 'payments', 'all'),
+    giftCards: (s: WorkspaceScope) => key(s, 'gift-cards', 'all'),
+    redemptions: (s: WorkspaceScope) => key(s, 'gift-cards', 'redemptions'),
+    tabs: (s: WorkspaceScope) => key(s, 'tabs', 'all'),
+    subscriptions: (s: WorkspaceScope) => key(s, 'subscriptions', 'all'),
+    donations: (s: WorkspaceScope) => key(s, 'donations', 'all'),
+    loyalty: (s: WorkspaceScope) => key(s, 'loyalty', 'ledger'),
+    visits: (s: WorkspaceScope) => key(s, 'visits', 'all'),
+    statement: (s: WorkspaceScope, memberId: string, fromUtc: string, toUtc: string) => key(s, 'statements', memberId, fromUtc, toUtc),
+    // The price catalogue (tiers, dues, fees, products, tickets, menu items), the settings
+    // the server applies, and the billing runs and what billing now would post.
+    catalog: (s: WorkspaceScope, kind: string | null) => key(s, 'catalog', kind ?? 'all'),
+    settings: (s: WorkspaceScope) => key(s, 'hospitality', 'settings'),
+    billingRuns: (s: WorkspaceScope) => key(s, 'billing', 'runs'),
+    billingPreview: (s: WorkspaceScope) => key(s, 'billing', 'preview'),
+    // Events and who is coming, the bookable resources and their bookings. A change to an
+    // event's list can post or take back a ticket, so those writes refresh the money too
+    // (api/dataChanged).
+    events: (s: WorkspaceScope) => key(s, 'events', 'all'),
+    event: (s: WorkspaceScope, id: string) => key(s, 'events', 'one', id),
+    attendees: (s: WorkspaceScope, eventId: string) => key(s, 'events', 'attendees', eventId),
+    memberRegistrations: (s: WorkspaceScope, memberId: string) => key(s, 'events', 'member', memberId),
+    resources: (s: WorkspaceScope) => key(s, 'resources', 'all'),
+    reservations: (s: WorkspaceScope, memberId: string | null = null) => key(s, 'reservations', memberId ?? 'all'),
+    // Applications and households. An approval makes a member, their dues, fee, household
+    // link and welcome, so it refreshes those too; what a member's, a lead's or a contact's
+    // page shows of the other side is read under 'members', which applications, households
+    // and members all refresh (api/dataChanged).
+    applications: (s: WorkspaceScope) => key(s, 'applications', 'all'),
+    applicationForm: (s: WorkspaceScope) => key(s, 'applications', 'form'),
+    households: (s: WorkspaceScope) => key(s, 'households', 'all'),
+    memberHousehold: (s: WorkspaceScope, memberId: string) => key(s, 'households', 'member', memberId),
+    memberLinks: (s: WorkspaceScope, memberId: string) => key(s, 'members', 'links', memberId),
+    personMembership: (s: WorkspaceScope, kind: 'lead' | 'contact', id: string) => key(s, 'members', 'membership', kind, id),
+  },
 } as const;

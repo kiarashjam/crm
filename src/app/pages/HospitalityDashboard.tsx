@@ -364,7 +364,8 @@ export default function HospitalityDashboard() {
                         </div>
                       </div>
                       <p className="text-xs text-slate-500 shrink-0">
-                        {e.registeredCount}/{e.capacity}
+                        {/* A capacity of 0 is no limit. */}
+                        {e.capacity > 0 ? `${e.registeredCount}/${e.capacity}` : `${e.registeredCount} registered`}
                       </p>
                     </li>
                   ))}

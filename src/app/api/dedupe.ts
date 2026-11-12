@@ -262,7 +262,6 @@ export function duplicateMemberGroups<T extends MemberLike>(members: T[]): Dupli
 
 /** A household with the names of the people in it, as the merge preview shows it. */
 export interface HouseholdForMerge extends Household {
-  primaryName?: string;
   memberNames: string[];
 }
 
@@ -677,62 +676,27 @@ async function loadClubStores(): Promise<void> {
   ]);
 }
 
-/** Keep one household link per household once two members became one. */
-async function dedupeHouseholdLinks(memberId: string): Promise<void> {
-  const { getHouseholdMembers, removeMemberFromHousehold } = await import('./households');
-  const seen = new Set<string>();
-  for (const link of await getHouseholdMembers()) {
-    if (link.memberId !== memberId) continue;
-    if (seen.has(link.householdId)) await removeMemberFromHousehold(link.id);
-    else seen.add(link.householdId);
-  }
-}
-
 /**
- * Households merge through their own endpoints, the same way in both modes: the
- * people move to the household kept (each once; a duplicate's head of household
- * joins as "Other", since the kept one already has one), the notes are kept
- * together, and the duplicate household goes.
+ * Households merge on the server in one save: the people move to the household kept
+ * (each once; a duplicate's primary joins as "Other"), the notes are kept together,
+ * and the duplicates go. It used to be a request per person from this browser, so a
+ * merge cut off half way left people in two households.
  */
-async function mergeHouseholds(primaryId: string, duplicateIds: string[]): Promise<MergeOutcome> {
-  const { getHouseholds, getHouseholdMembers, addMemberToHousehold, updateHousehold, deleteHousehold } = await import('./households');
-  const [households, links] = await Promise.all([getHouseholds(), getHouseholdMembers()]);
-  const keep = households.find((h) => h.id === primaryId);
-  if (!keep) return { merged: 0, error: 'The household to keep is no longer there.' };
-  const inKeep = new Set(links.filter((l) => l.householdId === primaryId).map((l) => l.memberId));
-  let notes = keep.notes ?? '';
-  let merged = 0;
+async function mergeHouseholdsInto(primaryId: string, duplicateIds: string[]): Promise<MergeOutcome> {
+  const { mergeHouseholds } = await import('./households');
   try {
-    for (const id of duplicateIds) {
-      const other = households.find((h) => h.id === id);
-      if (!other) continue;
-      for (const link of links.filter((l) => l.householdId === id)) {
-        if (inKeep.has(link.memberId)) continue;
-        await addMemberToHousehold({
-          householdId: primaryId,
-          memberId: link.memberId,
-          role: link.role === 'Primary' ? 'Other' : link.role,
-          rollUpBilling: link.rollUpBilling,
-        });
-        inKeep.add(link.memberId);
-      }
-      const text = other.notes?.trim();
-      if (text && !notes.includes(text)) notes = notes.trim() ? `${notes.trimEnd()}\n\n${text}` : text;
-      await deleteHousehold(id);
-      merged++;
-    }
-    if (notes !== (keep.notes ?? '')) await updateHousehold(primaryId, { notes });
+    await mergeHouseholds(primaryId, duplicateIds);
+    return { merged: duplicateIds.length };
   } catch (err) {
-    return { merged, error: err instanceof Error ? err.message : 'The merge failed.' };
+    return { merged: 0, error: err instanceof Error ? err.message : 'The merge failed.' };
   }
-  return { merged };
 }
 
 /** Fold the duplicates into the record kept. */
 export async function mergeDuplicates(kind: MergeKind, primaryId: string, duplicateIds: string[]): Promise<MergeOutcome> {
   const ids = duplicateIds.filter((id) => id && id !== primaryId);
   if (!ids.length) return { merged: 0 };
-  if (kind === 'households') return mergeHouseholds(primaryId, ids);
+  if (kind === 'households') return mergeHouseholdsInto(primaryId, ids);
   if (!servesDemoData()) return mergeOnServer(kind, primaryId, ids);
   switch (kind) {
     case 'contacts':
@@ -746,7 +710,8 @@ export async function mergeDuplicates(kind: MergeKind, primaryId: string, duplic
     case 'members': {
       await loadClubStores();
       const outcome = await mergeLocally(await getMembers(), MEMBER_MERGE_FIELDS, primaryId, ids, updateMember as (id: string, p: Partial<Member>) => Promise<unknown>, deleteMember, ['memberId']);
-      await dedupeHouseholdLinks(primaryId);
+      const { demoMoveMemberLinks } = await import('./households');
+      demoMoveMemberLinks(primaryId, ids);
       return outcome;
     }
   }

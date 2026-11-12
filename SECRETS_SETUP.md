@@ -229,6 +229,23 @@ belongs to that workspace's organization before listing it.
 Both public endpoints answer 404 until their secret or key is set, and their secrets are
 kept out of the request log.
 
+**Club campaigns and member email.** They use the same relay and outbox; nothing new is
+needed to send them. Three settings make them complete:
+
+- `Email__ApiBaseUrl`: the API's public https origin, e.g. `https://<your-api>.azurewebsites.net`.
+  A member's marketing email then carries a one-click unsubscribe (`List-Unsubscribe` with
+  `List-Unsubscribe-Post`, which Gmail and Yahoo expect from bulk senders). Left at its
+  localhost default, the header names the unsubscribe page instead, which still works but
+  is not one-click.
+- The Event Webhook above, with **Delivered** and **Opened** selected as well as the
+  refusals: each member's message moves from sent to delivered, opened or bounced from
+  those events, and the campaign totals follow.
+- **SendGrid → Settings → Tracking → Open Tracking** on, for "opened" to mean anything.
+  Without it messages stop at delivered.
+
+Members have no consent recorded until someone records it (on the member's page, Consent
+tab), so a marketing campaign reaches nobody at first; service campaigns are not affected.
+
 Unsubscribe links are signed with ASP.NET Data Protection, the same key ring that keeps
 two-factor secrets. On Azure App Service that ring is kept under `%HOME%` and survives
 restarts and deploys; if the API ever runs where it is not persisted, old unsubscribe

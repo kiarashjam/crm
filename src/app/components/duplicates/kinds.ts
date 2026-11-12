@@ -13,7 +13,7 @@ import {
   scanCompanyDuplicates, scanContactDuplicates,
   type DuplicateGroup, type DuplicateScan, type HouseholdForMerge, type MergeField, type MergeKind,
 } from '@/app/api/dedupe';
-import { getHouseholdMembers, getHouseholds } from '@/app/api/households';
+import { getHouseholds } from '@/app/api/households';
 import { getContacts } from '@/app/api/contacts';
 import { getCompanies } from '@/app/api/companies';
 import { getLeads } from '@/app/api/leads';
@@ -154,15 +154,9 @@ export const MEMBER_DUPLICATES: DuplicateKind<Member> = {
   fate: removed,
 };
 
-/** Households with the names of the people in them, for the preview. */
+/** Households with the names of the people in them, for the preview: the server answers with them. */
 async function householdsForMerge(): Promise<HouseholdForMerge[]> {
-  const [households, links, members] = await Promise.all([getHouseholds(), getHouseholdMembers(), getMembers()]);
-  const name = new Map(members.map((m) => [m.id, `${m.firstName} ${m.lastName}`.trim()]));
-  return households.map((h) => ({
-    ...h,
-    primaryName: name.get(h.primaryMemberId),
-    memberNames: links.filter((l) => l.householdId === h.id).map((l) => name.get(l.memberId) ?? 'A member'),
-  }));
+  return (await getHouseholds()).map((h) => ({ ...h, memberNames: h.people.map((p) => p.name) }));
 }
 
 export const HOUSEHOLD_DUPLICATES: DuplicateKind<HouseholdForMerge> = {

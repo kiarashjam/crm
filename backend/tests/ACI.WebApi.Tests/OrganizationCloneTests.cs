@@ -113,6 +113,7 @@ public class OrganizationCloneTests
         var definition = new CustomFieldDefinition { Id = Guid.NewGuid(), OrganizationId = org.Id, OwnerUserId = owner, EntityType = "deal", Key = "board_seat", Label = "Board seat", Type = "checkbox", CreatedAtUtc = now };
         var spouse = new Contact { Id = Guid.NewGuid(), UserId = owner, OrganizationId = org.Id, Name = "Marie Dupont", Email = $"marie@{name}.ch", CreatedAtUtc = now };
         var sentEmailId = Guid.NewGuid();
+        var sentCampaignId = Guid.NewGuid();
         var sentEmail = new OutboundMessage
         {
             Id = sentEmailId, OrganizationId = org.Id, Channel = OutboundChannels.Email, Source = OutboundSources.Composer, Status = OutboundStatuses.Sent,
@@ -154,7 +155,116 @@ public class OrganizationCloneTests
             new InboundEmail { Id = Guid.NewGuid(), OrganizationId = org.Id, OutboundMessageId = sentEmail.Id, MessageIdHeader = $"<reply-{name}@example.ch>", FromAddress = $"jean@{name}.ch", MatchedBy = "token", ReceivedAtUtc = now },
             new ClubVisit { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, MemberName = "Ana Silva", MemberTier = "Gold", Venue = "Lounge", VisitedAtUtc = now },
             new LoyaltyLedgerEntry { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, MemberName = "Ana Silva", Points = 450, CreatedAtUtc = now },
-            new ClubDocument { Id = Guid.NewGuid(), OrganizationId = org.Id, Kind = "tabs", UpdatedAtUtc = now, Payload = JsonSerializer.Serialize(new { memberId = member.Id.ToString().ToUpperInvariant(), venue = "Bar" }) },
+            new ConsentRecord
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, SubjectType = ConsentSubjects.Member, SubjectId = member.Id, Channel = ConsentChannels.Email,
+                Purpose = ConsentPurposes.Marketing, Granted = true, Source = ConsentSources.Form, Address = $"ana@{name}.ch", RecordedAtUtc = now,
+                RecordedByUserId = owner, IsCurrent = true,
+            },
+            new Campaign
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, Name = "Autumn gala", Subject = "Join us", Body = "Hello", Status = CampaignStatuses.Scheduled,
+                ScheduledAtUtc = now.AddDays(2), SentByUserId = owner, CreatedByUserId = owner, CreatedAtUtc = now, UpdatedAtUtc = now,
+            },
+            new Campaign
+            {
+                Id = sentCampaignId, OrganizationId = org.Id, Name = "Spring news", Subject = "Spring", Body = "Hello", Status = CampaignStatuses.Sent,
+                SendingStartedAtUtc = now, SentAtUtc = now, RecipientCount = 1, SentByUserId = owner, CreatedByUserId = owner, CreatedAtUtc = now, UpdatedAtUtc = now,
+            },
+            new MemberMessage
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, MemberName = "Ana Silva", Email = $"ana@{name}.ch", CampaignId = sentCampaignId,
+                CampaignName = "Spring news", Subject = "Spring", Purpose = ConsentPurposes.Marketing, Status = MemberMessageStatuses.Queued,
+                OutboundMessageId = sentEmailId, CreatedByUserId = owner, CreatedAtUtc = now,
+            },
+            new ClubDocument { Id = Guid.NewGuid(), OrganizationId = org.Id, Kind = "tabs", UpdatedAtUtc = now, Payload = JsonSerializer.Serialize(new { memberId = member.Id.ToString().ToUpperInvariant(), venue = "Bar" }) });
+        // The club's money ledger: a tab that posted a charge, part paid; a subscription that
+        // billed one; a gift card part spent; a donation. Each row points at others the copy
+        // must point at its own copies of.
+        var tab = new ClubTab { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, MemberName = "Ana Silva", MemberTier = "Gold", Venue = "Bar", Status = "Closed", OpenedAtUtc = now, Total = 30, CreatedAtUtc = now };
+        var subscription = new ClubSubscription { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, MemberName = "Ana Silva", Name = "Gold dues", Amount = 299, StartedAtUtc = now, CreatedAtUtc = now };
+        var tabCharge = new ClubCharge { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, MemberName = "Ana Silva", Kind = "Bar", Description = "Bar tab", Amount = 30, PostedAtUtc = now, TabId = tab.Id, CreatedAtUtc = now };
+        var dues = new ClubCharge { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, MemberName = "Ana Silva", Kind = "Dues", Description = "Gold dues", Amount = 299, PostedAtUtc = now, SubscriptionId = subscription.Id, BillingPeriodStartUtc = now, CreatedAtUtc = now };
+        var payment = new ClubPayment { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, MemberName = "Ana Silva", Method = "Cash", Amount = 10, ReceivedAtUtc = now, CreatedAtUtc = now };
+        var card = new ClubGiftCard { Id = Guid.NewGuid(), OrganizationId = org.Id, Code = $"GIFT-{name.ToUpperInvariant()}", FaceValue = 100, PurchaserMemberId = member.Id, IssuedAtUtc = now, CreatedAtUtc = now };
+        tab.ChargeId = tabCharge.Id;
+        db.AddRange(tab, subscription, tabCharge, dues, payment, card,
+            new ClubHouseAccount { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, OpenedAtUtc = now },
+            new ClubPaymentAllocation { Id = Guid.NewGuid(), OrganizationId = org.Id, PaymentId = payment.Id, ChargeId = tabCharge.Id, Amount = 10, CreatedAtUtc = now },
+            new ClubTabItem { Id = Guid.NewGuid(), OrganizationId = org.Id, TabId = tab.Id, Name = "Negroni", Quantity = 2, UnitPrice = 15, AddedAtUtc = now },
+            new ClubGiftCardTransaction { Id = Guid.NewGuid(), OrganizationId = org.Id, GiftCardId = card.Id, Type = "Issue", Amount = 100, AtUtc = now, CreatedAtUtc = now },
+            new ClubDonation { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, MemberName = "Ana Silva", Cause = "Arts", Amount = 50, ReceivedAtUtc = now, CreatedAtUtc = now });
+        // The price catalogue and what billing records: the tier the dues came from, a run,
+        // a reminder of the dues, a statement sent, and the file that went with its email.
+        var goldTier = new ClubCatalogItem
+        {
+            Id = Guid.NewGuid(), OrganizationId = org.Id, Kind = CatalogKinds.Membership, Name = "Gold", Price = 299, Currency = "CHF",
+            Cadence = "Monthly", ChargeKind = "Dues", CreatedAtUtc = now, UpdatedAtUtc = now,
+        };
+        subscription.CatalogItemId = goldTier.Id;
+        dues.CatalogItemId = goldTier.Id;
+        var billingRun = new ClubBillingRun
+        {
+            Id = Guid.NewGuid(), OrganizationId = org.Id, Trigger = BillingRunTriggers.Schedule, ScheduledFor = DateOnly.FromDateTime(now),
+            Status = BillingRunStatuses.Succeeded, StartedAtUtc = now, Currency = "CHF",
+        };
+        db.AddRange(goldTier, billingRun,
+            new ClubPaymentReminder
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, ChargeId = dues.Id, MemberId = member.Id, Step = 1, DaysAfterDue = 3,
+                OutboundMessageId = sentEmail.Id, RunId = billingRun.Id, CreatedAtUtc = now,
+            },
+            new ClubStatementDelivery
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, PeriodStartUtc = now.AddMonths(-1), PeriodEndUtc = now,
+                Source = StatementSources.Monthly, OutboundMessageId = sentEmail.Id, RunId = billingRun.Id, Currency = "CHF", CreatedAtUtc = now,
+            },
+            new OutboundAttachment
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, OutboundMessageId = sentEmail.Id, FileName = "statement.pdf",
+                ContentType = "application/pdf", Content = [1, 2, 3], CreatedAtUtc = now,
+            });
+        // An event with someone on its list whose ticket is on the ledger, and a booking of a
+        // resource with its deposit: rows that point at the event, the member, the resource and
+        // their charges, which the copy must point at its own copies of.
+        var gala = new ClubEvent { Id = Guid.NewGuid(), OrganizationId = org.Id, Name = "Gala", StartAtUtc = now.AddDays(7), EndAtUtc = now.AddDays(7).AddHours(3), Capacity = 40, MemberPrice = 30, Status = "Published", CreatedAtUtc = now, UpdatedAtUtc = now };
+        var court = new ClubResource { Id = Guid.NewGuid(), OrganizationId = org.Id, Name = "Court", Kind = "Court", Capacity = 4, DepositAmount = 299, CreatedAtUtc = now, UpdatedAtUtc = now };
+        db.AddRange(gala, court,
+            new ClubEventRegistration { Id = Guid.NewGuid(), OrganizationId = org.Id, EventId = gala.Id, MemberId = member.Id, Name = "Ana Silva", Status = "Reserved", TicketPrice = 30, ChargeId = tabCharge.Id, RegisteredAtUtc = now, CreatedAtUtc = now, UpdatedAtUtc = now },
+            new ClubReservation { Id = Guid.NewGuid(), OrganizationId = org.Id, ResourceId = court.Id, ResourceName = "Court", MemberId = member.Id, MemberName = "Ana Silva", StartAtUtc = now.AddDays(1), EndAtUtc = now.AddDays(1).AddHours(1), Status = "Confirmed", DepositAmount = 299, DepositChargeId = dues.Id, CreatedAtUtc = now, UpdatedAtUtc = now });
+        // Money from outside: the Stripe and bank settings, a saved card the dues are charged
+        // to, a charge of it still with Stripe and the event Stripe posted about it, a statement's
+        // QR reference, and a bank file whose transfer paid in. The copy takes no money.
+        var bankImport = new ClubBankImport { Id = Guid.NewGuid(), OrganizationId = org.Id, FileName = "camt054.xml", Format = "camt.054", Transactions = 1, Matched = 1, ImportedAtUtc = now };
+        db.AddRange(bankImport,
+            new ClubPaymentSettings
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, StripeSecretKeyProtected = "protected-key", StripeKeyHint = "sk_live_…abcd",
+                StripeWebhookSecretProtected = "protected-secret", WebhookKey = Guid.NewGuid(), Iban = "CH5800791123000889012", CreatedAtUtc = now,
+            },
+            new ClubPaymentProfile
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, CustomerId = $"cus_{name}", PaymentMethodId = $"pm_{name}",
+                PaymentMethodType = "card", Brand = "visa", Last4 = "4242", AutoPayDues = true, AutoPayAgreedAtUtc = now, CreatedAtUtc = now,
+            },
+            new ClubOnlinePayment
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, MemberName = "Ana Silva", Purpose = OnlinePaymentPurposes.AutoPay,
+                Status = OnlinePaymentStatuses.Processing, Amount = 299, Description = "Gold dues", ChargeIds = dues.Id.ToString(),
+                AttemptKey = $"autopay:{dues.Id}:1", PaymentIntentId = $"pi_{name}", CreatedAtUtc = now,
+            },
+            new ClubProviderEvent { Id = Guid.NewGuid(), OrganizationId = org.Id, EventId = $"evt_{name}", Type = "payment_intent.processing", ObjectId = $"pi_{name}", Status = "processed", ReceivedAtUtc = now },
+            new ClubPaymentReference
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, Number = 1, ScorReference = ACI.Application.Common.Payments.PaymentReferences.CreditorReference(1),
+                MemberId = member.Id, Purpose = "statement", PeriodStartUtc = now.AddMonths(-1), PeriodEndUtc = now, AmountDue = 299, CreatedAtUtc = now,
+            },
+            new ClubBankTransaction
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, ImportId = bankImport.Id, BankReference = $"CH5800791123000889012:{name}-1", Amount = 10,
+                BookedAtUtc = now, Status = BankTransactionStatuses.Matched, MemberId = member.Id, LedgerPaymentId = payment.Id, CreatedAtUtc = now,
+            });
+        db.AddRange(
             new LeadStatusEvent { Id = Guid.NewGuid(), LeadId = lead.Id, OrganizationId = org.Id, ToStatus = "Qualified", ChangedByUserId = rep, ChangedAtUtc = now },
             new LeadScoringRule { Id = Guid.NewGuid(), OrganizationId = org.Id, Field = "source", MatchValue = "Website", Points = 10, IsActive = true },
             new LeadAssignmentRule { Id = Guid.NewGuid(), OrganizationId = org.Id, Name = "Geneva desk", Kind = "territory", TerritoryId = territory.Id, QueueId = queue.Id, IsActive = true },
@@ -167,6 +277,20 @@ public class OrganizationCloneTests
                 Id = Guid.NewGuid(), OrganizationId = org.Id, DealId = deal.Id, ContactId = contact.Id, ClubMemberId = member.Id, Name = "Jean Dupont",
                 Email = $"jean@{name}.ch", Status = OnboardingStatuses.Welcomed, CreatedAtUtc = now, CreatedByUserId = owner, UpdatedAtUtc = now,
             });
+        // The public application form, an application approved as the member from the lead and
+        // contact, and a household with the member as primary and the contact (not a member) as
+        // spouse: rows that point at the member, the lead, the contact and the household.
+        var household = new ClubHousehold { Id = Guid.NewGuid(), OrganizationId = org.Id, Name = "Silva", CreatedAtUtc = now };
+        db.AddRange(household,
+            new ClubApplicationForm { Id = Guid.NewGuid(), OrganizationId = org.Id, PublicToken = Guid.NewGuid().ToString("N"), IsActive = true, CreatedByUserId = owner, CreatedAtUtc = now },
+            new ClubApplication
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, FirstName = "Ana", LastName = "Silva", Email = "ana@example.ch", RequestedTier = "Gold",
+                Status = ApplicationStatuses.Approved, Source = ApplicationSources.PublicForm, SubmittedAtUtc = now, LeadId = lead.Id, ContactId = contact.Id,
+                MemberId = member.Id, HouseholdId = household.Id, DuesSubscriptionId = subscription.Id, CreatedAtUtc = now,
+            },
+            new ClubHouseholdMember { Id = Guid.NewGuid(), OrganizationId = org.Id, HouseholdId = household.Id, MemberId = member.Id, Role = HouseholdRoles.Primary, IsPrimary = true, CreatedAtUtc = now },
+            new ClubHouseholdMember { Id = Guid.NewGuid(), OrganizationId = org.Id, HouseholdId = household.Id, ContactId = contact.Id, Role = HouseholdRoles.Spouse, CreatedAtUtc = now });
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
         return new Seeded(org.Id, owner, manager, rep, lead.Id, deal.Id, contact.Id, member.Id, rule.Id, sequence.Id);
@@ -252,6 +376,31 @@ public class OrganizationCloneTests
     }
 
     [Fact]
+    public async Task TheCopyTakesNoMoneyOnline_AndChargesNoSavedCard()
+    {
+        var (connection, db, original, _, _) = await WorldAsync();
+        using var _c = connection;
+        await using var _d = db;
+
+        var report = await new OrganizationCloner(db).CloneAsync(original.Org, "Pavillon 46 v2");
+
+        var source = await db.ClubPaymentSettings.IgnoreQueryFilters().SingleAsync(s => s.OrganizationId == original.Org);
+        var copied = await db.ClubPaymentSettings.IgnoreQueryFilters().SingleAsync(s => s.OrganizationId == report.CopyId);
+        copied.StripeSecretKeyProtected.Should().BeNull("the Stripe key stays with the original");
+        copied.StripeWebhookSecretProtected.Should().BeNull();
+        copied.WebhookKey.Should().NotBe(source.WebhookKey, "Stripe's posts go to one workspace");
+        copied.Iban.Should().Be(source.Iban, "the bank account is the same club's");
+        source.StripeSecretKeyProtected.Should().Be("protected-key", "the original keeps taking money");
+
+        (await db.ClubPaymentProfiles.IgnoreQueryFilters().SingleAsync(p => p.OrganizationId == report.CopyId)).AutoPayDues.Should().BeFalse();
+        (await db.ClubPaymentProfiles.IgnoreQueryFilters().SingleAsync(p => p.OrganizationId == original.Org)).AutoPayDues.Should().BeTrue();
+        (await db.ClubOnlinePayments.IgnoreQueryFilters().SingleAsync(p => p.OrganizationId == report.CopyId)).Status.Should().Be(OnlinePaymentStatuses.Canceled);
+        (await db.ClubOnlinePayments.IgnoreQueryFilters().SingleAsync(p => p.OrganizationId == original.Org)).Status.Should().Be(OnlinePaymentStatuses.Processing);
+        report.Adjustments.Keys.Should().Contain("Payment settings keep the Stripe key and webhook with the original")
+            .And.Contain("Saved cards are not charged for dues from the copy");
+    }
+
+    [Fact]
     public async Task TheSamePeopleWorkInBoth()
     {
         var (connection, db, original, _, _) = await WorldAsync();
@@ -298,6 +447,15 @@ public class OrganizationCloneTests
         (await db.Attachments.IgnoreQueryFilters().SingleAsync(a => a.OrganizationId == report.CopyId)).Content.Should().Equal("%PDF"u8.ToArray());
 
         var member = await db.ClubMembers.IgnoreQueryFilters().SingleAsync(m => m.OrganizationId == report.CopyId);
+        (await db.ConsentRecords.IgnoreQueryFilters().SingleAsync(c => c.OrganizationId == report.CopyId)).SubjectId
+            .Should().Be(member.Id, "a consent answer belongs to the copied member, not the original");
+        var copiedCampaigns = await db.Campaigns.IgnoreQueryFilters().Where(c => c.OrganizationId == report.CopyId).ToListAsync();
+        copiedCampaigns.Single(c => c.Name == "Autumn gala").Should().Match<Campaign>(c => c.Status == CampaignStatuses.Draft && c.ScheduledAtUtc == null,
+            "the members are the same people: a scheduled campaign goes out once, from the original");
+        var copiedMessage = await db.MemberMessages.IgnoreQueryFilters().SingleAsync(m => m.OrganizationId == report.CopyId);
+        copiedMessage.MemberId.Should().Be(member.Id);
+        copiedMessage.CampaignId.Should().Be(copiedCampaigns.Single(c => c.Name == "Spring news").Id);
+        (await db.OutboundMessages.IgnoreQueryFilters().SingleAsync(m => m.Id == copiedMessage.OutboundMessageId)).OrganizationId.Should().Be(report.CopyId);
         (await db.ClubDocuments.IgnoreQueryFilters().SingleAsync(d => d.OrganizationId == report.CopyId)).Payload
             .Should().Contain(member.Id.ToString().ToUpperInvariant(), "an id kept in JSON is the copy's, in the same case");
         var sequence = await db.OutreachSequences.IgnoreQueryFilters().SingleAsync(s => s.OrganizationId == report.CopyId);

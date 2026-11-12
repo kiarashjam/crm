@@ -19,7 +19,7 @@ import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import { getMembers, type Member, type MemberTier, MEMBER_TIERS } from '@/app/api/members';
-import { getCharges, type Charge, type ChargeKind } from '@/app/api/charges';
+import { getCharges, isSale, type Charge, type ChargeKind } from '@/app/api/charges';
 import { getVisits, type VisitVenue } from '@/app/api/visits';
 import { getLoyaltyLedger } from '@/app/api/loyalty';
 import { getEvents } from '@/app/api/events';
@@ -101,6 +101,8 @@ export default function HospitalityReports() {
     const sixMonthsAgo = Date.now() - 180 * day;
     let revenue30d = 0;
     for (const c of charges) {
+      // A balance brought over or set by hand is owed like a charge, but paying it is not revenue.
+      if (!isSale(c)) continue;
       if (c.status !== 'Voided' && c.paidAmount > 0 && c.paidAtUtc && Date.parse(c.paidAtUtc) >= monthAgo) {
         revenue30d += c.paidAmount;
       }
@@ -125,7 +127,7 @@ export default function HospitalityReports() {
   const revenueByKind = useMemo(() => {
     const map = new Map<ChargeKind, number>();
     for (const c of charges) {
-      if (c.status === 'Voided') continue;
+      if (c.status === 'Voided' || !isSale(c)) continue;
       map.set(c.kind, (map.get(c.kind) ?? 0) + c.paidAmount);
     }
     const entries = [...map.entries()].sort((a, b) => b[1] - a[1]);
@@ -198,8 +200,11 @@ export default function HospitalityReports() {
   // Event attendance (% capacity by event status published)
   const eventAttendance = useMemo(() => {
     const published = events.filter((e) => e.status === 'Published' || e.status === 'Completed');
-    const totalCapacity = published.reduce((s, e) => s + e.capacity, 0);
-    const totalReg = published.reduce((s, e) => s + e.registeredCount, 0);
+    // An event with no limit (capacity 0) has no seats to fill, so it is left out of the
+    // seats and of the share of them taken.
+    const limited = published.filter((e) => e.capacity > 0);
+    const totalCapacity = limited.reduce((s, e) => s + e.capacity, 0);
+    const totalReg = limited.reduce((s, e) => s + e.registeredCount, 0);
     const totalWait = published.reduce((s, e) => s + e.waitlistCount, 0);
     return {
       utilization: totalCapacity > 0 ? totalReg / totalCapacity : 0,

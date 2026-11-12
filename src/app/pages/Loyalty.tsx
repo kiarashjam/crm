@@ -48,14 +48,15 @@ import {
   computeMemberBalances,
   LOYALTY_REASONS,
   REASON_LABELS,
-  TIER_MULTIPLIERS,
   POINTS_PER_DOLLAR,
   type LoyaltyEntry,
   type LoyaltyEntryKind,
   type LoyaltyReason,
   type MemberBalance,
 } from '@/app/api/loyalty';
-import { getMembers, MEMBER_TIERS, type Member, type MemberTier } from '@/app/api/members';
+import { getMembers, type Member } from '@/app/api/members';
+import { tiersOnSale } from '@/app/api/catalog';
+import { useClubCatalog, useHospitalitySettings } from '@/app/hooks/queries';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
@@ -74,12 +75,14 @@ const KIND_BADGE: Record<LoyaltyEntryKind, string> = {
   Expired: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
 };
 
-const TIER_GRADIENT: Record<MemberTier, string> = {
+const TIER_GRADIENT: Record<string, string> = {
   Bronze: 'from-amber-200 to-amber-400',
   Silver: 'from-slate-200 to-slate-400',
   Gold: 'from-yellow-200 to-yellow-500',
   Platinum: 'from-indigo-300 to-indigo-500',
 };
+/** A tier of the club's own, not one of the four every club starts with. */
+const OTHER_TIER_GRADIENT = 'from-cyan-200 to-cyan-400';
 
 interface FormState {
   memberId: string;
@@ -144,6 +147,12 @@ export default function Loyalty() {
   useEffect(() => {
     void load();
   }, []);
+
+  // The tiers' multipliers and the earning rates are the ones the server applies: the
+  // catalogue's and the settings'. They used to be a table here that nothing else read.
+  const catalog = useClubCatalog('Membership').data;
+  const tiers = useMemo(() => tiersOnSale(catalog ?? []), [catalog]);
+  const rules = useHospitalitySettings().data;
 
   const stats = useMemo(() => computeLoyaltyStats(entries), [entries]);
   const balances = useMemo(() => computeMemberBalances(entries), [entries]);
@@ -314,17 +323,19 @@ export default function Loyalty() {
             ]}
           />
 
-          {/* Tier overview */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
-            {MEMBER_TIERS.map((t) => (
-              <div key={t} className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
-                <div className={`h-2 -mx-4 -mt-4 mb-3 bg-gradient-to-r ${TIER_GRADIENT[t]}`} />
-                <p className="text-sm text-slate-500">{t}</p>
-                <p className="text-xl font-bold text-slate-900 mt-1">{TIER_MULTIPLIERS[t]}×</p>
-                <p className="text-xs text-slate-500 mt-1">points multiplier</p>
-              </div>
-            ))}
-          </div>
+          {/* Tier overview: the club's tiers on sale, from the price catalogue. */}
+          {tiers.length > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+              {tiers.map((t) => (
+                <div key={t.id} className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+                  <div className={`h-2 -mx-4 -mt-4 mb-3 bg-gradient-to-r ${TIER_GRADIENT[t.name] ?? OTHER_TIER_GRADIENT}`} />
+                  <p className="text-sm text-slate-500">{t.name}</p>
+                  <p className="text-xl font-bold text-slate-900 mt-1">{t.loyaltyMultiplier ?? 1}×</p>
+                  <p className="text-xs text-slate-500 mt-1">points multiplier</p>
+                </div>
+              ))}
+            </div>
+          )}
 
           <Tabs defaultValue="ledger" className="w-full">
             <TabsList className="mb-4 max-w-full justify-start overflow-x-auto">
@@ -514,8 +525,10 @@ export default function Loyalty() {
                 <div>
                   <h3 className="font-semibold text-slate-900 mb-1">Earning rate</h3>
                   <p className="text-sm text-slate-600">
-                    Members earn <span className="font-medium">10 base points per {formatCurrency(1)} spent</span>, multiplied by
-                    their tier. Bronze 1×, Silver 1.25×, Gold 1.5×, Platinum 2×.
+                    Members earn <span className="font-medium">{rules?.basePointsPerDollar ?? 10} base points per {formatCurrency(1)} spent</span>{' '}
+                    on a tab, multiplied by their tier
+                    {tiers.length > 0 ? `: ${tiers.map((t) => `${t.name} ${t.loyaltyMultiplier ?? 1}×`).join(', ')}` : ''}.
+                    The rates and multipliers are set in Hospitality Settings.
                   </p>
                 </div>
                 <div>
@@ -528,12 +541,12 @@ export default function Loyalty() {
                 </div>
                 <div>
                   <h3 className="font-semibold text-slate-900 mb-1">Touchpoints that earn</h3>
+                  {/* Only what awards points. The referral and anniversary bonuses this listed were never awarded by anything. */}
                   <ul className="text-sm text-slate-600 list-disc list-inside space-y-1">
-                    <li>Visits and check-ins</li>
-                    <li>Dining and bar purchases (auto-applied via POS in production)</li>
-                    <li>Event attendance</li>
-                    <li>Member referrals — 1,000 bonus points on approved application</li>
-                    <li>Membership anniversary — 500 bonus points per year</li>
+                    <li>Checking in at a venue: the venue&apos;s points, times the tier multiplier</li>
+                    <li>Closing a tab: dining, bar and everything else on it</li>
+                    <li>Event attendance: {rules?.eventCheckInPoints ?? 50} points at check-in, times the tier multiplier</li>
+                    <li>Points given by hand, here</li>
                   </ul>
                 </div>
               </div>

@@ -69,6 +69,18 @@ public class SecretPathRedactionTests
     }
 
     [Theory]
+    // An unsubscribe link's token unsubscribes the person it was made for, whoever holds it,
+    // and a mail app's one-click POST to it is logged like any request.
+    [InlineData("/api/public/unsubscribe/SUPERSECRETTOKEN123abcXYZ", "/api/public/unsubscribe/[redacted]")]
+    [InlineData("/api/public/unsubscribe/SUPERSECRETTOKEN123abcXYZ/one-click", "/api/public/unsubscribe/[redacted]/one-click")]
+    public void RemovesTheTokenFromUnsubscribeLinks(string path, string expected)
+    {
+        var redacted = SecretPathRedactionMiddleware.RedactPath(path);
+        redacted.Should().Be(expected);
+        redacted.Should().NotContain(Token);
+    }
+
+    [Theory]
     // The CRM's own routes carry ids, not credentials. Redacting them would throw
     // away the only thing that makes a log line useful.
     [InlineData("/api/contracts/3f9a21c0-0000-0000-0000-000000000000")]
@@ -80,6 +92,10 @@ public class SecretPathRedactionTests
     [InlineData("/api/public/contracts/")]
     [InlineData("/api/attachments")]
     [InlineData("/api/attachments/3f9a21c0-0000-0000-0000-000000000000")]
+    // A pay link's token travels in a header (IIS refuses an address segment as long as one),
+    // so its two addresses carry nothing to hide, and "checkout" is not taken for a secret.
+    [InlineData("/api/public/pay")]
+    [InlineData("/api/public/pay/checkout")]
     public void LeavesEverythingElseAlone(string path)
     {
         SecretPathRedactionMiddleware.RedactPath(path).Should().BeNull(

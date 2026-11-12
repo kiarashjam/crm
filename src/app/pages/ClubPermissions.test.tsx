@@ -14,6 +14,7 @@ import type { Charge } from '@/app/api/charges';
 import type { Donation } from '@/app/api/donations';
 import type { Application } from '@/app/api/applications';
 import { resetClubCurrency } from '@/app/hooks/useClubMoney';
+import { withQueries } from '@/test/queryWrapper';
 
 vi.mock('@/app/components/AppHeader', () => ({ default: () => null }));
 
@@ -86,7 +87,7 @@ const Applications = (await import('./Applications')).default;
 const Members = (await import('./Members')).default;
 const MemberImport = (await import('./MemberImport')).default;
 
-const show = (page: React.ReactNode) => render(<MemoryRouter>{page}</MemoryRouter>);
+const show = (page: React.ReactNode) => render(withQueries(<MemoryRouter>{page}</MemoryRouter>));
 
 beforeEach(() => {
   localStorage.clear();
@@ -127,6 +128,20 @@ describe('donations', () => {
     as([PERMISSION.ManageMoney]);
     show(<Donations />);
     expect((await screen.findAllByRole('button', { name: 'Acknowledge' })).length).toBeGreaterThan(0);
+  });
+
+  it('are voided with a reason by someone who may void money, and never deleted', async () => {
+    // A donation is money received: it used to be deleted, and vanished from the totals.
+    as([PERMISSION.ManageMoney, PERMISSION.DeleteRecords]);
+    const { unmount } = show(<Donations />);
+    expect((await screen.findAllByRole('button', { name: 'Acknowledge' })).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: /delete donation/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /void donation/i })).toBeNull();
+    unmount();
+
+    as([PERMISSION.ManageMoney, PERMISSION.VoidMoney]);
+    show(<Donations />);
+    expect((await screen.findAllByRole('button', { name: /void donation from Jean Dupont/i })).length).toBeGreaterThan(0);
   });
 });
 

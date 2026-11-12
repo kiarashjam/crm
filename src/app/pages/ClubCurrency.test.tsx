@@ -10,9 +10,10 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import type { Member } from '@/app/api/members';
-import type { Charge } from '@/app/api/charges';
+import type { AccountStatement, Charge } from '@/app/api/charges';
 import type { HospitalitySettings } from '@/app/api/hospitalitySettings';
 import { resetClubCurrency } from '@/app/hooks/useClubMoney';
+import { withQueries } from '@/test/queryWrapper';
 
 vi.mock('@/app/components/AppHeader', () => ({ default: () => null }));
 
@@ -36,10 +37,20 @@ const CHARGE: Charge = {
   id: 'c1', memberId: 'm1', memberName: 'Jean Dupont', kind: 'Dining', description: 'Dinner for two',
   amount: 320.5, paidAmount: 0, status: 'Pending', postedAtUtc: new Date().toISOString(),
 };
+// The statement is the server's, worked out from the ledger: balances negative while owed.
+const STATEMENT: AccountStatement = {
+  memberId: 'm1', memberName: 'Jean Dupont', currency: 'CHF', fromUtc: '2026-11-01T00:00:00Z', toUtc: '2026-12-01T00:00:00Z',
+  openingBalance: 0, closingBalance: -320.5, totalDebits: 320.5, totalCredits: 0,
+  lines: [{
+    id: 'c1', atUtc: CHARGE.postedAtUtc, entryType: 'Charge', side: 'charge', description: 'Dinner for two',
+    debit: 320.5, credit: 0, balance: -320.5, kind: 'Dining',
+  }],
+};
 vi.mock('@/app/api/charges', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/app/api/charges')>()),
   getCharges: async () => [CHARGE],
   getPayments: async () => [],
+  getMemberStatement: async () => STATEMENT,
 }));
 
 vi.mock('@/app/api/loyalty', async (importOriginal) => ({
@@ -61,7 +72,7 @@ proto.hasPointerCapture ??= () => false;
 proto.releasePointerCapture ??= () => undefined;
 proto.scrollIntoView ??= () => undefined;
 
-const show = (page: React.ReactNode) => render(<MemoryRouter>{page}</MemoryRouter>);
+const show = (page: React.ReactNode) => render(withQueries(<MemoryRouter>{page}</MemoryRouter>));
 
 beforeEach(() => {
   localStorage.clear();

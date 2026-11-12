@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
+import { withQueries } from '@/test/queryWrapper';
 
 const MEMBER = {
   id: 'm-1', firstName: 'Jean', lastName: 'Dupont', email: 'jean@example.ch', tier: 'Gold', status: 'Active',
@@ -44,7 +45,7 @@ describe('the POS terminal when the server refuses', () => {
   it('shows why a charge could not be posted', async () => {
     createCharge.mockRejectedValue(new Error('That member was not found.'));
     const user = userEvent.setup();
-    render(<MemoryRouter><PosTerminal /></MemoryRouter>);
+    render(withQueries(<MemoryRouter><PosTerminal /></MemoryRouter>));
     await user.click(await screen.findByRole('button', { name: /Jean Dupont/ }));
     await user.click(screen.getByRole('button', { name: /Post charge/ }));
 

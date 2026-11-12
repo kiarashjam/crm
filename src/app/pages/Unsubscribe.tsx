@@ -64,6 +64,8 @@ export default function Unsubscribe() {
   };
 
   const from = target?.workspaceName?.trim() || 'this sender';
+  // A club member's link stops news and offers only: what their membership needs still comes.
+  const marketing = target?.scope === 'marketing';
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-16">
@@ -73,9 +75,16 @@ export default function Unsubscribe() {
             <h1 ref={doneRef} tabIndex={-1} className="text-xl font-semibold text-slate-900 focus:outline-none">
               You are unsubscribed
             </h1>
-            <p className="mt-2 text-sm text-slate-700">
-              {from} will not email {target?.email} again.
-            </p>
+            {marketing ? (
+              <p className="mt-2 text-sm text-slate-700">
+                {from} will not send news and offers to {target?.email} again. Messages about your membership, such as
+                statements and booking confirmations, still come.
+              </p>
+            ) : (
+              <p className="mt-2 text-sm text-slate-700">
+                {from} will not email {target?.email} again.
+              </p>
+            )}
           </>
         ) : state === 'missing' ? (
           <>
@@ -99,9 +108,15 @@ export default function Unsubscribe() {
         ) : (
           <div aria-busy={state === 'loading' || busy}>
             <h1 className="text-xl font-semibold text-slate-900">
-              {state === 'loading' ? 'Loading…' : `Stop emails from ${from}?`}
+              {state === 'loading' ? 'Loading…' : marketing ? `Stop news and offers from ${from}?` : `Stop emails from ${from}?`}
             </h1>
-            {target && (
+            {target && marketing && (
+              <p className="mt-2 text-sm text-slate-700">
+                {from} will no longer send news and offers to <span className="font-medium">{target.email}</span>.
+                Messages about your membership, such as statements and booking confirmations, still come.
+              </p>
+            )}
+            {target && !marketing && (
               <p className="mt-2 text-sm text-slate-700">
                 {from} will no longer email <span className="font-medium">{target.email}</span>.
               </p>

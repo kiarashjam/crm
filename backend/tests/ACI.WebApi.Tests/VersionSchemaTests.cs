@@ -36,7 +36,7 @@ public class VersionSchemaTests
     [Fact]
     public void TheModelMapsTheVersionAsEfWouldWriteTheColumn()
     {
-        var script = ClubSchemaTests.BaselineScript();
+        var script = ClubSchemaTests.EfCreateScript();
         foreach (var table in new[] { "Leads", "Deals", "Contacts", "Companies" })
             ClubSchemaTests.Between(script, $"CREATE TABLE [{table}]", "CONSTRAINT [PK_")
                 .Should().Contain("[Version] uniqueidentifier NOT NULL", $"the DDL adds {table}.Version as the model maps it");

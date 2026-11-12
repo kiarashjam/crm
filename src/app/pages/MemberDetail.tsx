@@ -30,24 +30,33 @@ import {
   TabsContent,
 } from '@/app/components/ui/tabs';
 import {
-  getMembers,
   deleteMember,
   type Member,
   type MemberTier,
   type MemberStatus,
 } from '@/app/api/members';
-import { getCharges, getPayments, type Charge, type Payment } from '@/app/api/charges';
-import { getVisits, type Visit } from '@/app/api/visits';
-import { getReservations, type Reservation } from '@/app/api/reservations';
-import { getLoyaltyLedger, type LoyaltyEntry, REASON_LABELS } from '@/app/api/loyalty';
+import { isSale, PAYMENT_METHOD_LABELS, PAYMENT_PROVIDER_LABELS, type Charge, type Payment } from '@/app/api/charges';
+import type { Visit } from '@/app/api/visits';
+import type { Reservation } from '@/app/api/reservations';
+import type { EventAttendee } from '@/app/api/eventAttendees';
+import { type LoyaltyEntry, REASON_LABELS } from '@/app/api/loyalty';
 import { commStatusLabel, getCommunications, type Communication } from '@/app/api/communications';
-import { getGiftCards, type GiftCard } from '@/app/api/giftCards';
+import type { GiftCard } from '@/app/api/giftCards';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { ClubReadState } from '@/app/components/ClubReadState';
+import { MemberLinksCard } from '@/app/components/MembershipLinks';
+import {
+  NONE, useClubCharges, useClubMembers, useClubPayments, useClubReads, useClubVisits, useGiftCards, useLoyaltyLedger,
+  useMemberRegistrations, useReservations,
+} from '@/app/hooks/queries';
 import PageHero, { heroSecondary } from '@/app/components/PageHero';
 import { RecordAvatar } from '@/app/components/RecordCard';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { PERMISSION } from '@/app/api/organizations';
+import MemberConsentPanel from '@/app/pages/members/MemberConsentPanel';
+import EmailMemberDialog from '@/app/pages/members/EmailMemberDialog';
+import { MemberPaymentsCard } from '@/app/components/payments/MemberPaymentsCard';
 
 const TIER_BADGE: Record<MemberTier, string> = {
   Bronze: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
@@ -92,50 +101,54 @@ export default function MemberDetail() {
   const { format: formatCurrency } = useClubMoney();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [member, setMember] = useState<Member | null>(null);
-  const [allMembers, setAllMembers] = useState<Member[]>([]);
-  const [charges, setCharges] = useState<Charge[]>([]);
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [visits, setVisits] = useState<Visit[]>([]);
-  const [reservations, setReservations] = useState<Reservation[]>([]);
-  const [ledger, setLedger] = useState<LoyaltyEntry[]>([]);
+  // The member and their money through the app's cache, shared with the club pages: a
+  // payment taken there shows here, and a failed read says so instead of "not found".
+  const membersQuery = useClubMembers();
+  const chargesQuery = useClubCharges();
+  const paymentsQuery = useClubPayments();
+  const visitsQuery = useClubVisits();
+  const loyaltyQuery = useLoyaltyLedger();
+  const giftCardsQuery = useGiftCards();
+  // Their bookings and their places on event lists, asked of the server by member id: a
+  // booking used to be found by matching the member's email text, so one made without an
+  // email, or with it in another case, never showed here, and a merge left it behind.
+  const reservationsQuery = useReservations(id ?? null);
+  const registrationsQuery = useMemberRegistrations(id ?? '');
+  const reads = useClubReads(
+    membersQuery, chargesQuery, paymentsQuery, visitsQuery, loyaltyQuery, giftCardsQuery, reservationsQuery, registrationsQuery,
+  );
+  const allMembers: Member[] = membersQuery.data ?? NONE;
+  const member = allMembers.find((x) => x.id === id) ?? null;
+  const charges: Charge[] = chargesQuery.data ?? NONE;
+  const payments: Payment[] = paymentsQuery.data ?? NONE;
+  const visits: Visit[] = visitsQuery.data ?? NONE;
+  const ledger: LoyaltyEntry[] = loyaltyQuery.data ?? NONE;
+  const giftCards: GiftCard[] = giftCardsQuery.data ?? NONE;
+  const memberReservations: Reservation[] = reservationsQuery.data ?? NONE;
+  const registrations: EventAttendee[] = registrationsQuery.data ?? NONE;
   const [comms, setComms] = useState<Communication[]>([]);
-  const [giftCards, setGiftCards] = useState<GiftCard[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [sideLoading, setSideLoading] = useState(true);
+  const loading = reads.loading || sideLoading;
   usePageLoading(loading);
   const [deleting, setDeleting] = useState(false);
+  const [emailing, setEmailing] = useState(false);
 
-  const load = async () => {
-    try {
-      const [m, c, p, v, r, l, comm, g] = await Promise.all([
-        getMembers(),
-        getCharges(),
-        getPayments(),
-        getVisits(),
-        getReservations(),
-        getLoyaltyLedger(),
-        getCommunications(),
-        getGiftCards(),
-      ]);
-      setAllMembers(m);
-      const found = m.find((x) => x.id === id) ?? null;
-      setMember(found);
-      setCharges(c);
-      setPayments(p);
-      setVisits(v);
-      setReservations(r);
-      setLedger(l);
-      setComms(comm);
-      setGiftCards(g);
-    } catch {
-      toast.error('Failed to load member');
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Messages keep their own read, of this member's, asked of the server by member.
   useEffect(() => {
-    void load();
+    let live = true;
+    getCommunications(id ? { memberId: id } : {})
+      .then((comm) => {
+        if (live) setComms(comm);
+      })
+      .catch(() => {
+        if (live) toast.error('Could not load this member\'s messages');
+      })
+      .finally(() => {
+        if (live) setSideLoading(false);
+      });
+    return () => {
+      live = false;
+    };
   }, [id]);
 
   const memberCharges = useMemo(
@@ -146,11 +159,12 @@ export default function MemberDetail() {
     () => payments.filter((p) => p.memberId === id),
     [payments, id],
   );
-  const memberVisits = useMemo(() => visits.filter((v) => v.memberId === id), [visits, id]);
-  const memberReservations = useMemo(
-    () => reservations.filter((r) => r.memberEmail === member?.email),
-    [reservations, member?.email],
+  // What a pay link can be for: the charges still owing.
+  const openCharges = useMemo(
+    () => memberCharges.filter((c) => c.status === 'Pending' || c.status === 'PartiallyPaid' || c.status === 'Overdue'),
+    [memberCharges],
   );
+  const memberVisits = useMemo(() => visits.filter((v) => v.memberId === id), [visits, id]);
   const memberLedger = useMemo(() => ledger.filter((l) => l.memberId === id), [ledger, id]);
   const memberComms = useMemo(() => comms.filter((c) => c.memberId === id), [comms, id]);
   const memberGiftCards = useMemo(
@@ -170,8 +184,9 @@ export default function MemberDetail() {
     }, 0);
   }, [memberCharges]);
 
+  // What they spent: a balance brought over, once paid, was not spent here.
   const lifetimeSpend = useMemo(
-    () => memberCharges.filter((c) => c.status !== 'Voided').reduce((s, c) => s + c.paidAmount, 0),
+    () => memberCharges.filter((c) => c.status !== 'Voided' && isSale(c)).reduce((s, c) => s + c.paidAmount, 0),
     [memberCharges],
   );
 
@@ -181,6 +196,15 @@ export default function MemberDetail() {
         (r) => Date.parse(r.startAtUtc) > Date.now() && r.status !== 'Cancelled',
       ),
     [memberReservations],
+  );
+
+  // Events they have a seat or a place in line for, theirs or a guest's they bring.
+  const upcomingEvents = useMemo(
+    () =>
+      registrations.filter(
+        (r) => r.eventStartAtUtc && Date.parse(r.eventStartAtUtc) > Date.now() && (r.status === 'Reserved' || r.status === 'Waitlisted'),
+      ),
+    [registrations],
   );
 
   const remove = async () => {
@@ -193,6 +217,10 @@ export default function MemberDetail() {
         toast.success('Member removed');
         navigate('/members');
       }
+    } catch (err) {
+      // Refused while the member still has money with the club: the server's sentence says
+      // what to do instead, where the button used to seem to do nothing.
+      toast.error(err instanceof Error && err.message ? err.message : 'Failed to remove member');
     } finally {
       setDeleting(false);
     }
@@ -209,6 +237,17 @@ export default function MemberDetail() {
     );
   }
 
+
+  if (reads.failed) {
+    return (
+      <div className="min-h-screen bg-gradient-subtle">
+        <AppHeader />
+        <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
+          <ClubReadState reads={reads} what="This member">{null}</ClubReadState>
+        </main>
+      </div>
+    );
+  }
 
   if (!member) {
     return (
@@ -314,6 +353,7 @@ export default function MemberDetail() {
               </TabsTrigger>
               <TabsTrigger value="loyalty">Loyalty ({memberLedger.length})</TabsTrigger>
               <TabsTrigger value="comms">Communications ({memberComms.length})</TabsTrigger>
+              <TabsTrigger value="consent">Consent</TabsTrigger>
               <TabsTrigger value="giftcards">
                 Gift cards ({memberGiftCards.length})
               </TabsTrigger>
@@ -338,12 +378,35 @@ export default function MemberDetail() {
                   </dl>
                 </SectionCard>
 
+                {/* Their lead and contact on the sales side, how they joined, and their household. */}
+                <MemberLinksCard memberId={member.id} />
+
                 <SectionCard
                   title="Upcoming"
                   icon={<CalendarHeart className="w-4 h-4" />}
                   href="/reservations"
                   hrefLabel="All reservations"
                 >
+                  {upcomingEvents.length > 0 && (
+                    <ul className="mb-3 space-y-2 text-sm">
+                      {upcomingEvents.slice(0, 4).map((r) => (
+                        <li key={r.id} className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <Link to={`/events/${r.eventId}`} className="font-medium text-slate-900 truncate hover:text-indigo-600">
+                              {r.eventName}
+                            </Link>
+                            <p className="text-xs text-slate-500">
+                              {r.eventStartAtUtc ? formatDateTime(r.eventStartAtUtc) : ''}
+                              {r.memberId !== id ? ` · bringing ${r.memberName}` : ''}
+                            </p>
+                          </div>
+                          <span className="text-xs text-slate-500">
+                            {r.status === 'Waitlisted' ? `Waitlist #${r.waitlistPosition ?? '?'}` : 'Seat'}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                   {upcomingReservations.length === 0 ? (
                     <p className="text-sm text-slate-500">No upcoming reservations.</p>
                   ) : (
@@ -419,6 +482,13 @@ export default function MemberDetail() {
             </TabsContent>
 
             <TabsContent value="charges">
+              <MemberPaymentsCard
+                memberId={member.id}
+                memberName={`${member.firstName} ${member.lastName}`.trim()}
+                memberEmail={member.email || undefined}
+                openCharges={openCharges}
+                owed={outstandingBalance}
+              />
               {memberCharges.length === 0 ? (
                 <EmptyMini icon={<Receipt className="w-6 h-6" />} text="No charges on this account yet." />
               ) : (
@@ -436,7 +506,10 @@ export default function MemberDetail() {
                     <tbody>
                       {memberCharges.map((c) => (
                         <tr key={c.id} className="border-b border-slate-100">
-                          <td className="px-4 py-3">{c.description}</td>
+                          <td className="px-4 py-3">
+                            {c.description}
+                            {c.incurredByName && <span className="block text-xs text-teal-700">Incurred by {c.incurredByName}</span>}
+                          </td>
                           <td className="px-4 py-3 text-slate-600">{c.kind}</td>
                           <td className="px-4 py-3">
                             <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
@@ -458,7 +531,9 @@ export default function MemberDetail() {
                         {memberPayments.slice(0, 5).map((p) => (
                           <li key={p.id} className="flex items-center justify-between">
                             <span className="text-slate-600">
-                              {p.method} {p.reference && <span className="text-slate-500">· {p.reference}</span>}
+                              {PAYMENT_METHOD_LABELS[p.method] ?? p.method}
+                              {p.provider && <span className="text-slate-500"> · {PAYMENT_PROVIDER_LABELS[p.provider] ?? p.provider}</span>}
+                              {p.reference && <span className="text-slate-500"> · {p.reference}</span>}
                             </span>
                             {p.status === 'Voided' ? (
                               <span className="text-slate-500 line-through" title={p.voidReason}>{formatCurrency(p.amount)} voided</span>
@@ -548,10 +623,17 @@ export default function MemberDetail() {
             </TabsContent>
 
             <TabsContent value="comms">
+              <WriteOnly permission={PERMISSION.ClubMembers}>
+                <div className="mb-3 flex justify-end">
+                  <Button size="sm" onClick={() => setEmailing(true)}>
+                    <Mail className="mr-1.5 h-4 w-4" /> Email {member.firstName}
+                  </Button>
+                </div>
+              </WriteOnly>
               {memberComms.length === 0 ? (
                 <EmptyMini
                   icon={<MessageSquareText className="w-6 h-6" />}
-                  text="No messages logged for this member yet."
+                  text="No messages to this member yet."
                 />
               ) : (
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm divide-y divide-slate-100">
@@ -563,15 +645,28 @@ export default function MemberDetail() {
                           {commStatusLabel(c.status)}
                         </span>
                       </div>
-                      <p className="text-sm text-slate-500 mt-1 line-clamp-2">{c.preview}</p>
+                      {c.preview && <p className="text-sm text-slate-500 mt-1 line-clamp-2">{c.preview}</p>}
+                      {c.reason && <p className="text-xs text-rose-700 mt-1">{c.reason}</p>}
                       <p className="text-xs text-slate-500 mt-1">
-                        {c.channel} · {c.category} · {formatDateTime(c.sentAtUtc)}
+                        {c.channel} · {c.category}
+                        {c.campaignName ? ` · ${c.campaignName}` : ''} · {formatDateTime(c.sentAtUtc ?? c.createdAtUtc)}
                       </p>
                     </div>
                   ))}
                 </div>
               )}
             </TabsContent>
+
+            <TabsContent value="consent">
+              <MemberConsentPanel memberId={member.id} />
+            </TabsContent>
+            {emailing && (
+              <EmailMemberDialog
+                member={member}
+                onClose={() => setEmailing(false)}
+                onSent={(message) => setComms((prev) => [message, ...prev])}
+              />
+            )}
 
             <TabsContent value="giftcards">
               {memberGiftCards.length === 0 ? (

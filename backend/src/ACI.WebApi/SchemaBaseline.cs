@@ -22,10 +22,8 @@ namespace ACI.WebApi;
 /// </para>
 /// <para>
 /// Only once the database has what the baseline would have made: every table and column
-/// the baseline migration's own model maps, not today's model, whose tables and columns
-/// from later migrations those migrations add once the baseline is recorded (checking for
-/// them here refused every old database the day the first one shipped). One that lacks
-/// any is refused, not recorded, because once recorded
+/// the model mapped when the baseline was made (<see cref="BaselineModel"/>), not what later
+/// migrations add, which they make themselves. One that lacks any is refused, not recorded, because once recorded
 /// nothing would ever add them. While the start-up DDL still runs first, it adds what it
 /// made; once that DDL is gone, a database that never started on a release with it has to
 /// do so first. What that DDL never made (a column only a migration from before the
@@ -46,6 +44,25 @@ public static class SchemaBaseline
 {
     /// <summary>The baseline migration's id, as __EFMigrationsHistory records it.</summary>
     public static string MigrationId { get; } = typeof(Baseline).GetCustomAttribute<MigrationAttribute>()!.Id;
+
+    /// <summary>
+    /// The schema the baseline migration makes, from the model as the baseline recorded it:
+    /// what a database made before the baseline must already have before it is recorded there.
+    /// </summary>
+    /// <remarks>
+    /// Not the model as it is now. A table or column a later migration adds is made by that
+    /// migration, which runs only once the baseline is recorded; read against the current
+    /// model, every database made the old way lacked it, was refused, and no migration after
+    /// the baseline could ever run there.
+    /// </remarks>
+    public static IModel BaselineModel(AppDbContext db)
+    {
+        var migrations = db.GetService<IMigrationsAssembly>();
+        var baseline = migrations.CreateMigration(migrations.Migrations[MigrationId], db.Database.ProviderName!);
+        var model = baseline.TargetModel!;
+        if (model is IMutableModel mutable) model = mutable.FinalizeModel();
+        return db.GetService<IModelRuntimeInitializer>().Initialize(model, designTime: true, validationLogger: null);
+    }
 
     /// <summary>
     /// Whether the database has no tables yet, other than the migrations history: one for
@@ -77,7 +94,7 @@ public static class SchemaBaseline
     /// recorded, or one with no tables yet.
     /// </summary>
     /// <returns>Whether it recorded the baseline.</returns>
-    /// <exception cref="InvalidOperationException">The database lacks a table or column the model maps.</exception>
+    /// <exception cref="InvalidOperationException">The database lacks a table or column the baseline maps.</exception>
     public static async Task<bool> RecordOnExistingDatabaseAsync(AppDbContext db, ILogger logger, CancellationToken ct = default)
     {
         var history = db.GetService<IHistoryRepository>();
@@ -85,6 +102,8 @@ public static class SchemaBaseline
             && (await history.GetAppliedMigrationsAsync(ct)).Any(m => m.MigrationId == MigrationId))
             return false;
 
+        // Against what the baseline makes, not the model as it is now: what a later
+        // migration adds is made by that migration, after the baseline is recorded.
         var baseline = BaselineModel(db);
         var before = await CompareAsync(db, baseline, ct);
         if (before.TableCount == 0) return false;
@@ -133,32 +152,16 @@ public static class SchemaBaseline
     }
 
     /// <summary>
-    /// The schema the baseline migration makes, as its own model has it: what a database
-    /// made the old way must have before it is recorded there. Today's model also has what
-    /// every migration since added, which the database gets from those migrations after.
+    /// How the database differs from the model, read from its catalog: what it lacks that
+    /// the app cannot run without (tables and columns), and what it has otherwise (keys,
+    /// indexes, column types and nullability). Tables and columns it has beyond the model
+    /// are not counted: a column the model no longer maps is left alone, not dropped.
     /// </summary>
-    public static IRelationalModel BaselineModel(AppDbContext db)
-    {
-        var migrations = db.GetService<IMigrationsAssembly>();
-        var migration = migrations.CreateMigration(migrations.Migrations[MigrationId], db.Database.ProviderName!);
-        var model = migration.TargetModel ?? throw new InvalidOperationException("The baseline migration has no model of its own.");
-        // As the migrator readies a migration's model before it compares one with another.
-        if (model is IMutableModel mutable) model = mutable.FinalizeModel();
-        return db.GetService<IModelRuntimeInitializer>().Initialize(model, designTime: true, validationLogger: null).GetRelationalModel();
-    }
-
-    /// <summary>How the database differs from what the baseline makes (see <see cref="BaselineModel"/>).</summary>
     public static Task<SchemaComparison> CompareAsync(AppDbContext db, CancellationToken ct = default) =>
-        CompareAsync(db, BaselineModel(db), ct);
+        CompareAsync(db, db.Model, ct);
 
-    /// <summary>
-    /// How the database differs from <paramref name="model"/>, read from its catalog: what
-    /// it lacks that the app cannot run without (tables and columns), and what it has
-    /// otherwise (keys, indexes, column types and nullability). Tables and columns it has
-    /// beyond the model are not counted: a column the model no longer maps is left alone,
-    /// not dropped.
-    /// </summary>
-    public static async Task<SchemaComparison> CompareAsync(AppDbContext db, IRelationalModel model, CancellationToken ct = default)
+    /// <summary>How the database differs from <paramref name="model"/> (see <see cref="CompareAsync(AppDbContext, CancellationToken)"/>).</summary>
+    public static async Task<SchemaComparison> CompareAsync(AppDbContext db, IModel model, CancellationToken ct = default)
     {
         var rows = await db.Database.SqlQueryRaw<CatalogRow>(CatalogSql).ToListAsync(ct);
         var ignoreCase = StringComparer.OrdinalIgnoreCase;
@@ -172,7 +175,7 @@ public static class SchemaBaseline
 
         var missing = new List<string>();
         var different = new List<string>();
-        foreach (var table in model.Tables)
+        foreach (var table in model.GetRelationalModel().Tables)
         {
             if (!tables.Contains(table.Name))
             {
@@ -220,10 +223,10 @@ public static class SchemaBaseline
 
     // The primary keys the old DDL declared inline (PRIMARY KEY on the column) were named
     // by SQL Server, differently in every database. A rename changes only the name.
-    private static string NamePrimaryKeysSql(IRelationalModel model, IReadOnlyDictionary<string, string> actual)
+    private static string NamePrimaryKeysSql(IModel model, IReadOnlyDictionary<string, string> actual)
     {
         var sql = new System.Text.StringBuilder();
-        foreach (var table in model.Tables)
+        foreach (var table in model.GetRelationalModel().Tables)
         {
             if (table.PrimaryKey is not { } key) continue;
             if (!actual.TryGetValue(table.Name, out var current)) continue;
@@ -251,12 +254,11 @@ public static class SchemaBaseline
     /// index or a foreign key the data might not meet changes what a save or a delete does,
     /// and is left to the warnings.
     /// </remarks>
-    private static List<(string Name, string Sql)> MissingPlainIndexesSql(AppDbContext db, IRelationalModel baseline, IReadOnlySet<string> existing, ILogger logger)
+    private static List<(string Name, string Sql)> MissingPlainIndexesSql(AppDbContext db, IModel model, IReadOnlySet<string> existing, ILogger logger)
     {
-        var model = baseline.Model;
         var generator = db.GetService<IMigrationsSqlGenerator>();
         var missing = new List<(string, string)>();
-        foreach (var index in baseline.Tables.SelectMany(t => t.Indexes))
+        foreach (var index in model.GetRelationalModel().Tables.SelectMany(t => t.Indexes))
         {
             if (index.IsUnique || existing.Contains(index.Table.Name + "." + index.Name)) continue;
             try
@@ -334,7 +336,7 @@ public static class SchemaBaseline
     }
 }
 
-/// <summary>What <see cref="SchemaBaseline.CompareAsync"/> found.</summary>
+/// <summary>What <see cref="SchemaBaseline.CompareAsync(AppDbContext, IModel, CancellationToken)"/> found.</summary>
 /// <param name="TableCount">How many tables the database has, any of them.</param>
 /// <param name="Missing">Tables and columns the model maps that the database lacks.</param>
 /// <param name="Different">Keys, indexes, types and nullability that differ from the model.</param>

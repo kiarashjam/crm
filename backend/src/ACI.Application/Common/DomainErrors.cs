@@ -5,7 +5,7 @@ namespace ACI.Application.Common;
 /// <summary>
 /// Centralized domain error definitions for all entities.
 /// </summary>
-public static class DomainErrors
+public static partial class DomainErrors
 {
     /// <summary>
     /// A member's role does not let them do this (see Domain.Common.MemberPermissions).
@@ -76,40 +76,201 @@ public static class DomainErrors
     }
 
     /// <summary>
-    /// Club event attendee errors.
+    /// Club events and their guest lists. A code ending ".Conflict" answers 409: the event or
+    /// the list is not in a state to do it, not the request.
     /// </summary>
-    public static class EventAttendee
+    public static class ClubEvent
     {
-        // Codes ending ".NotFound" map to 404.
-        public static readonly Error EventNotFound = new(
-            "ClubEvent.NotFound", "The event was not found");
-
         public static readonly Error NotFound = new(
-            "EventAttendee.NotFound", "That person is not on this event's list");
+            "ClubEvent.NotFound", "The event was not found.");
+
+        public static readonly Error RegistrationNotFound = new(
+            "EventRegistration.NotFound", "That person is not on this event's list.");
 
         public static readonly Error MemberNotFound = new(
-            "EventAttendeeMember.NotFound", "That member is not in this workspace");
+            "EventMember.NotFound", "That member is not in this workspace.");
+
+        public static readonly Error HostNotFound = new(
+            "EventHost.NotFound", "The member bringing the guest is not in this workspace.");
 
         public static readonly Error NameRequired = new(
-            "EventAttendee.NameRequired", "A guest needs a name");
+            "ClubEvent.NameRequired", "An event needs a name.");
 
-        public static readonly Error TooLong = new(
-            "EventAttendee.TooLong", "A name can be up to 200 characters and an email up to 320");
+        public static readonly Error GuestNameRequired = new(
+            "EventRegistration.NameRequired", "A guest needs a name.");
+
+        public static readonly Error MemberRequired = new(
+            "EventRegistration.MemberRequired", "Pick the member this ticket is for, or make it a guest ticket.");
 
         public static readonly Error TicketInvalid = new(
-            "EventAttendee.TicketInvalid", "A ticket is a Member or a Guest ticket");
+            "EventRegistration.TicketInvalid", "A ticket is a Member or a Guest ticket.");
 
         public static readonly Error StatusInvalid = new(
-            "EventAttendee.StatusInvalid", "An attendee is Reserved, CheckedIn, Waitlisted or Cancelled");
+            "EventRegistration.StatusInvalid", "Someone on the list can be checked in (CheckedIn), cancelled (Cancelled), taken off the waitlist (Reserved) or marked a no-show (NoShow).");
 
-        // Mapped to 409 in ResultExtensions: the event's state, not the request, is the problem.
-        public static readonly Error EventFull = new(
-            "EventAttendee.EventFull", "The event is full: cancel a reservation first");
+        public static readonly Error EventStatusInvalid = new(
+            "ClubEvent.StatusInvalid", "An event is Draft, Published, Cancelled or Completed.");
 
-        // Also 409: someone else already checked this person in, and the screen asking
-        // has not caught up yet.
+        public static readonly Error VisibilityInvalid = new(
+            "ClubEvent.VisibilityInvalid", "An event is for MembersOnly, MembersAndGuests or the Public.");
+
+        public static readonly Error TimesInvalid = new(
+            "ClubEvent.TimesInvalid", "An event needs a start and an end, the end after the start and at most 31 days later.");
+
+        public static readonly Error CapacityInvalid = new(
+            "ClubEvent.CapacityInvalid", "Capacity is a whole number of seats from 0 (no limit) to 100,000.");
+
+        public static readonly Error PriceInvalid = new(
+            "ClubEvent.PriceInvalid", "A price or a fee is an amount from 0 to 1,000,000, to the cent.");
+
+        public static readonly Error UnnamedSeatsInvalid = new(
+            "ClubEvent.UnnamedSeatsInvalid", "Unnamed seats can only be released: the number can go down to 0, never up.");
+
+        public static Error TooLong(string what, int max) => new(
+            "ClubEvent.TooLong", $"{what} can be at most {max} characters.");
+
+        public static readonly Error Changed = new(
+            "ClubEvent.Changed.Conflict", "Someone else changed this event at the same moment, so nothing was saved. Reload and try again.");
+
+        public static Error Full(int capacity) => new(
+            "ClubEvent.Full.Conflict", $"The event is full: all {capacity} seats are taken. Cancel a reservation or mark a no-show first, or add them to the waitlist.");
+
+        public static Error CapacityBelowSeats(int taken) => new(
+            "ClubEvent.CapacityBelowSeats.Conflict", $"{taken} seats are taken, so the capacity can't go below {taken}. Cancel reservations first.");
+
+        public static readonly Error AlreadyRegistered = new(
+            "EventRegistration.AlreadyRegistered.Conflict", "This member is already on this event's list.");
+
         public static readonly Error AlreadyCheckedIn = new(
-            "EventAttendee.AlreadyCheckedIn", "This person is already checked in");
+            "EventRegistration.AlreadyCheckedIn.Conflict", "This person is already checked in.");
+
+        public static Error NotOpen(string status) => new(
+            "ClubEvent.NotOpen.Conflict", status == "Cancelled"
+                ? "This event was cancelled, so its list can't change."
+                : "This event is completed, so nobody new can be added to its list.");
+
+        public static Error CannotMove(string from, string to) => new(
+            "EventRegistration.CannotMove.Conflict", (from, to) switch
+            {
+                ("Cancelled", _) => "This registration was cancelled. Register them again instead.",
+                ("CheckedIn", _) => "This person has already been checked in.",
+                ("NoShow", "Cancelled") => "This person was marked a no-show; check them in if they came after all.",
+                (_, "NoShow") => "Only someone with a seat who did not come can be marked a no-show.",
+                (_, "Reserved") => "Only someone on the waitlist can be given a seat.",
+                _ => $"Someone who is {from} can't be set to {to}.",
+            });
+
+        public static readonly Error NotStarted = new(
+            "ClubEvent.NotStarted.Conflict", "The event hasn't started yet, so nobody can be marked a no-show.");
+
+        public static Error StatusStays(string from, string to) => new(
+            "ClubEvent.StatusStays.Conflict", from switch
+            {
+                "Cancelled" => "This event was cancelled and stays cancelled. Make a new event instead.",
+                "Completed" => "This event is completed and stays completed.",
+                _ when to == "Completed" => "The event hasn't started yet, so it can't be marked completed.",
+                _ => $"An event can't go from {from} to {to}.",
+            });
+
+        public static readonly Error HasMoney = new(
+            "ClubEvent.HasMoney.Conflict", "Tickets or fees for this event are on members' accounts, so it can't be deleted. Cancel it instead: everyone's tickets are taken back and the record stays.");
+
+        public static readonly Error RegistrationHasMoney = new(
+            "EventRegistration.HasMoney.Conflict", "This person's ticket or fee is on a house account, or they came, so they can't be taken off the list. Cancel the registration instead.");
+
+        public static readonly Error RsvpNeedsName = new(
+            "ClubEvent.RsvpNeedsName", "An RSVP needs a name now: add the member or guest to the event's list, so they can be checked in at the door and charged their ticket.");
+    }
+
+    /// <summary>
+    /// The club's bookable resources and their bookings. A code ending ".Conflict" answers 409.
+    /// </summary>
+    public static class Reservation
+    {
+        public static readonly Error NotFound = new(
+            "Reservation.NotFound", "That booking was not found.");
+
+        public static readonly Error ResourceNotFound = new(
+            "Resource.NotFound", "That resource was not found.");
+
+        public static readonly Error MemberNotFound = new(
+            "ReservationMember.NotFound", "That member is not in this workspace.");
+
+        public static readonly Error NameRequired = new(
+            "Reservation.NameRequired", "Pick the member this booking is for, or give the guest's name.");
+
+        public static readonly Error ResourceNameRequired = new(
+            "Resource.NameRequired", "A resource needs a name.");
+
+        public static readonly Error KindInvalid = new(
+            "Resource.KindInvalid", "A resource is Dining, Meeting, Spa, Court, Studio or Lounge.");
+
+        public static readonly Error ModeInvalid = new(
+            "Resource.BookingModeInvalid", "A resource is booked Exclusive (one booking at a time) or Shared (up to its capacity).");
+
+        public static readonly Error CapacityInvalid = new(
+            "Resource.CapacityInvalid", "A resource holds from 1 to 10,000 people.");
+
+        public static readonly Error PartyInvalid = new(
+            "Reservation.PartyInvalid", "A party is from 1 to 10,000 people.");
+
+        public static readonly Error TimesInvalid = new(
+            "Reservation.TimesInvalid", "A booking needs a start and an end, the end after the start and at most 14 days later.");
+
+        public static readonly Error AmountInvalid = new(
+            "Resource.AmountInvalid", "A deposit or a fee is an amount from 0 to 1,000,000, to the cent.");
+
+        public static readonly Error StatusInvalid = new(
+            "Reservation.StatusInvalid", "A booking is Pending, Confirmed, CheckedIn, Completed, Cancelled or NoShow.");
+
+        public static readonly Error DepositOptionInvalid = new(
+            "Reservation.DepositInvalid", "A deposit is charged to the member's house account (charge), paid now (paid, with how), or waived (waive, with a reason).");
+
+        public static readonly Error WaiveReasonRequired = new(
+            "Reservation.WaiveReasonRequired", "Say why the deposit is waived. The reason stays on the booking.");
+
+        public static Error TooLong(string what, int max) => new(
+            "Reservation.TooLong", $"{what} can be at most {max} characters.");
+
+        public static readonly Error Changed = new(
+            "Reservation.Changed.Conflict", "Someone else changed this booking at the same moment, so nothing was saved. Reload and try again.");
+
+        public static readonly Error ResourceChanged = new(
+            "Resource.Changed.Conflict", "Someone else changed this resource at the same moment, so nothing was saved. Reload and try again.");
+
+        public static readonly Error ResourceInactive = new(
+            "Resource.Inactive.Conflict", "This resource is not taking bookings. Make it bookable again first, or pick another.");
+
+        public static Error TooBig(string resource, int capacity, int party) => new(
+            "Reservation.Capacity.Conflict", $"{resource} holds {capacity}, so a party of {party} can't be booked into it.");
+
+        /// <summary>The booking it would overlap, named, for a resource booked one at a time.</summary>
+        public static Error Overlaps(string resource, string when, string who, string status) => new(
+            "Reservation.Overlap.Conflict", $"{resource} is already booked {when} by {who} ({status}), so it can't take this booking.");
+
+        /// <summary>For a shared resource: how full it already is at its busiest moment in the time asked.</summary>
+        public static Error Full(string resource, int capacity, int booked, string at, int bookings, int party) => new(
+            "Reservation.Capacity.Conflict", $"{resource} holds {capacity}, and {booked} {(booked == 1 ? "is" : "are")} already booked at {at} ({bookings} booking{(bookings == 1 ? "" : "s")}), so a party of {party} doesn't fit. {Math.Max(0, capacity - booked)} {(capacity - booked == 1 ? "place is" : "places are")} free then.");
+
+        public static readonly Error DepositNeedsMember = new(
+            "Reservation.DepositNeedsMember.Conflict", "This resource asks a deposit, which goes on a member's house account. Book it under the member hosting the guest, or have someone who handles money waive it.");
+
+        public static Error CannotMove(string from, string to) => new(
+            "Reservation.CannotMove.Conflict", from switch
+            {
+                "Cancelled" => "This booking was cancelled. Book again instead.",
+                "Completed" => "This booking is completed and stays completed.",
+                _ => $"A booking that is {from} can't be set to {to}.",
+            });
+
+        public static readonly Error HasMoney = new(
+            "Reservation.HasMoney.Conflict", "This booking's deposit or no-show fee is on the member's account, so it can't be deleted. Cancel it instead: the deposit is given back and the record stays.");
+
+        public static readonly Error NotStarted = new(
+            "Reservation.NotStarted.Conflict", "This booking hasn't started yet, so it can't be marked a no-show.");
+
+        public static readonly Error ResourceHasBookings = new(
+            "Resource.HasBookings.Conflict", "This resource has bookings, so it can't be deleted. Make it not bookable instead: its bookings keep its name.");
     }
 
     /// <summary>
@@ -872,7 +1033,11 @@ public static readonly Error AlreadyMember = new(
             "Charge.DescriptionRequired", "A charge needs a description.");
 
         public static readonly Error MethodInvalid = new(
-            "Payment.MethodInvalid", "A payment is made by CardOnFile, Cash, Check, Wire or AppliedCredit.");
+            "Payment.MethodInvalid", "A payment is made by CardOnFile, Card, Twint, DirectDebit, Cash, Check, Wire or AppliedCredit.");
+
+        public static Error ReceivedCurrencyMismatch(string received, string account) => new(
+            "Payment.CurrencyMismatch",
+            $"The money came in {received}, and the member's account is kept in {account}: record it by hand at the rate the bank used.");
 
         public static readonly Error ExpiryInvalid = new(
             "GiftCard.ExpiryInvalid", "A gift card's expiry must be a date in the future.");
@@ -978,6 +1143,221 @@ public static readonly Error AlreadyMember = new(
 
         public static Error TooLong(string what, int max) => new(
             "Club.TooLong", $"{what} can be at most {max} characters.");
+
+        // ── the typed ledger ─────────────────────────────────────────────────────
+
+        public static readonly Error AllocationsInvalid = new(
+            "Payment.AllocationsInvalid", "What a payment pays each charge must be more than 0 and add up to the payment.");
+
+        public static readonly Error ChargeOfAnotherMember = new(
+            "Payment.ChargeOfAnotherMember", "A payment pays one member's charges, and one of those charges is another member's.");
+
+        public static Error CreditTooLow(decimal available, decimal amount) => new(
+            "Payment.CreditTooLow", string.Create(CultureInfo.InvariantCulture,
+                $"The member has {available:0.00} of house credit, so {amount:0.00} can't be paid from it."));
+
+        public static Error RefundTooMuch(decimal left, decimal amount) => new(
+            "Payment.RefundTooMuch", string.Create(CultureInfo.InvariantCulture,
+                $"{left:0.00} of this payment is left to refund, so a refund of {amount:0.00} would be more than was paid."));
+
+        public static readonly Error NothingToRefund = new(
+            "Payment.NothingToRefund.Conflict", "This payment has been refunded or voided in full already.");
+
+        public static readonly Error ReasonRequiredForRefund = new(
+            "Club.ReasonRequired", "Say why this is being refunded. The reason stays on the record.");
+
+        public static readonly Error PeriodBilled = new(
+            "Subscription.PeriodBilled.Conflict", "This period was billed already, so nothing more was charged.");
+
+        public static readonly Error SubscriptionHasCharges = new(
+            "Subscription.HasCharges.Conflict", "This subscription has billed charges, so it can't be deleted. Cancel it instead; its charges stay on the account.");
+
+        public static readonly Error SubscriptionChanged = new(
+            "Subscription.Changed.Conflict", "Someone else changed this subscription at the same moment, so nothing was saved. Reload and try again.");
+
+        public static readonly Error NameRequired = new(
+            "Subscription.NameRequired", "A subscription needs a name.");
+
+        public static readonly Error DonationNotFound = new(
+            "Donation.NotFound", "That donation was not found.");
+
+        public static readonly Error DonationVoided = new(
+            "Donation.Voided.Conflict", "This donation is already voided.");
+
+        public static readonly Error DonationChanged = new(
+            "Donation.Changed.Conflict", "Someone else changed this donation at the same moment, so nothing was saved. Reload and try again.");
+
+        public static readonly Error DonationCannotDelete = new(
+            "Donation.CannotDelete", "A donation can't be deleted. Someone allowed to void money can void it, with a reason, and the record stays.");
+
+        public static readonly Error CauseInvalid = new(
+            "Donation.CauseInvalid", "A donation needs a cause of at most 60 characters.");
+
+        public static readonly Error GiftCardCodeRequired = new(
+            "GiftCard.CodeRequired", "Type the gift card's code.");
+
+        public static readonly Error AccountChanged = new(
+            "HouseAccount.Changed.Conflict", "Something else was posted to this member's account at the same moment, so nothing was saved. Reload and try again.");
+
+        public static readonly Error MemberHasOpenAccount = new(
+            "ClubMember.OpenAccount.Conflict", "This member still has a balance, an open tab or a running subscription. Settle or close them first, or set the member Resigned or Lapsed instead, so the club's books keep saying whose they were.");
+
+        public static readonly Error PeriodInvalid = new(
+            "Club.PeriodInvalid", "A statement's period has to start before it ends and cover at most five years.");
+
+        // ── billing ─────────────────────────────────────────────────────────────
+
+        public static Error PeriodNotStarted(DateTime startsAtUtc) => new(
+            "Subscription.NotDue.Conflict",
+            string.Create(CultureInfo.InvariantCulture,
+                $"This subscription's next period starts on {startsAtUtc:d MMM yyyy}, so nothing was billed. Bill it early to charge that period now."));
+
+        public static readonly Error BilledAhead = new(
+            "Subscription.BilledAhead.Conflict",
+            "The next period has already been billed early, so nothing more was charged. A subscription is billed at most one period ahead.");
+
+        public static Error TierUnknown(string tier) => new(
+            "Member.TierUnknown",
+            $"'{tier}' is not one of the club's membership tiers. Pick one from the price catalogue, or add it there first.");
+
+        public static Error TierNotOnSale(string tier) => new(
+            "Member.TierNotOnSale",
+            $"The {tier} tier is no longer offered, so it can't be given to a member. Members who have it keep it.");
+
+        public static readonly Error MemberNoEmail = new(
+            "ClubMember.NoEmail", "This member has no valid email address on their record, so nothing was sent.");
+
+        public static Error CurrencyMismatch(string itemCurrency, string accountCurrency) => new(
+            "CatalogItem.CurrencyMismatch",
+            $"This item is priced in {itemCurrency} and the member's account is kept in {accountCurrency}, so it can't be charged to it.");
+    }
+
+    /// <summary>
+    /// The club's price catalogue.
+    /// </summary>
+    public static class Catalog
+    {
+        public static readonly Error NotFound = new(
+            "CatalogItem.NotFound", "That catalogue item was not found.");
+
+        public static readonly Error KindInvalid = new(
+            "CatalogItem.KindInvalid", "A catalogue item is a Membership tier, Dues, a Fee, a Product, a Ticket or a MenuItem.");
+
+        public static readonly Error KindFixed = new(
+            "CatalogItem.KindFixed", "An item's kind can't be changed once it exists. Take it off sale and add one of the other kind.");
+
+        public static readonly Error NameRequired = new(
+            "CatalogItem.NameRequired", "A catalogue item needs a name.");
+
+        public static readonly Error PriceInvalid = new(
+            "CatalogItem.PriceInvalid", "A price must be a number from 0 to under 1,000,000,000, to the cent.");
+
+        public static readonly Error VatInvalid = new(
+            "CatalogItem.VatInvalid", "A VAT rate is a percent from 0 to 100, to two decimal places, such as 8.1.");
+
+        public static readonly Error CurrencyInvalid = new(
+            "CatalogItem.CurrencyInvalid", "A currency is a three-letter code, such as CHF.");
+
+        public static readonly Error CadenceInvalid = new(
+            "CatalogItem.CadenceInvalid", "A tier or dues is billed Monthly, Quarterly, SemiAnnual or Annual.");
+
+        public static readonly Error MultiplierInvalid = new(
+            "CatalogItem.MultiplierInvalid", "A loyalty multiplier is a number more than 0 and at most 100, such as 1.5.");
+
+        public static readonly Error ChargeKindInvalid = new(
+            "CatalogItem.ChargeKindInvalid", "An item is charged as Dues, Dining, Bar, Event, Spa, Booking, Retail or Other.");
+
+        public static readonly Error BenefitsInvalid = new(
+            "CatalogItem.BenefitsInvalid", "A tier has at most 20 benefits, each at most 200 characters.");
+
+        public static readonly Error SortOrderInvalid = new(
+            "CatalogItem.SortOrderInvalid", "An item's place in the list is a whole number from 0 to 10,000.");
+
+        public static Error TierNameTaken(string name) => new(
+            "CatalogItem.TierNameTaken.Conflict", $"There is already a tier named {name}. Each tier needs its own name, as members carry it.");
+
+        public static Error NotOnSale(string name) => new(
+            "CatalogItem.NotOnSale.Conflict", $"{name} is no longer on sale, so it can't be charged.");
+
+        public static Error NotForThis(string kind, string use) => new(
+            "CatalogItem.WrongKind", $"A {kind} item can't be used for {use}.");
+
+        public static readonly Error Changed = new(
+            "CatalogItem.Changed.Conflict", "Someone else changed this item at the same moment, so nothing was saved. Reload and try again.");
+    }
+
+    /// <summary>
+    /// Money from outside the club: payment settings, Stripe, QR-bills, bank files and the journal.
+    /// </summary>
+    public static class Payments
+    {
+        public static Error SettingsInvalid(string sentence) => new("PaymentSettings.Invalid", sentence);
+
+        public static readonly Error SettingsChanged = new(
+            "PaymentSettings.Changed.Conflict", "Someone else changed the payment settings at the same moment, so nothing was saved. Reload and try again.");
+
+        public static readonly Error NotSetUp = new(
+            "Payments.NotSetUp", "Online payments are not set up in this workspace. Someone who manages settings adds the Stripe key under Club settings, Payments.");
+
+        public static readonly Error KeyUnreadable = new(
+            "Payments.KeyUnreadable", "The saved Stripe key can no longer be read on this server. Enter it again under Club settings, Payments.");
+
+        public static Error ProviderRefused(string message) => new("Payments.ProviderRefused", message);
+
+        public static Error ProviderUnreachable(string message) => new("Payments.SendFailed", message);
+
+        public static readonly Error LinkInvalid = new(
+            "PayLink.NotFound", "This payment link is not valid any more. Ask the club for a new one.");
+
+        public static readonly Error PurposeInvalid = new(
+            "PayLink.PurposeInvalid", "A payment link is for what the member owes (account), some of their charges (charges), or saving a card (setup).");
+
+        public static readonly Error NothingToPay = new(
+            "Payments.NothingToPay", "There is nothing to pay: the charges are paid, or the account is in credit.");
+
+        public static readonly Error TooManyCharges = new(
+            "Payments.TooManyCharges", "Choose at most 50 charges at a time, or none for everything the member owes.");
+
+        public static readonly Error CurrencyNotOffered = new(
+            "Payments.CurrencyNotOffered", "The member's account is in a currency online payments do not take.");
+
+        public static readonly Error NoSavedCard = new(
+            "Payments.NoSavedCard", "This member has no saved card. Send them a link to save one first.");
+
+        public static readonly Error AgreementRequired = new(
+            "Payments.AgreementRequired", "Charging dues to a saved card needs the member's agreement. Confirm that they agreed.");
+
+        public static readonly Error ProfileChanged = new(
+            "PaymentProfile.Changed.Conflict", "Someone else changed this member's saved card at the same moment, so nothing was saved. Reload and try again.");
+
+        public static readonly Error ChargeInProgress = new(
+            "Payments.Charge.Conflict", "A charge to this card is already under way for these charges. Wait for it to finish.");
+
+        public static readonly Error NotAProviderPayment = new(
+            "Payments.NotAProviderPayment", "This payment was not taken online, so it is refunded by hand.");
+
+        public static readonly Error ReferenceNotFound = new(
+            "PaymentReference.NotFound", "No QR-bill of this workspace carries that reference.");
+
+        public static Error BankFileInvalid(string sentence) => new("BankFile.Invalid", sentence);
+
+        public static readonly Error BankTransactionNotFound = new(
+            "BankTransaction.NotFound", "That bank transfer was not found.");
+
+        public static readonly Error BankTransactionResolved = new(
+            "BankTransaction.Resolved.Conflict", "This transfer is already recorded as a member's payment.");
+
+        public static readonly Error BankTransactionChanged = new(
+            "BankTransaction.Changed.Conflict", "Someone else dealt with this transfer at the same moment. Reload to see what they did.");
+
+        public static readonly Error IgnoreReasonRequired = new(
+            "BankTransaction.ReasonRequired", "Say why this transfer is not a member's payment.");
+
+        public static readonly Error JournalPeriodInvalid = new(
+            "Journal.PeriodInvalid", "The journal's period must start before it ends and cover at most a year.");
+
+        public static readonly Error JournalLayoutInvalid = new(
+            "Journal.LayoutInvalid", "The journal's layout is gross (one booking per entry, with its VAT code) or net (VAT booked on its own line).");
     }
 
     /// <summary>

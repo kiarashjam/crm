@@ -1,10 +1,12 @@
 // House-account charges and payments.
 //
-// Every member has an internal ledger that records charges (dining bills,
-// event tickets, dues, spa, etc.) and payments. The member's `houseAccountBalance`
-// stays in sync with the running ledger total.
+// Every member has a house account on the server's money ledger: charges (dining bills,
+// event tickets, dues, spa, etc.), payments, and the entries that correct them. Entries
+// are only ever added: a void or a refund is an entry of its own, and the member's
+// `houseAccountBalance` is what the entries add up to (negative when they owe).
 
-import { apiWithFallback, authFetchJson } from './apiClient';
+import { apiWithFallback, authFetchJson, type RequestOptions } from './apiClient';
+import { buildStatement } from '@/app/lib/statement';
 import { createMockStore, mockId } from './mockStore';
 import { getMembers, updateMember, type Member } from './members';
 
@@ -19,6 +21,11 @@ export interface Charge {
   id: string;
   memberId: string;
   memberName: string;
+  /**
+   * Charge, or a balance brought over (Opening) or set by hand (Adjustment): what was
+   * owed before the ledger is paid like any charge.
+   */
+  entryType?: 'Charge' | 'Opening' | 'Adjustment';
   kind: ChargeKind;
   description: string;
   amount: number;
@@ -32,6 +39,12 @@ export interface Charge {
   voidReason?: string;
   voidedAtUtc?: string;
   voidedByName?: string;
+  /**
+   * The household member who ran it up, when their bills roll up to this account's
+   * holder (the household's primary); left out for the account holder's own charges.
+   */
+  incurredByMemberId?: string;
+  incurredByName?: string;
 }
 
 export interface Payment {
@@ -39,16 +52,71 @@ export interface Payment {
   memberId: string;
   memberName: string;
   amount: number;
-  method: 'CardOnFile' | 'Cash' | 'Check' | 'Wire' | 'AppliedCredit';
+  method: 'CardOnFile' | 'Card' | 'Twint' | 'DirectDebit' | 'Cash' | 'Check' | 'Wire' | 'AppliedCredit';
   reference?: string;
   receivedAtUtc: string;
+  /**
+   * Who took the money, when it came from outside: stripe (an online payment, with Stripe's
+   * payment id) or bank (a transfer from the bank's file, with the bank's entry reference).
+   */
+  provider?: string;
+  providerPaymentId?: string;
   chargeId?: string;
   appliedToChargeIds: string[];
-  /** A voided payment stays listed but pays nothing: its charge owes again what it paid. */
-  status?: 'Voided';
+  /**
+   * A voided payment stays listed but pays nothing: its charge owes again what it paid.
+   * A refunded one gave part or all of the money back.
+   */
+  status?: 'Voided' | 'Refunded' | 'PartiallyRefunded';
+  refundedAmount?: number;
   voidReason?: string;
   voidedAtUtc?: string;
   voidedByName?: string;
+}
+
+/** One entry on a member's statement, with what they owed after it. */
+/**
+ * Whether a charge is a sale: something the club sold. A balance brought over from before
+ * the ledger (Opening) or set by hand (Adjustment) is owed like a charge, but paying it
+ * is not revenue.
+ */
+export function isSale(c: Pick<Charge, 'entryType'>): boolean {
+  return (c.entryType ?? 'Charge') === 'Charge';
+}
+
+export interface StatementLine {
+  id: string;
+  atUtc: string;
+  entryType: string;
+  side: 'charge' | 'payment';
+  description: string;
+  /** What it added to what was owed. */
+  debit: number;
+  /** What it took off. */
+  credit: number;
+  /** The house balance after it: negative while the member owes. */
+  balance: number;
+  kind?: string;
+  method?: string;
+  reference?: string;
+  reason?: string;
+  /** Who in the household ran it up, on a charge rolled up to this account. */
+  incurredByMemberId?: string;
+  incurredByName?: string;
+}
+
+/** A member's entries for [fromUtc, toUtc), from the ledger. Balances are negative while the member owes. */
+export interface AccountStatement {
+  memberId: string;
+  memberName: string;
+  currency: string;
+  fromUtc: string;
+  toUtc: string;
+  openingBalance: number;
+  closingBalance: number;
+  totalDebits: number;
+  totalCredits: number;
+  lines: StatementLine[];
 }
 
 export const CHARGE_KINDS: ChargeKind[] = [
@@ -70,6 +138,9 @@ export const CHARGE_STATUSES: ChargeStatus[] = [
 ];
 export const PAYMENT_METHODS: Payment['method'][] = [
   'CardOnFile',
+  'Card',
+  'Twint',
+  'DirectDebit',
   'Cash',
   'Check',
   'Wire',
@@ -78,10 +149,19 @@ export const PAYMENT_METHODS: Payment['method'][] = [
 
 export const PAYMENT_METHOD_LABELS: Record<Payment['method'], string> = {
   CardOnFile: 'Card on file',
+  Card: 'Card',
+  Twint: 'TWINT',
+  DirectDebit: 'Direct debit',
   Cash: 'Cash',
   Check: 'Check',
   Wire: 'Wire transfer',
   AppliedCredit: 'House credit',
+};
+
+/** Who took a payment from outside the club, as the payments list says it. */
+export const PAYMENT_PROVIDER_LABELS: Record<string, string> = {
+  stripe: 'Stripe',
+  bank: 'Bank file',
 };
 
 const day = 86_400_000;
@@ -207,10 +287,10 @@ const paymentStore = createMockStore<Payment>({
   idOf: (p) => p.id,
 });
 
-export async function getCharges(): Promise<Charge[]> {
+export async function getCharges(req?: RequestOptions): Promise<Charge[]> {
   return apiWithFallback(
     async () => {
-      const res = await authFetchJson<Charge[]>('/api/charges');
+      const res = await authFetchJson<Charge[]>('/api/charges', { signal: req?.signal });
       return Array.isArray(res) ? res : [];
     },
     async () => {
@@ -222,10 +302,10 @@ export async function getCharges(): Promise<Charge[]> {
   );
 }
 
-export async function getPayments(): Promise<Payment[]> {
+export async function getPayments(req?: RequestOptions): Promise<Payment[]> {
   return apiWithFallback(
     async () => {
-      const res = await authFetchJson<Payment[]>('/api/payments');
+      const res = await authFetchJson<Payment[]>('/api/payments', { signal: req?.signal });
       return Array.isArray(res) ? res : [];
     },
     async () => {
@@ -245,6 +325,11 @@ export interface ChargeInput {
   amount: number;
   dueAtUtc?: string;
   reference?: string;
+  /**
+   * A fee, product, ticket or menu item from the price catalogue: the server charges its
+   * price, as its charge kind and with its VAT rate, whatever amount or kind is sent.
+   */
+  catalogItemId?: string;
 }
 
 export async function createCharge(input: ChargeInput): Promise<Charge | null> {
@@ -302,6 +387,66 @@ export async function voidPayment(id: string, reason: string): Promise<Payment |
       const voided = paymentStore.update(id, { status: 'Voided', voidReason: reason, voidedAtUtc: new Date().toISOString() });
       await recomputeMemberBalance(existing.memberId);
       return voided;
+    },
+  );
+}
+
+/**
+ * A member's statement for a period, worked out by the server from the ledger: the
+ * opening balance, every entry (charges, payments, credits, voids, refunds) with the
+ * balance after it, and the closing balance.
+ */
+export async function getMemberStatement(memberId: string, fromUtc: string, toUtc: string, req?: RequestOptions): Promise<AccountStatement> {
+  return apiWithFallback(
+    () => authFetchJson<AccountStatement>(
+      `/api/members/${memberId}/statement?from=${encodeURIComponent(fromUtc)}&to=${encodeURIComponent(toUtc)}`,
+      { signal: req?.signal },
+    ),
+    async () => {
+      // The demo's own charges and payments, in the server's shape.
+      await delay(80);
+      const charges = chargeStore.list().filter((c) => c.memberId === memberId);
+      const payments = paymentStore.list().filter((p) => p.memberId === memberId);
+      const start = Date.parse(fromUtc);
+      const end = Date.parse(toUtc);
+      const statement = buildStatement(charges, payments, start, end);
+      const entries = [
+        ...statement.charges.filter((c) => c.status !== 'Voided').map((c) => ({
+          id: c.id, atUtc: c.postedAtUtc, entryType: 'Charge', side: 'charge' as const, description: c.description,
+          debit: c.amount, credit: 0, kind: c.kind, reference: c.reference,
+        })),
+        ...statement.payments.map((p) => ({
+          id: p.id, atUtc: p.receivedAtUtc, entryType: 'Payment', side: 'payment' as const,
+          description: `Payment (${PAYMENT_METHOD_LABELS[p.method]})`, debit: 0, credit: p.amount, method: p.method, reference: p.reference,
+        })),
+      ].sort((a, b) => Date.parse(a.atUtc) - Date.parse(b.atUtc));
+      let running = -statement.openingBalance;
+      const lines = entries.map((line) => {
+        running = Math.round((running + line.credit - line.debit) * 100) / 100;
+        return { ...line, balance: running };
+      });
+      return {
+        memberId, memberName: charges[0]?.memberName ?? payments[0]?.memberName ?? '', currency: '',
+        fromUtc, toUtc, openingBalance: -statement.openingBalance, closingBalance: -statement.closingBalance,
+        totalDebits: statement.periodCharges, totalCredits: statement.periodPayments, lines,
+      };
+    },
+  );
+}
+
+/**
+ * Pay money back to the member, part or all of a payment, with a reason. What the payment
+ * left unused goes back first; beyond that its charges owe again. Takes money.void.
+ */
+export async function refundPayment(id: string, amount: number, reason: string): Promise<Payment | null> {
+  return apiWithFallback(
+    () => authFetchJson<Payment>(`/api/payments/${id}/refund`, { method: 'POST', body: JSON.stringify({ amount, reason }) }),
+    async () => {
+      await delay(100);
+      const existing = paymentStore.byId(id);
+      if (!existing) return null;
+      const refundedAmount = Math.round(((existing.refundedAmount ?? 0) + amount) * 100) / 100;
+      return paymentStore.update(id, { refundedAmount, status: refundedAmount >= existing.amount ? 'Refunded' : 'PartiallyRefunded' });
     },
   );
 }

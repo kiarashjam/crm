@@ -152,7 +152,8 @@ public class PermissionSetsTests
         await RefusedForAsync(await voider.PostAsync($"/api/charges/{charge}/void", Body(new { reason = "Posted twice" })), MemberPermissions.ManageMoney, "voiding a charge without money.manage");
         await RefusedForAsync(await voider.PostAsync($"/api/gift-cards/{card}/void", Body(new { reason = "Lost" })), MemberPermissions.ManageMoney,
             "voiding a gift card without money.manage, as with a charge");
-        (await club.App.Services.Read(db => db.ClubDocuments.Single(d => d.Id == Guid.Parse(card)).Payload)).Should().NotContain("Voided");
+        (await club.App.Services.Read(db => db.ClubGiftCards.Single(c => c.Id == Guid.Parse(card)).Status)).Should().Be("Active");
+        (await club.App.Services.Read(db => db.ClubGiftCardTransactions.Count(t => t.GiftCardId == Guid.Parse(card)))).Should().Be(1, "only its issue");
     }
 
     [Fact]

@@ -69,6 +69,7 @@ public partial class AppDbContext : DbContext
     public DbSet<ForecastSnapshot> ForecastSnapshots => Set<ForecastSnapshot>();
     public DbSet<SentMessage> SentMessages => Set<SentMessage>();
     public DbSet<OutboundMessage> OutboundMessages => Set<OutboundMessage>();
+    public DbSet<OutboundAttachment> OutboundAttachments => Set<OutboundAttachment>();
     public DbSet<EmailSuppression> EmailSuppressions => Set<EmailSuppression>();
     public DbSet<InboundEmail> InboundEmails => Set<InboundEmail>();
     public DbSet<AutomationRule> AutomationRules => Set<AutomationRule>();
@@ -80,10 +81,49 @@ public partial class AppDbContext : DbContext
     public DbSet<ClubVisit> ClubVisits => Set<ClubVisit>();
     public DbSet<LoyaltyLedgerEntry> LoyaltyLedger => Set<LoyaltyLedgerEntry>();
     public DbSet<ClubDocument> ClubDocuments => Set<ClubDocument>();
+    public DbSet<ClubHouseAccount> ClubHouseAccounts => Set<ClubHouseAccount>();
+    public DbSet<ClubCharge> ClubCharges => Set<ClubCharge>();
+    public DbSet<ClubPayment> ClubPayments => Set<ClubPayment>();
+    public DbSet<ClubPaymentAllocation> ClubPaymentAllocations => Set<ClubPaymentAllocation>();
+    public DbSet<ClubSubscription> ClubSubscriptions => Set<ClubSubscription>();
+    public DbSet<ClubGiftCard> ClubGiftCards => Set<ClubGiftCard>();
+    public DbSet<ClubGiftCardTransaction> ClubGiftCardTransactions => Set<ClubGiftCardTransaction>();
+    public DbSet<ClubTab> ClubTabs => Set<ClubTab>();
+    public DbSet<ClubTabItem> ClubTabItems => Set<ClubTabItem>();
+    public DbSet<ClubDonation> ClubDonations => Set<ClubDonation>();
+    // The price catalogue and what the billing run records.
+    public DbSet<ClubCatalogItem> ClubCatalogItems => Set<ClubCatalogItem>();
+    public DbSet<ClubBillingRun> ClubBillingRuns => Set<ClubBillingRun>();
+    public DbSet<ClubPaymentReminder> ClubPaymentReminders => Set<ClubPaymentReminder>();
+    public DbSet<ClubStatementDelivery> ClubStatementDeliveries => Set<ClubStatementDelivery>();
+    // Club events with their guest lists, and the bookable resources with their bookings.
+    public DbSet<ClubEvent> ClubEvents => Set<ClubEvent>();
+    public DbSet<ClubEventRegistration> ClubEventRegistrations => Set<ClubEventRegistration>();
+    public DbSet<ClubResource> ClubResources => Set<ClubResource>();
+    public DbSet<ClubReservation> ClubReservations => Set<ClubReservation>();
+    // How people join (applications and the public form) and who belongs together (households).
+    public DbSet<ClubApplication> ClubApplications => Set<ClubApplication>();
+    public DbSet<ClubApplicationForm> ClubApplicationForms => Set<ClubApplicationForm>();
+    public DbSet<ClubHousehold> ClubHouseholds => Set<ClubHousehold>();
+    public DbSet<ClubHouseholdMember> ClubHouseholdMembers => Set<ClubHouseholdMember>();
+    // Money from outside the club (Stripe, bank files with QR references) and the accounting
+    // settings: what a payment provider or the bank said, kept beside the ledger it posts to.
+    public DbSet<ClubPaymentSettings> ClubPaymentSettings => Set<ClubPaymentSettings>();
+    public DbSet<ClubPaymentProfile> ClubPaymentProfiles => Set<ClubPaymentProfile>();
+    public DbSet<ClubOnlinePayment> ClubOnlinePayments => Set<ClubOnlinePayment>();
+    public DbSet<ClubProviderEvent> ClubProviderEvents => Set<ClubProviderEvent>();
+    public DbSet<ClubPaymentReference> ClubPaymentReferences => Set<ClubPaymentReference>();
+    public DbSet<ClubBankImport> ClubBankImports => Set<ClubBankImport>();
+    public DbSet<ClubBankTransaction> ClubBankTransactions => Set<ClubBankTransaction>();
     public DbSet<SalesTeam> SalesTeams => Set<SalesTeam>();
     public DbSet<SalesTeamMember> SalesTeamMembers => Set<SalesTeamMember>();
     public DbSet<ImportBatch> ImportBatches => Set<ImportBatch>();
     public DbSet<DuplicateDecision> DuplicateDecisions => Set<DuplicateDecision>();
+
+    // Member communications and consent.
+    public DbSet<ConsentRecord> ConsentRecords => Set<ConsentRecord>();
+    public DbSet<Campaign> Campaigns => Set<Campaign>();
+    public DbSet<MemberMessage> MemberMessages => Set<MemberMessage>();
 
     /// <summary>
     /// Whether saving writes audit lines. Off only while an organization is copied: its
