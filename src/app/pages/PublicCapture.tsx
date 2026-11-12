@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { getPublicCaptureForm, submitPublicCapture, PublicCaptureError } from '@/app/api/leadOps';
+import { Link, useParams } from 'react-router-dom';
+import { getPublicCaptureForm, submitPublicCapture, PublicCaptureError, type MarketingConsentMode } from '@/app/api/leadOps';
 
 /**
  * The public form a stranger fills in on the club's website.
@@ -26,6 +26,11 @@ export default function PublicCapture() {
   const [jobTitle, setJobTitle] = useState('');
   const [country, setCountry] = useState('');
   const [website, setWebsite] = useState('');
+  // The marketing box: never ticked in advance. Whether it shows, and whether it must be
+  // ticked, is the workspace's privacy setting.
+  const [consentMode, setConsentMode] = useState<MarketingConsentMode>('off');
+  const [consentText, setConsentText] = useState('');
+  const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const thanksRef = useRef<HTMLHeadingElement>(null);
@@ -37,6 +42,9 @@ export default function PublicCapture() {
       .then((form) => {
         if (cancelled) return;
         if (form.name?.trim()) setTitle(form.name.trim());
+        const mode = form.marketingConsent ?? 'off';
+        setConsentMode(mode === 'optional' || mode === 'required' ? mode : 'off');
+        setConsentText(form.marketingConsentText?.trim() || 'Yes, I would like to hear about news, events and offers by email.');
         setState('ready');
       })
       .catch((err: unknown) => {
@@ -60,12 +68,16 @@ export default function PublicCapture() {
     setBusy(true);
     setError(null);
     try {
-      const message = await submitPublicCapture(token, { name, email, phone, company, jobTitle, country, website });
+      const message = await submitPublicCapture(token, {
+        name, email, phone, company, jobTitle, country, website,
+        ...(consentMode === 'off' ? {} : { marketingConsent: consent }),
+      });
       setDone(message ?? "Thanks. We'll be in touch.");
     } catch (err) {
       const status = err instanceof PublicCaptureError ? err.status : 0;
       setError(
         status === 429 ? 'A lot of messages are arriving right now. Please try again in a minute.'
+          : status === 400 && consentMode === 'required' && !consent ? 'Please tick the box: this form signs you up for news.'
           : status === 400 ? 'Please check the email address and that each field is not too long.'
           : status === 404 ? 'This form is no longer available.'
           : 'That could not be sent. Please check your connection and try again.',
@@ -121,6 +133,25 @@ export default function PublicCapture() {
                   <input tabIndex={-1} autoComplete="off" value={website} onChange={(e) => setWebsite(e.target.value)} />
                 </label>
               </div>
+              {consentMode !== 'off' && (
+                <label className="flex items-start gap-2 pt-1 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={consent}
+                    required={consentMode === 'required'}
+                    onChange={(e) => setConsent(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300"
+                  />
+                  <span>
+                    {consentText}
+                    {consentMode === 'required' && <span className="text-red-600" aria-hidden="true"> *</span>}
+                  </span>
+                </label>
+              )}
+              <p className="text-xs text-slate-500">
+                How your details are used, and your rights over them:{' '}
+                <Link to={`/privacy?form=${encodeURIComponent(token)}`} className="underline">privacy notice</Link>.
+              </p>
               <p role="alert" className="min-h-0 text-sm text-red-600">{error}</p>
               <button
                 type="submit"

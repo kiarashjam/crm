@@ -454,6 +454,8 @@ export interface PublicApplicationForm {
   intro?: string | null;
   consentText: string;
   tiers: PublicTier[];
+  /** Whether the form shows the marketing checkbox, and whether it must be ticked (the workspace's privacy settings). */
+  marketingConsent?: 'off' | 'optional' | 'required';
 }
 
 export interface PublicApplication {

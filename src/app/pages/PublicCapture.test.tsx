@@ -84,4 +84,52 @@ describe('the public capture form', () => {
     expect(trap).not.toBeNull();
     expect(trap!.closest('[aria-hidden="true"]')).not.toBeNull();
   });
+
+  it('asks nothing about news when the workspace has the box off, and sends no answer', async () => {
+    api.submit.mockResolvedValue(null);
+    show();
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText(/^Name/), 'Jean');
+    await user.type(screen.getByLabelText(/^Email/), 'jean@example.ch');
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(api.submit).toHaveBeenCalled());
+    expect(api.submit.mock.calls[0]![1]).not.toHaveProperty('marketingConsent');
+  });
+
+  it('offers the box unticked when consent is optional, and sends the answer either way', async () => {
+    api.get.mockResolvedValue({
+      name: 'Join the club', marketingConsent: 'optional', marketingConsentText: 'Send me the club news.',
+    });
+    api.submit.mockResolvedValue(null);
+    show();
+    const user = userEvent.setup();
+    const box = await screen.findByRole('checkbox', { name: 'Send me the club news.' });
+    expect(box).not.toBeChecked();
+    expect(box).not.toBeRequired();
+    await user.type(screen.getByLabelText(/^Name/), 'Jean');
+    await user.type(screen.getByLabelText(/^Email/), 'jean@example.ch');
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(api.submit).toHaveBeenCalledWith('tok', expect.objectContaining({ marketingConsent: false })));
+  });
+
+  it('makes the box a condition of sending when the workspace requires consent', async () => {
+    api.get.mockResolvedValue({ name: 'Newsletter', marketingConsent: 'required', marketingConsentText: 'Sign me up for the news.' });
+    api.submit.mockResolvedValue(null);
+    show();
+    const user = userEvent.setup();
+    const box = await screen.findByRole('checkbox', { name: /Sign me up for the news/ });
+    expect(box).toBeRequired();
+    await user.type(screen.getByLabelText(/^Name/), 'Jean');
+    await user.type(screen.getByLabelText(/^Email/), 'jean@example.ch');
+    await user.click(box);
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(api.submit).toHaveBeenCalledWith('tok', expect.objectContaining({ marketingConsent: true })));
+  });
+
+  it("links to the club's own privacy notice", async () => {
+    show();
+    const link = await screen.findByRole('link', { name: 'privacy notice' });
+    expect(link).toHaveAttribute('href', '/privacy?form=tok');
+  });
 });

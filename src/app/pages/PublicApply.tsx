@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import {
   getPublicApplicationForm,
   submitPublicApplication,
@@ -148,12 +148,25 @@ export default function PublicApply() {
                   className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
                 />
               </label>
-              {form && (
+              {form && form.marketingConsent !== 'off' && (
                 <label className="flex items-start gap-2 text-sm text-slate-700">
-                  <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-1 h-4 w-4 rounded border-slate-300" />
-                  <span>{form.consentText}</span>
+                  <input
+                    type="checkbox"
+                    checked={consent}
+                    required={form.marketingConsent === 'required'}
+                    onChange={(e) => setConsent(e.target.checked)}
+                    className="mt-1 h-4 w-4 rounded border-slate-300"
+                  />
+                  <span>
+                    {form.consentText}
+                    {form.marketingConsent === 'required' && <span className="text-red-600" aria-hidden="true"> *</span>}
+                  </span>
                 </label>
               )}
+              <p className="text-xs text-slate-500">
+                How your details are used, and your rights over them:{' '}
+                <Link to={`/privacy?form=${encodeURIComponent(token)}`} className="underline">privacy notice</Link>.
+              </p>
               {/* Honeypot: hidden from people and from assistive technology. A bot that
                   fills every field fills this one, and nothing is saved. */}
               <div aria-hidden="true" className="absolute left-[-10000px] top-auto h-px w-px overflow-hidden">
