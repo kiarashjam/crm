@@ -122,6 +122,25 @@ public static class AutomationConditions
     public static string? Serialize(ConditionGroup? group) =>
         IsEmpty(group) ? null : JsonSerializer.Serialize(group, AutomationSteps.Json);
 
+    /// <summary>
+    /// The group as a request sent it, without what JSON can leave null in it (a list sent as
+    /// null, a condition, group or value sent as null): checking and evaluating it then never
+    /// trip over one, and a body with one is refused or read, not answered with an error.
+    /// </summary>
+    public static ConditionGroup? Clean(ConditionGroup? group) => group == null ? null : new ConditionGroup
+    {
+        Match = group.Match,
+        Conditions = (group.Conditions ?? []).Where(c => c != null).Select(c => new AutomationCondition
+        {
+            Field = c.Field ?? "",
+            Op = c.Op ?? "",
+            Value = c.Value,
+            Values = c.Values?.Where(v => v != null).ToList(),
+            To = c.To,
+        }).ToList(),
+        Groups = group.Groups?.Where(g => g != null).Select(g => Clean(g)!).ToList(),
+    };
+
     /// <summary>A group with no conditions in it or in its groups, which every record meets.</summary>
     public static bool IsEmpty(ConditionGroup? group) =>
         group == null || (group.Conditions.Count == 0 && (group.Groups ?? []).All(IsEmpty));

@@ -107,7 +107,8 @@ public sealed class AutomationService : IAutomationService
         if (trigger == null) return TriggerInvalid;
         var steps = Normalize(request.Actions);
         if (steps.Count == 0) return ActionRequired;
-        var conditions = AutomationConditions.IsEmpty(request.Conditions) ? null : request.Conditions;
+        var sent = AutomationConditions.Clean(request.Conditions);
+        var conditions = AutomationConditions.IsEmpty(sent) ? null : sent;
         if (await CheckAsync(trigger, request.TriggerConfig, conditions, request.SendWindow, steps, organizationId, ct) is { } invalid) return invalid;
 
         var row = new AutomationRule
@@ -153,8 +154,9 @@ public sealed class AutomationService : IAutomationService
             : AutomationEngine.TriggerConfig(row)?
                 .Where(p => trigger.TakesDaysBefore && p.Key == AutomationCatalog.DaysBeforeKey)
                 .ToDictionary(p => p.Key, p => p.Value));
-        var conditions = request.Conditions != null
-            ? (AutomationConditions.IsEmpty(request.Conditions) ? null : request.Conditions)
+        var sent = AutomationConditions.Clean(request.Conditions);
+        var conditions = sent != null
+            ? (AutomationConditions.IsEmpty(sent) ? null : sent)
             : request.Clears(nameof(request.Conditions)) ? null : AutomationConditions.Parse(row.ConditionsJson);
         var window = request.SendWindow ?? (request.Clears(nameof(request.SendWindow)) ? null : SendWindows.Parse(row.SendWindowJson));
         var steps = request.Actions != null ? Normalize(request.Actions) : AutomationSteps.Parse(row.ActionsJson);
@@ -347,7 +349,7 @@ public sealed class AutomationService : IAutomationService
                 Config = (s.Config ?? new Dictionary<string, string>())
                     .Where(p => p.Value != null)
                     .ToDictionary(p => p.Key, p => p.Value),
-                Condition = type == AutomationStepTypes.Branch ? s.Condition : null,
+                Condition = type == AutomationStepTypes.Branch ? AutomationConditions.Clean(s.Condition) : null,
                 Then = type == AutomationStepTypes.Branch ? Normalize(s.Then) : null,
                 Else = type == AutomationStepTypes.Branch ? Normalize(s.Else) : null,
             };

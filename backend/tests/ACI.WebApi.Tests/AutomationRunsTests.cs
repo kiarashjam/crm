@@ -507,6 +507,38 @@ public class AutomationRunsTests
         await Json(await owner.PutAsync($"/api/automations/{ruleId}", Body(new { name = "Route new leads" })), "rename it");
     }
 
+    [Fact]
+    public async Task ConditionsWithNullsInTheirListsAreReadWithoutThem_NotAnsweredWithAnError()
+    {
+        await using var app = new App();
+        var (owner, _, _) = await WorkspaceAsync(app);
+
+        var created = await Json(await owner.PostAsync("/api/automations", Body(new
+        {
+            name = "A null condition", trigger = "lead.created",
+            conditions = new { match = "all", conditions = new object?[] { null }, groups = new object?[] { null } },
+            actions = new[] { Task("Call") },
+        })), "a condition or a group sent as null is left out");
+        created.GetProperty("conditions").ValueKind.Should().Be(JsonValueKind.Null, "nothing was left to test, so the rule runs for every lead");
+
+        var withValue = await Json(await owner.PostAsync("/api/automations", Body(new
+        {
+            name = "A null value", trigger = "lead.created",
+            conditions = new { match = "all", conditions = new[] { new { field = "status", op = "is_any_of", values = new[] { null, "Qualified" } } } },
+            actions = new[] { Task("Call") },
+        })), "a value sent as null is left out");
+        withValue.GetProperty("conditions").GetProperty("conditions")[0].GetProperty("values").EnumerateArray()
+            .Select(v => v.GetString()).Should().Equal("Qualified");
+
+        var branch = await owner.PostAsync("/api/automations", Body(new
+        {
+            name = "A null in a branch", trigger = "lead.created",
+            actions = new object[] { new { type = "branch", condition = new { match = "all", conditions = new object?[] { null } }, then = new[] { Task("Call") } } },
+        }));
+        branch.StatusCode.Should().Be(HttpStatusCode.BadRequest, "with its null left out, the branch has nothing to decide on");
+        (await branch.Content.ReadAsStringAsync()).Should().Contain("needs a condition");
+    }
+
     // ── claims ───────────────────────────────────────────────────────────────
 
     [Fact]
