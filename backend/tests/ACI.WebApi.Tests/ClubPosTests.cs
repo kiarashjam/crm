@@ -352,6 +352,35 @@ public class ClubPosTests
         (await Club.BalanceAsync(client, jean)).Should().Be(-108.50m);
     }
 
+    [Fact]
+    public async Task ANewTicketIsPostedFirst_HoweverManyWaitForStaff()
+    {
+        using var app = new PosApp();
+        var (client, org, jean) = await ConnectedClubAsync(app);
+        // A thousand tickets from yesterday wait for staff: customers the POS knows, whom no member's code names.
+        using (var scope = app.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ACI.Infrastructure.Persistence.AppDbContext>();
+            using var acting = db.ActFor(org, null);
+            var data = JsonSerializer.Serialize(new PosTicketData("46100001:W", "W", "46100001", Now.AddDays(-1), "CHF", false,
+                [new PosTicketLine("Coffee", null, 1, 5.00m, 8.1m, 0, null)], [], null, null, "c-9", "A guest", null, []),
+                new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            for (var i = 0; i < 1000; i++)
+                db.ClubPosTickets.Add(new ClubPosTicket
+                {
+                    Id = Guid.NewGuid(), OrganizationId = org, Provider = PosProviders.LightspeedK, ExternalId = $"46100001:W{i}", ReceiptNumber = $"W{i}",
+                    ClosedAtUtc = Now.AddDays(-1).AddSeconds(i), Currency = "CHF", Total = 5.00m, CustomerId = "c-9", CustomerName = "A guest", DataJson = data,
+                    Status = PosTicketStatuses.Unmatched, Attempts = 1, ImportedAtUtc = Now.AddDays(-1),
+                    Note = "The POS put a customer on it that no member's code names. Say whose it is, or set it aside.",
+                });
+            await db.SaveChangesAsync();
+        }
+        app.Lightspeed.Sales.Add(Sale("R150", Now.AddMinutes(-5), [Line("Negroni", 1, 18.50m, 8.1m)], [OnAccount(18.50m)], accountName: "1042"));
+
+        (await ImportAsync(client)).GetProperty("posted").GetInt32().Should().Be(1);
+        (await Club.BalanceAsync(client, jean)).Should().Be(-18.50m, "a new ticket is worked out before the ones already waiting are tried again");
+    }
+
     // ── staff deal with what waits ───────────────────────────────────────────
 
     [Fact]
@@ -512,6 +541,36 @@ public class ClubPosTests
         (await TicketsAsync(client, "attention")).Should().BeEmpty();
         await ImportAsync(client);
         Ticket(await TicketsAsync(client), "R60").GetProperty("status").GetString().Should().Be("ignored");
+    }
+
+    [Fact]
+    public async Task ATicketSetAsideBeforeAnImportGotToIt_StaysSetAside()
+    {
+        using var app = new PosApp();
+        var (client, _, jean) = await ConnectedClubAsync(app);
+        // Two tickets, a page each; Lightspeed stops answering after the first page, so the run has
+        // saved the first ticket and stops before working out whose it is.
+        app.Lightspeed.PageSize = 1;
+        app.Lightspeed.Sales.AddRange(
+        [
+            Sale("R100", Now.AddMinutes(-30), [Line("Staff lunch", 1, 30.00m, 8.1m)], [OnAccount(30.00m)], accountName: "1042"),
+            Sale("R101", Now.AddMinutes(-20), [Line("Coffee", 1, 5.00m, 8.1m)], [OnAccount(5.00m)], accountName: "1042"),
+        ]);
+        app.Lightspeed.FailSalesFrom = 2;
+        await Club.Refused(await client.PostAsync("/api/pos/import", null), HttpStatusCode.BadGateway, "an import the POS stops answering");
+        var waiting = Ticket(await TicketsAsync(client), "R100");
+        waiting.GetProperty("attempts").GetInt32().Should().Be(0, "the run stopped before it got to the ticket");
+
+        // Staff know it is the chef's lunch, put on Jean's account by mistake, and set it aside.
+        await Club.Json(await client.PostAsync($"/api/pos/tickets/{waiting.GetProperty("id").GetGuid()}/ignore",
+            Body(new { reason = "The chef's own lunch", version = waiting.GetProperty("version").GetGuid() })), "set it aside");
+
+        app.Lightspeed.FailSalesFrom = null;
+        await ImportAsync(client);
+        var tickets = await TicketsAsync(client);
+        Ticket(tickets, "R100").GetProperty("status").GetString().Should().Be("ignored", "staff set it aside, and no import overrules them");
+        Ticket(tickets, "R101").GetProperty("status").GetString().Should().Be("posted");
+        (await Club.BalanceAsync(client, jean)).Should().Be(-5.00m, "only the coffee is Jean's");
     }
 
     [Fact]

@@ -146,18 +146,28 @@ public sealed partial class ClubPosService
             }
 
             // What came in, and what still waits for a member: matched and posted now if it can be.
+            // Only tickets that wait: one staff set aside before any import got to it (a run that
+            // stopped after saving it) stays set aside. The new ones come first, so however many
+            // wait for staff, a ticket with a member's code on it is posted by this run; the
+            // oldest waiting tickets used to fill every run, and nothing new was posted at all.
             var settings = await _db.ClubPosSettings.AsNoTracking().FirstAsync(s => s.Id == settingsId, ct);
             var window = now - RetryWindow;
-            var waiting = await _db.ClubPosTickets
+            var waiting = await _db.ClubPosTickets.AsNoTracking()
                 .Where(t => t.OrganizationId == organizationId && t.SaleId == null
-                    && (t.Attempts == 0 || ((t.Status == PosTicketStatuses.Unmatched || t.Status == PosTicketStatuses.Failed) && t.ClosedAtUtc >= window)))
-                .OrderBy(t => t.ClosedAtUtc)
+                    && (t.Status == PosTicketStatuses.Unmatched || t.Status == PosTicketStatuses.Failed)
+                    && (t.Attempts == 0 || t.ClosedAtUtc >= window))
+                .OrderBy(t => t.Attempts == 0 ? 0 : 1)
+                .ThenBy(t => t.ClosedAtUtc)
                 .Take(1000)
                 .ToListAsync(ct);
             foreach (var ticket in waiting)
             {
+                // One ticket tracked at a time: each save checks every tracked ticket for changes, so
+                // with a thousand loaded at once the retries alone took half a minute a run.
+                _db.ClubPosTickets.Attach(ticket);
                 var outcome = await ProcessAsync(organizationId, ticket, settings, null, null, countAttempt: ticket.Attempts == 0, ct);
                 counts.Add(outcome);
+                if (_db.Entry(ticket).State == EntityState.Unchanged) _db.Entry(ticket).State = EntityState.Detached;
             }
             return new PosImportDto(counts.Read, counts.Imported, counts.Posted, counts.Unmatched, counts.Failed, counts.Skipped, DateTime.UtcNow);
         }
@@ -204,6 +214,8 @@ public sealed partial class ClubPosService
         try
         {
             await _db.SaveChangesAsync(ct);
+            // Read again with the tickets that wait, below, one at a time.
+            _db.Entry(ticket).State = EntityState.Detached;
             return true;
         }
         catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 })
