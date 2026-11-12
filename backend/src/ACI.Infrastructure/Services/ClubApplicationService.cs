@@ -288,6 +288,21 @@ public sealed class ClubApplicationService : IClubApplications
 
     public async Task<IReadOnlyList<ApprovalResultDto>> AdmitForContractAsync(Guid organizationId, Guid contractId, Guid? leadId, Guid? dealId, Guid userId, CancellationToken ct = default)
     {
+        // Countersigning needs only records.edit, which a sales rep has. The countersignature is
+        // an approval by that person, so it is held to the approve button's rules: admitting a
+        // member needs club.members, and starting the dues and charging the fee needs
+        // money.manage. Without club.members the contract is still executed (ContractService
+        // does that whatever happens here), but the application stays open for someone who may
+        // admit members; without money.manage the member is admitted with the money left
+        // pending, as a reviewer's approval would leave it.
+        var held = await _permissions.PermissionsAsync(userId, organizationId, ct);
+        if (!held.Contains(MemberPermissions.ClubMembers))
+        {
+            _logger.LogInformation("Contract {ContractId} was countersigned by someone who may not admit members; any application behind it stays open for a reviewer", contractId);
+            return [];
+        }
+        var mayHandleMoney = held.Contains(MemberPermissions.ManageMoney);
+
         // The application behind the contract: one it names, or the open one of its lead, or of
         // the lead that became its deal. A contract with none (a private dining contract, say)
         // admits nobody.
@@ -307,7 +322,7 @@ public sealed class ClubApplicationService : IClubApplications
         foreach (var id in candidates)
         {
             var approved = await ApproveCoreAsync(organizationId, id,
-                new Approval(userId, ApprovalTriggers.Contract, true, new ApproveApplicationRequest(), ContractId: contractId), ct);
+                new Approval(userId, ApprovalTriggers.Contract, mayHandleMoney, new ApproveApplicationRequest(), ContractId: contractId), ct);
             if (approved.IsSuccess) results.Add(approved.Value);
             else _logger.LogWarning("Contract {ContractId} was countersigned but application {ApplicationId} could not be approved: {Error}",
                 contractId, id, approved.Error.Description);
