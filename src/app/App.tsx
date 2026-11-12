@@ -14,6 +14,7 @@ import { servesDemoData } from '@/app/api/apiClient';
 import { PageLoadingProvider } from '@/app/components/LoadingOverlay';
 import { RouteProgress } from '@/app/components/motion/RouteProgress';
 import { ModuleOutlet, SalesHome } from '@/app/components/ModuleOff';
+import { I18nProvider } from '@/app/i18n';
 
 // Eager-loaded pages (critical path)
 import Homepage from '@/app/pages/Homepage';
@@ -120,6 +121,8 @@ export default function App() {
             <PageLoadingProvider>
               <RouteProgress />
             <OrgProvider>
+              {/* Inside the workspaces: someone who has not chosen a language reads their workspace's. */}
+              <I18nProvider>
               <WorkspaceCacheGuard />
               <SkipLink />
               <Toaster position="top-center" richColors closeButton />
@@ -260,6 +263,7 @@ export default function App() {
                 {/* Catch-all redirect */}
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
+              </I18nProvider>
             </OrgProvider>
             </PageLoadingProvider>
           </BrowserRouter>
