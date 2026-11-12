@@ -35,6 +35,7 @@ import { RuleEditor } from './automations/RuleEditor';
 import { RunsPanel } from './automations/RunsPanel';
 import { describeWindow } from './automations/SendWindowEditor';
 import { groupEmpty } from './automations/ConditionsEditor';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const STEP_ICON: Record<StepType, React.ElementType> = {
   create_task: CheckSquare, send_email: Mail, notify: Bell, assign: UserPlus, add_to_sequence: Workflow, wait: Clock, branch: GitBranch,
@@ -113,7 +114,7 @@ export default function Automations() {
   const shortDate = (iso?: string) => {
     if (!iso) return '—';
     const d = new Date(iso);
-    return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   /** What the rule is still doing and what failed, which open its runs for those who may see them. */

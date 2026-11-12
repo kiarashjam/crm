@@ -24,6 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/ta
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const CODE_EXAMPLES = {
   curl: `curl -X POST \\
@@ -171,7 +172,7 @@ export default function LeadWebhook() {
   const formatDate = (dateStr: string | null): string => {
     if (!dateStr) return '';
     try {
-      return new Date(dateStr).toLocaleDateString(undefined, {
+      return new Date(dateStr).toLocaleDateString(currentDateLocale(), {
         year: 'numeric',
         month: 'long',
         day: 'numeric',

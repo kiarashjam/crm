@@ -13,6 +13,7 @@ import { messages } from '@/app/api/messages';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const typeIcons: Record<string, typeof Mail> = {
   'Sales Email': Mail,
@@ -33,7 +34,7 @@ function formatDate(iso: string): string {
   if (diffMins < 60) return `${diffMins} minute${diffMins === 1 ? '' : 's'} ago`;
   if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
   if (diffDays < 7) return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
-  return d.toLocaleDateString();
+  return d.toLocaleDateString(currentDateLocale());
 }
 
 export default function History() {

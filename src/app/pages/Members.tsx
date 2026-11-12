@@ -66,6 +66,7 @@ import { PERMISSION } from '@/app/api/organizations';
 import { Checkbox } from '@/app/components/ui/checkbox';
 import { useClubCatalog } from '@/app/hooks/queries';
 import { CADENCE_LABEL, tierNamed, tiersOnSale, type CatalogItem } from '@/app/api/catalog';
+import { currentDateLocale } from '@/app/i18n/current';
 
 /** A tier's dues as a member's dues frequency: the catalogue bills the same four cadences. */
 function frequencyOf(tier: CatalogItem | undefined): DuesFrequency {
@@ -120,7 +121,7 @@ function StartBadge({ member }: { member: Member }) {
   const future = starts.getTime() > Date.now();
   return (
     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ${future ? 'bg-sky-50 text-sky-700 ring-sky-200' : 'bg-slate-50 text-slate-600 ring-slate-200'}`}>
-      {future ? 'Starts' : 'Started'} {starts.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+      {future ? 'Starts' : 'Started'} {starts.toLocaleDateString(currentDateLocale(), { day: 'numeric', month: 'short', year: 'numeric' })}
     </span>
   );
 }
@@ -147,7 +148,7 @@ function newForm(tier: CatalogItem | undefined): FormState {
 
 function formatDate(iso: string): string {
   try {
-    return new Date(iso).toLocaleDateString(undefined, {
+    return new Date(iso).toLocaleDateString(currentDateLocale(), {
       month: 'short',
       day: 'numeric',
       year: 'numeric',

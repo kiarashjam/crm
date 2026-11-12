@@ -13,6 +13,7 @@ import {
   type EmailSending, type EmailSuppression,
 } from '@/app/api/organizations';
 import { servesDemoData } from '@/app/api/apiClient';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const field = 'w-full h-11 px-3 border border-slate-300 rounded-xl bg-white text-slate-900 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none disabled:bg-slate-50 disabled:text-slate-600';
 
@@ -147,7 +148,7 @@ export function EmailSendingCard() {
               <li key={s.id} className="px-3 py-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
                 <span>
                   <span className="font-medium text-slate-800">{s.email}</span>{' '}
-                  <span className="text-slate-600">{WHY[s.reason] ?? s.reason} on {new Date(s.createdAtUtc).toLocaleDateString()}</span>
+                  <span className="text-slate-600">{WHY[s.reason] ?? s.reason} on {new Date(s.createdAtUtc).toLocaleDateString(currentDateLocale())}</span>
                   {s.detail && <span className="block text-xs text-slate-500">{s.detail}</span>}
                 </span>
                 {canEdit && (

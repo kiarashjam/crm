@@ -36,6 +36,7 @@ import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import { cn } from '@/app/components/ui/utils';
 import { useMoney } from '@/app/hooks/useMoney';
 import { PERMISSION } from '@/app/api/organizations';
+import { currentDateLocale } from '@/app/i18n/current';
 
 type CompanyRaw = Company & Record<string, unknown>;
 
@@ -219,7 +220,7 @@ export default function CompanyDetail() {
   }
 
   const createdLabel = company.createdAtUtc
-    ? new Date(company.createdAtUtc).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+    ? new Date(company.createdAtUtc).toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric', year: 'numeric' })
     : null;
   const websiteHref = company.website
     ? (company.website.startsWith('http') ? company.website : `https://${company.website}`)
@@ -285,7 +286,7 @@ export default function CompanyDetail() {
               { label: 'Contacts', value: contacts.length, icon: Users, tone: 'emerald', hint: contacts[0] ? `incl. ${contacts[0].name}` : 'none yet' },
               ...(salesOn ? [{ label: 'Deals', value: deals.length, icon: Briefcase, tone: 'violet' as const, hint: deals.length > 0 ? `${money.formatDeals(deals)} in all` : 'none yet' }] : []),
               { label: 'Industry', value: company.industry || '—', icon: Building2, tone: 'blue', hint: company.size ? `${company.size} people` : undefined },
-              { label: 'Since', value: createdLabel ?? '—', icon: Clock, tone: 'amber', hint: company.updatedAtUtc ? `updated ${new Date(company.updatedAtUtc).toLocaleDateString()}` : undefined },
+              { label: 'Since', value: createdLabel ?? '—', icon: Clock, tone: 'amber', hint: company.updatedAtUtc ? `updated ${new Date(company.updatedAtUtc).toLocaleDateString(currentDateLocale())}` : undefined },
             ]}
           />
 
@@ -402,8 +403,8 @@ export default function CompanyDetail() {
                   </div>
                 )}
                 <div className="mt-3 flex gap-4 text-xs text-slate-500">
-                  {company.createdAtUtc && <span>Created {new Date(company.createdAtUtc).toLocaleDateString()}</span>}
-                  {company.updatedAtUtc && <span>Updated {new Date(company.updatedAtUtc).toLocaleDateString()}</span>}
+                  {company.createdAtUtc && <span>Created {new Date(company.createdAtUtc).toLocaleDateString(currentDateLocale())}</span>}
+                  {company.updatedAtUtc && <span>Updated {new Date(company.updatedAtUtc).toLocaleDateString(currentDateLocale())}</span>}
                 </div>
               </RecordCard>
 

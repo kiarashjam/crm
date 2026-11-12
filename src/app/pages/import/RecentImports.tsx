@@ -19,6 +19,7 @@ import {
 } from '@/app/components/ui/alert-dialog';
 import { listImports, previewUndo, undoImport, type ImportBatch, type ImportKind, type ImportUndo } from '@/app/api/imports';
 import { IMPORT_KINDS, count } from './importKinds';
+import { currentDateLocale, currentNumberLocale } from '@/app/i18n/current';
 
 const KEPT_SHOWN = 10;
 
@@ -41,7 +42,7 @@ export function removalSummary(kind: ImportKind, undo: Pick<ImportUndo, 'leads' 
 
 function when(iso: string): string {
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString(currentDateLocale(), { dateStyle: 'medium', timeStyle: 'short' });
 }
 
 interface UndoDialogProps {
@@ -199,10 +200,10 @@ export default function RecentImports({ kind, refreshKey }: RecentImportsProps) 
             <div className="min-w-0">
               <p className="truncate font-medium text-slate-800">{b.fileName}</p>
               <p className="text-sm text-slate-500">
-                {when(b.startedAtUtc)} by {b.importedBy} · added {b.created.toLocaleString()}
-                {b.updated > 0 && <> · updated {b.updated.toLocaleString()}</>}
-                {b.skipped > 0 && <> · skipped {b.skipped.toLocaleString()}</>}
-                {b.failed > 0 && <> · {b.failed.toLocaleString()} not imported</>}
+                {when(b.startedAtUtc)} by {b.importedBy} · added {b.created.toLocaleString(currentNumberLocale())}
+                {b.updated > 0 && <> · updated {b.updated.toLocaleString(currentNumberLocale())}</>}
+                {b.skipped > 0 && <> · skipped {b.skipped.toLocaleString(currentNumberLocale())}</>}
+                {b.failed > 0 && <> · {b.failed.toLocaleString(currentNumberLocale())} not imported</>}
               </p>
               {b.running && <p className="text-sm text-slate-500">Still running. It can be undone once it has finished.</p>}
               {!b.finishedAtUtc && !b.running && (
@@ -212,8 +213,8 @@ export default function RecentImports({ kind, refreshKey }: RecentImportsProps) 
               )}
               {b.undoneAtUtc && (
                 <p className="text-sm text-slate-500">
-                  Undone {when(b.undoneAtUtc)}, {b.removed.toLocaleString()} removed
-                  {b.remaining > 0 && <>; {b.remaining.toLocaleString()} kept, because they were changed or worked on</>}
+                  Undone {when(b.undoneAtUtc)}, {b.removed.toLocaleString(currentNumberLocale())} removed
+                  {b.remaining > 0 && <>; {b.remaining.toLocaleString(currentNumberLocale())} kept, because they were changed or worked on</>}
                 </p>
               )}
             </div>

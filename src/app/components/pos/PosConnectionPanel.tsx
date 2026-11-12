@@ -18,13 +18,14 @@ import {
 } from '@/app/api/pos';
 import { TAB_VENUES, VENUE_LABELS } from '@/app/api/tabs';
 import { usePosLocations, usePosSettings } from '@/app/hooks/queries';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const message = (err: unknown, fallback: string) => (err instanceof Error && err.message ? err.message : fallback);
 
 function formatDateTime(iso?: string): string {
   if (!iso) return '';
   try {
-    return new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return new Date(iso).toLocaleString(currentDateLocale(), { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   } catch {
     return iso;
   }

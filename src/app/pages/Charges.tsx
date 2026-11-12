@@ -75,6 +75,7 @@ import {
 } from '@/app/components/views';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
 import { WriteOnly } from '@/app/components/WriteOnly';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const STATUS_BADGE: Record<ChargeStatus, string> = {
   Pending: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
@@ -95,7 +96,7 @@ const STATUS_LABEL: Record<ChargeStatus, string> = {
 function formatDate(iso?: string): string {
   if (!iso) return '—';
   try {
-    return new Date(iso).toLocaleDateString(undefined, {
+    return new Date(iso).toLocaleDateString(currentDateLocale(), {
       month: 'short',
       day: 'numeric',
     });

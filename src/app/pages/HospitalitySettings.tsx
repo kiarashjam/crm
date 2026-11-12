@@ -54,6 +54,7 @@ import { PaymentSettingsPanel } from '@/app/components/payments/PaymentSettingsP
 import {
   NONE, useBillingPreview, useBillingRuns, useClubCatalog, useClubReads, useHospitalitySettings, useWorkspaceScope,
 } from '@/app/hooks/queries';
+import { currentDateLocale } from '@/app/i18n/current';
 
 /** Who may change the catalogue: the settings' managers, and the money's. */
 const CATALOG_EDITORS = [PERMISSION.ManageSettings, PERMISSION.ManageMoney] as const;
@@ -73,7 +74,7 @@ const numberOr = (text: string, fallback: number) => {
 
 function formatDateTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return new Date(iso).toLocaleString(currentDateLocale(), { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   } catch {
     return iso;
   }
@@ -81,7 +82,7 @@ function formatDateTime(iso: string): string {
 
 function formatDay(iso: string): string {
   try {
-    return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+    return new Date(iso).toLocaleDateString(currentDateLocale(), { day: 'numeric', month: 'short', year: 'numeric' });
   } catch {
     return iso;
   }

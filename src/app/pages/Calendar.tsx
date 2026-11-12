@@ -32,6 +32,7 @@ import { useModules } from '@/app/hooks/useModules';
 import { useWorkScope } from '@/app/lib/workScope';
 import { OUTCOME_LABELS } from '@/app/lib/activityFacts';
 import { cn } from '@/app/components/ui/utils';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -62,11 +63,11 @@ function isSameDay(a: Date, b: Date): boolean {
   );
 }
 function formatMonth(d: Date): string {
-  return d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  return d.toLocaleDateString(currentDateLocale(), { month: 'long', year: 'numeric' });
 }
 function formatTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleTimeString(undefined, {
+    return new Date(iso).toLocaleTimeString(currentDateLocale(), {
       hour: 'numeric',
       minute: '2-digit',
     });
@@ -332,7 +333,7 @@ export default function Calendar() {
                         type="button"
                         key={i}
                         onClick={() => setSelectedDay(d)}
-                        aria-label={`${d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}${chips.length ? `, ${chips.length} on the calendar` : ''}`}
+                        aria-label={`${d.toLocaleDateString(currentDateLocale(), { weekday: 'long', month: 'long', day: 'numeric' })}${chips.length ? `, ${chips.length} on the calendar` : ''}`}
                         className={`min-h-[72px] rounded-lg p-1.5 text-left transition border ${
                           isSelected
                             ? 'border-cyan-400 ring-2 ring-cyan-200 bg-cyan-50'
@@ -370,10 +371,10 @@ export default function Calendar() {
               {/* Day detail */}
               <StaggerItem index={1} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
                 <p className="text-xs uppercase tracking-wider text-slate-500">
-                  {selectedDay.toLocaleDateString(undefined, { weekday: 'long' })}
+                  {selectedDay.toLocaleDateString(currentDateLocale(), { weekday: 'long' })}
                 </p>
                 <h2 className="text-2xl font-bold text-slate-900 mb-4">
-                  {selectedDay.toLocaleDateString(undefined, {
+                  {selectedDay.toLocaleDateString(currentDateLocale(), {
                     month: 'long',
                     day: 'numeric',
                   })}

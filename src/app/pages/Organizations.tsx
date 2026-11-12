@@ -58,6 +58,7 @@ import { WorkspaceCard } from './organizations/WorkspaceCard';
 import LaunchSequence from './organizations/LaunchSequence';
 import CreateWorkspaceDialog from './organizations/CreateWorkspaceDialog';
 import { BrandName } from '@/app/components/BrandName';
+import { currentDateLocale } from '@/app/i18n/current';
 
 /** The page's colour, for the hero, its main action and the focus rings. */
 const TONE = 'indigo' as const;
@@ -506,7 +507,7 @@ export default function Organizations() {
                       <p className="truncate text-sm font-medium text-slate-900">{invite.organizationName}</p>
                       <p className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-slate-500">
                         <Clock className="h-3 w-3" aria-hidden />
-                        Expires {new Date(invite.expiresAtUtc).toLocaleDateString()}
+                        Expires {new Date(invite.expiresAtUtc).toLocaleDateString(currentDateLocale())}
                       </p>
                     </div>
                     {/* Accepting takes the link from the invitation email: it is what

@@ -32,6 +32,7 @@ import { Input } from '@/app/components/ui/input';
 import { cn } from '@/app/components/ui/utils';
 import { ContractProgress } from './ContractProgress';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { currentDateLocale } from '@/app/i18n/current';
 
 /** Fields the seeded template asks for that the CRM cannot know. */
 const ASK_FOR: { key: string; label: string; placeholder: string }[] = [
@@ -120,7 +121,7 @@ function AuditTrail({ contract }: { contract: Contract }) {
                   <span className="min-w-0 flex-1">
                     <span className="font-medium text-slate-700">{e.detail || e.type}</span>
                     <span className="mt-0.5 block text-slate-500">
-                      {new Date(e.atUtc).toLocaleString()}
+                      {new Date(e.atUtc).toLocaleString(currentDateLocale())}
                       {e.actorLabel ? ` · ${e.actorLabel}` : ''}
                     </span>
                   </span>
@@ -520,7 +521,7 @@ export function ContractPanel({ leadId, leadName, readOnly, onLeadChanged }: Pro
                   <div className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50/60 p-3.5">
                     <p className="text-xs font-bold text-indigo-900">
                       {c.clientSignatureName} signed on{' '}
-                      {c.clientSignedAtUtc ? new Date(c.clientSignedAtUtc).toLocaleString() : '—'}
+                      {c.clientSignedAtUtc ? new Date(c.clientSignedAtUtc).toLocaleString(currentDateLocale()) : '—'}
                     </p>
                     <p className="mt-0.5 text-xs text-indigo-800/80">
                       Add your signature to execute it. Both parties are emailed the

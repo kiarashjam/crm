@@ -15,6 +15,7 @@ import PageHero, { heroPrimary, heroSecondary, type PageStat } from '@/app/compo
 import { useMoney } from '@/app/hooks/useMoney';
 import type { DashboardStats } from './types';
 import { LoadFailed, RetryButton } from '@/app/components/LoadFailed';
+import { currentDateLocale } from '@/app/i18n/current';
 
 interface DashboardHeroProps {
   displayName: string;
@@ -53,7 +54,7 @@ export function DashboardHero({ displayName, stats, loaded, failed, onRetry, ret
   const money = useMoney();
   const others = (stats?.pipelineByCurrency ?? []).slice(1);
   const unreadable = stats?.unreadableValueCount ?? 0;
-  const today = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+  const today = new Date().toLocaleDateString(currentDateLocale(), { weekday: 'long', month: 'long', day: 'numeric' });
   const activeLeads = figure(stats?.activeLeadsCount, loaded);
   const openDeals = figure(stats?.activeDealsCount, loaded);
 

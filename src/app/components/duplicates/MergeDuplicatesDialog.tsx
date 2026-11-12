@@ -18,6 +18,7 @@ import { useMotionPreference } from '@/app/hooks/useMotionPreference';
 import { mergeDuplicates, mergeRecords, suggestKeep, type DuplicateGroup, type MergeRule } from '@/app/api/dedupe';
 import type { HeroTone } from '@/app/components/PageHero';
 import type { DuplicateKind } from './kinds';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 
@@ -42,7 +43,7 @@ const AVATAR: Partial<Record<HeroTone, string>> = {
 const when = (v?: string) => {
   if (!v) return undefined;
   const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? undefined : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  return Number.isNaN(d.getTime()) ? undefined : d.toLocaleDateString(currentDateLocale(), { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
 /** What a result taken from a duplicate says about how it was chosen. */

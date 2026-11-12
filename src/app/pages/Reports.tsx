@@ -36,6 +36,7 @@ import { orgCan, PERMISSION } from '@/app/api/organizations';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
 import { SavedForecastPanel } from './reports/SavedForecastPanel';
 import { useMoney } from '@/app/hooks/useMoney';
+import { currentDateLocale, currentNumberLocale } from '@/app/i18n/current';
 
 const pct = (v: number | null) => (v === null ? '—' : `${Math.round(v * 100)}%`);
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -144,7 +145,7 @@ export default function Reports() {
   const firstDay = period ? dateInputValue(new Date(period.fromUtc), timeZone) : '';
   const lastDay = period ? lastDayOf(period.toUtc, timeZone) : '';
   const periodText = period
-    ? `${new Date(period.fromUtc).toLocaleDateString(undefined, { day: 'numeric', month: 'short', timeZone })} – ${new Date(Date.parse(period.toUtc) - 1).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone })}`
+    ? `${new Date(period.fromUtc).toLocaleDateString(currentDateLocale(), { day: 'numeric', month: 'short', timeZone })} – ${new Date(Date.parse(period.toUtc) - 1).toLocaleDateString(currentDateLocale(), { day: 'numeric', month: 'short', year: 'numeric', timeZone })}`
     : '';
   const exportTable = <T,>(t: CsvTable<T>) => downloadCsv(csvFileName(t.name, firstDay, lastDay), t.rows, t.columns, csvSeparator);
   // Leads and activities have no pipeline or currency, so those filters cannot narrow
@@ -464,7 +465,7 @@ export default function Reports() {
                       <BarList
                         rows={d.others.map((c) => ({ name: `${c.currency} · ${plural(c.count, 'deal')}`, value: c.value }))}
                         accent="sky"
-                        format={(v) => Math.round(v).toLocaleString()}
+                        format={(v) => Math.round(v).toLocaleString(currentNumberLocale())}
                       />
                     </div>
                   </div>

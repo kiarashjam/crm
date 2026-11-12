@@ -11,12 +11,13 @@ import { DEFAULT_LANGUAGE, type Language } from './languages';
 
 interface Current {
   language: Language;
-  numberLocale: string;
+  /** Undefined while nothing has set it: number helpers then keep the browser's locale, as before. */
+  numberLocale: string | undefined;
   /** Undefined while nothing has set it: date helpers then keep the browser's locale, as before. */
   dateLocale: string | undefined;
 }
 
-let current: Current = { language: DEFAULT_LANGUAGE, numberLocale: DEFAULT_LANGUAGE, dateLocale: undefined };
+let current: Current = { language: DEFAULT_LANGUAGE, numberLocale: undefined, dateLocale: undefined };
 
 /** Called by the provider whenever the language or the workspace's formats change. */
 export function setCurrentLanguage(next: Current): void {
@@ -30,10 +31,23 @@ export function currentLanguage(): Language {
 
 /** The words for a key in the app's current language, for code outside components. */
 export function translate(key: MessageKey, params?: MessageParams): string {
-  return formatMessage(current.language, messageFor(current.language, key), params, current.numberLocale);
+  return formatMessage(current.language, messageFor(current.language, key), params, current.numberLocale ?? current.language);
 }
 
-/** The locale dates are written in right now, for date helpers outside components. */
+/**
+ * The locale dates are written in right now (the person's language with the workspace's
+ * region: "fr-CH"), for code that formats a date without a hook: pages that call
+ * toLocaleDateString, the shared date helpers. Undefined outside the app's provider (most
+ * tests), which keeps the browser's own locale, as before.
+ */
 export function currentDateLocale(): string | undefined {
   return current.dateLocale;
+}
+
+/**
+ * The locale numbers are written in right now: the workspace's number format ("de-CH"
+ * groups thousands with an apostrophe). Undefined outside the app's provider, as above.
+ */
+export function currentNumberLocale(): string | undefined {
+  return current.numberLocale;
 }

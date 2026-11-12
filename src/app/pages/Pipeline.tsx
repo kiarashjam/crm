@@ -111,6 +111,7 @@ import { withActivity } from '@/app/components/RecordActivity';
 import { activityFactsLine, activityTime, factsPayload, factsProblem, EMPTY_FACTS, type ActivityFactsDraft } from '@/app/lib/activityFacts';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { orgCan, PERMISSION } from '@/app/api/organizations';
+import { currentDateLocale } from '@/app/i18n/current';
 
 /** Cards per column in each page of the board. */
 const BOARD_PAGE = 25;
@@ -1593,7 +1594,7 @@ export default function Pipeline() {
                       {detailDeal.isWon ? 'Won' : 'Lost'}
                       {detailDeal.closedAtUtc && (
                         <span className="font-normal text-xs ml-2">
-                          on {new Date(detailDeal.closedAtUtc).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                          on {new Date(detailDeal.closedAtUtc).toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric', year: 'numeric' })}
                         </span>
                       )}
                     </p>
@@ -1775,7 +1776,7 @@ export default function Pipeline() {
                               <div>
                                 <p className="text-sm font-medium text-slate-800 truncate">{activity.subject || activity.type}</p>
                                 <p className="text-xs text-slate-500">
-                                  {activity.type}{activityFactsLine(activity) && <> • {activityFactsLine(activity)}</>} • {new Date(activityTime(activity)).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                                  {activity.type}{activityFactsLine(activity) && <> • {activityFactsLine(activity)}</>} • {new Date(activityTime(activity)).toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric', year: 'numeric' })}
                                 </p>
                               </div>
                             </div>

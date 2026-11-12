@@ -68,6 +68,7 @@ import {
   RecordList, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
   type RecordColumn,
 } from '@/app/components/views';
+import { currentDateLocale } from '@/app/i18n/current';
 
 // Role mapping
 const ROLES = {
@@ -1016,7 +1017,7 @@ export default function Team() {
                           <p className="font-medium text-slate-700">{invite.email}</p>
                           <p className="text-xs text-slate-500 flex items-center gap-1">
                             <Clock className="w-3 h-3" />
-                            Sent {new Date(invite.createdAtUtc).toLocaleDateString()} · Expires {new Date(invite.expiresAtUtc).toLocaleDateString()}
+                            Sent {new Date(invite.createdAtUtc).toLocaleDateString(currentDateLocale())} · Expires {new Date(invite.expiresAtUtc).toLocaleDateString(currentDateLocale())}
                           </p>
                         </div>
                       </div>

@@ -64,6 +64,7 @@ import { WriteOnly } from '@/app/components/WriteOnly';
 import { PERMISSION } from '@/app/api/organizations';
 import { useClubMembers, useCommunications } from '@/app/hooks/queries/club';
 import EmailMemberDialog from '@/app/pages/members/EmailMemberDialog';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const CHANNEL_ICON: Record<CommChannel, React.ElementType> = {
   Email: Mail,
@@ -95,7 +96,7 @@ type StatusFilter = 'All' | 'delivered' | 'notSent' | 'logged';
 function formatDateTime(iso?: string | null): string {
   if (!iso) return '';
   try {
-    return new Date(iso).toLocaleString(undefined, {
+    return new Date(iso).toLocaleString(currentDateLocale(), {
       month: 'short',
       day: 'numeric',
       hour: 'numeric',

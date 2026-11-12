@@ -3,6 +3,7 @@ import type { DealStageChange } from '@/app/api/types';
 import { RecordCard } from '@/app/components/RecordCard';
 import { Spinner } from '@/app/components/motion/CadenceLoader';
 import { daysSince, formatDays } from '@/app/pages/pipeline/utils';
+import { currentDateLocale } from '@/app/i18n/current';
 
 /** Whole days between two instants, never below 0. */
 function daysBetweenInstants(from: string, to: string): number {
@@ -10,7 +11,7 @@ function daysBetweenInstants(from: string, to: string): number {
 }
 
 function when(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  return new Date(iso).toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 /**

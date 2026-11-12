@@ -57,6 +57,7 @@ import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import { currencyOf } from '@/app/lib/money';
 import { useMoney } from '@/app/hooks/useMoney';
 import { PERMISSION } from '@/app/api/organizations';
+import { currentDateLocale } from '@/app/i18n/current';
 
 export default function DealDetail() {
   const money = useMoney();
@@ -358,7 +359,7 @@ export default function DealDetail() {
               { label: 'Expected close', value: closeLabel ?? '—', icon: Calendar, tone: 'amber', hint: daysToClose === null ? undefined : daysToClose < 0 ? `${-daysToClose}d overdue` : `in ${daysToClose}d` },
               // From the stage history; a deal from before it was kept does not say.
               { label: 'In stage', value: daysInStage === null ? '—' : formatDays(daysInStage), icon: Hourglass, tone: 'violet', hint: daysInStage === null ? 'not recorded' : stageName },
-              { label: 'Activities', value: activities.length, icon: ActivityIcon, tone: 'sky', hint: activities[0] ? `last ${new Date(activityTime(activities[0])).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : 'none yet' },
+              { label: 'Activities', value: activities.length, icon: ActivityIcon, tone: 'sky', hint: activities[0] ? `last ${new Date(activityTime(activities[0])).toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric' })}` : 'none yet' },
               { label: 'Tasks', value: dealTasks.filter((t) => t.status !== 'completed').length, icon: CheckCircle2, tone: 'violet', hint: `${dealTasks.length} linked` },
             ]}
           />
@@ -433,7 +434,7 @@ export default function DealDetail() {
                               {task.dueDateUtc && (
                                 <>
                                   <span>&middot;</span>
-                                  <span>Due {new Date(task.dueDateUtc).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                                  <span>Due {new Date(task.dueDateUtc).toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric' })}</span>
                                 </>
                               )}
                               {task.priority && task.priority !== 'none' && (
@@ -463,7 +464,7 @@ export default function DealDetail() {
                 >
                   {deal.closedAtUtc && (
                     <p className="text-xs text-slate-500">
-                      {new Date(deal.closedAtUtc).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
+                      {new Date(deal.closedAtUtc).toLocaleDateString(currentDateLocale(), { month: 'long', day: 'numeric', year: 'numeric' })}
                     </p>
                   )}
                   {deal.closedReason ? <p className="mt-1 text-sm text-slate-600">{deal.closedReason}</p> : !deal.closedAtUtc && <p className="text-sm text-slate-500">Closed.</p>}
@@ -519,7 +520,7 @@ export default function DealDetail() {
                     <div className="min-w-0">
                       <dt className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Created</dt>
                       <dd className="mt-0.5 text-slate-600 dark:text-slate-400">
-                        {new Date(deal.createdAtUtc).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                        {new Date(deal.createdAtUtc).toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric', year: 'numeric' })}
                       </dd>
                     </div>
                   )}

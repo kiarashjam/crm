@@ -3,10 +3,11 @@
 
 import { LoadFailed } from '@/app/components/LoadFailed';
 import { useErasures } from '@/app/hooks/queries';
+import { currentDateLocale } from '@/app/i18n/current';
 
 function when(iso: string): string {
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString(currentDateLocale(), { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 export function ErasureLogPanel() {

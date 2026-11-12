@@ -60,6 +60,7 @@ import MemberConsentPanel from '@/app/pages/members/MemberConsentPanel';
 import EmailMemberDialog from '@/app/pages/members/EmailMemberDialog';
 import { MemberPaymentsCard } from '@/app/components/payments/MemberPaymentsCard';
 import { MemberCodesCard } from '@/app/components/pos/MemberCodesCard';
+import { currentDateLocale, currentNumberLocale } from '@/app/i18n/current';
 
 const TIER_BADGE: Record<MemberTier, string> = {
   Bronze: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
@@ -77,7 +78,7 @@ const STATUS_BADGE: Record<MemberStatus, string> = {
 
 function formatDate(iso: string): string {
   try {
-    return new Date(iso).toLocaleDateString(undefined, {
+    return new Date(iso).toLocaleDateString(currentDateLocale(), {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
@@ -89,7 +90,7 @@ function formatDate(iso: string): string {
 
 function formatDateTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleString(undefined, {
+    return new Date(iso).toLocaleString(currentDateLocale(), {
       month: 'short',
       day: 'numeric',
       hour: 'numeric',
@@ -463,7 +464,7 @@ export default function MemberDetail() {
                             }`}
                           >
                             {e.points >= 0 ? '+' : ''}
-                            {e.points.toLocaleString()}
+                            {e.points.toLocaleString(currentNumberLocale())}
                           </span>
                         </li>
                       ))}
@@ -606,7 +607,7 @@ export default function MemberDetail() {
                         }`}
                       >
                         {e.points >= 0 ? '+' : ''}
-                        {e.points.toLocaleString()}
+                        {e.points.toLocaleString(currentNumberLocale())}
                       </span>
                     </div>
                   ))}

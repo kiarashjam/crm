@@ -8,6 +8,7 @@ import { orgCan, PERMISSION, type Organization } from '@/app/api/organizations';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const EXAMPLE_JSON = `{
   "name": "Jane Doe",
@@ -27,7 +28,7 @@ export function deliveryText(d: WebhookDelivery): string {
     case 'queued':
       return d.attempts === 0
         ? 'Waiting to be posted'
-        : `Not taken yet (${answer}); trying again${d.nextAttemptAtUtc ? ` at ${new Date(d.nextAttemptAtUtc).toLocaleTimeString()}` : ''}`;
+        : `Not taken yet (${answer}); trying again${d.nextAttemptAtUtc ? ` at ${new Date(d.nextAttemptAtUtc).toLocaleTimeString(currentDateLocale())}` : ''}`;
     case 'cancelled':
       return 'Not posted: the address was removed first';
     default:
@@ -317,7 +318,7 @@ export function IntegrationsSection({ currentOrg }: { currentOrg: Organization |
                 {deliveries.map((d) => (
                   <li key={d.id} className="px-3 py-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
                     <span className="font-mono text-xs text-slate-700">{d.eventName}</span>
-                    <span className="text-slate-500 text-xs">{new Date(d.createdAtUtc).toLocaleString()}</span>
+                    <span className="text-slate-500 text-xs">{new Date(d.createdAtUtc).toLocaleString(currentDateLocale())}</span>
                     <span className={d.status === 'sent' ? 'text-emerald-700' : d.status === 'queued' ? 'text-amber-700' : 'text-red-700'}>
                       {deliveryText(d)}
                     </span>

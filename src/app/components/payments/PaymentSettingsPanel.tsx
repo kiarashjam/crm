@@ -23,6 +23,7 @@ import {
 } from '@/app/api/payments';
 import { usePaymentSettings, usePaymentStatus, useWorkspaceScope } from '@/app/hooks/queries';
 import { METHOD_LABEL } from './paymentLabels';
+import { currentDateLocale } from '@/app/i18n/current';
 
 interface Draft {
   stripeOfferTwint: boolean;
@@ -96,7 +97,7 @@ const message = (err: unknown, fallback: string) => (err instanceof Error && err
 
 function formatDateTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return new Date(iso).toLocaleString(currentDateLocale(), { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   } catch {
     return iso;
   }

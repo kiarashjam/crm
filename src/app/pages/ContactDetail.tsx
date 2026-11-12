@@ -59,6 +59,7 @@ import { ActivityLogForm, ActivityRow, withActivity, type ActivityDraft } from '
 import { factsPayload } from '@/app/lib/activityFacts';
 import { showEditConflict } from '@/app/lib/editConflict';
 import { orgCan, PERMISSION } from '@/app/api/organizations';
+import { currentDateLocale } from '@/app/i18n/current';
 
 export default function ContactDetail() {
   const money = useMoney();
@@ -310,11 +311,11 @@ export default function ContactDetail() {
 
   const openTaskCount = contactTasks.filter((t) => t.status !== 'completed').length;
   const createdLabel = contact.createdAtUtc
-    ? new Date(contact.createdAtUtc).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+    ? new Date(contact.createdAtUtc).toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric', year: 'numeric' })
     : null;
   const dealsHint = deals.length > 0 ? `${money.formatDeals(deals)} in all` : 'none yet';
   const lastActivityHint = activities[0]
-    ? `last ${new Date(activities[0].createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+    ? `last ${new Date(activities[0].createdAt).toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric' })}`
     : 'none yet';
 
   return (
@@ -538,7 +539,7 @@ export default function ContactDetail() {
                           <div className="mt-0.5 flex items-center gap-2">
                             {t.dueDateUtc && (
                               <span className={cn('text-xs', new Date(t.dueDateUtc) < new Date() && t.status !== 'completed' ? 'text-red-700' : 'text-slate-500')}>
-                                Due {new Date(t.dueDateUtc).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                Due {new Date(t.dueDateUtc).toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric' })}
                               </span>
                             )}
                             {t.priority && t.priority !== 'none' && (
@@ -602,8 +603,8 @@ export default function ContactDetail() {
                   </div>
                 )}
                 <div className="mt-3 flex gap-4 text-xs text-slate-500">
-                  {contact.createdAtUtc && <span>Created {new Date(contact.createdAtUtc).toLocaleDateString()}</span>}
-                  {contact.updatedAtUtc && <span>Updated {new Date(contact.updatedAtUtc).toLocaleDateString()}</span>}
+                  {contact.createdAtUtc && <span>Created {new Date(contact.createdAtUtc).toLocaleDateString(currentDateLocale())}</span>}
+                  {contact.updatedAtUtc && <span>Updated {new Date(contact.updatedAtUtc).toLocaleDateString(currentDateLocale())}</span>}
                 </div>
               </RecordCard>
 

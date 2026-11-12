@@ -24,6 +24,7 @@ import { TAB_VENUES, VENUE_LABELS, type TabVenue } from '@/app/api/tabs';
 import { newSaleKey, postSale, SALE_TENDERS, SALES_DEMO_MESSAGE, TENDER_LABEL, type Sale, type SaleTender } from '@/app/api/sales';
 import { useClubCatalog } from '@/app/hooks/queries';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
+import { currentNumberLocale } from '@/app/i18n/current';
 
 /** Kinds of catalogue item the house-charge screen rings up, as the server takes them. */
 const SALE_KINDS = new Set(['MenuItem', 'Product', 'Fee']);
@@ -125,7 +126,7 @@ export function SaleBuilder({ member, onPosted }: { member: Member; onPosted?: (
       const where = sale.owedAmount > 0
         ? sale.billedMemberId ? 'on the household primary\'s house account' : `on ${member.firstName} ${member.lastName}'s house account`
         : `paid by ${TENDER_LABEL[sale.tender]}`;
-      toast.success(`${format(sale.total)} ${where}${sale.pointsAwarded > 0 ? ` · +${sale.pointsAwarded.toLocaleString()} points` : ''}`);
+      toast.success(`${format(sale.total)} ${where}${sale.pointsAwarded > 0 ? ` · +${sale.pointsAwarded.toLocaleString(currentNumberLocale())} points` : ''}`);
       setLines([]);
       setDiscountMode('none');
       setDiscountValue('');

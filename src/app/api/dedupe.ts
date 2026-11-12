@@ -23,6 +23,7 @@ import { getMembers, updateMember, deleteMember, type Member } from './members';
 import type { Household } from './households';
 import type { Contact, Company, Lead, Deal } from './types';
 import { amountOf, currencyOf, formatMoney } from '@/app/lib/money';
+import { currentDateLocale, currentNumberLocale } from '@/app/i18n/current';
 
 export interface DuplicateGroup<T> {
   /** Stable for the same set of records, whatever order they load in. */
@@ -479,7 +480,7 @@ function patchOf<T extends object>(fields: MergeField<T>[], keep: T, merged: T):
 const date = (v?: string) => {
   if (!v) return undefined;
   const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? undefined : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  return Number.isNaN(d.getTime()) ? undefined : d.toLocaleDateString(currentDateLocale(), { day: 'numeric', month: 'short', year: 'numeric' });
 };
 const yes = (v?: boolean) => (v ? 'Yes' : undefined);
 
@@ -553,9 +554,9 @@ export const MEMBER_MERGE_FIELDS: MergeField<Member>[] = [
   { label: 'Email', keys: ['email'], rule: 'keep' },
   { label: 'Tier', keys: ['tier'], rule: 'keep' },
   { label: 'Status', keys: ['status'], rule: 'keep' },
-  { label: 'Dues', keys: ['duesAmount', 'duesFrequency'], rule: 'keep', format: (m) => `${m.duesAmount.toLocaleString()} / ${m.duesFrequency.toLowerCase()}` },
+  { label: 'Dues', keys: ['duesAmount', 'duesFrequency'], rule: 'keep', format: (m) => `${m.duesAmount.toLocaleString(currentNumberLocale())} / ${m.duesFrequency.toLowerCase()}` },
   { label: 'Phone', keys: ['phone'], rule: 'fill' },
-  { label: 'House account', keys: ['houseAccountBalance'], rule: 'sum', format: (m) => m.houseAccountBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
+  { label: 'House account', keys: ['houseAccountBalance'], rule: 'sum', format: (m) => m.houseAccountBalance.toLocaleString(currentNumberLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
   { label: 'Member since', keys: ['joinedAtUtc'], rule: 'earliest', format: (m) => date(m.joinedAtUtc) },
   { label: 'Renews', keys: ['renewsAtUtc'], rule: 'latest', format: (m) => date(m.renewsAtUtc) },
   { label: 'Notes', keys: ['notes'], rule: 'append' },

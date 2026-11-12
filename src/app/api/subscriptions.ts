@@ -10,6 +10,7 @@
 import { ApiError, apiWithFallback, authFetch, authFetchJson, ensureOk, servesDemoData, type RequestOptions } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import { createCharge } from './charges';
+import { currentDateLocale } from '@/app/i18n/current';
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -259,7 +260,7 @@ export async function runBillingCycle(id: string, options: { early?: boolean } =
   if (!sub) return null;
   if (sub.status === 'Cancelled' || sub.status === 'Paused') return sub;
   if (!options.early && Date.parse(sub.nextChargeAtUtc) > Date.now()) {
-    const starts = new Date(sub.nextChargeAtUtc).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+    const starts = new Date(sub.nextChargeAtUtc).toLocaleDateString(currentDateLocale(), { day: 'numeric', month: 'short', year: 'numeric' });
     throw new ApiError(
       `This subscription's next period starts on ${starts}, so nothing was billed. Bill it early to charge that period now.`,
       409, `/api/subscriptions/${id}/bill`, true, NOT_DUE_CODE);

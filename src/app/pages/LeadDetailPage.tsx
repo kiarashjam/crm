@@ -73,6 +73,7 @@ import { Confetti } from '@/app/components/Confetti';
 import EmailComposerDialog from '@/app/components/EmailComposerDialog';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import { WriteOnly } from '@/app/components/WriteOnly';
+import { currentDateLocale } from '@/app/i18n/current';
 
 type Tab = 'activity' | 'tasks' | 'notes';
 
@@ -103,14 +104,14 @@ function formatRelative(iso?: string): string | null {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days}d ago`;
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  return d.toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function formatFull(iso?: string): string | null {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return d.toLocaleString(currentDateLocale(), { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 /** A due date is overdue when it's in the past (used to flag open tasks). */
@@ -1435,7 +1436,7 @@ export default function LeadDetailPage() {
                     <InlineField label="Phone" type="tel" value={lead.phone ?? ''} onSave={savePhone} readOnly={isReadOnly} icon={<Phone className="w-3.5 h-3.5" />} />
                     {lead.firstResponseDueAtUtc && (
                       <p className="text-xs text-slate-500">
-                        First response due {new Date(lead.firstResponseDueAtUtc).toLocaleString()}
+                        First response due {new Date(lead.firstResponseDueAtUtc).toLocaleString(currentDateLocale())}
                         {lead.slaBreached ? ' · late' : lead.firstResponseAtUtc ? ' · answered' : ' · waiting'}
                         {lead.enrichedDomain ? ` · company from ${lead.enrichedDomain}` : ''}
                       </p>

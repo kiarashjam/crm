@@ -109,6 +109,7 @@ import type { LeadForm } from './leads/types';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import { useMoney } from '@/app/hooks/useMoney';
 import { AMOUNT_HINT, currencyOptions, parseMoneyInput } from '@/app/lib/money';
+import { currentDateLocale, currentNumberLocale } from '@/app/i18n/current';
 
 const LEAD_CREATED_AT_STORAGE_KEY = 'crm.leadCreatedAt.v1';
 /** Session-scoped scroll position so returning from a lead detail restores it. */
@@ -1404,7 +1405,7 @@ export default function Leads() {
     && qualifiedFilterNames.every((name) => filterStatuses.includes(name));
   const convertedHint = stats.converted === 0
     ? 'none became deals'
-    : `${stats.converted.toLocaleString()} became ${stats.converted === 1 ? 'a deal' : 'deals'}`;
+    : `${stats.converted.toLocaleString(currentNumberLocale())} became ${stats.converted === 1 ? 'a deal' : 'deals'}`;
   // The page's numbers, in its header. Active, Converted and Qualified switch
   // their filter on and off, and say which is on.
   // How this person likes leads shown: the gallery, a list or a table, saved for them.
@@ -1412,7 +1413,7 @@ export default function Leads() {
   const leadDate = (iso?: string) => {
     if (!iso) return '—';
     const d = new Date(iso);
-    return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric', year: 'numeric' });
   };
   const statusPill = (status: string) => {
     const c = STATUS_BADGE_COLORS[status] ?? { bg: 'bg-slate-100', text: 'text-slate-600', border: 'border-slate-200', dot: 'bg-slate-400' };
@@ -1459,7 +1460,7 @@ export default function Leads() {
   ];
 
   const leadHeroStats: PageStat[] = [
-    { label: 'Total leads', value: stats.total, icon: Users, tone: 'orange', hint: `${stats.active.toLocaleString()} active`, progress: shareOf(stats.active) },
+    { label: 'Total leads', value: stats.total, icon: Users, tone: 'orange', hint: `${stats.active.toLocaleString(currentNumberLocale())} active`, progress: shareOf(stats.active) },
     {
       label: 'Active', value: stats.active, icon: Target, tone: 'sky', hint: 'still open', pressed: activeOn, progress: shareOf(stats.active),
       onClick: () => {
@@ -1473,7 +1474,7 @@ export default function Leads() {
     { label: 'Hot', value: stats.hotLeads, icon: Zap, tone: 'rose', hint: 'score 70+', progress: shareOf(stats.hotLeads) },
     {
       label: 'Converted', value: conversionRate, icon: CheckCircle2, tone: 'teal', hint: convertedHint, pressed: convertedOn, progress: conversionRate / 100,
-      format: (n) => `${n === conversionRate ? conversionRate.toLocaleString() : Math.round(n)}%`,
+      format: (n) => `${n === conversionRate ? conversionRate.toLocaleString(currentNumberLocale()) : Math.round(n)}%`,
       onClick: () => {
         setFilterConverted((current) => (current === 'converted' ? 'all' : 'converted'));
         setShowFilters(true);

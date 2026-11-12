@@ -59,6 +59,7 @@ import { useClubMoney } from '@/app/hooks/useClubMoney';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { PERMISSION } from '@/app/api/organizations';
 import { SaleBuilder } from '@/app/components/pos/SaleBuilder';
+import { currentDateLocale, currentNumberLocale } from '@/app/i18n/current';
 
 // The server says why it refused (a member who has left, an item taken off sale), and the
 // sentence is what staff at the till need to see.
@@ -77,7 +78,7 @@ const ringOf = (tier: string) => TIER_RING[tier] ?? 'ring-cyan-300';
 
 function formatWhen(iso: string): string {
   try {
-    return new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    return new Date(iso).toLocaleString(currentDateLocale(), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   } catch {
     return iso;
   }
@@ -297,7 +298,7 @@ export default function PosTerminal() {
                       <Mini
                         icon={<Sparkles className="w-4 h-4 text-amber-500" />}
                         label="Points"
-                        value={memberPoints.toLocaleString()}
+                        value={memberPoints.toLocaleString(currentNumberLocale())}
                         tone="amber"
                       />
                       <Mini
@@ -360,7 +361,7 @@ export default function PosTerminal() {
                             </span>
                             <span className="text-xs text-slate-500">{TENDER_LABEL[sale.tender]}</span>
                             <span className="font-medium text-slate-900">{formatCurrency(sale.total)}</span>
-                            {sale.pointsAwarded > 0 && <span className="text-xs text-amber-700">+{sale.pointsAwarded.toLocaleString()} pts</span>}
+                            {sale.pointsAwarded > 0 && <span className="text-xs text-amber-700">+{sale.pointsAwarded.toLocaleString(currentNumberLocale())} pts</span>}
                           </li>
                         ))}
                       </ul>

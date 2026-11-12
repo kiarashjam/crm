@@ -10,6 +10,7 @@ import {
 } from '@/app/api/automations';
 import { useAutomationRun, useAutomationRuns } from '@/app/hooks/queries';
 import { SELECT_CLASS } from './ConditionsEditor';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const reason = (err: unknown, fallback: string) => (err instanceof Error && err.message ? err.message : fallback);
 
@@ -44,7 +45,7 @@ const ACTIVE = new Set<AutomationRunStatus>(['running', 'waiting', 'retrying']);
 export function when(iso: string | null | undefined): string {
   if (!iso) return '';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString(currentDateLocale(), { dateStyle: 'medium', timeStyle: 'short' });
 }
 
 /** Where a run stands, in a sentence. */

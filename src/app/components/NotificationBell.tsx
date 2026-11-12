@@ -14,6 +14,7 @@ import {
   type AppNotification,
   type NotificationType,
 } from '@/app/api';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const TYPE_ICON: Record<NotificationType, React.ElementType> = {
   task: CheckSquare,
@@ -42,7 +43,7 @@ function relativeTime(iso: string): string {
   if (h < 24) return `${h}h ago`;
   const d = Math.floor(h / 24);
   if (d < 7) return `${d}d ago`;
-  return new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return new Date(t).toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric' });
 }
 
 /**

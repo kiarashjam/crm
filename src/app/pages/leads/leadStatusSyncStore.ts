@@ -10,6 +10,7 @@
 // simply behaves as though every lead were untouched.
 
 import type { CanonicalStage } from './leadStatusSync';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const PREFS_KEY = 'crm.leadStatusSync.prefs.v1';
 const META_KEY = 'crm.leadStatusSync.meta.v1';
@@ -178,7 +179,7 @@ export function describeStatusOrigin(meta: LeadSyncMeta, currentStatus: string):
   const when = new Date(meta.lastAt);
   const stamp = Number.isNaN(when.getTime())
     ? ''
-    : ` · ${when.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`;
+    : ` · ${when.toLocaleDateString(currentDateLocale(), { day: 'numeric', month: 'short' })}`;
   if (meta.lastAutoStatus !== currentStatus) {
     // No longer "somebody changed it" — nobody can. It means an import, a seed,
     // or a colleague's tracker edit this browser has no record of.

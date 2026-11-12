@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { animate } from 'motion/react';
 import { useMotionPreference } from '@/app/hooks/useMotionPreference';
+import { currentNumberLocale } from '@/app/i18n/current';
 
-const defaultFormat = (n: number) => Math.round(n).toLocaleString();
+const defaultFormat = (n: number) => Math.round(n).toLocaleString(currentNumberLocale());
 
 /**
  * A number that counts up to its value, and glides to each new value after that.

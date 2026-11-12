@@ -14,6 +14,7 @@ import { LoadFailed } from '@/app/components/LoadFailed';
 import { ApiError } from '@/app/api/apiClient';
 import { savePrivacySettings, type MarketingConsentMode, type PrivacySettings } from '@/app/api/privacy';
 import { usePrivacySettings } from '@/app/hooks/queries';
+import { currentDateLocale } from '@/app/i18n/current';
 
 interface Form {
   controllerName: string;
@@ -226,7 +227,7 @@ export function PrivacySettingsPanel() {
         </Button>
         {settings.updatedAtUtc && (
           <span className="text-xs text-slate-500">
-            Last changed {new Date(settings.updatedAtUtc).toLocaleString()}
+            Last changed {new Date(settings.updatedAtUtc).toLocaleString(currentDateLocale())}
             {settings.updatedByName ? ` by ${settings.updatedByName}` : ''}
           </span>
         )}

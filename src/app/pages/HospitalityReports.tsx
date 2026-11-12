@@ -50,6 +50,7 @@ import {
 } from '@/app/api/clubReports';
 import { formatClubMoney } from '@/app/lib/clubMoney';
 import { customPeriod, dateInputValue, periodFor, PERIOD_LABELS, type PeriodPreset } from '@/app/pages/reports/reportFilters';
+import { currentDateLocale, currentNumberLocale } from '@/app/i18n/current';
 
 type GrainChoice = 'auto' | ClubReportGrain;
 
@@ -59,8 +60,8 @@ const PRESETS: PeriodPreset[] = ['this-month', 'last-month', 'last-30', 'last-90
 function periodLabel(period: ClubReportPeriod, grain: ClubReportGrain): string {
   const [y, m, d] = period.start.split('-').map(Number) as [number, number, number];
   const day = new Date(y, m - 1, d);
-  if (grain === 'month') return day.toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
-  const short = day.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  if (grain === 'month') return day.toLocaleDateString(currentDateLocale(), { month: 'short', year: '2-digit' });
+  const short = day.toLocaleDateString(currentDateLocale(), { day: 'numeric', month: 'short' });
   return grain === 'week' ? `Wk ${short}` : short;
 }
 
@@ -277,7 +278,7 @@ function ReportBody({ report, money }: { report: ClubReport; money: Money }) {
           <div>
             <dt className="text-slate-500">Loyalty points held</dt>
             <dd className="text-lg font-semibold text-slate-900">{money(report.points.value, report.points.currency)}</dd>
-            <dd className="text-xs text-slate-500">{report.points.points.toLocaleString()} points at {report.points.pointsPerUnit} a {report.points.currency}</dd>
+            <dd className="text-xs text-slate-500">{report.points.points.toLocaleString(currentNumberLocale())} points at {report.points.pointsPerUnit} a {report.points.currency}</dd>
           </div>
           <div>
             <dt className="text-slate-500">Subscriptions each month</dt>

@@ -11,6 +11,7 @@ import { LoadFailed } from '@/app/components/LoadFailed';
 import { runRetention, type RetentionRule, type RetentionRun } from '@/app/api/privacy';
 import { useRetentionPreview, useRetentionRuns } from '@/app/hooks/queries';
 import { cn } from '@/app/components/ui/utils';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const RULE_TITLE: Record<RetentionRule['rule'], string> = {
   leads: 'Leads nobody worked on',
@@ -29,7 +30,7 @@ const STATUS: Record<RetentionRun['status'], { label: string; tone: string }> = 
 function when(iso?: string | null): string {
   if (!iso) return '';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString(currentDateLocale(), { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 function period(rule: RetentionRule): string {

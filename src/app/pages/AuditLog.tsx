@@ -12,6 +12,7 @@ import { StaggerItem } from '@/app/components/motion/Stagger';
 import { cn } from '@/app/components/ui/utils';
 import { getAuditLog, type AuditEvent, type AuditEntity, type AuditAction } from '@/app/api';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const ACTION_META: Record<AuditAction, { icon: React.ElementType; tone: string }> = {
   created: { icon: Plus, tone: 'bg-emerald-100 text-emerald-700' },
@@ -55,7 +56,7 @@ function relTime(iso: string): string {
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
   const d = Math.floor(h / 24);
-  return d < 7 ? `${d}d ago` : new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return d < 7 ? `${d}d ago` : new Date(t).toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric' });
 }
 
 export default function AuditLog() {

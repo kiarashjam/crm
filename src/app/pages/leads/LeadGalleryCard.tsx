@@ -28,6 +28,7 @@ import {
 import { leadInitials } from './leadText';
 import { formatDate } from './utils';
 import type { useLeadStatusSync } from './useLeadStatusSync';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 
@@ -204,7 +205,7 @@ function fullDate(iso?: string): string | undefined {
   if (!iso) return undefined;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return undefined;
-  return d.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return d.toLocaleString(currentDateLocale(), { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 function ScoreRing({ score, reduce }: { score: number; reduce: boolean }) {

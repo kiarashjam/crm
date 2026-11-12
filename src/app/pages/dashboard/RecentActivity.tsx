@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { Activity, Phone, Mail, FileText, Users, Video, Presentation, CheckCircle, CalendarClock, Clock, TriangleAlert } from 'lucide-react';
 import type { Activity as ActivityType } from '@/app/api/types';
 import { LoadFailed, RetryButton } from '@/app/components/LoadFailed';
+import { currentDateLocale } from '@/app/i18n/current';
 
 interface RecentActivityProps {
   /** Already sorted newest-first by `mostRecent`. */
@@ -140,7 +141,7 @@ export function RecentActivity({ items, loaded, failed, onRetry, retrying, stale
                     )}
                   </div>
                   <span className="text-xs text-slate-500 shrink-0">
-                    {new Date(item.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                    {new Date(item.createdAt).toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric' })}
                   </span>
                 </div>
               );

@@ -68,6 +68,7 @@ import { useClubMoney } from '@/app/hooks/useClubMoney';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { PERMISSION } from '@/app/api/organizations';
 import { useMay } from '@/app/hooks/useMay';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const STATUS_BADGE: Record<ApplicationStatus, string> = {
   Submitted: 'bg-blue-50 text-blue-700 ring-1 ring-blue-200',
@@ -105,7 +106,7 @@ function newForm(tier: MemberTier): FormState {
 
 function formatDate(iso: string): string {
   try {
-    return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    return new Date(iso).toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric', year: 'numeric' });
   } catch {
     return iso;
   }

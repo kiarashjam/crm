@@ -37,10 +37,11 @@ import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import { useClubToday } from '@/app/hooks/queries/club';
 import { useRegional } from '@/app/hooks/useMoney';
 import { formatClubMoney } from '@/app/lib/clubMoney';
+import { currentDateLocale } from '@/app/i18n/current';
 
 function formatTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    return new Date(iso).toLocaleTimeString(currentDateLocale(), { hour: 'numeric', minute: '2-digit' });
   } catch {
     return iso;
   }
@@ -95,7 +96,7 @@ export default function HospitalityDashboard() {
             icon={LayoutDashboard}
             tone="teal"
             title="Today at the Club"
-            subtitle={dayOf(day.date).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+            subtitle={dayOf(day.date).toLocaleDateString(currentDateLocale(), { weekday: 'long', month: 'long', day: 'numeric' })}
             actions={
               <div className="hidden md:flex gap-2">
                 <QuickLinkButton to="/pos" icon={<Calculator className="h-4 w-4" />} label="POS" />
@@ -187,7 +188,7 @@ export default function HospitalityDashboard() {
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-slate-900 truncate">{a.firstName} {a.lastName}</p>
                         <p className="text-xs text-slate-500">
-                          {dayOf(a.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · {a.tier}
+                          {dayOf(a.date).toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric' })} · {a.tier}
                         </p>
                       </div>
                       <span className="text-sm font-semibold text-amber-700 shrink-0">{a.years} yr{a.years > 1 ? 's' : ''}</span>
@@ -229,7 +230,7 @@ export default function HospitalityDashboard() {
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-slate-900 truncate">{e.name}</p>
                           <p className="text-xs text-slate-500">
-                            {new Date(e.startAtUtc).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                            {new Date(e.startAtUtc).toLocaleDateString(currentDateLocale(), { weekday: 'short', month: 'short', day: 'numeric' })}
                           </p>
                         </div>
                       </div>

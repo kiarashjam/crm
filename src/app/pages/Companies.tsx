@@ -67,6 +67,7 @@ import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import { useMoney } from '@/app/hooks/useMoney';
 import { useModules } from '@/app/hooks/useModules';
 import { PERMISSION } from '@/app/api/organizations';
+import { currentNumberLocale } from '@/app/i18n/current';
 
 // Industries offered when a company is added or edited. The filter lists the ones the
 // workspace's companies are really in instead, however they were typed.
@@ -251,8 +252,8 @@ export default function Companies() {
     try {
       const result = await exportCompanies(listFilters);
       if (!result) toast.success('Companies exported');
-      else if (result.exported < result.total) toast.success(`Exported the first ${result.exported.toLocaleString()} of ${result.total.toLocaleString()} companies`);
-      else toast.success(`Exported ${result.exported.toLocaleString()} compan${result.exported === 1 ? 'y' : 'ies'}`);
+      else if (result.exported < result.total) toast.success(`Exported the first ${result.exported.toLocaleString(currentNumberLocale())} of ${result.total.toLocaleString(currentNumberLocale())} companies`);
+      else toast.success(`Exported ${result.exported.toLocaleString(currentNumberLocale())} compan${result.exported === 1 ? 'y' : 'ies'}`);
     } catch (error) {
       toast.error(error instanceof Error && error.message ? error.message : 'The export failed');
     } finally {
@@ -767,7 +768,7 @@ export default function Companies() {
                 </span>
               )}
               <span className="text-xs text-slate-500">
-                {totalCount.toLocaleString()} {totalCount === 1 ? 'company' : 'companies'}
+                {totalCount.toLocaleString(currentNumberLocale())} {totalCount === 1 ? 'company' : 'companies'}
               </span>
             </div>
           )}

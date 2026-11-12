@@ -20,6 +20,7 @@ import { CsvButton } from './ReportUI';
 import { savedForecastTable } from './reportCsv';
 import { addMonths, monthLabel, monthOf } from './reportFilters';
 import { useMoney } from '@/app/hooks/useMoney';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const reason = (err: unknown, fallback: string) => (err instanceof Error && err.message ? err.message : fallback);
 
@@ -179,7 +180,7 @@ export function SavedForecastPanel() {
             >
               {set.saves.map((s, i) => (
                 <option key={s.snapshotId} value={s.snapshotId}>
-                  {new Date(s.savedAtUtc).toLocaleString(undefined, { timeZone, dateStyle: 'medium', timeStyle: 'short' })} by {s.savedByName}{i === set.saves.length - 1 ? ' (first)' : ''}
+                  {new Date(s.savedAtUtc).toLocaleString(currentDateLocale(), { timeZone, dateStyle: 'medium', timeStyle: 'short' })} by {s.savedByName}{i === set.saves.length - 1 ? ' (first)' : ''}
                 </option>
               ))}
             </select>

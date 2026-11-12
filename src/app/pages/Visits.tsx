@@ -55,6 +55,7 @@ import {
 } from '@/app/components/views';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { PERMISSION } from '@/app/api/organizations';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const VENUE_COLOR: Record<VisitVenue, string> = {
   Dining: 'bg-orange-50 text-orange-700 ring-1 ring-orange-200',
@@ -69,7 +70,7 @@ const VENUE_COLOR: Record<VisitVenue, string> = {
 
 function formatDateTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleString(undefined, {
+    return new Date(iso).toLocaleString(currentDateLocale(), {
       month: 'short',
       day: 'numeric',
       hour: 'numeric',

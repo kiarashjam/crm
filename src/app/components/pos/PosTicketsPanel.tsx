@@ -25,6 +25,7 @@ import {
 import { useClubMembers, usePosTickets } from '@/app/hooks/queries';
 import { useRegional } from '@/app/hooks/useMoney';
 import { formatClubMoney } from '@/app/lib/clubMoney';
+import { currentDateLocale, currentNumberLocale } from '@/app/i18n/current';
 
 const message = (err: unknown, fallback: string) => (err instanceof Error && err.message ? err.message : fallback);
 
@@ -38,7 +39,7 @@ const STATUS_BADGE: Record<string, string> = {
 
 function formatDateTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    return new Date(iso).toLocaleString(currentDateLocale(), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   } catch {
     return iso;
   }
@@ -161,7 +162,7 @@ export function PosTicketsPanel({ filter, canAct }: { filter: PosTicketFilter; c
                       <Link to={`/members/${t.memberId}`} className="mt-1 block text-xs text-slate-600 hover:underline">{t.memberName}</Link>
                     )}
                     {t.note && <span className="mt-1 block text-xs text-slate-500">{t.note}</span>}
-                    {t.status === 'posted' && t.pointsAwarded ? <span className="mt-1 block text-xs text-amber-700">+{t.pointsAwarded.toLocaleString()} points</span> : null}
+                    {t.status === 'posted' && t.pointsAwarded ? <span className="mt-1 block text-xs text-amber-700">+{t.pointsAwarded.toLocaleString(currentNumberLocale())} points</span> : null}
                   </td>
                   <td className="px-4 py-3">
                     {canAct && waiting && (

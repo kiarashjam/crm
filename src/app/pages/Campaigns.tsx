@@ -74,6 +74,7 @@ import {
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { PERMISSION } from '@/app/api/organizations';
 import { useCampaignAudience, useCampaignRecipients, useCampaigns } from '@/app/hooks/queries/club';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const STATUS_BADGE: Record<Campaign['status'], string> = {
   Draft: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
@@ -102,7 +103,7 @@ const RECIPIENT_BADGE: Record<CommStatus, string> = {
 function formatDateTime(iso?: string | null): string {
   if (!iso) return '';
   try {
-    return new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    return new Date(iso).toLocaleString(currentDateLocale(), { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   } catch {
     return iso;
   }

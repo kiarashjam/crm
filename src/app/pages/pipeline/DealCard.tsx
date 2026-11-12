@@ -24,6 +24,7 @@ import { cn } from '@/app/components/ui/utils';
 import type { Deal } from './types';
 import { useMoney } from '@/app/hooks/useMoney';
 import { daysSince, formatDays, getDaysUntilClose } from './utils';
+import { currentDateLocale } from '@/app/i18n/current';
 
 export const DEAL_CARD_TYPE = 'DEAL_CARD';
 
@@ -41,7 +42,7 @@ export function formatLastActivity(iso: string | undefined): string {
   if (!iso) return '';
   try {
     const d = new Date(iso);
-    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    return d.toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric', year: 'numeric' });
   } catch {
     return '';
   }

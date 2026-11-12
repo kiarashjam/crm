@@ -68,6 +68,7 @@ import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import { useMoney } from '@/app/hooks/useMoney';
 import { useModules } from '@/app/hooks/useModules';
 import { PERMISSION } from '@/app/api/organizations';
+import { currentDateLocale, currentNumberLocale } from '@/app/i18n/current';
 
 const SORTS: ContactSortField[] = ['name', 'email', 'lastActivity', 'createdAt'];
 
@@ -221,8 +222,8 @@ export default function Contacts() {
     try {
       const result = await exportContacts(listFilters);
       if (!result) toast.success('Contacts exported');
-      else if (result.exported < result.total) toast.success(`Exported the first ${result.exported.toLocaleString()} of ${result.total.toLocaleString()} contacts`);
-      else toast.success(`Exported ${result.exported.toLocaleString()} contact${result.exported === 1 ? '' : 's'}`);
+      else if (result.exported < result.total) toast.success(`Exported the first ${result.exported.toLocaleString(currentNumberLocale())} of ${result.total.toLocaleString(currentNumberLocale())} contacts`);
+      else toast.success(`Exported ${result.exported.toLocaleString(currentNumberLocale())} contact${result.exported === 1 ? '' : 's'}`);
     } catch (error) {
       toast.error(error instanceof Error && error.message ? error.message : 'The export failed');
     } finally {
@@ -392,7 +393,7 @@ export default function Contacts() {
   const shortDate = (iso?: string) => {
     if (!iso) return '—';
     const d = new Date(iso);
-    return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric', year: 'numeric' });
   };
   const contactColumns: RecordColumn<Contact>[] = [
     {
@@ -822,7 +823,7 @@ export default function Contacts() {
                 </span>
               )}
               <span className="text-xs text-slate-500">
-                {totalCount.toLocaleString()} {totalCount === 1 ? 'contact' : 'contacts'}
+                {totalCount.toLocaleString(currentNumberLocale())} {totalCount === 1 ? 'contact' : 'contacts'}
               </span>
             </div>
           )}
@@ -1100,7 +1101,7 @@ export default function Contacts() {
                                 try {
                                   const d = new Date(contact.lastActivityAtUtc);
                                   if (Number.isNaN(d.getTime())) return 'Unknown';
-                                  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                                  return d.toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric' });
                                 } catch {
                                   return 'Unknown';
                                 }

@@ -26,12 +26,13 @@ import { useRegional } from '@/app/hooks/useMoney';
 import { formatClubMoney } from '@/app/lib/clubMoney';
 import { PayOnlineDialog } from './PayOnlineDialog';
 import { ONLINE_STATUS_BADGE, ONLINE_STATUS_LABEL, PURPOSE_LABEL, describeCard } from './paymentLabels';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const message = (err: unknown, fallback: string) => (err instanceof Error && err.message ? err.message : fallback);
 
 function formatDateTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return new Date(iso).toLocaleString(currentDateLocale(), { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   } catch {
     return iso;
   }

@@ -71,6 +71,7 @@ import { WriteOnly } from '@/app/components/WriteOnly';
 import { orgCan, PERMISSION } from '@/app/api/organizations';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
 import ResourcesDialog from '@/app/pages/reservations/ResourcesDialog';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const KIND_ICON: Record<ResourceKind, React.ElementType> = {
   Dining: Coffee,
@@ -147,7 +148,7 @@ function toDateTimeLocal(d: Date): string {
 
 function formatDateTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleString(undefined, {
+    return new Date(iso).toLocaleString(currentDateLocale(), {
       weekday: 'short',
       month: 'short',
       day: 'numeric',
