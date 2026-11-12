@@ -54,6 +54,9 @@ public static partial class DomainErrors
         public static readonly Error ConnectExpired = new(
             "Pos.ConnectExpired", "The connection to Lightspeed took too long or was started elsewhere. Start it again from the POS tickets page.");
 
+        public static readonly Error ConnectNotYours = new(
+            "Pos.ConnectNotYours", "This connection to Lightspeed was started by someone else, or in another workspace, so it was not finished here. Start it again from the POS tickets page.");
+
         public static Error ProviderRefused(string message) => new("Pos.ProviderRefused", message);
 
         public static Error ProviderUnreachable(string message) => new("Pos.SendFailed", message);

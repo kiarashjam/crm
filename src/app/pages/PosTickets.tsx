@@ -8,7 +8,7 @@
 // Matching, retrying, setting aside and the connection take money.manage; the server refuses
 // the rest, and the page says so instead of offering it.
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { PlugZap } from 'lucide-react';
 import { toast } from 'sonner';
@@ -19,7 +19,7 @@ import PageHero from '@/app/components/PageHero';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
 import { servesDemoData } from '@/app/api/apiClient';
 import { orgCan, PERMISSION } from '@/app/api/organizations';
-import { POS_DEMO_MESSAGE } from '@/app/api/pos';
+import { completePosConnection, POS_DEMO_MESSAGE } from '@/app/api/pos';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
 import { usePosStatus } from '@/app/hooks/queries';
 import { PosTicketsPanel } from '@/app/components/pos/PosTicketsPanel';
@@ -44,18 +44,30 @@ export default function PosTickets() {
     setSearch(next, { replace: true });
   };
 
-  // Lightspeed sends the browser back here after connecting, saying how it went.
-  const connected = search.get('connected');
-  const failed = search.get('error');
+  // Lightspeed sends the browser back here with a code and the state it was given, or with an
+  // error when the club did not allow access. The page passes the code on while signed in, once
+  // (a code works once): the server finishes connecting only for whoever started it, in this
+  // workspace, so a link someone else made connects nothing.
+  const code = search.get('code');
+  const state = search.get('state');
+  const refused = search.get('error');
+  const finishing = useRef<string | null>(null);
   useEffect(() => {
-    if (!connected && !failed) return;
-    if (connected) toast.success('Lightspeed connected. Choose the location whose tickets come in, then turn the import on.');
-    if (failed) toast.error(failed);
+    if (!code && !refused) return;
     const next = new URLSearchParams(search);
-    next.delete('connected');
-    next.delete('error');
+    for (const key of ['code', 'state', 'scope', 'error', 'error_description']) next.delete(key);
+    next.set('tab', 'connection');
     setSearch(next, { replace: true });
-  }, [connected, failed, search, setSearch]);
+    if (refused) {
+      toast.error('Lightspeed did not give access to the account. Connect again to try once more.');
+      return;
+    }
+    if (!code || !state || finishing.current === code) return;
+    finishing.current = code;
+    completePosConnection(code, state)
+      .then(() => toast.success('Lightspeed connected. Choose the location whose tickets come in, then turn the import on.'))
+      .catch((err: unknown) => toast.error(err instanceof Error && err.message ? err.message : 'Could not finish connecting Lightspeed'));
+  }, [code, state, refused, search, setSearch]);
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">

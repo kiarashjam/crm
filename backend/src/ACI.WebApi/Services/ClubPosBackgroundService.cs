@@ -8,8 +8,8 @@ namespace ACI.WebApi.Services;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Lightspeed K-Series sends no webhook when a ticket closes, so the club's tickets are read
-/// from its Financial API. Each workspace's run claims the workspace first (a lease on its POS
+/// Lightspeed K-Series has no webhook that reports every closed ticket, so the club's tickets
+/// are read from its Financial API. Each workspace's run claims the workspace first (a lease on its POS
 /// settings, taken by one conditional update), so two instances of the app, or this job and
 /// someone pressing "Import now", never import the same workspace at once; and each ticket is
 /// saved once by the POS's id for it, so reading one again adds nothing.

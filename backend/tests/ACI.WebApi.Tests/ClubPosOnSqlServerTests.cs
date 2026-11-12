@@ -4,7 +4,6 @@ using ACI.Application.Services;
 using ACI.Domain.Entities;
 using ACI.Infrastructure.Persistence;
 using ACI.WebApi.Tests.Helpers;
-using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using static ACI.WebApi.Tests.Helpers.FakeLightspeed;
@@ -108,9 +107,8 @@ public class ClubPosOnSqlServerTests
         await Ok(await w.Client.PostAsync($"/api/members/{w.Member}/codes", Body(new { code = "1042" })), "give Jean his code");
         var url = (await Ok(await w.Client.PostAsync("/api/pos/connect", null), "start connecting")).GetProperty("url").GetString()!;
         var state = System.Web.HttpUtility.ParseQueryString(new Uri(url).Query)["state"]!;
-        using (var browser = w.App.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false }))
-            (await browser.GetAsync($"/api/public/pos/lightspeed/callback?code=c&state={Uri.EscapeDataString(state)}")).Headers.Location!.ToString()
-                .Should().EndWith("connected=1");
+        (await Ok(await w.Client.PostAsync("/api/pos/connect/complete", Body(new { code = "c", state })), "finish connecting"))
+            .GetProperty("connected").GetBoolean().Should().BeTrue();
         await Ok(await w.Client.PutAsync("/api/pos/settings", Body(new
         {
             locationId = "46100001", enabled = true, importFromUtc = DateTime.UtcNow.AddHours(-1).ToString("O"),

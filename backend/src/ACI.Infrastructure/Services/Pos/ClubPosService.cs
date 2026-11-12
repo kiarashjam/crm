@@ -51,8 +51,11 @@ public sealed partial class ClubPosService : IClubPos
         _logger = logger;
     }
 
-    /// <summary>Where Lightspeed sends the browser back after the club connects: registered with Lightspeed for Cadence's client.</summary>
-    public string RedirectUri => $"{(_email.ApiBaseUrl ?? "").TrimEnd('/')}/api/public/pos/lightspeed/callback";
+    /// <summary>
+    /// Where Lightspeed sends the browser back after the club connects: the POS tickets page,
+    /// which passes the code on while signed in. Registered with Lightspeed for Cadence's client.
+    /// </summary>
+    public string RedirectUri => $"{(_email.FrontendBaseUrl ?? "").TrimEnd('/')}/pos-tickets";
 
     // ── status and settings ──────────────────────────────────────────────────
 
@@ -163,13 +166,14 @@ public sealed partial class ClubPosService : IClubPos
         return Task.FromResult<Result<string>>(provider.AuthorizeUrl(_state.Create(organizationId, userId), RedirectUri));
     }
 
-    public async Task<Result<Guid>> CompleteConnectAsync(string? state, string? code, CancellationToken ct = default)
+    public async Task<Result<PosSettingsDto>> CompleteConnectAsync(Guid organizationId, Guid userId, string? state, string? code, CancellationToken ct = default)
     {
-        if (!_state.TryRead(state, out var organizationId, out var userId)) return DomainErrors.Pos.ConnectExpired;
+        if (!_state.TryRead(state, out var startedIn, out var startedBy)) return DomainErrors.Pos.ConnectExpired;
+        // A code that comes back with someone else's state, or to another workspace, is not this
+        // person's connection to finish: it may be a link made to read one club's Lightspeed
+        // account into another's workspace.
+        if (startedIn != organizationId || startedBy != userId) return DomainErrors.Pos.ConnectNotYours;
         if (string.IsNullOrWhiteSpace(code)) return DomainErrors.Pos.ProviderRefused("Lightspeed did not give access to the account.");
-        // An anonymous request (the browser coming back from Lightspeed): it acts for the
-        // workspace the signed state names, and for nothing else.
-        using var acting = _db.ActFor(organizationId, null);
         var provider = Provider(PosProviders.LightspeedK);
         if (!provider.IsConfigured) return DomainErrors.Pos.NotConfigured;
         var tokens = await provider.ExchangeCodeAsync(code.Trim(), RedirectUri, ct);
@@ -189,13 +193,21 @@ public sealed partial class ClubPosService : IClubPos
         row.AccessTokenProtected = _secrets.Protect(tokens.Value.AccessToken);
         row.AccessTokenExpiresAtUtc = tokens.Value.ExpiresAtUtc;
         row.ConnectedAtUtc = now;
-        row.ConnectedByName = await _db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.Name).FirstOrDefaultAsync(ct) is { } name
-            ? Clip(name, 200) : null;
+        row.ConnectedByName = Who();
         row.LastImportError = null;
         row.UpdatedAtUtc = now;
         row.UpdatedByUserId = userId;
-        await _db.SaveChangesAsync(ct);
-        return organizationId;
+        row.UpdatedByName = Who();
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            // The settings saved by someone else meanwhile, or two first connections at once.
+            return DomainErrors.Pos.SettingsChanged;
+        }
+        return ToDto(row);
     }
 
     public async Task<Result<PosSettingsDto>> DisconnectAsync(Guid organizationId, Guid userId, CancellationToken ct = default)

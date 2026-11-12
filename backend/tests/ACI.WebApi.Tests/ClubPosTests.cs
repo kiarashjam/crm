@@ -3,7 +3,6 @@ using System.Text.Json;
 using ACI.Application.Services;
 using ACI.Domain.Entities;
 using ACI.WebApi.Tests.Helpers;
-using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using static ACI.WebApi.Tests.Helpers.FakeLightspeed;
 using static ACI.WebApi.Tests.Helpers.Workspaces;
@@ -37,15 +36,22 @@ public class ClubPosTests
         return (client, org, jean);
     }
 
-    /// <summary>Connects the club's Lightspeed account as a browser would: to Lightspeed's page and back with a code.</summary>
+    /// <summary>
+    /// Connects the club's Lightspeed account as a browser would: to Lightspeed's page, back to the
+    /// POS tickets page with a code, which the page passes on.
+    /// </summary>
     private static async Task ConnectAsync(PosApp app, HttpClient client)
     {
+        var state = await StartConnectingAsync(client);
+        var connected = await Club.Json(await client.PostAsync("/api/pos/connect/complete", Body(new { code = "the-code", state })), "finish connecting");
+        connected.GetProperty("connected").GetBoolean().Should().BeTrue();
+    }
+
+    /// <summary>Starts connecting, and returns the state Lightspeed is to send back with the code.</summary>
+    private static async Task<string> StartConnectingAsync(HttpClient client)
+    {
         var url = (await Club.Json(await client.PostAsync("/api/pos/connect", null), "start connecting")).GetProperty("url").GetString()!;
-        var state = System.Web.HttpUtility.ParseQueryString(new Uri(url).Query)["state"];
-        using var browser = app.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-        var back = await browser.GetAsync($"/api/public/pos/lightspeed/callback?code=the-code&state={Uri.EscapeDataString(state!)}");
-        back.StatusCode.Should().Be(HttpStatusCode.Redirect);
-        back.Headers.Location!.ToString().Should().EndWith("/pos-tickets?tab=connection&connected=1");
+        return System.Web.HttpUtility.ParseQueryString(new Uri(url).Query)["state"]!;
     }
 
     private static async Task<JsonElement> ImportAsync(HttpClient client) =>
@@ -73,20 +79,19 @@ public class ClubPosTests
         query["response_type"].Should().Be("code");
         query["client_id"].Should().Be(ClientId);
         query["scope"].Should().Be("financial-api");
-        query["redirect_uri"].Should().EndWith("/api/public/pos/lightspeed/callback");
+        query["redirect_uri"].Should().EndWith("/pos-tickets", "Lightspeed sends the browser back to the POS tickets page, which passes the code on signed in");
 
         // A code with a state Cadence did not sign connects nothing.
-        using var browser = app.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-        var forged = await browser.GetAsync("/api/public/pos/lightspeed/callback?code=x&state=made-up");
-        forged.Headers.Location!.ToString().Should().Contain("error=");
+        await Club.Refused(await client.PostAsync("/api/pos/connect/complete", Body(new { code = "x", state = "made-up" })),
+            HttpStatusCode.BadRequest, "finish connecting with a state Cadence did not sign");
         app.Lightspeed.Sent("POST", "/oauth/token").Should().BeEmpty();
         (await Club.Json(await client.GetAsync("/api/pos/settings"), "read the settings")).GetProperty("connected").GetBoolean().Should().BeFalse();
 
-        var back = await browser.GetAsync($"/api/public/pos/lightspeed/callback?code=the-code&state={Uri.EscapeDataString(query["state"]!)}");
-        back.Headers.Location!.ToString().Should().EndWith("connected=1");
+        await Club.Json(await client.PostAsync("/api/pos/connect/complete", Body(new { code = "the-code", state = query["state"] })), "finish connecting");
         var exchange = app.Lightspeed.Sent("POST", "/oauth/token").Single();
         exchange.Form["grant_type"].Should().Be("authorization_code");
         exchange.Form["code"].Should().Be("the-code");
+        exchange.Form["redirect_uri"].Should().Be(query["redirect_uri"], "the code is exchanged for the address it was sent to");
 
         var body = await (await client.GetAsync("/api/pos/settings")).Content.ReadAsStringAsync();
         body.Should().Contain("\"connected\":true").And.NotContain("access-1").And.NotContain("refresh-1");
@@ -97,6 +102,40 @@ public class ClubPosTests
         var locations = (await Club.Json(await client.GetAsync("/api/pos/locations"), "list the locations")).EnumerateArray().ToList();
         locations.Select(l => (l.GetProperty("id").GetString(), l.GetProperty("name").GetString()))
             .Should().Equal(("46100001", "Pavillon 46 Restaurant"), ("46100002", "Pavillon 46 Bar"));
+    }
+
+    [Fact]
+    public async Task OnlyWhoeverStartedConnecting_FinishesIt_InTheWorkspaceTheyStartedIn()
+    {
+        using var app = new PosApp();
+        var (club, _, clubOrg) = await Club.CreateAsync(app);
+        var (other, _, otherOrg) = await Club.CreateAsync(app, "someone@example.org", "Another club");
+        var finance = await Club.JoinAsync(app, club, clubOrg, "finance@example.ch", "finance");
+
+        // The club's manager starts connecting; someone else signs in to Lightspeed with the link
+        // and sends the code to their own workspace, or a colleague tries to finish it: neither
+        // takes the club's connection.
+        var clubState = await StartConnectingAsync(club);
+        await Club.Refused(await other.PostAsync("/api/pos/connect/complete", Body(new { code = "their-code", state = clubState })),
+            HttpStatusCode.BadRequest, "finish someone else's connection in another workspace");
+        await Club.Refused(await finance.PostAsync("/api/pos/connect/complete", Body(new { code = "their-code", state = clubState })),
+            HttpStatusCode.BadRequest, "finish a colleague's connection");
+
+        // The other way round: a state made in another workspace, sent with the club's own code
+        // (a link someone else made), does not connect that workspace to the club's account.
+        var otherState = await StartConnectingAsync(other);
+        var refused = await Club.Refused(await club.PostAsync("/api/pos/connect/complete", Body(new { code = "the-clubs-code", state = otherState })),
+            HttpStatusCode.BadRequest, "finish a connection started in another workspace");
+        refused.Should().Contain("started by someone else, or in another workspace");
+
+        app.Lightspeed.Sent("POST", "/oauth/token").Should().BeEmpty("no code was exchanged for anyone");
+        (await Club.Json(await club.GetAsync("/api/pos/settings"), "the club's settings")).GetProperty("connected").GetBoolean().Should().BeFalse();
+        (await Club.Json(await other.GetAsync("/api/pos/settings"), "the other settings")).GetProperty("connected").GetBoolean().Should().BeFalse();
+
+        await Club.Json(await club.PostAsync("/api/pos/connect/complete", Body(new { code = "the-clubs-code", state = clubState })), "finish connecting");
+        (await Club.Json(await club.GetAsync("/api/pos/settings"), "the club's settings")).GetProperty("connected").GetBoolean().Should().BeTrue();
+        (await Club.Json(await other.GetAsync("/api/pos/settings"), "the other settings")).GetProperty("connected").GetBoolean().Should().BeFalse();
+        otherOrg.Should().NotBe(clubOrg);
     }
 
     [Fact]

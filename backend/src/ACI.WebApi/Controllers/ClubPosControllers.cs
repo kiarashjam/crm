@@ -1,5 +1,4 @@
 using ACI.Application.Common;
-using ACI.Application.Configuration;
 using ACI.Application.Interfaces;
 using ACI.Application.Services;
 using ACI.Domain.Common;
@@ -8,7 +7,6 @@ using ACI.WebApi.Filters;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
-using Microsoft.Extensions.Options;
 
 namespace ACI.WebApi.Controllers;
 
@@ -68,6 +66,20 @@ public class PosController : ControllerBase
     {
         var url = await _pos.ConnectUrlAsync(Org, _user.UserId!.Value, ct);
         return url.IsSuccess ? Ok(new { url = url.Value }) : url.Error.ToProblemResult();
+    }
+
+    /// <summary>
+    /// Finishes connecting: Lightspeed sent the browser back to the POS tickets page with a code
+    /// and the state it was given, and the page passes them on. Only whoever started connecting
+    /// finishes it, in the workspace they started it in.
+    /// </summary>
+    [HttpPost("connect/complete")]
+    public async Task<ActionResult> CompleteConnect([FromBody] PosConnectRequest request, CancellationToken ct)
+    {
+        var done = await _pos.CompleteConnectAsync(Org, _user.UserId!.Value, request.State, request.Code, ct);
+        if (!done.IsSuccess) return done.Error.ToProblemResult();
+        Response.SetETag(done.Value.Version);
+        return Ok(done.Value);
     }
 
     /// <summary>Forgets the account's tokens and stops the import. Tickets already imported stay.</summary>
@@ -168,36 +180,4 @@ public class MemberCodesController : ControllerBase
     [HttpDelete("{codeId:guid}")]
     public async Task<ActionResult> Remove(Guid memberId, Guid codeId, CancellationToken ct) =>
         (await _pos.RemoveMemberCodeAsync(_user.CurrentOrganizationId!.Value, memberId, codeId, ct)).ToNoContentResult();
-}
-
-/// <summary>
-/// Where Lightspeed sends the browser back once the club has let Cadence read its account. An
-/// anonymous request: the signed state it carries says which workspace is connecting.
-/// </summary>
-[ApiController]
-[Route("api/public/pos")]
-[AllowAnonymous]
-public class PublicPosController : ControllerBase
-{
-    private readonly IClubPos _pos;
-    private readonly EmailSettings _email;
-    private readonly ILogger<PublicPosController> _logger;
-
-    public PublicPosController(IClubPos pos, IOptions<EmailSettings> email, ILogger<PublicPosController> logger)
-    {
-        _pos = pos;
-        _email = email.Value;
-        _logger = logger;
-    }
-
-    [HttpGet("lightspeed/callback")]
-    public async Task<ActionResult> LightspeedCallback([FromQuery] string? code, [FromQuery] string? state, [FromQuery] string? error, CancellationToken ct)
-    {
-        var page = $"{(_email.FrontendBaseUrl ?? "").TrimEnd('/')}/pos-tickets?tab=connection";
-        if (!string.IsNullOrWhiteSpace(error)) return Redirect($"{page}&error={Uri.EscapeDataString("Lightspeed did not give access to the account.")}");
-        var connected = await _pos.CompleteConnectAsync(state, code, ct);
-        if (connected.IsSuccess) return Redirect($"{page}&connected=1");
-        _logger.LogWarning("Connecting Lightspeed failed: {Code}", connected.Error.Code);
-        return Redirect($"{page}&error={Uri.EscapeDataString(connected.Error.Description)}");
-    }
 }

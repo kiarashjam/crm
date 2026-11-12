@@ -187,6 +187,15 @@ export async function connectPos(): Promise<string> {
   return url;
 }
 
+/**
+ * Finishes connecting with what Lightspeed sent the browser back with. The server takes it only
+ * from whoever started connecting, in the workspace they started in.
+ */
+export async function completePosConnection(code: string, state: string): Promise<PosSettings> {
+  if (servesDemoData()) throw new Error(POS_DEMO_MESSAGE);
+  return authFetchJson<PosSettings>('/api/pos/connect/complete', { method: 'POST', body: JSON.stringify({ code, state }) });
+}
+
 export async function disconnectPos(): Promise<PosSettings> {
   return authFetchJson<PosSettings>('/api/pos/disconnect', { method: 'POST' });
 }

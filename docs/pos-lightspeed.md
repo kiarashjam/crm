@@ -22,8 +22,9 @@ to leave a bill on an account. Its webhooks only cover checkouts started through
 
 ## How tickets come in
 
-K-Series sends no webhook when a ticket closes. Its webhooks are for orders placed through its
-ordering API. So Cadence reads the Financial API:
+K-Series has no webhook that reports every closed ticket. The notifications its public
+documentation describes belong to its ordering and reservation-platform APIs and cover the orders
+placed through them. So Cadence reads the Financial API:
 `GET /f/v2/business-location/{id}/sales?from=…&to=…&include=staff,table,consumer,payments`,
 page by page. It does this every five minutes for every workspace that turned the import on, and
 when someone presses "Import now".
@@ -31,10 +32,15 @@ when someone presses "Import now".
 - **One import at a time.** Each run claims the workspace with one conditional update (a
   10-minute lease on its POS settings). Two app instances, or the job and a click, never import
   the same workspace at once.
-- **Once each.** Each run reads back six hours before the latest ticket it has seen, for tills
-  that were offline. The POS's id for a ticket (location and receipt) is unique in the
-  workspace, so a ticket read again adds nothing. A ticket is posted as one sale, keyed by the
-  ticket.
+- **None passed over.** A run reads its window a day at a time, oldest first, and notes how far
+  it has read only past the days it read in full. A run cut short (Lightspeed not answering, or
+  the 60 requests one run makes at most) leaves the rest to the next run, which starts again at
+  the end of the last whole day. Each run also reads back six hours before that point, for tills
+  that were offline.
+- **Once each.** The POS's id for a ticket (location and receipt) is unique in the workspace, so
+  a ticket read again adds nothing. A ticket is posted as one sale, keyed by the ticket. If the
+  sale is posted and the ticket could not say so at that moment, the ticket is marked posted
+  from the sale the next time anyone or any import looks at it.
 
 ## Whose a ticket is
 
@@ -56,7 +62,9 @@ What happens to a ticket:
   payments don't add up, or it is a refund (refunds are not posted on their own). Fix the cause
   and try again.
 - **Not a member sale.** Paid at the POS with nobody on it, cancelled at the POS, or paid by a
-  method the settings call "not a member sale" (staff meals, say).
+  method the settings call "not a member sale" (staff meals, say). A ticket put partly on a
+  house account is never set aside this way: it waits as "not posted", saying why, because a
+  member owes that part.
 
 Payment methods are read from their names (Visa, Mastercard, Karte, Cash, Bar, TWINT, House
 account, Konto…). One that can't be told keeps its tickets waiting until the POS settings say
@@ -71,14 +79,16 @@ POS charged it. A bigger difference keeps the ticket waiting.
 
 Once per server (the owner):
 1. Ask Lightspeed for API access as a partner, and register an API client for Cadence with the
-   redirect address `https://<API host>/api/public/pos/lightspeed/callback` (the POS tickets
-   page shows it under Connection).
+   redirect address `https://<app host>/pos-tickets`: the app's POS tickets page, which the
+   Connection tab shows. Lightspeed sends the browser back there with a code, and the page,
+   signed in, passes it to the API. The API finishes connecting only for the person who started
+   it, in the workspace they started it in, so a Lightspeed link someone else made connects
+   nothing.
 2. Set the app settings `Pos__Lightspeed__ClientId` and `Pos__Lightspeed__ClientSecret`. Set
    `Pos__Lightspeed__ApiBase` only for Lightspeed's trial environment
    (`https://api.trial.lsk.lightspeed.app/`), and `Pos__Lightspeed__Scope` only if Lightspeed
    names another scope than `financial-api`.
-3. `Email__ApiBaseUrl` must be the API's public address (it builds the redirect address), and
-   `Email__FrontendBaseUrl` the app's (the browser comes back there).
+3. `Email__FrontendBaseUrl` must be the app's public address: it builds the redirect address.
 
 Per club (someone with money.manage), on POS tickets → Connection:
 1. Connect Lightspeed, and allow Cadence on Lightspeed's page.
@@ -95,6 +105,8 @@ nothing.
 ## Not built
 
 Refund tickets from the POS are not posted on their own: void the charge or record a credit on
-the house account page. Gift cards and points are not ways to pay at the POS. Nothing here has
-been tried against a live Lightspeed account. The HTTP tests answer for Lightspeed in the shapes
-its documentation gives.
+the house account page. Gift cards and points are not ways to pay at the POS. One location is
+imported per workspace. Nothing here has been tried against a live Lightspeed account: the HTTP
+tests answer for Lightspeed in the shapes its documentation gives, and the field names are read
+generously (older and newer names) for that reason. Try it on Lightspeed's trial environment
+before turning the import on for real tickets.

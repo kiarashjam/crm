@@ -19,12 +19,13 @@ namespace ACI.Application.Services;
 /// iKentoo, in Geneva, and is common in Swiss restaurants and clubs.
 /// </para>
 /// <para>
-/// K-Series has no webhook for a closed ticket (its webhooks are for orders placed through its
-/// ordering API), so tickets come in by polling, which claims the workspace for one import at a
-/// time (a lease on the settings row, taken by one conditional update), so two servers or a
-/// retry never import at once. Each import reads back a few hours before the last ticket it
-/// saw, as a till that was offline sends its tickets late; the POS's id for a ticket is unique
-/// in the workspace, so what was already read adds nothing.
+/// K-Series has no webhook that reports every closed ticket (the notifications it documents
+/// belong to its ordering and reservation-platform APIs, for the orders placed through them), so
+/// tickets come in by polling, which claims the workspace for one import at a time (a lease on
+/// the settings row, taken by one conditional update), so two servers or a retry never import
+/// at once. Each import reads a day at a time from a few hours before where the last one had
+/// read in full, as a till that was offline sends its tickets late; the POS's id for a ticket
+/// is unique in the workspace, so what was already read adds nothing.
 /// </para>
 /// <para>
 /// A ticket is a member's when the POS recorded one of their codes (a member number, or the
@@ -49,10 +50,18 @@ public interface IClubPos
     Task<Result<string>> ConnectUrlAsync(Guid organizationId, Guid userId, CancellationToken ct = default);
 
     /// <summary>
-    /// Lightspeed sends the browser back with a code: it is exchanged for the account's tokens,
-    /// kept encrypted. Returns the workspace connected, for the page to go back to.
+    /// Lightspeed sends the browser back to the POS tickets page with a code and the state it was
+    /// given, and the page, signed in, passes both on: the code is exchanged for the account's
+    /// tokens, kept encrypted. Only the person who started connecting finishes it, in the
+    /// workspace they started it in.
     /// </summary>
-    Task<Result<Guid>> CompleteConnectAsync(string? state, string? code, CancellationToken ct = default);
+    /// <remarks>
+    /// The state alone used to be enough, sent to an anonymous callback. Anyone could then start
+    /// connecting their own workspace and have someone else finish it on Lightspeed's page (a
+    /// link is all it takes): that person's restaurant account, its sales and its customers,
+    /// would have been read into the sender's workspace.
+    /// </remarks>
+    Task<Result<PosSettingsDto>> CompleteConnectAsync(Guid organizationId, Guid userId, string? state, string? code, CancellationToken ct = default);
 
     /// <summary>Forgets the tokens and stops importing. Tickets already imported stay.</summary>
     Task<Result<PosSettingsDto>> DisconnectAsync(Guid organizationId, Guid userId, CancellationToken ct = default);
@@ -190,7 +199,7 @@ public sealed record PosSettingsDto
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? LastImportError { get; init; }
     public int LastImportCount { get; init; }
 
-    /// <summary>Where Lightspeed sends the browser back after connecting: it is registered with Lightspeed for Cadence's client.</summary>
+    /// <summary>Where Lightspeed sends the browser back after connecting (the POS tickets page): it is registered with Lightspeed for Cadence's client.</summary>
     public string RedirectUri { get; init; } = string.Empty;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public DateTime? UpdatedAtUtc { get; init; }
@@ -249,6 +258,13 @@ public sealed record PosTicketDto
     public IReadOnlyList<PosTicketLineDto> Lines { get; init; } = Array.Empty<PosTicketLineDto>();
     public IReadOnlyList<PosTicketPaymentDto> Payments { get; init; } = Array.Empty<PosTicketPaymentDto>();
     public Guid Version { get; init; }
+}
+
+/// <summary>What Lightspeed sent the browser back with, passed on by the POS tickets page.</summary>
+public sealed class PosConnectRequest
+{
+    public string? Code { get; set; }
+    public string? State { get; set; }
 }
 
 public sealed class PosMatchRequest

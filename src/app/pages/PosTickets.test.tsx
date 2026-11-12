@@ -47,7 +47,7 @@ vi.mock('@/app/api/members', async (importOriginal) => ({
 
 const api = vi.hoisted(() => ({
   status: vi.fn(), tickets: vi.fn(), match: vi.fn(), retry: vi.fn(), ignore: vi.fn(),
-  settings: vi.fn(), save: vi.fn(), locations: vi.fn(), importNow: vi.fn(), connect: vi.fn(),
+  settings: vi.fn(), save: vi.fn(), locations: vi.fn(), importNow: vi.fn(), connect: vi.fn(), complete: vi.fn(),
 }));
 vi.mock('@/app/api/pos', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/app/api/pos')>()),
@@ -61,6 +61,7 @@ vi.mock('@/app/api/pos', async (importOriginal) => ({
   getPosLocations: () => api.locations(),
   importPosNow: () => api.importNow(),
   connectPos: () => api.connect(),
+  completePosConnection: (...a: unknown[]) => api.complete(...a),
 }));
 
 const { default: PosTickets } = await import('./PosTickets');
@@ -89,7 +90,7 @@ const SETTINGS: PosSettings = {
   provider: 'lightspeed-k', serverConfigured: true, connected: true, connectedAtUtc: '2026-11-01T09:00:00Z', connectedByName: 'Claire',
   tokenUnreadable: false, enabled: true, locationId: '46100001', locationName: 'Restaurant', importFromUtc: '2026-11-01T00:00:00Z',
   methodMap: { RCH: 'HouseAccount' }, defaultVenue: 'Dining', lastImportAtUtc: '2026-11-10T12:05:00Z', lastImportCount: 3,
-  redirectUri: 'https://api.example.ch/api/public/pos/lightspeed/callback', version: 'sv1',
+  redirectUri: 'https://app.example.ch/pos-tickets', version: 'sv1',
 };
 
 function renderAt(path = '/pos-tickets') {
@@ -183,10 +184,31 @@ describe('POS tickets', () => {
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('2 new tickets: 1 posted, 1 need a member, 0 not posted'));
   });
 
-  it('says when the server has no Lightspeed client, and when Lightspeed sent the browser back connected', async () => {
+  it('says when the server has no Lightspeed client', async () => {
     api.settings.mockResolvedValue({ ...SETTINGS, serverConfigured: false, connected: false, enabled: false });
-    renderAt('/pos-tickets?tab=connection&connected=1');
+    renderAt('/pos-tickets?tab=connection');
     expect(await screen.findByText(/Lightspeed is not set up on this server yet/)).toBeInTheDocument();
+  });
+
+  it('passes on the code Lightspeed sent the browser back with, once, and opens the connection', async () => {
+    api.complete.mockResolvedValue(SETTINGS);
+    renderAt('/pos-tickets?code=the-code&state=signed-state');
+
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith(expect.stringMatching(/^Lightspeed connected/)));
+    expect(api.complete).toHaveBeenCalledTimes(1);
+    expect(api.complete).toHaveBeenCalledWith('the-code', 'signed-state');
+    expect(await screen.findByRole('tab', { name: 'Connection', selected: true })).toBeInTheDocument();
+  });
+
+  it('says so when the club did not allow Cadence on Lightspeed, and sends nothing on', async () => {
+    renderAt('/pos-tickets?error=access_denied&state=signed-state');
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/^Lightspeed did not give access/)));
+    expect(api.complete).not.toHaveBeenCalled();
+  });
+
+  it('shows why the server would not finish connecting', async () => {
+    api.complete.mockRejectedValue(new Error('This connection to Lightspeed was started by someone else, or in another workspace, so it was not finished here.'));
+    renderAt('/pos-tickets?code=their-code&state=their-state');
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/started by someone else/)));
   });
 });
