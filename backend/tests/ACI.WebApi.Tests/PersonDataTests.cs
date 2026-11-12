@@ -32,7 +32,7 @@ public class PersonDataTests
         Guid FutureRegistrationId, Guid SentMessageId, Guid QueuedMessageId, Guid BobMessageId, Guid BobActivityId,
         Guid ChargeId, Guid PaymentId, Guid SubscriptionId);
 
-    internal static async Task<Seeded> SeedAsync(CustomWebApplicationFactory factory, Guid owner, Guid org)
+    internal static async Task<Seeded> SeedAsync(Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program> factory, Guid owner, Guid org)
     {
         var other = Guid.NewGuid();
         await using var db = factory.Services.EveryWorkspace();
