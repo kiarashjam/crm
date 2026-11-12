@@ -87,7 +87,7 @@ function StepBody({
             <Input aria-label={`${label}: due in days`} type="number" min={0} max={365} value={step.config.dueInDays ?? ''} onChange={(e) => set('dueInDays', e.target.value)} className="h-8 w-20 bg-white" />
             days, for
             <select aria-label={`${label}: for whom`} className={SELECT_CLASS} value={step.config.assigneeId ?? ''} onChange={(e) => set('assigneeId', e.target.value)}>
-              <option value="">the record&apos;s owner</option>
+              <option value="">the record&apos;s owner, else whoever set it off</option>
               {people.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
             </select>
             <select aria-label={`${label}: priority`} className={SELECT_CLASS} value={step.config.priority ?? ''} onChange={(e) => set('priority', e.target.value)}>
