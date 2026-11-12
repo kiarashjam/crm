@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json;
 using ACI.Domain.Entities;
 using ACI.Domain.Enums;
@@ -182,6 +183,38 @@ public class AutomationClubTriggersTests
 
         await MemberAsync(owner, "Jean");
         (await app.Services.Read(db => db.TaskItems.Count(t => t.Title == "Book the welcome tour"))).Should().Be(2);
+    }
+
+    [Fact]
+    public async Task MembersFromAnImportSetOffNoNewMemberRule_ButOneAddedByHandDoes()
+    {
+        await using var app = new App();
+        var (owner, _, _) = await ClubAsync(app);
+        await RuleAsync(owner, new
+        {
+            name = "Welcome", trigger = "member.created",
+            actions = new object[]
+            {
+                Task("Book the welcome tour"),
+                new { type = "send_email", config = new { subject = "Welcome, {{firstName}}", body = "See you soon.", purpose = "service" } },
+            },
+        });
+
+        // A members file, row by row, as the import page sends it.
+        foreach (var first in new[] { "Eleanor", "Felix" })
+            await Json(await owner.PostAsync("/api/members", Body(new
+            {
+                firstName = first, lastName = "Tanaka", email = $"{first.ToLowerInvariant()}@example.ch", tier = "Gold", status = "Active", origin = "import",
+            })), $"import {first}");
+
+        (await app.Services.Read(db => db.AutomationRuns.Count())).Should().Be(0, "a club moving its list over welcomes nobody on it");
+        (await app.Services.Read(db => db.TaskItems.Count())).Should().Be(0);
+        (await app.Services.Read(db => db.OutboundMessages.Count(m => m.Source == OutboundSources.Automation))).Should().Be(0);
+
+        await MemberAsync(owner, "Jean");
+        (await app.Services.Read(db => db.TaskItems.Count(t => t.Title == "Book the welcome tour"))).Should().Be(1, "someone joining now is welcomed");
+        (await owner.PostAsync("/api/members", Body(new { firstName = "Paul", lastName = "Weber", email = "paul@example.ch", origin = "csv" })))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
     [Fact]

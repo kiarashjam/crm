@@ -53,6 +53,20 @@ public class MemberWriteRequest : IMergePatchRequest
     /// <summary>The start is still to be decided. Setting a start date clears it.</summary>
     public bool? StartUndetermined { get; set; }
 
+    /// <summary>
+    /// On adding a member: "import" for a row of a members file, someone the club already
+    /// has rather than someone joining now. Such a member sets off no "When a member is
+    /// added" automations: the import page adds its rows one by one through this endpoint,
+    /// and a club moving its list of 800 members over would otherwise send 800 welcome
+    /// emails and make 800 tasks, as lead imports did before they were marked.
+    /// </summary>
+    [System.ComponentModel.DataAnnotations.RegularExpression("(?i)^import$", ErrorMessage = "Origin can only be \"import\"")]
+    public string? Origin { get; set; }
+
+    /// <summary>True when this member comes from an import.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsImport => string.Equals(Origin?.Trim(), "import", StringComparison.OrdinalIgnoreCase);
+
     /// <inheritdoc />
     [System.Text.Json.Serialization.JsonIgnore]
     public ISet<string> NullsSent { get; } = new HashSet<string>(StringComparer.Ordinal);
@@ -285,8 +299,8 @@ public sealed class ClubService : IClubService
             if (!started.IsSuccess) return started.Error;
         }
         // The workspace's rules for a new member, once the member, the account and what joining
-        // costs are all in place.
-        if (_automations != null && organizationId is Guid org)
+        // costs are all in place. Not for a row of an import: that member is not joining now.
+        if (_automations != null && organizationId is Guid org && !request.IsImport)
             await _automations.DispatchAsync(AutomationCatalog.MemberCreated, new AutomationEvent(
                 org, userId, row.Id.ToString(), $"{row.FirstName} {row.LastName}".Trim(), Email: row.Email, MemberId: row.Id), ct);
         return ToDto(row, opening);
