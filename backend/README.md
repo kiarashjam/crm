@@ -392,6 +392,37 @@ click, and flags images that point at a computer or plain http.
 | `POST` | `/api/invites/accept` | Accept invite |
 | `POST` | `/api/joinrequests/{orgId}` | Request to join org |
 
+### Modules: Sales and Club
+
+A workspace can turn its Sales module (leads, deals, pipelines, outreach, contracts, sales
+reports, the welcome & portal handoff) or its Club module (members, households and
+applications, house accounts and payments, events and bookings, campaigns, the club's
+reports) off. Both are on for every workspace until someone turns one off; nothing is
+deleted, and turning it on again brings everything back. Contacts, companies, tasks,
+activities, the calendar, the team, automations and settings belong to both.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `PUT` | `/api/organizations/{id}/modules` | `{ sales?, club? }` (`settings.manage`); one module always stays on (400 `Module.OneStaysOn`), and a module whose own work still runs (the club's automatic billing, reminders, lapsing or monthly statements, a campaign scheduled or sending; leads in outreach sequences) is not turned off until that stops (409 `Module.StillRunning.Conflict`, saying what) |
+
+Every endpoint of a module that is off answers one refusal, before anything else and the
+same for everyone: 403 with `errorCode: "Module.Off"` and the `module` named. Endpoints
+people outside the workspace use keep answering (pay links, the payment webhook, public
+forms, unsubscribe links, contracts sent for signing, a portal's handoff reports, email
+images). `GET /api/organizations` says which modules each workspace has on
+(`salesEnabled`, `clubEnabled`).
+
+### Club reports
+
+Summed by the database from the ledger, in the workspace's currency first (any other
+currency apart) and on its calendar (days, Monday weeks or months, in its time zone).
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/club-reports?from=&to=&grain=` | Cash revenue (payments received, less refunds and payments taken back), accrual revenue by kind (what was charged, less voids), receivables by days past due (current, 1-30, 31-60, 61-90, over 90) at the end of the period, what is left on gift cards, loyalty points held (at 100 points a unit), monthly recurring revenue of running subscriptions, event fill and no-show rates, members active, lapsed, by tier and joined, check-ins by venue and the top spenders |
+| `GET` | `/api/club-reports/export?from=&to=&grain=` | The same as a CSV, one figure per row; text that reads as a formula is kept as text (`records.export`) |
+| `GET` | `/api/club-reports/today` | The day at the club: check-ins, bookings, open tabs, applications waiting, what is past due, this week's events and the fortnight's anniversaries |
+
 ### Configuration (Owner/Manager only)
 
 | Method | Endpoint | Description |
