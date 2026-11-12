@@ -354,26 +354,34 @@ public sealed partial class ClubLedgerService
         ToDto(sale, await _db.ClubSaleLines.AsNoTracking().Where(l => l.SaleId == sale.Id).ToListAsync(ct));
 
     /// <summary>
-    /// Spreads a discount on the whole sale over its lines, in proportion to what each still
-    /// comes to, to the cent: the cents rounding leaves go to the lines that lost the most, so
-    /// the parts add up to the discount exactly.
+    /// Spreads a discount on the whole sale over what was bought, in proportion to what each line
+    /// still comes to, to the cent: the cents rounding leaves go to the lines that lost the most,
+    /// so the parts add up to the discount exactly.
     /// </summary>
+    /// <remarks>
+    /// A tip or a rounding on the ticket (a line that earns no points) is left as it is: spread
+    /// over it too, a discount shrank the tip, which carries no VAT, and left more of the bill on
+    /// the lines that do, so the VAT posted came out above what the POS charged. Only a discount
+    /// larger than everything bought is spread over every line.
+    /// </remarks>
     private static void Spread(List<SaleLineDraft> lines, decimal discount)
     {
         if (discount <= 0) return;
-        var basis = lines.Sum(l => l.Total);
+        var goods = lines.Where(l => l.EarnsPoints).ToList();
+        var over = goods.Count > 0 && goods.Sum(l => l.Total) >= discount ? goods : lines;
+        var basis = over.Sum(l => l.Total);
         if (basis <= 0) return;
-        var shares = lines.Select(l => discount * l.Total / basis).ToList();
+        var shares = over.Select(l => discount * l.Total / basis).ToList();
         var cents = shares.Select(s => Math.Floor(s * 100) / 100).ToList();
         var left = discount - cents.Sum();
-        foreach (var i in Enumerable.Range(0, lines.Count).OrderByDescending(i => shares[i] - cents[i]).ThenBy(i => i))
+        foreach (var i in Enumerable.Range(0, over.Count).OrderByDescending(i => shares[i] - cents[i]).ThenBy(i => i))
         {
             if (left <= 0) break;
-            if (lines[i].Total - cents[i] < 0.01m) continue;
+            if (over[i].Total - cents[i] < 0.01m) continue;
             cents[i] += 0.01m;
             left -= 0.01m;
         }
-        for (var i = 0; i < lines.Count; i++) lines[i].Discount += cents[i];
+        for (var i = 0; i < over.Count; i++) over[i].Discount += cents[i];
     }
 
     private static string Clip(string text, int max) => text.Length <= max ? text : text[..(max - 1)] + "…";

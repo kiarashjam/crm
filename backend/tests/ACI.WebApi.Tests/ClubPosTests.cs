@@ -254,6 +254,25 @@ public class ClubPosTests
     }
 
     [Fact]
+    public async Task ALineTakenBack_ComesOffWhatWasBought_NotTheTipOnTheAccount()
+    {
+        using var app = new PosApp();
+        var (client, _, jean) = await ConnectedClubAsync(app);
+        // A 100 dinner with a 20 voucher line taken off it, put on the account with a 10 tip.
+        app.Lightspeed.Sales.Add(Sale("R14", Now.AddMinutes(-5), [Line("Dinner", 1, 100.00m, 8.1m), Line("Voucher", 1, -20.00m, 8.1m)],
+            [OnAccount(80.00m, tip: 10.00m)], accountName: "1042"));
+
+        (await ImportAsync(client)).GetProperty("posted").GetInt32().Should().Be(1);
+
+        var charges = await Club.ChargesAsync(client, jean);
+        charges.Select(c => (c.GetProperty("amount").GetDecimal(), c.TryGetProperty("vatRate", out var rate) ? rate.GetDecimal() : (decimal?)null))
+            .Should().BeEquivalentTo([(80.00m, (decimal?)8.1m), (10.00m, (decimal?)null)],
+                "the voucher comes off the dinner, as the POS charged its VAT; the tip, which carries none, stays whole");
+        (await Club.BalanceAsync(client, jean)).Should().Be(-90.00m);
+        (await Club.PointsAsync(client, jean)).Should().Be(1200, "80 spent on the dinner × 10 × 1.5; the tip earns none");
+    }
+
+    [Fact]
     public async Task OneImportAtATime_ASecondIsRefusedWhileTheFirstRuns()
     {
         using var app = new PosApp();
