@@ -15,7 +15,7 @@ public sealed record CampaignSegmentDto(IReadOnlyList<string>? Tiers, IReadOnlyL
 /// delivered and opened ones included, and Delivered counts opened ones: a funnel, not
 /// shares. Tests sent to staff are not counted.
 /// </summary>
-public sealed record CampaignTotalsDto(int Recipients, int Queued, int Sent, int Delivered, int Opened, int Bounced, int Suppressed, int Failed, int Skipped);
+public sealed record CampaignTotalsDto(int Recipients, int Queued, int Sent, int Delivered, int Opened, int Bounced, int Suppressed, int Failed, int Skipped, int Cancelled = 0);
 
 public sealed record CampaignDto(
     Guid Id, string Name, string Channel, string Category, string Purpose, string Subject, string Body,
@@ -24,9 +24,11 @@ public sealed record CampaignDto(
 
 /// <summary>
 /// Who a campaign would reach now: the members it is for, those with a usable address, those
-/// who agreed to marketing by email (for a marketing campaign), and how many emails that makes.
+/// who agreed to marketing by email (for a marketing campaign), how many of those the outbox
+/// would still refuse (an address on the suppression list; for marketing, one a contact marked
+/// do not contact holds), and how many emails that makes.
 /// </summary>
-public sealed record CampaignAudienceDto(string Purpose, int Matching, int WithAddress, int Agreed, int WillReceive);
+public sealed record CampaignAudienceDto(string Purpose, int Matching, int WithAddress, int Agreed, int WillReceive, int Suppressed = 0, int DoNotContact = 0);
 
 /// <summary>A campaign's test copy: where it went, and whether the mail server took it.</summary>
 public sealed record CampaignTestDto(Guid MessageId, string To, string Status);
@@ -66,8 +68,17 @@ public interface ICampaignService
     Task<Result<CampaignDto>> UpdateAsync(Guid organizationId, Guid id, Guid userId, CampaignWriteRequest request, CancellationToken ct = default);
     Task<Result> DeleteAsync(Guid organizationId, Guid id, CancellationToken ct = default);
 
-    /// <summary>Sends it now: claims it, then queues one email per member it is for.</summary>
+    /// <summary>
+    /// Sends it now: claims it and hands it to the scheduler, which queues one email per member
+    /// it is for. Answers at once, with the campaign sending.
+    /// </summary>
     Task<Result<CampaignDto>> SendAsync(Guid organizationId, Guid id, Guid userId, Guid? expectedVersion, CancellationToken ct = default);
+
+    /// <summary>
+    /// Stops a campaign that is sending: members it has not reached get nothing, and its emails
+    /// still waiting in the outbox do not go. What already went is kept, with who it went to.
+    /// </summary>
+    Task<Result<CampaignDto>> StopAsync(Guid organizationId, Guid id, Guid userId, Guid? expectedVersion, CancellationToken ct = default);
 
     /// <summary>Sends a copy marked as a test to the signed-in person alone; counted in none of the campaign's figures.</summary>
     Task<Result<CampaignTestDto>> SendTestAsync(Guid organizationId, Guid id, Guid userId, CancellationToken ct = default);
@@ -103,6 +114,16 @@ public sealed class CampaignService : ICampaignService
     /// <summary>Campaigns the scheduler takes up in one pass.</summary>
     private const int DuePerPass = 10;
 
+    /// <summary>
+    /// Passes over a campaign's members that may end with someone's message not queued. After
+    /// this many, those members are recorded as failed and the campaign finishes: a member whose
+    /// message fails every time kept it sending, taken up every minute for ever.
+    /// </summary>
+    internal const int MaxSendAttempts = 5;
+
+    /// <summary>How often, in members, a sender renews its claim and checks it was not stopped.</summary>
+    private const int CheckEvery = 10;
+
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     private readonly ICampaignRepository _campaigns;
@@ -112,6 +133,7 @@ public sealed class CampaignService : ICampaignService
     private readonly IUserRepository _users;
     private readonly ILogger<CampaignService> _logger;
     private readonly ITenantContext? _tenant;
+    private readonly ICampaignSignal? _signal;
 
     public CampaignService(
         ICampaignRepository campaigns,
@@ -120,7 +142,8 @@ public sealed class CampaignService : ICampaignService
         IOutbox outbox,
         IUserRepository users,
         ILogger<CampaignService> logger,
-        ITenantContext? tenant = null)
+        ITenantContext? tenant = null,
+        ICampaignSignal? signal = null)
     {
         _campaigns = campaigns;
         _club = club;
@@ -129,6 +152,7 @@ public sealed class CampaignService : ICampaignService
         _users = users;
         _logger = logger;
         _tenant = tenant;
+        _signal = signal;
     }
 
     // ── Reading ───────────────────────────────────────────────────────────────
@@ -165,9 +189,21 @@ public sealed class CampaignService : ICampaignService
             ? (await _consent.CurrentAsync(organizationId, ConsentSubjects.Member, withAddress.Select(m => m.Id).ToList(), ConsentChannels.Email, ConsentPurposes.Marketing, ct))
                 .Where(c => c.Granted).Select(c => c.SubjectId).ToHashSet()
             : withAddress.Select(m => m.Id).ToHashSet();
-        var reached = withAddress.Where(m => agreed.Contains(m.Id))
-            .Select(m => Normalize(m.Email)).Distinct().Count();
-        return new CampaignAudienceDto(why, members.Count, withAddress.Count, agreed.Count, reached);
+        // What the outbox would still refuse as it queues them (OutboxService.RefusalAsync): an
+        // address on the suppression list, whatever the purpose, and for marketing one a contact
+        // marked do not contact holds. Left out, the preview promised emails nobody would get.
+        var willing = withAddress.Where(m => agreed.Contains(m.Id)).ToList();
+        var unreachable = await _campaigns.UnreachableAsync(organizationId, willing.Select(m => m.Email).ToList(), ct);
+        var marketing = why == ConsentPurposes.Marketing;
+        var suppressed = willing.Count(m => unreachable.Suppressed.Contains(Normalize(m.Email)));
+        var doNotContact = marketing
+            ? willing.Count(m => !unreachable.Suppressed.Contains(Normalize(m.Email)) && unreachable.DoNotContact.Contains(Normalize(m.Email)))
+            : 0;
+        var reached = willing
+            .Select(m => Normalize(m.Email))
+            .Where(a => !unreachable.Suppressed.Contains(a) && !(marketing && unreachable.DoNotContact.Contains(a)))
+            .Distinct().Count();
+        return new CampaignAudienceDto(why, members.Count, withAddress.Count, agreed.Count, reached, suppressed, doNotContact);
     }
 
     // ── Writing ───────────────────────────────────────────────────────────────
@@ -228,17 +264,32 @@ public sealed class CampaignService : ICampaignService
         if (campaign.Channel != CampaignChannels.Email) return ChannelUnavailable(campaign.Channel);
         if (!CampaignStatuses.IsEditable(campaign.Status)) return AlreadySent;
         var now = DateTime.UtcNow;
-        if (!await _campaigns.TryClaimToSendAsync(organizationId, id, expectedVersion, userId, now, now.Add(ClaimFor), ct))
+        // Claimed, so no second press, retry or edit gets in, with a claim that has already run
+        // out: the scheduler takes it up as one whose sender stopped, and works through its
+        // members there. Sent inside the request, a large club's campaign ran past the ~230
+        // seconds a front end in Azure waits for an answer.
+        if (!await _campaigns.TryClaimToSendAsync(organizationId, id, expectedVersion, userId, now, now, ct))
         {
             var current = await _campaigns.ReadAsync(organizationId, id, ct);
             return current == null ? NotFound : !CampaignStatuses.IsEditable(current.Status) ? AlreadySent : Changed;
         }
+        _signal?.Notify();
+        return (await GetAsync(organizationId, id, CancellationToken.None))!;
+    }
 
-        // Not the request's token: once sending has started it is finished here, whether or
-        // not the browser that pressed Send is still waiting. If this instance dies part-way,
-        // the scheduler takes it up where it stopped once the claim runs out.
-        var claimed = await _campaigns.ReadAsync(organizationId, id, CancellationToken.None);
-        if (claimed != null) await SendClaimedAsync(claimed, CancellationToken.None);
+    public async Task<Result<CampaignDto>> StopAsync(Guid organizationId, Guid id, Guid userId, Guid? expectedVersion, CancellationToken ct = default)
+    {
+        var campaign = await _campaigns.ReadAsync(organizationId, id, ct);
+        if (campaign == null) return NotFound;
+        if (campaign.Status != CampaignStatuses.Sending) return NotSending(campaign.Status);
+        if (!await _campaigns.TryStopAsync(organizationId, id, expectedVersion, DateTime.UtcNow, ct))
+        {
+            var current = await _campaigns.ReadAsync(organizationId, id, ct);
+            return current == null ? NotFound : current.Status != CampaignStatuses.Sending ? NotSending(current.Status) : Changed;
+        }
+        // A sender still working through its members sees this the next time it renews its
+        // claim and stops; the outbox does not send the campaign's emails still waiting.
+        _logger.LogInformation("Campaign {CampaignId} stopped by {UserId}", id, userId);
         return (await GetAsync(organizationId, id, CancellationToken.None))!;
     }
 
@@ -332,13 +383,20 @@ public sealed class CampaignService : ICampaignService
                 .ToDictionary(c => c.SubjectId)
             : [];
         var preview = MemberMessageService.Preview(campaign.Body);
-        var failed = false;
+        // This pass is the last try for a member whose message will not queue.
+        var lastTry = campaign.SendAttempts + 1 >= MaxSendAttempts;
+        var failed = new List<(MemberMessage Row, Exception Error)>();
         var worked = 0;
 
         foreach (var member in members)
         {
             if (done.Contains(member.Id)) continue;
-            if (++worked % 50 == 0) await _campaigns.ExtendClaimAsync(campaign.Id, DateTime.UtcNow.Add(ClaimFor), ct);
+            // Renewed as it goes, and false once staff stopped it: the members after are not sent to.
+            if (++worked % CheckEvery == 0 && !await _campaigns.ExtendClaimAsync(campaign.Id, DateTime.UtcNow.Add(ClaimFor), ct))
+            {
+                _logger.LogInformation("Campaign {CampaignId} was stopped while sending; {Worked} member(s) were worked through this pass", campaign.Id, worked - 1);
+                return;
+            }
             var address = (member.Email ?? "").Trim();
             var row = new MemberMessage
             {
@@ -394,18 +452,40 @@ public sealed class CampaignService : ICampaignService
                 // Rolled back, row and email together. The member is tried again when the
                 // campaign is taken up again; everyone after them still gets theirs now.
                 _campaigns.Forget(row);
-                failed = true;
+                failed.Add((row, ex));
                 _logger.LogError(ex, "Campaign {CampaignId}: the message to member {MemberId} could not be queued", campaign.Id, member.Id);
             }
         }
 
-        if (failed)
+        if (failed.Count > 0 && !lastTry)
         {
-            await _campaigns.ReleaseClaimAsync(campaign.Id, DateTime.UtcNow.AddMinutes(1), ct);
+            // Tried again a little later each time (1, 2, 4, 8 minutes), until the last try.
+            var attempts = campaign.SendAttempts + 1;
+            await _campaigns.ReleaseClaimAsync(campaign.Id, DateTime.UtcNow.AddMinutes(Math.Pow(2, attempts - 1)), attempts, ct);
             return;
+        }
+        foreach (var (row, error) in failed)
+        {
+            // The last try: the member is recorded as not sent, with why, and the campaign
+            // finishes for everyone else instead of staying "sending".
+            row.Status = MemberMessageStatuses.Failed;
+            row.OutboundMessageId = null;
+            row.Reason = $"Its message could not be queued after {MaxSendAttempts} tries ({error.GetType().Name}), so it was not sent.";
+            try
+            {
+                await _campaigns.AddMessageAsync(row, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Not even the record of it saves: the log says who it was.
+                _campaigns.Forget(row);
+                _logger.LogError(ex, "Campaign {CampaignId}: member {MemberId} could not even be recorded as not sent", campaign.Id, row.MemberId);
+            }
         }
         var recipients = (await _campaigns.RecipientsOfAsync(campaign.Id, ct)).Count;
         await _campaigns.FinishAsync(campaign.Id, DateTime.UtcNow, recipients, ct);
+        if (failed.Count > 0)
+            _logger.LogWarning("Campaign {CampaignId} finished after {Tries} tries with {Failed} member(s) whose message could not be queued", campaign.Id, MaxSendAttempts, failed.Count);
         _logger.LogInformation("Campaign {CampaignId} sent: {Recipients} member message(s)", campaign.Id, recipients);
     }
 
@@ -484,12 +564,12 @@ public sealed class CampaignService : ICampaignService
 
     private async Task<Dictionary<Guid, CampaignTotalsDto>> TotalsAsync(Guid organizationId, IReadOnlyList<Campaign> campaigns, CancellationToken ct)
     {
-        var sending = campaigns.Where(c => c.Status is CampaignStatuses.Sending or CampaignStatuses.Sent).Select(c => c.Id).ToList();
+        var sending = campaigns.Where(c => c.Status is CampaignStatuses.Sending or CampaignStatuses.Sent or CampaignStatuses.Stopped).Select(c => c.Id).ToList();
         var result = new Dictionary<Guid, CampaignTotalsDto>();
         if (sending.Count == 0) return result;
         foreach (var group in (await _campaigns.TallyAsync(organizationId, sending, ct)).GroupBy(t => t.CampaignId))
         {
-            int recipients = 0, queued = 0, sent = 0, delivered = 0, opened = 0, bounced = 0, suppressed = 0, failed = 0, skipped = 0;
+            int recipients = 0, queued = 0, sent = 0, delivered = 0, opened = 0, bounced = 0, suppressed = 0, failed = 0, skipped = 0, cancelled = 0;
             foreach (var tally in group)
             {
                 recipients += tally.Count;
@@ -502,10 +582,11 @@ public sealed class CampaignService : ICampaignService
                     case MemberMessageStates.Bounced: sent += tally.Count; bounced += tally.Count; break;
                     case MemberMessageStates.Suppressed: suppressed += tally.Count; break;
                     case MemberMessageStates.Skipped: skipped += tally.Count; break;
+                    case MemberMessageStates.Cancelled: cancelled += tally.Count; break;
                     default: failed += tally.Count; break;
                 }
             }
-            result[group.Key] = new CampaignTotalsDto(recipients, queued, sent, delivered, opened, bounced, suppressed, failed, skipped);
+            result[group.Key] = new CampaignTotalsDto(recipients, queued, sent, delivered, opened, bounced, suppressed, failed, skipped, cancelled);
         }
         // A campaign that matched nobody still has figures: all nought.
         foreach (var id in sending.Where(id => !result.ContainsKey(id)))
@@ -570,6 +651,13 @@ public sealed class CampaignService : ICampaignService
     private static readonly Error Locked = new("Campaign.Locked.Conflict", "This campaign has started sending, so it can no longer be changed.");
     private static readonly Error AlreadySent = new("Campaign.AlreadySent.Conflict", "This campaign is being sent or has been, so it cannot be sent again.");
     private static readonly Error Changed = new("Campaign.Changed.Conflict", "Someone else changed this campaign at the same moment, so nothing was done. Reload and try again.");
+
+    private static Error NotSending(string status) => new("Campaign.NotSending.Conflict", status switch
+    {
+        CampaignStatuses.Draft or CampaignStatuses.Scheduled => "This campaign has not started sending, so there is nothing to stop. A scheduled one is unscheduled by editing it.",
+        CampaignStatuses.Stopped => "This campaign was already stopped.",
+        _ => "This campaign has finished sending, so there is nothing left to stop.",
+    });
 
     private static Error ChannelUnavailable(string channel) => new("Campaign.ChannelUnavailable",
         $"{channel} is not available: CadenceE has no {(string.Equals(channel, CampaignChannels.Push, StringComparison.OrdinalIgnoreCase) ? "push" : "SMS")} provider. Campaigns go by email.");

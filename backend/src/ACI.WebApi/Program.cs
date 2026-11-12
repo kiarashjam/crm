@@ -331,8 +331,11 @@ try
     builder.Services.AddScoped<ConsentService>();
     builder.Services.AddScoped<IConsentService>(sp => sp.GetRequiredService<ConsentService>());
     builder.Services.AddScoped<IMemberMailRules>(sp => sp.GetRequiredService<ConsentService>());
-    // Campaigns and the communications log, delivered through the outbox.
+    // Campaigns and the communications log, delivered through the outbox. Send hands a
+    // campaign to the scheduler and wakes it on this instance.
     builder.Services.AddScoped<ICampaignService, CampaignService>();
+    builder.Services.AddSingleton<ACI.WebApi.Services.CampaignSignal>();
+    builder.Services.AddSingleton<ICampaignSignal>(sp => sp.GetRequiredService<ACI.WebApi.Services.CampaignSignal>());
     builder.Services.AddScoped<IMemberMessageService, MemberMessageService>();
     builder.Services.AddScoped<ITaskService, TaskService>();
     builder.Services.AddScoped<IActivityService, ActivityService>();

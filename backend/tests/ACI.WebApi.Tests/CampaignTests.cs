@@ -78,6 +78,20 @@ public class CampaignTests
             segment = segment ?? new { statuses = new[] { "Active" } }, scheduledAtUtc,
         })), "create campaign");
 
+    /// <summary>
+    /// Presses Send, which answers at once (202) with the campaign sending, then runs the
+    /// scheduler, which works through its members, and reads the campaign back.
+    /// </summary>
+    private static async Task<JsonElement> SendNowAsync(App app, Club club, Guid id)
+    {
+        var pressed = await club.Owner.PostAsync($"/api/campaigns/{id}/send", null);
+        var body = await pressed.Content.ReadAsStringAsync();
+        pressed.StatusCode.Should().Be(HttpStatusCode.Accepted, body);
+        JsonDocument.Parse(body).RootElement.GetProperty("status").GetString().Should().Be("Sending");
+        (await app.RunSchedulerAsync()).Should().BeGreaterThan(0, "the scheduler takes up what Send handed it");
+        return await Json(await club.Owner.GetAsync($"/api/campaigns/{id}"), "read the campaign");
+    }
+
     private static async Task<List<JsonElement>> RecipientsAsync(Club club, Guid campaignId) =>
         (await Json(await club.Owner.GetAsync($"/api/campaigns/{campaignId}/recipients"), "recipients")).EnumerateArray().ToList();
 
@@ -113,7 +127,7 @@ public class CampaignTests
         audience.GetProperty("agreed").GetInt32().Should().Be(2);
         audience.GetProperty("willReceive").GetInt32().Should().Be(1, "two members who agreed share one address, and get one email");
 
-        var sent = await Json(await club.Owner.PostAsync($"/api/campaigns/{id}/send", null), "send");
+        var sent = await SendNowAsync(app, club, id);
         sent.GetProperty("status").GetString().Should().Be("Sent");
         sent.GetProperty("totals").GetProperty("recipients").GetInt32().Should().Be(4);
         sent.GetProperty("totals").GetProperty("queued").GetInt32().Should().Be(1);
@@ -150,7 +164,7 @@ public class CampaignTests
         var bruno = await MemberAsync(club, "Bruno", "bruno@example.ch");
         var clara = await MemberAsync(club, "Clara", "clara@example.ch");
         var id = (await CampaignAsync(club, purpose: "service")).GetProperty("id").GetGuid();
-        await Json(await club.Owner.PostAsync($"/api/campaigns/{id}/send", null), "send");
+        await SendNowAsync(app, club, id);
         await app.DispatchOutboxAsync();
 
         var outbound = await app.Services.Read(db => db.MemberMessages.Where(r => r.CampaignId == id).ToDictionary(r => r.MemberId, r => r.OutboundMessageId!.Value));
@@ -190,7 +204,9 @@ public class CampaignTests
         var presses = await Task.WhenAll(
             club.Owner.PostAsync($"/api/campaigns/{id}/send", null),
             club.Owner.PostAsync($"/api/campaigns/{id}/send", null));
-        presses.Select(p => p.StatusCode).Should().BeEquivalentTo([HttpStatusCode.OK, HttpStatusCode.Conflict]);
+        presses.Select(p => p.StatusCode).Should().BeEquivalentTo([HttpStatusCode.Accepted, HttpStatusCode.Conflict]);
+        (await app.Services.Read(db => db.OutboundMessages.Count(o => o.SourceId == id))).Should().Be(0, "Send answers at once and leaves the sending to the scheduler");
+        await Task.WhenAll(app.RunSchedulerAsync(), app.RunSchedulerAsync());
         (await app.Services.Read(db => db.OutboundMessages.Count(o => o.SourceId == id))).Should().Be(1);
 
         var again = await club.Owner.PostAsync($"/api/campaigns/{id}/send", null);
@@ -259,7 +275,7 @@ public class CampaignTests
         }
         var id = (await CampaignAsync(club, purpose: "service")).GetProperty("id").GetGuid();
 
-        await Json(await club.Owner.PostAsync($"/api/campaigns/{id}/send", null), "send");
+        await SendNowAsync(app, club, id);
 
         var recipients = await RecipientsAsync(club, id);
         foreach (var member in firstJoined) Recipient(recipients, member).GetProperty("status").GetString().Should().Be("queued");
@@ -276,7 +292,7 @@ public class CampaignTests
         var anna = await MemberAsync(club, "Anna", "anna@example.ch");
         var bruno = await MemberAsync(club, "Bruno", "bruno@example.ch");
         var id = (await CampaignAsync(club, purpose: "service")).GetProperty("id").GetGuid();
-        await Json(await club.Owner.PostAsync($"/api/campaigns/{id}/send", null), "send");
+        await SendNowAsync(app, club, id);
 
         // As if the instance sending it had died after Anna's message and before Bruno's:
         // Bruno's message is gone, the campaign still sending, its claim run out.
@@ -323,7 +339,7 @@ public class CampaignTests
         var campaign = await Json(await club.Owner.GetAsync($"/api/campaigns/{id}"), "read");
         campaign.GetProperty("status").GetString().Should().Be("Draft", "a test sends nothing to members and locks nothing");
 
-        var sent = await Json(await club.Owner.PostAsync($"/api/campaigns/{id}/send", null), "send it for real");
+        var sent = await SendNowAsync(app, club, id);
         sent.GetProperty("totals").GetProperty("recipients").GetInt32().Should().Be(1, "the test is not counted");
     }
 
@@ -338,7 +354,7 @@ public class CampaignTests
         await MemberAsync(club, "Clara", "clara@example.ch", status: "Lapsed");
         var id = (await CampaignAsync(club, purpose: "service", name: "Closed on Monday")).GetProperty("id").GetGuid();
 
-        await Json(await club.Owner.PostAsync($"/api/campaigns/{id}/send", null), "send");
+        await SendNowAsync(app, club, id);
         await app.DispatchOutboxAsync();
 
         app.Mail.SentTo.Should().BeEquivalentTo(["anna@example.ch", "bruno@example.ch"], "the active members, whatever they said about marketing");
@@ -427,6 +443,7 @@ public class CampaignTests
 
         (await desk.GetAsync("/api/campaigns")).StatusCode.Should().Be(HttpStatusCode.OK);
         (await desk.PostAsync($"/api/campaigns/{id}/send", null)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await desk.PostAsync($"/api/campaigns/{id}/stop", null)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
         (await desk.PostAsync($"/api/campaigns/{id}/test", null)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
         (await desk.PostAsync("/api/campaigns", Body(new { name = "Mine", subject = "Hi", body = "Hi" }))).StatusCode.Should().Be(HttpStatusCode.Forbidden);
         (await desk.PostAsync("/api/communications/send", Body(new { memberId = Guid.NewGuid(), purpose = "service", subject = "Hi", body = "Hi" })))
@@ -441,7 +458,7 @@ public class CampaignTests
         var bernina = await ClubAsync(app, "owner@bernina.example", "Bernina");
         var theirMember = await MemberAsync(bernina, "Zebrafish", "zebra@example.ch");
         var theirs = (await CampaignAsync(bernina, purpose: "service", name: "Zebrafish news")).GetProperty("id").GetGuid();
-        await Json(await bernina.Owner.PostAsync($"/api/campaigns/{theirs}/send", null), "their own send");
+        await SendNowAsync(app, bernina, theirs);
 
         (await alpine.Owner.GetStringAsync("/api/campaigns")).Should().NotContain("Zebrafish");
         (await alpine.Owner.GetStringAsync("/api/communications")).Should().NotContain("Zebrafish");
@@ -450,6 +467,7 @@ public class CampaignTests
             (HttpMethod.Get, $"/api/campaigns/{theirs}"), (HttpMethod.Get, $"/api/campaigns/{theirs}/recipients"),
             (HttpMethod.Put, $"/api/campaigns/{theirs}"), (HttpMethod.Delete, $"/api/campaigns/{theirs}"),
             (HttpMethod.Post, $"/api/campaigns/{theirs}/send"), (HttpMethod.Post, $"/api/campaigns/{theirs}/test"),
+            (HttpMethod.Post, $"/api/campaigns/{theirs}/stop"),
         })
         {
             var res = await alpine.Owner.SendAsync(new HttpRequestMessage(method, url) { Content = method == HttpMethod.Put ? Body(new { name = "Taken" }) : null });
@@ -460,6 +478,239 @@ public class CampaignTests
         write.StatusCode.Should().Be(HttpStatusCode.NotFound, "a member of another workspace cannot be written to");
         (await app.Services.Read(db => db.Campaigns.Single(c => c.Id == theirs).Name)).Should().Be("Zebrafish news");
         (await app.Services.Read(db => db.MemberMessages.Count(r => r.OrganizationId == alpine.Org))).Should().Be(0);
+    }
+
+    /// <summary>
+    /// The campaigns repository as it is, except that one member's message cannot be saved,
+    /// try after try: what a value the database will not take, or a row that always deadlocks,
+    /// does to a campaign.
+    /// </summary>
+    private sealed class OneMemberAlwaysFails(ICampaignRepository inner, string address) : ICampaignRepository
+    {
+        public Task<bool> AddMessageAsync(MemberMessage message, CancellationToken ct = default) =>
+            message.Status == MemberMessageStatuses.Queued && string.Equals(message.Email, address, StringComparison.OrdinalIgnoreCase)
+                ? throw new InvalidOperationException("The database would not take this row.")
+                : inner.AddMessageAsync(message, ct);
+
+        public Task<IReadOnlyList<Campaign>> ListAsync(Guid organizationId, CancellationToken ct = default) => inner.ListAsync(organizationId, ct);
+        public Task<Campaign?> GetAsync(Guid organizationId, Guid id, CancellationToken ct = default) => inner.GetAsync(organizationId, id, ct);
+        public Task<Campaign?> ReadAsync(Guid organizationId, Guid id, CancellationToken ct = default) => inner.ReadAsync(organizationId, id, ct);
+        public Task AddAsync(Campaign campaign, CancellationToken ct = default) => inner.AddAsync(campaign, ct);
+        public Task SaveAsync(Campaign campaign, Guid? expectedVersion, CancellationToken ct = default) => inner.SaveAsync(campaign, expectedVersion, ct);
+        public Task<bool> DeleteUnsentAsync(Guid organizationId, Guid id, CancellationToken ct = default) => inner.DeleteUnsentAsync(organizationId, id, ct);
+        public Task<bool> TryClaimToSendAsync(Guid organizationId, Guid id, Guid? expectedVersion, Guid sentByUserId, DateTime utcNow, DateTime claimedUntilUtc, CancellationToken ct = default) =>
+            inner.TryClaimToSendAsync(organizationId, id, expectedVersion, sentByUserId, utcNow, claimedUntilUtc, ct);
+        public Task<bool> TryClaimDueAsync(Guid id, DateTime utcNow, DateTime claimedUntilUtc, CancellationToken ct = default) => inner.TryClaimDueAsync(id, utcNow, claimedUntilUtc, ct);
+        public Task<bool> ExtendClaimAsync(Guid id, DateTime claimedUntilUtc, CancellationToken ct = default) => inner.ExtendClaimAsync(id, claimedUntilUtc, ct);
+        public Task ReleaseClaimAsync(Guid id, DateTime retryAtUtc, int attempts, CancellationToken ct = default) => inner.ReleaseClaimAsync(id, retryAtUtc, attempts, ct);
+        public Task<bool> TryStopAsync(Guid organizationId, Guid id, Guid? expectedVersion, DateTime utcNow, CancellationToken ct = default) => inner.TryStopAsync(organizationId, id, expectedVersion, utcNow, ct);
+        public Task<string?> StatusAsync(Guid organizationId, Guid id, CancellationToken ct = default) => inner.StatusAsync(organizationId, id, ct);
+        public Task FinishAsync(Guid id, DateTime sentAtUtc, int recipientCount, CancellationToken ct = default) => inner.FinishAsync(id, sentAtUtc, recipientCount, ct);
+        public Task<IReadOnlyList<DueCampaign>> DueAsync(DateTime utcNow, int take, CancellationToken ct = default) => inner.DueAsync(utcNow, take, ct);
+        public Task<IReadOnlyList<MemberMessage>> MessagesAsync(Guid organizationId, Guid? memberId, Guid? campaignId, int take, CancellationToken ct = default) =>
+            inner.MessagesAsync(organizationId, memberId, campaignId, take, ct);
+        public Task<MemberMessage?> GetMessageAsync(Guid organizationId, Guid id, CancellationToken ct = default) => inner.GetMessageAsync(organizationId, id, ct);
+        public Task<IReadOnlyList<(Guid MemberId, string? Email, string Status)>> RecipientsOfAsync(Guid campaignId, CancellationToken ct = default) => inner.RecipientsOfAsync(campaignId, ct);
+        public Task SaveMessageAsync(MemberMessage message, CancellationToken ct = default) => inner.SaveMessageAsync(message, ct);
+        public Task RemoveMessageAsync(MemberMessage message, CancellationToken ct = default) => inner.RemoveMessageAsync(message, ct);
+        public void Forget(MemberMessage message) => inner.Forget(message);
+        public Task<IReadOnlyList<OutboundDelivery>> DeliveriesAsync(IReadOnlyCollection<Guid> outboundIds, CancellationToken ct = default) => inner.DeliveriesAsync(outboundIds, ct);
+        public Task<UnreachableAddresses> UnreachableAsync(Guid organizationId, IReadOnlyCollection<string> addresses, CancellationToken ct = default) => inner.UnreachableAsync(organizationId, addresses, ct);
+        public Task<IReadOnlyList<CampaignTally>> TallyAsync(Guid organizationId, IReadOnlyCollection<Guid> campaignIds, CancellationToken ct = default) => inner.TallyAsync(organizationId, campaignIds, ct);
+        public Task<bool> InTransactionAsync(Func<Task<bool>> work, CancellationToken ct = default) => inner.InTransactionAsync(work, ct);
+    }
+
+    private sealed class BrokenMemberApp : CustomWebApplicationFactory
+    {
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            base.ConfigureWebHost(builder);
+            builder.ConfigureTestServices(services =>
+            {
+                services.AddScoped<ACI.Infrastructure.Repositories.CampaignRepository>();
+                services.AddScoped<ICampaignRepository>(sp => new OneMemberAlwaysFails(
+                    sp.GetRequiredService<ACI.Infrastructure.Repositories.CampaignRepository>(), "bruno@example.ch"));
+            });
+        }
+    }
+
+    /// <summary>Lets the campaign's claim run out now, as if the retry it waits for had come.</summary>
+    private static async Task RetryIsDueAsync(CustomWebApplicationFactory app, Guid id)
+    {
+        using var scope = app.Services.CreateScope();
+        await using var db = scope.ServiceProvider.EveryWorkspace();
+        db.Campaigns.Single(c => c.Id == id).ClaimedUntilUtc = DateTime.UtcNow.AddSeconds(-1);
+        await db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task AMemberWhoseMessageFailsEveryTimeIsRecordedAsFailedAfterTheLastTry_AndTheCampaignFinishes()
+    {
+        await using var app = new BrokenMemberApp();
+        var club = await ClubAsync(app);
+        var anna = await MemberAsync(club, "Anna", "anna@example.ch");
+        var bruno = await MemberAsync(club, "Bruno", "bruno@example.ch");
+        var id = (await CampaignAsync(club, purpose: "service")).GetProperty("id").GetGuid();
+        (await club.Owner.PostAsync($"/api/campaigns/{id}/send", null)).StatusCode.Should().Be(HttpStatusCode.Accepted);
+        async Task<int> Scheduler()
+        {
+            using var scope = app.Services.CreateScope();
+            return await scope.ServiceProvider.GetRequiredService<ICampaignService>().RunDueAsync(DateTime.UtcNow);
+        }
+
+        (await Scheduler()).Should().Be(1);
+        var campaign = await app.Services.Read(db => db.Campaigns.Single(c => c.Id == id));
+        campaign.Status.Should().Be(CampaignStatuses.Sending, "Bruno's message is tried again");
+        campaign.SendAttempts.Should().Be(1);
+        campaign.ClaimedUntilUtc.Should().BeAfter(DateTime.UtcNow, "the next try waits");
+        (await Scheduler()).Should().Be(0, "not taken up again before the retry is due");
+
+        for (var pass = 2; pass < 5; pass++)
+        {
+            await RetryIsDueAsync(app, id);
+            (await Scheduler()).Should().Be(1);
+            (await app.Services.Read(db => db.Campaigns.Single(c => c.Id == id).SendAttempts)).Should().Be(pass);
+        }
+        var waits = await app.Services.Read(db => db.Campaigns.Single(c => c.Id == id).ClaimedUntilUtc!.Value);
+        waits.Should().BeAfter(DateTime.UtcNow.AddMinutes(7), "each try waits longer than the one before: 1, 2, 4, 8 minutes");
+
+        await RetryIsDueAsync(app, id);
+        (await Scheduler()).Should().Be(1, "the last try");
+
+        var finished = await Json(await club.Owner.GetAsync($"/api/campaigns/{id}"), "read");
+        finished.GetProperty("status").GetString().Should().Be("Sent", "it finishes for everyone else instead of sending for ever");
+        finished.GetProperty("totals").GetProperty("failed").GetInt32().Should().Be(1);
+        var recipients = await RecipientsAsync(club, id);
+        Recipient(recipients, anna).GetProperty("status").GetString().Should().Be("queued");
+        Recipient(recipients, bruno).GetProperty("status").GetString().Should().Be("failed");
+        Recipient(recipients, bruno).GetProperty("reason").GetString().Should().Contain("could not be queued after 5 tries");
+        (await app.Services.Read(db => db.OutboundMessages.Count(o => o.SourceId == id))).Should().Be(1, "Anna was emailed once, whatever the tries");
+        await RetryIsDueAsync(app, id);
+        (await Scheduler()).Should().Be(0, "a finished campaign is not taken up again");
+    }
+
+    [Fact]
+    public async Task StaffStopACampaignThatIsSending_AndWhatHadNotGoneDoesNotGo()
+    {
+        await using var app = new App();
+        var club = await ClubAsync(app);
+        var anna = await MemberAsync(club, "Anna", "anna@example.ch");
+        var bruno = await MemberAsync(club, "Bruno", "bruno@example.ch");
+        var draft = (await CampaignAsync(club, purpose: "service", name: "Not sent")).GetProperty("id").GetGuid();
+        var stopNothing = await club.Owner.PostAsync($"/api/campaigns/{draft}/stop", null);
+        stopNothing.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await stopNothing.Content.ReadAsStringAsync()).Should().Contain("Campaign.NotSending.Conflict");
+
+        var id = (await CampaignAsync(club, purpose: "service")).GetProperty("id").GetGuid();
+        var pressed = await club.Owner.PostAsync($"/api/campaigns/{id}/send", null);
+        pressed.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        // As if the scheduler had queued Anna's email and stopped there.
+        using (var scope = app.Services.CreateScope())
+        {
+            await using var db = scope.ServiceProvider.EveryWorkspace();
+            var now = DateTime.UtcNow;
+            var outbound = new OutboundMessage
+            {
+                Id = Guid.NewGuid(), OrganizationId = club.Org, Channel = OutboundChannels.Email, Source = OutboundSources.Campaign, SourceId = id,
+                To = "anna@example.ch", Subject = "The autumn gala", TextBody = "Join us", Status = OutboundStatuses.Queued, MemberId = anna,
+                Purpose = ConsentPurposes.Service, CreatedAtUtc = now, NextAttemptAtUtc = now,
+            };
+            db.OutboundMessages.Add(outbound);
+            db.MemberMessages.Add(new MemberMessage
+            {
+                Id = Guid.NewGuid(), OrganizationId = club.Org, MemberId = anna, MemberName = "Anna Dupont", Email = "anna@example.ch", CampaignId = id,
+                CampaignName = "Autumn gala", Subject = "The autumn gala", Status = MemberMessageStatuses.Queued, OutboundMessageId = outbound.Id, CreatedAtUtc = now,
+            });
+            db.Campaigns.Single(c => c.Id == id).ClaimedUntilUtc = now.AddMinutes(10);
+            await db.SaveChangesAsync();
+        }
+        var version = (await Json(await club.Owner.GetAsync($"/api/campaigns/{id}"), "read")).GetProperty("version").GetGuid();
+
+        var stopped = await Json(await club.Owner.PostAsync($"/api/campaigns/{id}/stop", null), "stop");
+        stopped.GetProperty("status").GetString().Should().Be("Stopped");
+        stopped.GetProperty("version").GetGuid().Should().NotBe(version);
+        var again = await club.Owner.PostAsync($"/api/campaigns/{id}/stop", null);
+        again.StatusCode.Should().Be(HttpStatusCode.Conflict, "it was already stopped");
+
+        await RetryIsDueAsync(app, id);
+        (await app.RunSchedulerAsync()).Should().Be(0, "a stopped campaign is not taken up again");
+        await app.DispatchOutboxAsync();
+        app.Mail.Sent.Should().BeEmpty("Anna's email was still waiting when it was stopped, and Bruno was never reached");
+        var recipients = await RecipientsAsync(club, id);
+        recipients.Should().ContainSingle();
+        Recipient(recipients, anna).GetProperty("status").GetString().Should().Be("cancelled");
+        Recipient(recipients, anna).GetProperty("reason").GetString().Should().Contain("campaign was stopped");
+        recipients.Should().NotContain(r => r.GetProperty("memberId").GetGuid() == bruno);
+        var read = await Json(await club.Owner.GetAsync($"/api/campaigns/{id}"), "read again");
+        read.GetProperty("totals").GetProperty("cancelled").GetInt32().Should().Be(1);
+        (await club.Owner.PostAsync($"/api/campaigns/{id}/send", null)).StatusCode.Should().Be(HttpStatusCode.Conflict, "a stopped campaign is not sent again");
+        (await club.Owner.PutAsync($"/api/campaigns/{id}", Body(new { subject = "Changed" }))).StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await club.Owner.DeleteAsync($"/api/campaigns/{id}")).StatusCode.Should().Be(HttpStatusCode.Conflict, "what went to whom is kept");
+    }
+
+    [Fact]
+    public async Task ASenderWorkingThroughTheMembersStopsWhenStaffStopTheCampaign()
+    {
+        await using var app = new App();
+        var club = await ClubAsync(app);
+        for (var i = 0; i < 25; i++) await MemberAsync(club, $"Member{i:00}", $"member{i:00}@example.ch");
+        var id = (await CampaignAsync(club, purpose: "service")).GetProperty("id").GetGuid();
+        (await club.Owner.PostAsync($"/api/campaigns/{id}/send", null)).StatusCode.Should().Be(HttpStatusCode.Accepted);
+        // Stopped while the scheduler holds it: its next check finds it no longer sending.
+        using (var scope = app.Services.CreateScope())
+        {
+            await using var db = scope.ServiceProvider.EveryWorkspace();
+            var campaign = db.Campaigns.Single(c => c.Id == id);
+            campaign.Status = CampaignStatuses.Stopped;
+            campaign.SentAtUtc = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+            // The scheduler took it up just before.
+        }
+        using (var scope = app.Services.CreateScope())
+        {
+            using var acting = scope.ServiceProvider.GetRequiredService<ITenantContext>().ActFor(club.Org, null);
+            var repository = scope.ServiceProvider.GetRequiredService<ICampaignRepository>();
+            (await repository.ExtendClaimAsync(id, DateTime.UtcNow.AddMinutes(10))).Should().BeFalse("a stopped campaign holds no claim for its sender");
+        }
+        (await app.RunSchedulerAsync()).Should().Be(0);
+        (await app.Services.Read(db => db.MemberMessages.Count(r => r.CampaignId == id))).Should().Be(0);
+        (await app.Services.Read(db => db.Campaigns.Single(c => c.Id == id).Status)).Should().Be(CampaignStatuses.Stopped);
+    }
+
+    [Fact]
+    public async Task WhoItReachesLeavesOutTheSuppressionList_AndForMarketingThoseMarkedDoNotContact()
+    {
+        await using var app = new App();
+        var club = await ClubAsync(app);
+        var anna = await MemberAsync(club, "Anna", "anna@example.ch");
+        var bruno = await MemberAsync(club, "Bruno", "bruno@example.ch");
+        var clara = await MemberAsync(club, "Clara", "clara@example.ch");
+        foreach (var member in new[] { anna, bruno, clara }) await ConsentAsync(club, member, true);
+        using (var scope = app.Services.CreateScope())
+        {
+            await using var db = scope.ServiceProvider.EveryWorkspace();
+            db.EmailSuppressions.Add(new EmailSuppression { Id = Guid.NewGuid(), OrganizationId = club.Org, Email = "bruno@example.ch", Reason = EmailSuppressionReasons.Bounced, CreatedAtUtc = DateTime.UtcNow });
+            await db.SaveChangesAsync();
+        }
+        (await club.Owner.PostAsync("/api/contacts", Body(new { name = "Clara Dupont", email = "Clara@Example.ch", doNotContact = true })))
+            .StatusCode.Should().BeOneOf(HttpStatusCode.OK, HttpStatusCode.Created);
+
+        var marketing = await Json(await club.Owner.GetAsync("/api/campaigns/audience?statuses=Active&purpose=marketing"), "marketing audience");
+        marketing.GetProperty("agreed").GetInt32().Should().Be(3);
+        marketing.GetProperty("suppressed").GetInt32().Should().Be(1);
+        marketing.GetProperty("doNotContact").GetInt32().Should().Be(1);
+        marketing.GetProperty("willReceive").GetInt32().Should().Be(1, "only Anna: Bruno bounced, and Clara asked not to be contacted");
+
+        var service = await Json(await club.Owner.GetAsync("/api/campaigns/audience?statuses=Active&purpose=service"), "service audience");
+        service.GetProperty("suppressed").GetInt32().Should().Be(1, "a bounced address stops service mail too");
+        service.GetProperty("doNotContact").GetInt32().Should().Be(0, "do not contact is about marketing; the membership's own messages still go");
+        service.GetProperty("willReceive").GetInt32().Should().Be(2);
+
+        var id = (await CampaignAsync(club)).GetProperty("id").GetGuid();
+        await SendNowAsync(app, club, id);
+        var recipients = await RecipientsAsync(club, id);
+        recipients.Count(r => r.GetProperty("status").GetString() == "queued").Should().Be(marketing.GetProperty("willReceive").GetInt32(),
+            "the preview says what sending does");
     }
 
     [Fact]

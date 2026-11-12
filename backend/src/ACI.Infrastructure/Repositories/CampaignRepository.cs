@@ -125,13 +125,63 @@ public sealed class CampaignRepository : ICampaignRepository
         }
     }
 
-    public Task ExtendClaimAsync(Guid id, DateTime claimedUntilUtc, CancellationToken ct = default) =>
+    public Task<bool> ExtendClaimAsync(Guid id, DateTime claimedUntilUtc, CancellationToken ct = default) =>
         UpdateSendingAsync(id, c => c.ClaimedUntilUtc = claimedUntilUtc,
             q => q.ExecuteUpdateAsync(set => set.SetProperty(c => c.ClaimedUntilUtc, claimedUntilUtc), ct), ct);
 
-    public Task ReleaseClaimAsync(Guid id, DateTime retryAtUtc, CancellationToken ct = default) =>
-        UpdateSendingAsync(id, c => c.ClaimedUntilUtc = retryAtUtc,
-            q => q.ExecuteUpdateAsync(set => set.SetProperty(c => c.ClaimedUntilUtc, retryAtUtc), ct), ct);
+    public Task ReleaseClaimAsync(Guid id, DateTime retryAtUtc, int attempts, CancellationToken ct = default) =>
+        UpdateSendingAsync(id,
+            c =>
+            {
+                c.ClaimedUntilUtc = retryAtUtc;
+                c.SendAttempts = attempts;
+            },
+            q => q.ExecuteUpdateAsync(set => set
+                .SetProperty(c => c.ClaimedUntilUtc, retryAtUtc)
+                .SetProperty(c => c.SendAttempts, attempts), ct), ct);
+
+    public async Task<bool> TryStopAsync(Guid organizationId, Guid id, Guid? expectedVersion, DateTime utcNow, CancellationToken ct = default)
+    {
+        // One conditional update, like the claims: a stop racing the sender's last member, or
+        // a second press, finds the campaign no longer sending and changes nothing.
+        var version = Guid.NewGuid();
+        var query = _db.Campaigns.Where(c => c.Id == id && c.OrganizationId == organizationId
+            && c.Status == CampaignStatuses.Sending
+            && (expectedVersion == null || c.Version == expectedVersion));
+        if (_db.Database.IsRelational())
+        {
+            var stopped = await query.ExecuteUpdateAsync(set => set
+                .SetProperty(c => c.Status, CampaignStatuses.Stopped)
+                .SetProperty(c => c.SentAtUtc, (DateTime?)utcNow)
+                .SetProperty(c => c.ClaimedUntilUtc, (DateTime?)null)
+                .SetProperty(c => c.UpdatedAtUtc, utcNow)
+                .SetProperty(c => c.Version, version), ct);
+            return stopped == 1;
+        }
+
+        await InMemoryClaims.WaitAsync(ct);
+        try
+        {
+            var row = await query.FirstOrDefaultAsync(ct);
+            if (row == null) return false;
+            row.Status = CampaignStatuses.Stopped;
+            row.SentAtUtc = utcNow;
+            row.ClaimedUntilUtc = null;
+            row.UpdatedAtUtc = utcNow;
+            await _db.SaveChangesAsync(ct);
+            return true;
+        }
+        finally
+        {
+            InMemoryClaims.Release();
+        }
+    }
+
+    public Task<string?> StatusAsync(Guid organizationId, Guid id, CancellationToken ct = default) =>
+        _db.Campaigns.AsNoTracking()
+            .Where(c => c.Id == id && c.OrganizationId == organizationId)
+            .Select(c => c.Status)
+            .FirstOrDefaultAsync(ct);
 
     public Task FinishAsync(Guid id, DateTime sentAtUtc, int recipientCount, CancellationToken ct = default)
     {
@@ -155,19 +205,17 @@ public sealed class CampaignRepository : ICampaignRepository
             ct);
     }
 
-    // Only a campaign still sending: one finished by another instance meanwhile stays as it is.
-    private async Task UpdateSendingAsync(Guid id, Action<Campaign> change, Func<IQueryable<Campaign>, Task<int>> update, CancellationToken ct)
+    // Only a campaign still sending: one finished or stopped meanwhile stays as it is. True
+    // when it was still sending, and so changed.
+    private async Task<bool> UpdateSendingAsync(Guid id, Action<Campaign> change, Func<IQueryable<Campaign>, Task<int>> update, CancellationToken ct)
     {
         var query = _db.Campaigns.IgnoreQueryFilters().Where(c => c.Id == id && c.Status == CampaignStatuses.Sending);
-        if (_db.Database.IsRelational())
-        {
-            await update(query);
-            return;
-        }
+        if (_db.Database.IsRelational()) return await update(query) == 1;
         var row = await query.FirstOrDefaultAsync(ct);
-        if (row == null) return;
+        if (row == null) return false;
         change(row);
         await _db.SaveChangesAsync(ct);
+        return true;
     }
 
     // The scheduler reads every workspace's campaigns, then sends each acting for its own.
@@ -243,6 +291,31 @@ public sealed class CampaignRepository : ICampaignRepository
             .Where(m => outboundIds.Contains(m.Id))
             .Select(m => new OutboundDelivery(m.Id, m.Status, m.DeliveryStatus, m.DeliveryDetail, m.LastError, m.SentAtUtc, m.DeliveryUpdatedAtUtc, m.OpenedAtUtc))
             .ToListAsync(ct);
+    }
+
+    public async Task<UnreachableAddresses> UnreachableAsync(Guid organizationId, IReadOnlyCollection<string> addresses, CancellationToken ct = default)
+    {
+        var wanted = addresses.Select(DoNotContactRules.Normalize).Where(a => a.Length > 0).Distinct().ToList();
+        var suppressed = new HashSet<string>(StringComparer.Ordinal);
+        var stopped = new HashSet<string>(StringComparer.Ordinal);
+        // In slices: SQL Server takes at most 2,100 parameters in one query, and a club can
+        // have more members than that.
+        foreach (var slice in wanted.Chunk(500))
+        {
+            // The suppression list keeps addresses as the outbox compares them (DoNotContactRules.Normalize).
+            suppressed.UnionWith(await _db.EmailSuppressions.AsNoTracking()
+                .Where(s => s.OrganizationId == organizationId && slice.Contains(s.Email))
+                .Select(s => s.Email)
+                .ToListAsync(ct));
+            // Read as the outbox reads it (FindDoNotContactAddressAsync): any contact of the
+            // workspace with the address, archived or not, marked do not contact.
+            var held = await _db.Contacts.AsNoTracking()
+                .Where(c => c.OrganizationId == organizationId && c.DoNotContact && slice.Contains(c.Email.Trim().ToLower()))
+                .Select(c => c.Email)
+                .ToListAsync(ct);
+            stopped.UnionWith(held.Select(DoNotContactRules.Normalize));
+        }
+        return new UnreachableAddresses(suppressed, stopped);
     }
 
     public async Task<IReadOnlyList<CampaignTally>> TallyAsync(Guid organizationId, IReadOnlyCollection<Guid> campaignIds, CancellationToken ct = default)

@@ -192,6 +192,7 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
     private readonly ITenantContext? _tenant;
     private readonly IMemberMailRules? _members;
     private readonly IOnboardingRepository? _onboarding;
+    private readonly ICampaignRepository? _campaigns;
 
     public OutboxService(
         IOutboxRepository messages,
@@ -208,7 +209,8 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
         ILogger<OutboxService> logger,
         ITenantContext? tenant = null,
         IMemberMailRules? members = null,
-        IOnboardingRepository? onboarding = null)
+        IOnboardingRepository? onboarding = null,
+        ICampaignRepository? campaigns = null)
     {
         _messages = messages;
         _email = email;
@@ -225,6 +227,7 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
         _tenant = tenant;
         _members = members;
         _onboarding = onboarding;
+        _campaigns = campaigns;
     }
 
     // ── Queueing ──────────────────────────────────────────────────────────────
@@ -445,6 +448,15 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
             await _messages.SaveAsync(ct);
             _logger.LogInformation("Outbox email {MessageId} was not sent: {Reason}", message.Id, stopped);
             return new OutboxAttempt(OutboxAttemptResult.Suppressed, stopped, "Email.SequenceStopped");
+        }
+
+        // Staff stopped the campaign this email is part of: what had not gone by then does not go.
+        if (await CampaignStoppedAsync(message, ct) is { } halted)
+        {
+            Stop(message, OutboundStatuses.Cancelled, halted);
+            await _messages.SaveAsync(ct);
+            _logger.LogInformation("Outbox email {MessageId} was not sent: {Reason}", message.Id, halted);
+            return new OutboxAttempt(OutboxAttemptResult.Suppressed, halted, "Email.CampaignStopped");
         }
 
         // Asked again at the moment it goes: someone may have unsubscribed or bounced
@@ -812,6 +824,16 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
         if (enrollment == null) return "The person was taken out of the sequence before it went, so it was not sent.";
         return string.Equals(enrollment.Status, "stopped", StringComparison.OrdinalIgnoreCase)
             ? "The sequence stopped before it went (a reply, say), so it was not sent."
+            : null;
+    }
+
+    /// <summary>Why a campaign's email does not go now that staff stopped the campaign, or null while it may.</summary>
+    private async Task<string?> CampaignStoppedAsync(OutboundMessage message, CancellationToken ct)
+    {
+        if (_campaigns == null || message.Source != OutboundSources.Campaign
+            || message.SourceId is not Guid campaignId || message.OrganizationId is not Guid org) return null;
+        return await _campaigns.StatusAsync(org, campaignId, ct) == CampaignStatuses.Stopped
+            ? "The campaign was stopped before this email went, so it was not sent."
             : null;
     }
 

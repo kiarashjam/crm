@@ -97,8 +97,9 @@ public class CampaignsController : ControllerBase
     }
 
     /// <summary>
-    /// Sends it now, once: one email per member it is for. 409 when it is being sent or has
-    /// been, or (with If-Match) when it changed since it was read.
+    /// Sends it now, once: one email per member it is for. Answers at once, 202 with the
+    /// campaign sending: the scheduler works through its members in the background. 409 when
+    /// it is being sent or has been, or (with If-Match) when it changed since it was read.
     /// </summary>
     [HttpPost("{id:guid}/send")]
     public async Task<ActionResult<CampaignDto>> Send(Guid id, CancellationToken ct)
@@ -106,7 +107,26 @@ public class CampaignsController : ControllerBase
         if (_currentUser.UserId is not Guid userId || _currentUser.CurrentOrganizationId is not Guid org) return Unauthorized();
         var (version, versionError) = Request.ExpectedVersion(null);
         if (versionError != null) return versionError.ToProblemResult();
-        return (await _campaigns.SendAsync(org, id, userId, version, ct)).ToActionResult();
+        var result = await _campaigns.SendAsync(org, id, userId, version, ct);
+        if (result.IsFailure) return result.Error.ToProblemResult();
+        Response.SetETag(result.Value.Version);
+        return StatusCode(StatusCodes.Status202Accepted, result.Value);
+    }
+
+    /// <summary>
+    /// Stops a campaign that is sending: members it has not reached get nothing, and its
+    /// emails still waiting in the outbox do not go. 409 when it is not sending, or (with
+    /// If-Match) when it changed since it was read.
+    /// </summary>
+    [HttpPost("{id:guid}/stop")]
+    public async Task<ActionResult<CampaignDto>> Stop(Guid id, CancellationToken ct)
+    {
+        if (_currentUser.UserId is not Guid userId || _currentUser.CurrentOrganizationId is not Guid org) return Unauthorized();
+        var (version, versionError) = Request.ExpectedVersion(null);
+        if (versionError != null) return versionError.ToProblemResult();
+        var result = await _campaigns.StopAsync(org, id, userId, version, ct);
+        if (result.IsSuccess) Response.SetETag(result.Value.Version);
+        return result.ToActionResult();
     }
 
     /// <summary>Sends a copy marked as a test to the signed-in person alone, counted in none of the campaign's figures.</summary>

@@ -331,6 +331,9 @@ namespace ACI.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<int>("SendAttempts")
+                        .HasColumnType("int");
+
                     b.Property<DateTime?>("SendingStartedAtUtc")
                         .HasColumnType("datetime2");
 
