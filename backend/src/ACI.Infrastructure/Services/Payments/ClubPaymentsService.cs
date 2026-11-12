@@ -427,6 +427,10 @@ public sealed partial class ClubPaymentsService : IClubPayments
         {
             ct.ThrowIfCancellationRequested();
             if (tried >= MaxAutoPayPerRun) break;
+            // A workspace that has turned its club off takes no money on its own: with the club's
+            // pages and endpoints gone, nobody could see a payment taken, or follow up the decline
+            // they are meant to. Its dues stay open and are charged once the club is on again.
+            if (await _db.Organizations.AsNoTracking().AnyAsync(o => o.Id == organizationId && o.ClubModuleOff, ct)) continue;
             using var acting = _db.ActFor(organizationId, null);
             var config = await _settings.ConfigAsync(organizationId, ct);
             if (!config.OnlinePayments) continue;

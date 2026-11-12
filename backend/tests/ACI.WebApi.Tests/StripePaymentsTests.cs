@@ -434,6 +434,32 @@ public class StripePaymentsTests
     }
 
     [Fact]
+    public async Task NoCardIsChargedWhileTheClubIsTurnedOff_AndItsDuesAreChargedOnceItIsOnAgain()
+    {
+        // With the club's pages and endpoints gone, nobody could see a payment taken or follow
+        // up a declined one, but the hourly job kept charging saved cards for open dues.
+        await using var app = new PaymentsApp();
+        var club = await ClubAsync(app);
+        var (memberId, _) = await SavedCardAsync(app, club, autoPay: true);
+        await ChargeAsync(club.Owner, memberId, 299m);
+        app.Stripe.On("POST", "/v1/payment_intents", r => (HttpStatusCode.OK, new
+        {
+            id = "pi_auto", @object = "payment_intent", status = "succeeded", amount = long.Parse(r.Form["amount"]), amount_received = long.Parse(r.Form["amount"]),
+            currency = "chf", latest_charge = "ch_auto", payment_method_types = new[] { "card" }, metadata = MetadataOf(r),
+        }));
+        await Json(await club.Owner.PutAsync($"/api/organizations/{club.Org}/modules", Body(new { club = false })), "turn the club off");
+
+        using (var scope = app.Services.CreateScope())
+            (await scope.ServiceProvider.GetRequiredService<IClubPayments>().CollectAutoPayAsync(DateTime.UtcNow)).Should().Be(0, "the club is turned off");
+        app.Stripe.Sent("POST", "/v1/payment_intents").Should().BeEmpty();
+
+        await Json(await club.Owner.PutAsync($"/api/organizations/{club.Org}/modules", Body(new { club = true })), "turn the club on again");
+        using (var scope = app.Services.CreateScope())
+            (await scope.ServiceProvider.GetRequiredService<IClubPayments>().CollectAutoPayAsync(DateTime.UtcNow)).Should().Be(1, "the dues waited for the club");
+        app.Stripe.Sent("POST", "/v1/payment_intents").Single().Form["amount"].Should().Be("29900");
+    }
+
+    [Fact]
     public async Task TheCardIsNeverChargedForWhatTheMembersCreditAlreadyCovers()
     {
         await using var app = new PaymentsApp();
