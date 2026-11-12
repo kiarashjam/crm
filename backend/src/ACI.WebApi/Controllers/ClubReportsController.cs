@@ -1,4 +1,3 @@
-using System.Globalization;
 using ACI.Application.Common;
 using ACI.Application.Interfaces;
 using ACI.Application.Services;
@@ -64,9 +63,7 @@ public class ClubReportsController : ControllerBase
         var result = await _reports.ReportAsync(org, new ClubReportQuery(from?.UtcDateTime, to?.UtcDateTime, grain), ct);
         if (!result.IsSuccess) return result.Error.ToProblemResult();
         var report = result.Value;
-        var name = string.Create(CultureInfo.InvariantCulture,
-            $"club-report-{report.FromUtc:yyyy-MM-dd}-to-{report.ToUtc.AddTicks(-1):yyyy-MM-dd}.csv");
-        return File(ClubReportCsv.Write(report, DateTime.UtcNow), "text/csv; charset=utf-8", name);
+        return File(ClubReportCsv.Write(report, DateTime.UtcNow), "text/csv; charset=utf-8", ClubReportCsv.FileName(report));
     }
 
     /// <summary>What the club's day holds, on the workspace's calendar.</summary>

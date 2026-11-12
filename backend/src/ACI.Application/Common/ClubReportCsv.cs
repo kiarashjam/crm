@@ -12,13 +12,28 @@ public static class ClubReportCsv
 {
     public static readonly string[] Headers = ["Figure", "Period", "Currency", "Detail", "Amount", "Count"];
 
+    /// <summary>
+    /// The file's name, with the report's first and last day on the workspace's calendar, as
+    /// its rows give them. Read in UTC, a month in Zurich was named from the last day of the
+    /// month before, its midnight being the evening before in UTC.
+    /// </summary>
+    public static string FileName(ClubReportDto report)
+    {
+        var zone = RegionalSettings.ZoneOf(report.TimeZone);
+        return $"club-report-{Day(report.FromUtc, zone)}-to-{Day(report.ToUtc.AddTicks(-1), zone)}.csv";
+    }
+
+    /// <summary>A moment as its day on the workspace's calendar, yyyy-MM-dd.</summary>
+    private static string Day(DateTime utc, TimeZoneInfo zone) =>
+        DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), zone))
+            .ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
     public static byte[] Write(ClubReportDto report, DateTime nowUtc)
     {
         var csv = new CsvExport(Headers);
         // Days on the workspace's calendar, as the periods are: its midnight is the evening before in UTC.
         var zone = RegionalSettings.ZoneOf(report.TimeZone);
-        string Day(DateTime utc) => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), zone))
-            .ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        string Day(DateTime utc) => ClubReportCsv.Day(utc, zone);
         var asOf = Day(report.AsOfUtc.AddTicks(-1));
         var span = $"{Day(report.FromUtc)} to {Day(report.ToUtc.AddTicks(-1))}";
 
