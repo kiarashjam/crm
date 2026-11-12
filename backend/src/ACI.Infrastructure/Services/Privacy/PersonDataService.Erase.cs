@@ -593,10 +593,17 @@ public sealed partial class PersonDataService
         }
 
         // ── The audit trail: their records keep their history, under the pseudonym ──
+        // A task about them goes, and its title may say their first name alone; a deal is renamed.
         var personRecords = s.RecordIds;
+        var taskIds = d.Tasks.Select(t => t.Id).ToHashSet();
+        var dealIds = s.DealIds;
         foreach (var line in d.Audit)
         {
-            line.EntityLabel = line.EntityId is Guid id && personRecords.Contains(id) ? pseudonym : Scrub(line.EntityLabel);
+            line.EntityLabel = line.EntityId is not Guid id ? Scrub(line.EntityLabel)
+                : personRecords.Contains(id) ? pseudonym
+                : taskIds.Contains(id) ? $"A task about {pseudonym}"
+                : dealIds.Contains(id) ? $"Deal of {pseudonym}"
+                : Scrub(line.EntityLabel);
             line.Summary = Scrub(line.Summary) ?? "";
         }
 

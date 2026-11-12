@@ -304,8 +304,8 @@ internal sealed class PersonDossier
         var documentNeedles = memberIds.Select(id => id.ToString()).Concat(needles).ToList();
         d.Documents = await MentioningAsync(Q(db.ClubDocuments), documentNeedles, n => x => x.Payload.Contains(n), ct);
 
-        // ── The audit trail: lines about any of their records ──────────────
-        var audited = recordIds.Concat(d.MoneyRecordIds).ToList();
+        // ── The audit trail: lines about any of their records, their deals, tasks and money ──
+        var audited = recordIds.Concat(d.MoneyRecordIds).Concat(d.Tasks.Select(t => t.Id)).ToList();
         d.Audit = new List<AuditEvent>();
         foreach (var chunk in audited.Chunk(500))
         {
