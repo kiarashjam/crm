@@ -70,7 +70,19 @@ internal sealed class PersonSubject
     /// addresses, and their names of two words or more. A single first name would match
     /// everyone else who has it.
     /// </summary>
-    public IReadOnlyList<string> Needles =>
+    public IReadOnlyList<string> Needles => _frozenNeedles ?? FindNeedles();
+
+    private IReadOnlyList<string>? _frozenNeedles;
+
+    /// <summary>
+    /// Fixes <see cref="Needles"/> as the records give them now. An erasure calls it before it
+    /// changes anything: once it renames a member to the pseudonym, the member's own name is no
+    /// longer on any record, and every text replaced after that (their charges, documents and
+    /// audit lines) would have kept it.
+    /// </summary>
+    public void FreezeNeedles() => _frozenNeedles = FindNeedles();
+
+    private List<string> FindNeedles() =>
         Addresses
             .Concat(Names.Where(n => n.Contains(' ') && n.Length >= 5))
             .Distinct(StringComparer.OrdinalIgnoreCase)

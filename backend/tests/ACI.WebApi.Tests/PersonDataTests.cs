@@ -436,6 +436,76 @@ public class PersonDataTests
     }
 
     [Fact]
+    public async Task TheOlderClubDocumentsLoseThePersonsDetails_InFieldsOfTheirOwn_AndWrittenWithJsonEscapes()
+    {
+        var (factory, client, s) = await ClubAsync();
+        using var _ = factory;
+
+        // As ClubDocumentService wrote them before the club's records had tables of their own: an
+        // application keeps the first and last name apart, with the phone and the reasons beside
+        // them; and JSON's default escaping writes Müller as Müller and a "+" as +. A
+        // moved record kept its document's id (the application's here).
+        var web = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var zoeId = Guid.NewGuid();
+        var zoeApplicationDoc = Guid.NewGuid();
+        var zoeChargeDoc = Guid.NewGuid();
+        var bobChargeDoc = Guid.NewGuid();
+        await using (var db = factory.Services.EveryWorkspace())
+        {
+            db.ClubMembers.Add(new ClubMember
+            {
+                Id = zoeId, OrganizationId = s.Org, OwnerUserId = s.Owner, FirstName = "Zoë", LastName = "Müller", Email = "zoe+club@example.ch", Phone = "+41 79 555 66 77",
+                Tier = "Gold", Status = "Active", JoinedAtUtc = DateTime.UtcNow.AddYears(-1), RenewsAtUtc = DateTime.UtcNow.AddMonths(1),
+            });
+            // A member who is nothing else (no lead, no contact): their name is only on the member row.
+            db.ClubCharges.Add(new ClubCharge
+            {
+                Id = Guid.NewGuid(), OrganizationId = s.Org, MemberId = zoeId, MemberName = "Zoë Müller", Kind = "Dining", Description = "Birthday dinner for Zoë Müller",
+                Amount = 80m, Currency = "CHF", VatRate = 8.1m, PostedAtUtc = DateTime.UtcNow.AddDays(-3), CreatedAtUtc = DateTime.UtcNow.AddDays(-3),
+            });
+            ClubDocument Doc(Guid id, string kind, object payload) => new()
+            {
+                Id = id, OrganizationId = s.Org, Kind = kind, Payload = JsonSerializer.Serialize(payload, web), UpdatedAtUtc = DateTime.UtcNow.AddYears(-1),
+            };
+            db.ClubDocuments.AddRange(
+                Doc(s.ApplicationId, "applications", new
+                {
+                    id = s.ApplicationId, firstName = "Anna", lastName = "Keller", email = AnnaEmail, phone = "079 123 45 67", occupation = "Teacher",
+                    reasonForJoining = "Friends are members", requestedTier = "Gold", status = "Approved",
+                }),
+                Doc(zoeApplicationDoc, "applications", new
+                {
+                    id = zoeApplicationDoc, firstName = "Zoë", lastName = "Müller", email = "zoe+club@example.ch", phone = "+41 79 555 66 77", occupation = "Architect", status = "Approved",
+                }),
+                Doc(zoeChargeDoc, "charges", new { id = zoeChargeDoc, memberId = zoeId, memberName = "Zoë Müller", description = "Dinner for Zoë Müller", amount = 40m, currency = "CHF" }),
+                Doc(bobChargeDoc, "charges", new { id = bobChargeDoc, memberId = s.BobMemberId, memberName = "Bob Brown", description = "Lunch", amount = 25m, currency = "CHF" }));
+            await db.SaveChangesAsync();
+        }
+
+        await Ok(await client.PostAsync("/api/privacy/erasure", Body(new
+        {
+            leadIds = new[] { s.LeadId }, contactIds = new[] { s.ContactId }, memberIds = new[] { s.MemberId }, applicationIds = new[] { s.ApplicationId }, confirm = "ERASE",
+        })), "erase Anna");
+        await Ok(await client.PostAsync("/api/privacy/erasure", Body(new { memberIds = new[] { zoeId }, confirm = "ERASE" })), "erase Zoë");
+
+        var plain = new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+        var payloads = await factory.Services.Read(db => db.ClubDocuments.Where(d => d.OrganizationId == s.Org)
+            .ToDictionary(d => d.Id, d => System.Text.Json.Nodes.JsonNode.Parse(d.Payload)!.ToJsonString(plain)));
+
+        payloads[s.ApplicationId].Should().NotContainAny(["Anna", "Keller", "079 123 45 67", "Teacher", "Friends are members", AnnaEmail]);
+        payloads[zoeApplicationDoc].Should().NotContainAny(["Zoë", "Müller", "zoe+club@example.ch", "+41 79 555 66 77", "Architect"]);
+        payloads[zoeChargeDoc].Should().NotContainAny(["Zoë", "Müller"]);
+        var charge = System.Text.Json.Nodes.JsonNode.Parse(payloads[zoeChargeDoc])!;
+        (charge["amount"]!.GetValue<decimal>(), charge["memberId"]!.GetValue<string>()).Should().Be((40m, zoeId.ToString()), "the amounts and the links stay");
+        charge["memberName"]!.GetValue<string>().Should().Be("Erased member 2");
+        payloads[bobChargeDoc].Should().Contain("Bob Brown", "Bob is someone else");
+
+        var typed = await factory.Services.Read(db => db.ClubCharges.Single(c => c.MemberId == zoeId));
+        (typed.Description, typed.MemberName, typed.Amount).Should().Be(("Birthday dinner for Erased member 2", "Erased member 2", 80m),
+            "her name goes from the charge's text as well, though the member row was renamed first");
+    }
+
+    [Fact]
     public async Task AReferenceThatNamesThePersonIsRefused()
     {
         var (factory, client, s) = await ClubAsync();

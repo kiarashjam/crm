@@ -81,7 +81,7 @@ public static class PersonDataInventory
         [typeof(ClubSaleLine)] = "Kept: what was sold and its price.",
         [typeof(ClubMemberCode)] = "Deleted.",
         [typeof(ClubPosTicket)] = "Anonymised; the till's raw data removed.",
-        [typeof(ClubDocument)] = "Read-only older records: every mention replaced by the pseudonym.",
+        [typeof(ClubDocument)] = "Read-only older records, read as JSON: in one of theirs, names, addresses, phones and notes go; elsewhere a mention is replaced by the pseudonym.",
         [typeof(PersonErasure)] = "The log of erasures itself: numbers, dates and counts, naming nobody.",
     };
 

@@ -315,9 +315,27 @@ internal sealed class PersonDossier
         var householdIds = d.HouseholdLinks.Select(l => l.HouseholdId).Distinct().ToList();
         d.Households = await Q(db.ClubHouseholds).Where(h => householdIds.Contains(h.Id)).ToDictionaryAsync(h => h.Id, ct);
         // The JSON documents kept read-only from before the club's records had tables of their
-        // own: any that name a member's id, or mention the person.
-        var documentNeedles = memberIds.Select(id => id.ToString()).Concat(needles).ToList();
-        d.Documents = await MentioningAsync(Q(db.ClubDocuments), documentNeedles, n => x => x.Payload.Contains(n), ct);
+        // own: the old copies of their records (a record moved to its table kept its document's
+        // id), any that name a member's id, and any that mention the person, as written or as
+        // JSON's default escaping wrote it (Müller is "Müller" there, a "+" "+").
+        var copiedIds = applicationIds
+            .Concat(d.Charges.Select(x => x.Id)).Concat(d.Payments.Select(x => x.Id)).Concat(d.Subscriptions.Select(x => x.Id))
+            .Concat(d.Tabs.Select(x => x.Id)).Concat(d.Donations.Select(x => x.Id)).Concat(d.GiftCards.Select(x => x.Id))
+            .Concat(d.GiftCardTransactions.Select(x => x.Id)).Concat(d.Registrations.Select(x => x.Id)).Concat(d.Reservations.Select(x => x.Id))
+            .Concat(d.HouseholdLinks.Select(x => x.Id)).Concat(d.MemberMessages.Select(x => x.Id))
+            .Distinct().ToList();
+        var documents = new List<ClubDocument>();
+        foreach (var chunk in copiedIds.Chunk(1000))
+        {
+            var ids = chunk.ToList();
+            documents.AddRange(await Q(db.ClubDocuments).Where(x => ids.Contains(x.Id)).ToListAsync(ct));
+        }
+        var documentNeedles = memberIds.Select(id => id.ToString())
+            .Concat(needles)
+            .Concat(needles.Select(n => System.Text.Json.JsonEncodedText.Encode(n).ToString()))
+            .Distinct(StringComparer.Ordinal).ToList();
+        documents.AddRange(await MentioningAsync(Q(db.ClubDocuments), documentNeedles, n => x => x.Payload.Contains(n), ct));
+        d.Documents = documents.DistinctBy(x => x.Id).ToList();
 
         // ── The audit trail: lines about any of their records, their deals, tasks and money ──
         var audited = recordIds.Concat(d.MoneyRecordIds).Concat(d.Tasks.Select(t => t.Id)).ToList();

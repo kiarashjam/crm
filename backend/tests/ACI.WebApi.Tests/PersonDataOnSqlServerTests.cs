@@ -53,6 +53,14 @@ public class PersonDataOnSqlServerTests
                 db.ClubHouseholds.Add(new ClubHousehold { Id = householdId, OrganizationId = org, Name = "Keller household", CreatedAtUtc = DateTime.UtcNow });
                 db.ClubHouseholdMembers.Add(new ClubHouseholdMember { Id = Guid.NewGuid(), OrganizationId = org, HouseholdId = householdId, MemberId = s.MemberId, Role = HouseholdRoles.Primary, IsPrimary = true, CreatedAtUtc = DateTime.UtcNow.AddMinutes(-2) });
                 db.ClubHouseholdMembers.Add(new ClubHouseholdMember { Id = Guid.NewGuid(), OrganizationId = org, HouseholdId = householdId, MemberId = s.BobMemberId, Role = HouseholdRoles.Other, IsPrimary = false, CreatedAtUtc = DateTime.UtcNow.AddMinutes(-1) });
+                // Her application as the old documents kept it, before it had a table of its own
+                // (the moved row kept the document's id): the names apart, the phone beside them.
+                db.ClubDocuments.Add(new ClubDocument
+                {
+                    Id = s.ApplicationId, OrganizationId = org, Kind = "applications", UpdatedAtUtc = DateTime.UtcNow.AddYears(-1),
+                    Payload = JsonSerializer.Serialize(new { id = s.ApplicationId, firstName = "Anna", lastName = "Keller", email = "anna.keller@example.ch", phone = "079 123 45 67" },
+                        new JsonSerializerOptions(JsonSerializerDefaults.Web)),
+                });
                 await db.SaveChangesAsync();
             }
 
@@ -86,10 +94,11 @@ public class PersonDataOnSqlServerTests
                 ("Activities", "Body"), ("OutboundMessages", "Body"), ("OutboundMessages", "[To]"), ("Notifications", "Message"),
                 ("ClubCharges", "MemberName"), ("ClubPayments", "MemberName"), ("ClubVisits", "MemberName"), ("ClubReservations", "MemberName"),
                 ("ClubEventRegistrations", "Name"), ("AuditEvents", "EntityLabel"), ("AuditEvents", "Summary"), ("EmailSuppressions", "Email"),
+                ("ClubDocuments", "Payload"),
             })
             {
                 var col = column.StartsWith('[') ? column : $"[{column}]";
-                (await Count($"SELECT COUNT(*) FROM [{table}] WHERE [OrganizationId] = '{org}' AND ({col} LIKE N'%Keller%' OR {col} LIKE N'%anna.keller@%')"))
+                (await Count($"SELECT COUNT(*) FROM [{table}] WHERE [OrganizationId] = '{org}' AND ({col} LIKE N'%Keller%' OR {col} LIKE N'%anna.keller@%' OR {col} LIKE N'%079 123 45 67%')"))
                     .Should().Be(0, $"{table}.{column} should not name her");
             }
 

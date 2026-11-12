@@ -294,6 +294,8 @@ public sealed partial class PersonDataService
     private void Apply(PersonDossier d, Guid organizationId, string pseudonym, DateTime now, bool suppress)
     {
         var s = d.Subject;
+        // What their text looks like, taken before the member rows below are renamed.
+        s.FreezeNeedles();
         var memberIds = s.MemberIds;
         var contactIds = s.ContactIds;
         string? Scrub(string? text) => s.Scrub(text, pseudonym);
@@ -599,9 +601,11 @@ public sealed partial class PersonDataService
             r.Notes = null;
         }
         LeaveHouseholds(d, now);
+        // Read as JSON: an old application keeps the names apart from each other, with the phone
+        // beside them, and the default escaping hides an accented name from a plain replacement.
         foreach (var doc in d.Documents)
         {
-            doc.Payload = Scrub(doc.Payload) ?? doc.Payload;
+            doc.Payload = ClubDocumentScrub.Scrub(doc.Payload, s, pseudonym);
             doc.UpdatedAtUtc = now;
         }
 
