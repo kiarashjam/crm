@@ -216,4 +216,23 @@ public class PrivacySettingsTests
         (await Ok(await anyone.GetAsync("/api/public/privacy?form=not-a-form"), "an unknown form")).GetProperty("workspaceName").ValueKind
             .Should().Be(JsonValueKind.Null, "an unknown token names no workspace and reveals nothing");
     }
+
+    [Fact]
+    public async Task TheNoticeFromAForm_IsLimitedPerLink_AndTheOperatorsNoticeIsNot()
+    {
+        var (factory, _, _, _) = await ClubAsync();
+        using var _ = factory;
+        using var anyone = factory.CreateClient();
+
+        // A form's token is looked up on each read: a script reading it in a loop is stopped.
+        var statuses = new List<HttpStatusCode>();
+        for (var i = 0; i < 65; i++)
+            statuses.Add((await anyone.GetAsync($"/api/public/privacy?form={FormToken}")).StatusCode);
+        statuses.Take(60).Should().AllSatisfy(s => s.Should().Be(HttpStatusCode.OK), "every visitor of a club's page shares its link");
+        statuses.Should().Contain(HttpStatusCode.TooManyRequests, "a script reading the notice in a loop is stopped");
+
+        // Without a form the notice reads only the server's settings, and is not limited.
+        for (var i = 0; i < 65; i++)
+            (await anyone.GetAsync("/api/public/privacy")).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
 }

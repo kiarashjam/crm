@@ -1,6 +1,7 @@
 using ACI.Application.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace ACI.WebApi.Controllers;
 
@@ -18,6 +19,7 @@ namespace ACI.WebApi.Controllers;
 [ApiController]
 [AllowAnonymous]
 [Route("api/public/privacy")]
+[EnableRateLimiting("public-privacy")]
 [Produces("application/json")]
 public class PublicPrivacyController : ControllerBase
 {

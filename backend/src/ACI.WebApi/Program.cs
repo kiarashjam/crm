@@ -156,6 +156,24 @@ try
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
             }));
+        // The privacy notice: anyone may read it, and a club's forms link to it with their token,
+        // which is looked up each time. Per token, like the forms themselves, and generous: every
+        // visitor of a club's page shares its token. Without one the notice reads only the
+        // server's settings, so nothing is limited. A value longer than any token is never looked
+        // up, and all such share one limit rather than each holding a partition of its own.
+        options.AddPolicy("public-privacy", context =>
+        {
+            var form = context.Request.Query["form"].ToString().Trim();
+            if (form.Length == 0) return System.Threading.RateLimiting.RateLimitPartition.GetNoLimiter("privacy");
+            return System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+                form.Length <= 64 ? "privacy:" + form : "privacy:overlong",
+                _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 60,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                });
+        });
         // A pay link: a member opens it and presses Pay once or twice. Per token, like the
         // unsubscribe link (the pay page sends it in a header); a forged token fails its
         // check before any database work.
