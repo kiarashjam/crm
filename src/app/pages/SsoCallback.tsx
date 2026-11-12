@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { completeSso, readSsoLanding, ssoErrorMessage } from '@/app/api/signIn';
+import { completeSso, keepWorkspaceFor, readSsoLanding, ssoErrorMessage } from '@/app/api/signIn';
 import { messages } from '@/app/api/messages';
 import { setSession } from '@/app/lib/auth';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
@@ -29,13 +29,14 @@ export default function SsoCallback() {
       return;
     }
     completeSso(code)
-      .then(({ response, returnTo }) => {
+      .then(({ response, returnTo, kept }) => {
         if (response.requiresTwoFactor && response.twoFactorToken) {
-          navigate('/login', { replace: true, state: { twoFactorToken: response.twoFactorToken, returnTo } });
+          navigate('/login', { replace: true, state: { twoFactorToken: response.twoFactorToken, returnTo, kept } });
           return;
         }
         if (!response.token || !response.user) throw new Error(ssoErrorMessage('server_error'));
         setSession(response.token, response.user);
+        keepWorkspaceFor(response.user, kept);
         toast.success(messages.auth.signedIn);
         navigate(returnTo ?? '/organizations', { replace: true });
       })

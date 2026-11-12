@@ -1,5 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   ArrowLeft, ArrowRight, Sparkles, Play, Mail, Lock, User as UserIcon,
   Eye, EyeOff, Loader2, AlertCircle, ShieldCheck, Workflow, BarChart3, Bot,
@@ -18,7 +19,9 @@ import { cn } from '@/app/components/ui/utils';
 import { invitationToResume } from '@/app/lib/inviteLink';
 import { BrandName } from '@/app/components/BrandName';
 import { AlternativeSignIn } from '@/app/components/auth/AlternativeSignIn';
-import { passkeySecondFactor, passkeysSupported, safeReturnTo } from '@/app/api/signIn';
+import {
+  getSignInOptions, keepWorkspaceFor, passkeySecondFactor, passkeysSupported, safeReturnTo, type KeptWorkspace,
+} from '@/app/api/signIn';
 import type { LoginResponse } from '@/app/api/auth';
 
 const HIGHLIGHTS = [
@@ -33,8 +36,12 @@ export default function Login() {
   // An invitation link opened while signed out: go back to it, token and all.
   const resumeInvitation = invitationToResume(location.state);
   // Back from single sign-on with two-factor sign-in on: the code (or a passkey) is next.
-  const fromSso = location.state as { twoFactorToken?: string; returnTo?: string | null } | null;
+  const fromSso = location.state as { twoFactorToken?: string; returnTo?: string | null; kept?: KeptWorkspace | null } | null;
   const afterSignIn = resumeInvitation ?? safeReturnTo(fromSso?.returnTo);
+  // A passkey in place of the code only where the server takes passkeys (the same answer
+  // the other ways in below read) and this browser can use one.
+  const signInOptions = useQuery({ queryKey: ['sign-in-options'], queryFn: getSignInOptions, staleTime: 5 * 60_000, retry: 1 });
+  const passkeyInsteadOfCode = Boolean(signInOptions.data?.passkeys) && passkeysSupported();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -64,6 +71,7 @@ export default function Login() {
         const res = await loginWithTwoFactor(twoFactorToken!, code);
         if (!res.token || !res.user) throw new Error('Login failed');
         setSession(res.token, res.user);
+        keepWorkspaceFor(res.user, fromSso?.kept);
         toast.success(messages.auth.signedIn);
         navigate(afterSignIn ?? '/dashboard', { replace: true });
         return;
@@ -108,6 +116,7 @@ export default function Login() {
       return;
     }
     setSession(res.token, res.user);
+    keepWorkspaceFor(res.user, fromSso?.kept);
     toast.success(messages.auth.signedIn);
     navigate(afterSignIn ?? (isUsingRealApi() ? '/organizations' : '/dashboard'), { replace: true });
   };
@@ -366,7 +375,7 @@ export default function Login() {
                     {submitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Verifying…</> : 'Verify & sign in'}
                   </button>
 
-                  {passkeysSupported() && (
+                  {passkeyInsteadOfCode && (
                     <button
                       type="button"
                       onClick={() => void answerWithPasskey()}

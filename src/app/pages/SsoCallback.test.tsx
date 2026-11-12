@@ -7,7 +7,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { http, HttpResponse } from 'msw';
 import { server } from '@/test/mocks/server';
 import { withQueries } from '@/test/queryWrapper';
-import { getAuthToken } from '@/app/lib/auth';
+import { getAuthToken, getCurrentOrganizationId } from '@/app/lib/auth';
 import { ssoStartUrl } from '@/app/api/signIn';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), message: vi.fn() } }));
@@ -63,6 +63,37 @@ describe('landing from single sign-on', () => {
     expect(getAuthToken()).toBe('sso-session');
     // The spent code leaves the address.
     expect(window.location.hash).toBe('');
+  });
+
+  it('stays in the workspace it started from when the person who left comes back', async () => {
+    // Anna, signed in with her password, opened Pavillon 46, which asks for single sign-on.
+    localStorage.setItem('aci_token', 'password-session');
+    localStorage.setItem('aci_user', JSON.stringify({ id: 'u1', name: 'Anna', email: 'anna@pavillon46.ch' }));
+    sessionStorage.setItem('aci_org_id', 'pavillon');
+    server.use(http.post(`${BASE}/api/auth/sso/complete`, () =>
+      HttpResponse.json({ token: 'sso-session', user: { id: 'u1', name: 'Anna', email: 'anna@pavillon46.ch', emailVerified: true }, requiresTwoFactor: false })));
+    await ssoStartUrl('google', '/members');
+
+    land('#code=the-code');
+
+    expect(await screen.findByText('Members page')).toBeInTheDocument();
+    expect(getAuthToken()).toBe('sso-session');
+    expect(getCurrentOrganizationId()).toBe('pavillon');
+  });
+
+  it('does not keep the last person’s workspace for someone else signing in at the same desk', async () => {
+    localStorage.setItem('aci_token', 'password-session');
+    localStorage.setItem('aci_user', JSON.stringify({ id: 'u1', name: 'Anna', email: 'anna@pavillon46.ch' }));
+    sessionStorage.setItem('aci_org_id', 'pavillon');
+    server.use(http.post(`${BASE}/api/auth/sso/complete`, () =>
+      HttpResponse.json({ token: 'marcs-session', user: { id: 'u2', name: 'Marc', email: 'marc@example.ch', emailVerified: true }, requiresTwoFactor: false })));
+    await ssoStartUrl('google');
+
+    land('#code=the-code');
+
+    expect(await screen.findByText('Workspaces page')).toBeInTheDocument();
+    expect(getAuthToken()).toBe('marcs-session');
+    expect(getCurrentOrganizationId()).toBeNull();
   });
 
   it('hands the two-factor step to the sign-in page', async () => {

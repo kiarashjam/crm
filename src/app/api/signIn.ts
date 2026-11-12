@@ -12,6 +12,7 @@
 
 import { authFetchJson, getApiBaseUrl, servesDemoData } from './apiClient';
 import type { LoginResponse } from './auth';
+import { getCurrentOrganizationId, getCurrentUser, setCurrentOrganizationId } from '@/app/lib/auth';
 
 export type SsoProvider = { id: string; name: string };
 export type SignInOptions = { sso: SsoProvider[]; passkeys: boolean };
@@ -43,7 +44,14 @@ export function base64UrlToBuffer(value: string): ArrayBuffer {
 
 const SSO_KEY = 'cadence.sso';
 
-type PendingSso = { verifier: string; provider: string; returnTo: string | null };
+/**
+ * The workspace a single sign-on started from, and who started it: signing in forgets the
+ * workspace (setSession), as it must for someone else at the same desk, so the person who
+ * left from a workspace that asked for single sign-on would otherwise come back to another.
+ */
+export type KeptWorkspace = { orgId: string; userId: string };
+
+type PendingSso = { verifier: string; provider: string; returnTo: string | null; kept?: KeptWorkspace | null };
 
 /** Only a path inside the app: the address the browser comes back to must not leave it. */
 export function safeReturnTo(path: string | null | undefined): string | null {
@@ -63,7 +71,11 @@ export async function ssoStartUrl(provider: string, returnTo?: string | null): P
   const base = getApiBaseUrl();
   if (!base) throw new Error('Single sign-on needs the server.');
   const verifier = bufferToBase64Url(crypto.getRandomValues(new Uint8Array(32)));
-  const pending: PendingSso = { verifier, provider, returnTo: safeReturnTo(returnTo) };
+  const orgId = getCurrentOrganizationId();
+  const userId = getCurrentUser()?.id;
+  const pending: PendingSso = {
+    verifier, provider, returnTo: safeReturnTo(returnTo), kept: orgId && userId ? { orgId, userId } : null,
+  };
   sessionStorage.setItem(SSO_KEY, JSON.stringify(pending));
   return `${base}/api/auth/sso/${encodeURIComponent(provider)}/start?challenge=${await pkceChallenge(verifier)}`;
 }
@@ -83,7 +95,7 @@ export function readSsoLanding(hash: string): { code: string | null; error: stri
  * Trades the one-time code for a session (or the two-factor step), with this tab's secret.
  * The secret is used once: it is forgotten whether or not the server accepts it.
  */
-export async function completeSso(code: string): Promise<{ response: LoginResponse; returnTo: string | null }> {
+export async function completeSso(code: string): Promise<{ response: LoginResponse; returnTo: string | null; kept: KeptWorkspace | null }> {
   let pending: PendingSso | null = null;
   try {
     pending = JSON.parse(sessionStorage.getItem(SSO_KEY) ?? 'null') as PendingSso | null;
@@ -99,7 +111,16 @@ export async function completeSso(code: string): Promise<{ response: LoginRespon
     body: JSON.stringify({ code, verifier: pending.verifier }),
     skipAuth: true,
   });
-  return { response, returnTo: pending.returnTo };
+  return { response, returnTo: pending.returnTo, kept: pending.kept ?? null };
+}
+
+/**
+ * Back in the workspace the single sign-on started from, once signed in, when the person who
+ * came back is the one who left it. Called right after setSession, before the workspaces are
+ * read again, which keeps this tab's workspace when it is still one of theirs.
+ */
+export function keepWorkspaceFor(user: { id: string } | null | undefined, kept: KeptWorkspace | null | undefined): void {
+  if (kept?.orgId && user?.id && kept.userId === user.id) setCurrentOrganizationId(kept.orgId);
 }
 
 /** Why a single sign-on came back without signing in, in words. */

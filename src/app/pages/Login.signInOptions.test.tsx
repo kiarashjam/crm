@@ -8,7 +8,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { http, HttpResponse } from 'msw';
 import { server } from '@/test/mocks/server';
 import { withQueries } from '@/test/queryWrapper';
-import { getAuthToken } from '@/app/lib/auth';
+import { getAuthToken, getCurrentOrganizationId } from '@/app/lib/auth';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), message: vi.fn() } }));
 const startSso = vi.hoisted(() => vi.fn());
@@ -135,12 +135,39 @@ describe('other ways to sign in', () => {
     page({ twoFactorToken: 'step-from-sso', returnTo: '/members' });
 
     expect(screen.getByRole('heading', { name: 'Two-factor verification' })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Use a passkey instead' }));
+    await user.click(await screen.findByRole('button', { name: 'Use a passkey instead' }));
 
     expect(await screen.findByText('Members page')).toBeInTheDocument();
     expect(sentToken).toBe('step-from-sso');
     expect(getAuthToken()).toBe('sso-session');
     const asked = get.mock.calls[0]![0] as { publicKey: PublicKeyCredentialRequestOptions };
     expect(new Uint8Array(asked.publicKey.allowCredentials![0]!.id as ArrayBuffer)).toEqual(new Uint8Array([1, 2]));
+  });
+
+  it('offers no passkey in place of the code where the server takes none', async () => {
+    let asked = false;
+    server.use(http.get(`${BASE}/api/auth/sign-in-options`, () => { asked = true; return HttpResponse.json({ sso: [], passkeys: false }); }));
+    page({ twoFactorToken: 'step-from-sso' });
+
+    expect(screen.getByRole('heading', { name: 'Two-factor verification' })).toBeInTheDocument();
+    await waitFor(() => expect(asked).toBe(true));
+    expect(screen.queryByRole('button', { name: 'Use a passkey instead' })).not.toBeInTheDocument();
+  });
+
+  it('after the code, stays in the workspace the single sign-on started from for the same person', async () => {
+    server.use(
+      http.get(`${BASE}/api/auth/sign-in-options`, () => HttpResponse.json({ sso: [], passkeys: true })),
+      http.post(`${BASE}/api/auth/passkeys/second-factor/options`, () =>
+        HttpResponse.json({ ceremonyId: 'ceremony-3', options: { challenge: b64(7), allowCredentials: [{ type: 'public-key', id: b64(1, 2) }] } })),
+      http.post(`${BASE}/api/auth/passkeys/second-factor`, () =>
+        HttpResponse.json({ token: 'sso-session', user: { id: 'u1', name: 'Anna', email: 'anna@pavillon46.ch', emailVerified: true }, requiresTwoFactor: false })),
+    );
+    const user = userEvent.setup();
+    page({ twoFactorToken: 'step-from-sso', returnTo: '/members', kept: { orgId: 'pavillon', userId: 'u1' } });
+
+    await user.click(await screen.findByRole('button', { name: 'Use a passkey instead' }));
+
+    expect(await screen.findByText('Members page')).toBeInTheDocument();
+    expect(getCurrentOrganizationId()).toBe('pavillon');
   });
 });
