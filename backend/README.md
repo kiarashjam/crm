@@ -110,6 +110,76 @@ For org-scoped data, include:
 X-Organization-Id: your-org-guid
 ```
 
+### Single sign-on (Google, Microsoft) and passkeys
+
+Besides the password, a person can sign in with Google or Microsoft Entra ID (OpenID Connect,
+authorization code flow with PKCE) and with passkeys (WebAuthn). Every way ends in the same
+session token as a password sign-in: signed with `Jwt:SecretKey`, carrying the user's security
+stamp, so a password reset, a 2FA change or "sign out everywhere" ends it like any other. The
+token says how the session began in its `signin` claim (`password`, `sso` or `passkey`); a token
+from before this claim reads as `password`. `GET /api/auth/sign-in-options` answers
+`{ "sso": [{ "id": "google", "name": "Google" }, ...], "passkeys": true }` for the sign-in
+page: a provider appears only once it is configured (see SECRETS_SETUP.md, section 5c).
+
+**Single sign-on.** The code flow is done by hand (`SingleSignOnService`), not with ASP.NET
+Core's OpenIdConnect handler, which signs people in to a cookie: this API has only bearer
+tokens. The id token's signature, issuer, audience and lifetime are checked by
+Microsoft.IdentityModel against the provider's published keys (read again when a new key turns
+up); it must carry the round trip's nonce. The round trip:
+
+| Step | Request | What happens |
+|------|---------|--------------|
+| 1 | `GET /api/auth/sso/{google\|microsoft}/start?challenge=<S256 of a secret the app keeps>` | 302 to the provider with `state`, `nonce` and a PKCE `code_challenge`; the state, nonce, verifier and the app's challenge are kept server-side (AuthChallenges, 10 minutes, used once). |
+| 2 | `GET /api/auth/sso/{provider}/callback?code=...&state=...` | The redirect URI registered with the provider. Takes the state once, redeems the code with the verifier and client secret, checks the id token, finds or makes the account, and sends the browser to `{FrontendBaseUrl}/auth/sso#code=<one-time code>` (or `#error=<reason>`). |
+| 3 | `POST /api/auth/sso/complete` `{ "code", "verifier" }` | Trades the one-time code (2 minutes, used once) and the secret whose hash came at step 1 for the session, or for the 2FA step token when 2FA is on. A code opened in another browser is refused. |
+
+Who signs in: the account already linked to that provider account (its issuer and subject);
+else the account with the address the provider vouches for (Google's `email_verified`,
+Entra's `xms_edov` optional claim), which is then linked; else a new account with a confirmed
+address and no workspace, as a sign-up. An unconfirmed account with the address is taken back
+by its proven owner: its password, 2FA and passkeys go, with every session. An address the
+provider does not vouch for signs nobody in (`#error=email_not_verified`). 2FA still holds:
+someone who turned it on is asked for the code (or a passkey) after single sign-on.
+`GET /api/auth/sso/links` lists the person's linked accounts; `DELETE /api/auth/sso/links/{id}`
+unlinks one unless it is their only way in. Start, callback and hand-back share a limit of 150
+requests per address per ten minutes.
+
+**A workspace that requires single sign-on.** The owner (only) sets it with
+`PUT /api/organizations/{id}/sso` `{ "required": true, "domains": ["pavillon46.ch"] }`;
+`GET` shows it, with each member and whether it holds them, to the owner and to those who
+manage settings or the team. With domains, it holds members whose address is at one of them
+(an outside accountant keeps signing in as before); without, every member. The owner is never
+held, so a broken provider cannot lock the workspace out, and it cannot be turned on while the
+server offers no provider. The workspace holds it, not the sign-in: accounts are shared between
+workspaces, so the password still signs in and works in the person's other workspaces, while
+this workspace answers every request from a session that did not begin with single sign-on
+with `403` and `errorCode` `Sso.Required` (plus `organizationId`) — by `X-Organization-Id`, by
+its id in the route, and through its invitations and join requests. The person's own account
+(`/api/auth/*`, `/api/settings`, their workspace list and invitations) stays open, and
+`GET /api/organizations` marks the workspaces that would refuse the session
+(`ssoSignInNeeded`). Sessions already open are refused at once (the policy is cached for 30
+seconds per instance).
+
+**Passkeys.** Each ceremony is two calls: options for `navigator.credentials`, then the
+browser's answer with the ceremony's id (binary fields base64url). Fido2NetLib verifies the
+answer against the options kept server-side (challenge, origin, relying party, signature).
+
+| Endpoint | Who | What |
+|----------|-----|------|
+| `GET /api/auth/passkeys` | signed in | Their passkeys. |
+| `POST /api/auth/passkeys/registration/options` `{ "password" }` | signed in | Starts adding one: takes the account's password, or for an account without one a sign-in in the last 15 minutes. At most 20. |
+| `POST /api/auth/passkeys/registration` `{ ceremonyId, name, credential }` | signed in | Stores the credential id, public key and signature counter. |
+| `DELETE /api/auth/passkeys/{id}` | signed in | Removes one of theirs. |
+| `POST /api/auth/passkeys/sign-in/options`, `POST /api/auth/passkeys/sign-in` | anonymous | Signs in with any passkey the browser holds. The device must have verified the person (PIN, biometrics) and the answer must carry its user handle; that makes it two factors, so no 2FA code follows. |
+| `POST /api/auth/passkeys/second-factor/options`, `.../second-factor` `{ twoFactorToken, ... }` | the 2FA step | A passkey of the person's in place of the authenticator code, after the password or single sign-on; the session keeps how it began. |
+
+A counter that does not rise (when either value is not 0) is refused as a copied key
+(`Passkeys.CounterWentBack`); passkeys that sync between devices report 0 and pass. Failed
+passkey sign-ins count against the account like wrong passwords (5 per 15 minutes), failed
+second factors against the code's allowance, and the anonymous endpoints are limited to 30
+requests per address per minute. Passkeys are on once the app's address is known
+(`Passkeys:RelyingPartyId` and `Passkeys:Origins`, else `Email:FrontendBaseUrl`).
+
 ### Editing a lead, deal, contact or company
 
 Every read of one of these returns its `version`, and `GET /api/{records}/{id}` and the
@@ -496,6 +566,29 @@ backend/
 ```
 
 > **Important:** Change `Jwt:SecretKey` in production. Must be at least 32 characters.
+
+Signing in another way (all off until set; SECRETS_SETUP.md, section 5c, says what to register):
+
+```json
+{
+  "Sso": {
+    "ApiBaseUrl": "https://api.example.ch",
+    "Google": { "ClientId": "", "ClientSecret": "" },
+    "Microsoft": { "ClientId": "", "ClientSecret": "", "Tenant": "organizations" }
+  },
+  "Passkeys": {
+    "RelyingPartyId": "app.example.ch",
+    "RelyingPartyName": "Cadence",
+    "Origins": "https://app.example.ch"
+  }
+}
+```
+
+`Sso:ApiBaseUrl` falls back to `Email:ApiBaseUrl`; the providers send people back to
+`{ApiBaseUrl}/api/auth/sso/{google|microsoft}/callback`, and the API sends them on to
+`{Email:FrontendBaseUrl}/auth/sso`, so both must be absolute for any provider to be offered.
+`Sso:Microsoft:Tenant` is `organizations` (any work or school account, the default), `common`
+(those and personal Microsoft accounts), `consumers`, or one tenant's id (only that directory).
 
 ---
 
