@@ -227,6 +227,48 @@ public class WorkspaceModulesTests
     }
 
     [Fact]
+    public async Task WithSalesOff_ALeadFromAWebsiteFormIsKept_ButNoAutomationStartsAnOutreachSequenceForIt()
+    {
+        // Sales is not turned off while a lead is in a sequence, since nobody could see or stop
+        // its emails once the Sequences page was gone. A lead a website form posted afterwards
+        // was still put in one by an automation, and those emails started all the same.
+        using var app = new CustomWebApplicationFactory();
+        var team = await TeamAsync(app);
+        var sequenceId = (await Json(await team.Owner.PostAsync("/api/sequences", Body(new
+        {
+            name = "New lead outreach", status = "active",
+            steps = new[] { new { type = "email", dayOffset = 0, subject = "Hello", body = "Hi {{firstName}}" } },
+        })), "create a sequence")).GetProperty("id").GetGuid();
+        await Json(await team.Owner.PostAsync("/api/automations", Body(new
+        {
+            name = "Outreach for new leads", trigger = "lead.created", enabled = true,
+            actions = new[] { new { type = "add_to_sequence", config = new { sequenceId = sequenceId.ToString() } } },
+        })), "add the rule");
+        var key = (await Json(await team.Owner.PostAsync($"/api/webhook/organizations/{team.Org}/generate-key", null), "a key for the website form"))
+            .GetProperty("apiKey").GetString()!;
+        using var form = app.CreateClient();
+        form.DefaultRequestHeaders.Add("X-Api-Key", key);
+
+        // With Sales on, the rule puts a new lead in the sequence.
+        (await form.PostAsync("/api/webhook/leads", Body(new { name = "Anna Keller", email = "anna@example.ch" })))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+        (await app.Services.Read(db => db.OutreachEnrollments.Count(e => e.OrganizationId == team.Org && e.Status == "active"))).Should().Be(1);
+        using (var scope = app.Services.CreateScope())
+        {
+            await using var db = scope.ServiceProvider.EveryWorkspace();
+            foreach (var enrolment in db.OutreachEnrollments.Where(e => e.OrganizationId == team.Org)) enrolment.Status = "stopped";
+            await db.SaveChangesAsync();
+        }
+        await Json(await Set(team, new { sales = false }), "turn Sales off once the sequence is stopped");
+
+        (await form.PostAsync("/api/webhook/leads", Body(new { name = "Jean Dupont", email = "jean@example.ch" })))
+            .StatusCode.Should().Be(HttpStatusCode.Created, "the enquiry is kept for when Sales is on again");
+        (await app.Services.Read(db => db.Leads.Count(l => l.OrganizationId == team.Org))).Should().Be(2);
+        (await app.Services.Read(db => db.OutreachEnrollments.Count(e => e.OrganizationId == team.Org && e.Status == "active")))
+            .Should().Be(0, "a sequence nobody can see or stop is not started");
+    }
+
+    [Fact]
     public async Task PeopleOutsideTheWorkspaceStillReachWhatWasSentToThem_WithTheClubOff()
     {
         using var app = new CustomWebApplicationFactory();
