@@ -431,6 +431,27 @@ currency apart) and on its calendar (days, Monday weeks or months, in its time z
 | `GET` | `/api/club-reports/export?from=&to=&grain=` | The same as a CSV, one figure per row; text that reads as a formula is kept as text (`records.export`) |
 | `GET` | `/api/club-reports/today` | The day at the club: check-ins, bookings, open tabs, applications waiting, what is past due, this week's events and the fortnight's anniversaries |
 
+### Languages and Swiss formats
+
+The app is written in English, German (Swiss spelling, "ss" for the sharp s) and French (as
+written in Romandy). The browser's words are in `src/app/i18n/locales/{en,de,fr}`; what the
+server writes to a member (statement and invoice PDFs with the QR-bill's SIX headings, the
+statement, reminder, welcome, event and pay-link emails, the marketing footer, the public
+forms' standard words) is in `ACI.Application/Common/I18n/MemberTexts.cs`. A test fails when
+German or French lacks a key, a placeholder or a plural form, on either side.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/settings/language` | The signed-in person's language (`en`, `de`, `fr`), or null when they have not chosen: the app then follows the workspace's locale, then the browser |
+| `PUT` | `/api/settings/language` | `{ language }`: keep it on the account; null or empty follows the workspace again; anything else is 400 |
+| `PUT` | `/api/members/{id}` | `preferredLanguage` (`en`, `de`, `fr`): the language the club writes to the member in. Null (the default) is English, as every member was written to before; an applicant's form language and the welcome handoff's language are carried onto the member they become |
+| `GET/POST` | `/api/public/apply/{token}`, `/api/public/capture/{token}` | `?lang=` on the form and `language` on the post: the standard words, the thank-you and the consent record are in the language the visitor read; a form that says none is answered in English |
+| `PUT` | `/api/organizations/{id}/settings` | `csvSemicolon`: the workspace's CSV exports (contacts, companies, Club Reports, and the browser's own) split columns by a semicolon, as Excel set up for Switzerland reads them; comma by default. Every export starts with the UTF-8 byte order mark |
+
+Dates are written in the person's language with the workspace's region (`fr-CH` writes
+"31 décembre 2026" and 31.12.2026), numbers and money in the workspace's number format, and
+the club's date fields read days in the region's order (31.12.2026 in Switzerland).
+
 ### Configuration (Owner/Manager only)
 
 | Method | Endpoint | Description |
