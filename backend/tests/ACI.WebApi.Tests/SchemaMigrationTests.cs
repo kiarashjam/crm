@@ -4,6 +4,7 @@ using ACI.Infrastructure.Services;
 using ACI.WebApi.Tests.Helpers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -44,8 +45,9 @@ public class SchemaMigrationTests
             schema.Where(line => !line.Contains(" AppliedDataFixes.", StringComparison.Ordinal))
                 .Should().Equal(await SqlServerSchema.ListAsync(migrated));
 
+            // Against today's model: every migration since the baseline has run here too.
             await using var db = SqlServerSchema.Context(started);
-            var comparison = await SchemaBaseline.CompareAsync(db);
+            var comparison = await SchemaBaseline.CompareAsync(db, db.GetService<IDesignTimeModel>().Model.GetRelationalModel());
             comparison.Missing.Should().BeEmpty();
             comparison.Different.Should().BeEmpty();
 

@@ -91,9 +91,27 @@ interface FormState {
   duesFrequency: DuesFrequency;
   renewsAtUtc: string;
   notes: string;
+  /** yyyy-mm-dd, or empty. */
+  startsOn: string;
+  startUndetermined: boolean;
 }
 
 const day = 86_400_000;
+
+/** When the membership starts, as a badge: a date, "to be decided", or nothing said. */
+function StartBadge({ member }: { member: Member }) {
+  if (member.startUndetermined) {
+    return <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-200">Start to be decided</span>;
+  }
+  if (!member.startsOnUtc) return null;
+  const starts = new Date(member.startsOnUtc);
+  const future = starts.getTime() > Date.now();
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ${future ? 'bg-sky-50 text-sky-700 ring-sky-200' : 'bg-slate-50 text-slate-600 ring-slate-200'}`}>
+      {future ? 'Starts' : 'Started'} {starts.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+    </span>
+  );
+}
 
 function newForm(): FormState {
   return {
@@ -107,6 +125,8 @@ function newForm(): FormState {
     duesFrequency: 'Monthly',
     renewsAtUtc: new Date(Date.now() + 365 * day).toISOString().slice(0, 10),
     notes: '',
+    startsOn: '',
+    startUndetermined: false,
   };
 }
 
@@ -177,6 +197,7 @@ export default function Members() {
     { id: 'house', label: 'House account', numeric: true, cell: (m) => <span className={m.houseAccountBalance < 0 ? 'text-rose-600' : ''}>{formatCurrency(m.houseAccountBalance)}</span> },
     { id: 'renews', label: 'Renews', cell: (m) => formatDate(m.renewsAtUtc) },
     { id: 'joined', label: 'Member since', byDefault: false, cell: (m) => formatDate(m.joinedAtUtc) },
+    { id: 'starts', label: 'Starts', cell: (m) => (m.startUndetermined || m.startsOnUtc ? <StartBadge member={m} /> : '—') },
   ];
   /** Open, edit and remove: the same in every layout. */
   const memberActions = (m: Member) => (
@@ -235,6 +256,8 @@ export default function Members() {
       duesFrequency: m.duesFrequency,
       renewsAtUtc: m.renewsAtUtc.slice(0, 10),
       notes: m.notes ?? '',
+      startsOn: m.startsOnUtc?.slice(0, 10) ?? '',
+      startUndetermined: m.startUndetermined ?? false,
     });
     setDialogOpen(true);
   };
@@ -263,6 +286,9 @@ export default function Members() {
         renewsAtUtc: renewsAt,
         joinedAtUtc: editing?.joinedAtUtc ?? new Date().toISOString(),
         notes: form.notes.trim() || undefined,
+        // A date, or still to be decided; sent as null, a date is taken off.
+        startsOnUtc: form.startUndetermined || !form.startsOn ? null : form.startsOn,
+        startUndetermined: form.startUndetermined,
       };
       if (editing) {
         // An emptied phone or note is sent as null, which takes it off. Left out, as it
@@ -472,6 +498,7 @@ export default function Members() {
                             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[m.status]}`}>
                               {m.status}
                             </span>
+                            <StartBadge member={m} />
                             {overdue && (
                               <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-rose-50 text-rose-700 ring-1 ring-rose-200">
                                 <AlertCircle className="w-3 h-3" /> Overdue
@@ -662,6 +689,25 @@ export default function Members() {
                 onChange={(e) => setForm({ ...form, renewsAtUtc: e.target.value })}
               />
             </div>
+            <div>
+              <Label htmlFor="startsOn">Membership starts</Label>
+              <Input
+                id="startsOn"
+                type="date"
+                value={form.startUndetermined ? '' : form.startsOn}
+                disabled={form.startUndetermined}
+                onChange={(e) => setForm({ ...form, startsOn: e.target.value })}
+              />
+            </div>
+            <label className="flex items-end gap-2 pb-2 text-sm text-slate-600">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-slate-300 accent-orange-500"
+                checked={form.startUndetermined}
+                onChange={(e) => setForm({ ...form, startUndetermined: e.target.checked })}
+              />
+              Start still to be decided
+            </label>
             <div className="md:col-span-2">
               <Label htmlFor="notes">Notes</Label>
               <Textarea

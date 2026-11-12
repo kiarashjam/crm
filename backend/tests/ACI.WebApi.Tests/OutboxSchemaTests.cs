@@ -27,7 +27,7 @@ public class OutboxSchemaTests
     public void EachTableIsCreatedAsEfWouldWriteIt(string table)
     {
         var block = ClubSchemaTests.Between(ClubSchemaTests.ProgramDdl(), $"CREATE TABLE [{table}]", ");");
-        var expected = ClubSchemaTests.Between(ClubSchemaTests.EfCreateScript(), $"CREATE TABLE [{table}]", "CONSTRAINT");
+        var expected = ClubSchemaTests.Between(ClubSchemaTests.BaselineScript(), $"CREATE TABLE [{table}]", "CONSTRAINT");
 
         var columns = 0;
         foreach (var line in expected.Split('\n'))
