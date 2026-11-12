@@ -49,6 +49,7 @@ public class SsoController : ControllerBase
     /// <summary>Sends the browser to the provider to sign in.</summary>
     /// <param name="provider">"google" or "microsoft".</param>
     /// <param name="challenge">base64url(SHA-256(secret)) of a secret the app keeps for <see cref="Complete"/>.</param>
+    /// <param name="ct">Cancellation token.</param>
     /// <response code="302">To the provider; or, when it cannot start, back to the app with the reason.</response>
     [HttpGet("{provider}/start")]
     [AllowAnonymous]

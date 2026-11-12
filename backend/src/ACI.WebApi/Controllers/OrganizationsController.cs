@@ -31,6 +31,7 @@ public class OrganizationsController : ControllerBase
     /// <summary>
     /// Lists all organizations the current user is a member of.
     /// </summary>
+    /// <param name="sso">Says which of them would refuse this session for want of single sign-on.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>List of organizations.</returns>
     /// <response code="200">Returns the list of organizations.</response>

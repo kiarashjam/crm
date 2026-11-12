@@ -93,6 +93,7 @@ public class JoinRequestsController : ControllerBase
     /// Only members who manage the team (owners and managers by default) can accept requests.
     /// </remarks>
     /// <param name="joinRequestId">The join request ID.</param>
+    /// <param name="joinRequests">Finds the request's workspace, which may require single sign-on of the caller.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The updated join request.</returns>
     /// <response code="200">Request accepted successfully.</response>
@@ -124,6 +125,7 @@ public class JoinRequestsController : ControllerBase
     /// Only members who manage the team (owners and managers by default) can reject requests.
     /// </remarks>
     /// <param name="joinRequestId">The join request ID.</param>
+    /// <param name="joinRequests">Finds the request's workspace, which may require single sign-on of the caller.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The updated join request.</returns>
     /// <response code="200">Request rejected successfully.</response>

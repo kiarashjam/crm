@@ -131,6 +131,7 @@ public class InvitesController : ControllerBase
     /// reported rather than silently ignored.
     /// </remarks>
     /// <param name="inviteId">The pending invite to re-send.</param>
+    /// <param name="invites">Finds the invite's workspace, which may require single sign-on of the caller.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The invite, with its refreshed expiry.</returns>
     /// <response code="200">Invitation e-mailed again.</response>
