@@ -1,3 +1,4 @@
+using ACI.Application.Common;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
@@ -94,6 +95,25 @@ public sealed class ImportRepository : IImportRepository
                 Description = c.Description, DoNotContact = c.DoNotContact, CreatedAtUtc = c.CreatedAtUtc,
             })
             .ToListAsync(ct);
+
+    public async Task<IReadOnlyDictionary<string, DateTime>> ErasedAddressesAsync(Guid? organizationId, IReadOnlyCollection<string> addresses, CancellationToken ct = default)
+    {
+        var erased = new Dictionary<string, DateTime>(StringComparer.Ordinal);
+        if (organizationId is not Guid org) return erased;
+        var keys = addresses.Select(ErasedAddresses.Normalize).Where(a => a.Length > 0).Distinct()
+            .ToDictionary(ErasedAddresses.Key, a => a, StringComparer.Ordinal);
+        // In slices: SQL Server takes at most 2,100 parameters in one query, and a file can hold more rows.
+        foreach (var slice in keys.Keys.Chunk(1000))
+        {
+            var wanted = slice.ToList();
+            foreach (var row in await _db.EmailSuppressions.AsNoTracking()
+                         .Where(s => s.OrganizationId == org && s.Reason == EmailSuppressionReasons.Erased && wanted.Contains(s.Email))
+                         .Select(s => new { s.Email, s.CreatedAtUtc })
+                         .ToListAsync(ct))
+                erased[keys[row.Email]] = row.CreatedAtUtc;
+        }
+        return erased;
+    }
 
     public async Task<IReadOnlyList<Company>> CompaniesAsync(Guid userId, Guid? organizationId, CancellationToken ct = default) =>
         await InWorkspace(_db.Companies.AsNoTracking(), userId, organizationId)

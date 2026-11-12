@@ -153,6 +153,25 @@ public sealed class ImportService : IImportService
             companies.Select(c => new ImportCompany(c.Id, c.Name, c.Domain)).ToList(),
             statuses, sources, request.DefaultStatus, request.DefaultSource);
         var plan = planner.Plan(file.Rows);
+        // Someone erased at their request is not brought back by an old list: their row is
+        // skipped and says so, in the dry run as in the import. Staff who are told the person
+        // wants to come back lift the address from the suppression list first.
+        if (kind is RecordTypes.Lead or RecordTypes.Contact)
+        {
+            var addresses = plan.Where(r => r.Action is ImportPlannedRow.Create or ImportPlannedRow.Update)
+                .Select(r => r.Values.GetValueOrDefault("email")).OfType<string>().ToList();
+            var erased = addresses.Count == 0
+                ? new Dictionary<string, DateTime>()
+                : await _imports.ErasedAddressesAsync(organizationId, addresses, ct);
+            foreach (var row in plan.Where(r => r.Action is ImportPlannedRow.Create or ImportPlannedRow.Update))
+                if (row.Values.GetValueOrDefault("email") is { } email
+                    && erased.TryGetValue(ErasedAddresses.Normalize(email), out var on))
+                {
+                    row.Action = ImportPlannedRow.Skip;
+                    row.Message = $"Not imported: this address belongs to a person erased at their request on {on.ToString("d MMM yyyy", System.Globalization.CultureInfo.InvariantCulture)}. " +
+                        "If they asked to come back, lift it from the suppression list (Settings, Email) and import the row again.";
+                }
+        }
         // Checked as the API checks a form's request, in the dry run as in the import, so
         // the preview never promises a row the import would then refuse.
         foreach (var row in plan.Where(r => r.Action is ImportPlannedRow.Create or ImportPlannedRow.Update))

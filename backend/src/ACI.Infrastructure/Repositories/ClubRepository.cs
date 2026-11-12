@@ -18,6 +18,16 @@ public sealed class ClubRepository : IClubRepository
     public Task<ClubMember?> MemberAsync(Guid id, Guid? organizationId, CancellationToken ct = default) =>
         _db.ClubMembers.FirstOrDefaultAsync(m => m.Id == id && m.OrganizationId == organizationId, ct);
 
+    public async Task<DateTime?> ErasedAtAsync(Guid? organizationId, string email, CancellationToken ct = default)
+    {
+        var key = ACI.Application.Common.ErasedAddresses.Key(email);
+        if (organizationId is not Guid org || key.Length == 0) return null;
+        return await _db.EmailSuppressions.AsNoTracking()
+            .Where(s => s.OrganizationId == org && s.Email == key && s.Reason == EmailSuppressionReasons.Erased)
+            .Select(s => (DateTime?)s.CreatedAtUtc)
+            .FirstOrDefaultAsync(ct);
+    }
+
     public async Task SaveMemberAsync(ClubMember member, CancellationToken ct = default)
     {
         var existing = await _db.ClubMembers.FirstOrDefaultAsync(m => m.Id == member.Id, ct);

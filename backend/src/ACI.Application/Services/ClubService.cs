@@ -100,6 +100,9 @@ public interface IClubRepository
 {
     Task<IReadOnlyList<ClubMember>> MembersAsync(Guid? organizationId, CancellationToken ct = default);
     Task<ClubMember?> MemberAsync(Guid id, Guid? organizationId, CancellationToken ct = default);
+
+    /// <summary>When the person with this address was erased at their request, if they were.</summary>
+    Task<DateTime?> ErasedAtAsync(Guid? organizationId, string email, CancellationToken ct = default) => Task.FromResult<DateTime?>(null);
     Task SaveMemberAsync(ClubMember member, CancellationToken ct = default);
     Task<bool> DeleteMemberAsync(Guid id, Guid? organizationId, CancellationToken ct = default);
 
@@ -191,6 +194,12 @@ public sealed class ClubService : IClubService
         if (request.DuesAmount < 0 || request.HouseAccountBalance is < -MaxMoney or > MaxMoney || request.DuesAmount > MaxMoney)
             return MoneyInvalid;
         if (await LinksRefusedAsync(userId, organizationId, request, ct) is { } badLink) return badLink;
+        // Someone erased at their request is not added back by a member import or by hand
+        // without anyone noticing; staff told the person wants to rejoin lift the address first.
+        if (await _club.ErasedAtAsync(organizationId, email, ct) is DateTime erasedOn)
+            return new Error("Member.AddressErased.Conflict",
+                $"{email} belongs to a person erased at their request on {erasedOn.ToString("d MMM yyyy", System.Globalization.CultureInfo.InvariantCulture)}. " +
+                "If they asked to come back, lift the address from the suppression list (Settings, Email) first.");
         var opening = request.HouseAccountBalance ?? 0;
         var startDues = request.StartDues == true;
         var chargeFee = request.ChargeInitiationFee == true;

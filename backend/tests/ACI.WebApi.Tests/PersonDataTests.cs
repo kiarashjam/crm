@@ -389,6 +389,31 @@ public class PersonDataTests
     }
 
     [Fact]
+    public async Task AnErasedPersonIsNotBroughtBackByAnImport_OrAddedBackAsAMember_WithoutAnyoneNoticing()
+    {
+        var (factory, client, s) = await ClubAsync();
+        using var _ = factory;
+        await Ok(await client.PostAsync("/api/privacy/erasure", Body(new
+        {
+            leadIds = new[] { s.LeadId }, contactIds = new[] { s.ContactId }, memberIds = new[] { s.MemberId }, applicationIds = new[] { s.ApplicationId }, confirm = "ERASE",
+        })), "erase Anna");
+
+        var csv = "Name,Email\nAnna Keller,ANNA.KELLER@example.ch\nCarla Rossi,carla@example.ch\n";
+        string?[] columns = ["name", "email"];
+        var preview = await ImportFiles.OkJson(await ImportFiles.Preview(client, "lead", csv, columns), "preview the import");
+        ImportFiles.Action(preview, 2).Should().Be("skip", "the dry run says what the import would do");
+        ImportFiles.Message(preview, 2).Should().Contain("erased at their request");
+        var imported = await ImportFiles.OkJson(await ImportFiles.Import(client, "lead", csv, columns), "import");
+        ImportFiles.Action(imported, 2).Should().Be("skip");
+        ImportFiles.Action(imported, 3).Should().Be("create", "everyone else is imported as before");
+        (await factory.Services.Read(db => db.Leads.Count(l => l.OrganizationId == s.Org && l.Email.ToLower() == AnnaEmail))).Should().Be(0);
+
+        var member = await client.PostAsync("/api/members", Body(new { firstName = "Anna", lastName = "Keller", email = AnnaEmail, tier = "Gold", status = "Active" }));
+        member.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await member.Content.ReadAsStringAsync()).Should().Contain("lift the address from the suppression list");
+    }
+
+    [Fact]
     public async Task AReferenceThatNamesThePersonIsRefused()
     {
         var (factory, client, s) = await ClubAsync();
