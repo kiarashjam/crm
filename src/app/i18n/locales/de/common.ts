@@ -38,4 +38,11 @@ export const common: Translation<typeof en> = {
   'date.yyyy': 'JJJJ',
   'date.pick': 'Datum wählen',
   'date.invalid': 'Kein Datum. Schreiben Sie es als {pattern}.',
+
+  'load.failed': 'Konnte nicht geladen werden: {what}.',
+  'load.stale': 'Konnte nicht aktualisiert werden: {what}. Angezeigt wird der zuletzt geladene Stand.',
+  'load.noAnswer': 'Der Server war nicht erreichbar oder hat nicht geantwortet.',
+  'load.retrying': 'Neuer Versuch …',
+  'readOnly.banner': 'Nur-Lese-Zugriff auf <b>{org}</b> – Sie sehen hier alles, können aber nichts ändern.',
+  'readOnly.thisOrg': 'diesen Arbeitsbereich',
 };

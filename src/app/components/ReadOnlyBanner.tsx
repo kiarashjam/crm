@@ -1,5 +1,6 @@
 import { Eye } from 'lucide-react';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
+import { useT } from '@/app/i18n';
 
 /**
  * Full-width banner shown on every page when the user's role in the current
@@ -10,6 +11,7 @@ import { useOrgOptional } from '@/app/contexts/OrgContext';
  */
 export default function ReadOnlyBanner() {
   const org = useOrgOptional();
+  const { t, tx } = useT();
   if (!org?.isReadOnly) return null;
 
   return (
@@ -21,8 +23,7 @@ export default function ReadOnlyBanner() {
       <div className="flex items-center justify-center gap-3 text-sm font-medium text-violet-800">
         <Eye className="h-4 w-4 shrink-0 text-violet-600" aria-hidden />
         <span className="max-w-3xl text-center">
-          View-only access to <strong>{org.currentOrg?.name ?? 'this organization'}</strong> — you can see everything
-          here, but not make changes.
+          {tx('readOnly.banner', { org: org.currentOrg?.name ?? t('readOnly.thisOrg'), b: (words) => <strong>{words}</strong> })}
         </span>
       </div>
     </div>

@@ -37,4 +37,11 @@ export const common = {
   'date.yyyy': 'yyyy',
   'date.pick': 'Pick a date',
   'date.invalid': 'Not a date. Write it as {pattern}.',
+
+  'load.failed': '{what} could not be loaded.',
+  'load.stale': '{what} could not be refreshed, so this is the last copy read.',
+  'load.noAnswer': 'The server could not be reached, or did not answer.',
+  'load.retrying': 'Trying again…',
+  'readOnly.banner': 'View-only access to <b>{org}</b> — you can see everything here, but not make changes.',
+  'readOnly.thisOrg': 'this organization',
 } satisfies Record<string, Message>;
