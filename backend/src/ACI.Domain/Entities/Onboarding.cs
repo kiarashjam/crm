@@ -41,6 +41,22 @@ public class OnboardingSettings : Common.BaseEntity
     /// <summary>Whether a handoff also adds the person to the club's members here.</summary>
     public bool AddToClubMembers { get; set; } = true;
 
+    /// <summary>
+    /// Who the welcome email is from, as the person reads it. Empty: the organization's
+    /// name. The portal sends it, through its own mail service, under this name.
+    /// </summary>
+    public string? SenderName { get; set; }
+
+    /// <summary>
+    /// The address it is from. The portal uses it only on a domain its mail service may
+    /// send for; otherwise it sends from its own address, with replies coming here.
+    /// Empty: the portal's own address.
+    /// </summary>
+    public string? SenderEmail { get; set; }
+
+    /// <summary>Where replies go. Empty: the organization's sending address, if it has one.</summary>
+    public string? ReplyTo { get; set; }
+
     public DateTime UpdatedAtUtc { get; set; }
     public Guid? UpdatedByUserId { get; set; }
 }

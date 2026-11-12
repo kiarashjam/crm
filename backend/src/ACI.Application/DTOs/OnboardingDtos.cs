@@ -16,7 +16,14 @@ public sealed record OnboardingSettingsDto(
     bool Configured,
     DateTime? UpdatedAtUtc,
     IReadOnlyList<string> CadenceFields,
-    IReadOnlyList<string> ReceiverFields);
+    IReadOnlyList<string> ReceiverFields,
+    string? SenderName = null,
+    string? SenderEmail = null,
+    string? ReplyTo = null,
+    /// <summary>What an empty sender name means: the organization's name.</summary>
+    string? DefaultSenderName = null,
+    /// <summary>What an empty reply-to means: the organization's sending address, when it has one.</summary>
+    string? DefaultReplyTo = null);
 
 public sealed class SaveOnboardingSettingsRequest
 {
@@ -26,13 +33,16 @@ public sealed class SaveOnboardingSettingsRequest
     public string? EmailHtml { get; set; }
     public string? DefaultLanguage { get; set; }
     public bool? AddToClubMembers { get; set; }
+    public string? SenderName { get; set; }
+    public string? SenderEmail { get; set; }
+    public string? ReplyTo { get; set; }
 }
 
 /// <summary>A new signing secret, shown this once.</summary>
 public sealed record OnboardingSecretDto(string Secret);
 
-/// <summary>What the receiver answered to a signed test post.</summary>
-public sealed record OnboardingPingDto(bool Ok, int? StatusCode, string? Error);
+/// <summary>What the receiver answered to a signed test post, and who it says it sends from.</summary>
+public sealed record OnboardingPingDto(bool Ok, int? StatusCode, string? Error, string? FromName = null, string? FromEmail = null);
 
 /// <summary>
 /// The welcome email for someone, before it goes. With a deal, the person is the deal's
@@ -56,7 +66,10 @@ public sealed class OnboardingPreviewRequest
 
 /// <param name="UsesReceiverDesign">No HTML of the workspace's own: the receiver sends its own design, with the welcome message in it, and Html is a stand-in for it.</param>
 /// <param name="Unknown">Placeholders nobody fills, as written.</param>
-public sealed record OnboardingPreviewDto(string Subject, string Html, bool UsesReceiverDesign, IReadOnlyList<string> Unknown);
+public sealed record OnboardingPreviewDto(
+    string Subject, string Html, bool UsesReceiverDesign, IReadOnlyList<string> Unknown,
+    /// <summary>Who it will be from, as far as CadenceE knows: the name, and the address asked for (or none, the portal's own).</summary>
+    string? FromName = null, string? FromEmail = null, string? ReplyTo = null);
 
 /// <summary>Hand a deal's contact over to the workspace's portal.</summary>
 public sealed class StartOnboardingRequest

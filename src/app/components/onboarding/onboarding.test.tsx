@@ -65,6 +65,12 @@ describe('the handoff timeline', () => {
     expect(s[1]!.detail).toBe('They already had one');
   });
 
+  it('shows who the welcome went out from, as the portal reports it', () => {
+    const o = handoff('welcomed', ['queued', 'account_created', 'email_sent']);
+    o.steps[2]!.detail = 'Sent from Pavillon 46 <hello@pavillon46.ch>';
+    expect(stagesOf(o)[2]!.detail).toBe('Sent from Pavillon 46 <hello@pavillon46.ch>');
+  });
+
   it('marks where it went wrong', () => {
     expect(stagesOf(handoff('failed', ['queued', 'undeliverable'])).map((x) => x.state)).toEqual(['error', 'pending', 'pending', 'pending']);
     const email = stagesOf(handoff('failed', ['queued', 'delivered', 'account_created', 'email_failed'])).map((x) => x.state);

@@ -2273,6 +2273,18 @@ namespace ACI.Infrastructure.Migrations
                     b.Property<Guid>("OrganizationId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("ReplyTo")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("SenderEmail")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("SenderName")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
 
