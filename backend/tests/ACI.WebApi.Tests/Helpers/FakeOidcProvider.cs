@@ -175,6 +175,8 @@ public sealed class SsoApp : CustomWebApplicationFactory
                 .ReturnsAsync(true);
             sender.Setup(s => s.SendEmailVerificationEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(true);
+            sender.Setup(s => s.SendOrganizationInviteEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(true);
             services.AddSingleton(sender.Object);
         });
     }

@@ -36,6 +36,7 @@ public static class DependencyInjection
         services.AddScoped<IAuthChallenges, ACI.Infrastructure.Services.SignIn.AuthChallengeStore>();
         services.AddScoped<SignInSessions>();
         services.AddScoped<ISingleSignOn, ACI.Infrastructure.Services.SignIn.SingleSignOnService>();
+        services.AddScoped<IOrganizationSso, ACI.Infrastructure.Services.SignIn.OrganizationSsoService>();
 
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IContactRepository, ContactRepository>();

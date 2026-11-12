@@ -20,7 +20,9 @@ public record OrganizationDto(
     string PermissionPreset = "",
     IReadOnlyList<string>? Permissions = null,
     bool SalesEnabled = true,
-    bool ClubEnabled = true);
+    bool ClubEnabled = true,
+    bool SsoRequired = false,
+    bool SsoSignInNeeded = false);
 
 /// <summary>
 /// What a workspace works in. Each field left out keeps its current value.

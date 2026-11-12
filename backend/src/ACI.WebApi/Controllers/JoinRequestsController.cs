@@ -1,6 +1,7 @@
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using ACI.WebApi.Extensions;
+using ACI.WebApi.Filters;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -72,6 +73,7 @@ public class JoinRequestsController : ControllerBase
     /// <response code="401">User is not authenticated.</response>
     /// <response code="403">User is not the organization owner.</response>
     [HttpGet("organization/{organizationId:guid}")]
+    [ActsForRouteOrganization("organizationId")]
     [ProducesResponseType(typeof(IReadOnlyList<JoinRequestDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -104,10 +106,12 @@ public class JoinRequestsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
-    public async Task<ActionResult<JoinRequestDto>> Accept(Guid joinRequestId, CancellationToken ct)
+    public async Task<ActionResult<JoinRequestDto>> Accept(Guid joinRequestId, [FromServices] IJoinRequestRepository joinRequests, CancellationToken ct)
     {
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
+        if (await SsoGate.RefusalAsync(HttpContext, (await joinRequests.GetByIdAsync(joinRequestId, ct))?.OrganizationId, ct) is { } refusal)
+            return (ActionResult)refusal;
         var result = await _joinRequestService.AcceptJoinRequestAsync(joinRequestId, userId.Value, ct);
         return result.ToActionResult();
     }
@@ -133,10 +137,12 @@ public class JoinRequestsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
-    public async Task<ActionResult<JoinRequestDto>> Reject(Guid joinRequestId, CancellationToken ct)
+    public async Task<ActionResult<JoinRequestDto>> Reject(Guid joinRequestId, [FromServices] IJoinRequestRepository joinRequests, CancellationToken ct)
     {
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
+        if (await SsoGate.RefusalAsync(HttpContext, (await joinRequests.GetByIdAsync(joinRequestId, ct))?.OrganizationId, ct) is { } refusal)
+            return (ActionResult)refusal;
         var result = await _joinRequestService.RejectJoinRequestAsync(joinRequestId, userId.Value, ct);
         return result.ToActionResult();
     }

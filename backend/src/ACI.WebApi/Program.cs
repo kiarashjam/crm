@@ -557,6 +557,9 @@ try
     app.UseRateLimiter();
     app.UseAuthorization();
     app.UseMiddleware<ACI.WebApi.Middleware.OrganizationAccessMiddleware>();
+    // After the header is checked: a workspace that requires single sign-on refuses sessions
+    // that began another way, for the members it applies to.
+    app.UseMiddleware<ACI.WebApi.Middleware.SsoRequirementMiddleware>();
     // Must follow OrganizationAccessMiddleware: the organization header is validated
     // (and stripped when forged) before the read-only role is resolved from it.
     app.UseMiddleware<ACI.WebApi.Middleware.ReadOnlyMemberMiddleware>();

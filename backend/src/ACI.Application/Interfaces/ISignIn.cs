@@ -109,6 +109,9 @@ public interface IOrganizationSso
     /// </summary>
     Task<bool> AdmitsAsync(Guid organizationId, Guid userId, string signInMethod, CancellationToken ct = default);
 
+    /// <summary>The workspace's name when it refuses such a session (to say so); null when it admits it.</summary>
+    Task<string?> RefusalAsync(Guid organizationId, Guid userId, string signInMethod, CancellationToken ct = default);
+
     /// <summary>The workspaces among <paramref name="organizationIds"/> that would refuse such a session.</summary>
     Task<IReadOnlySet<Guid>> RefusingAsync(IReadOnlyCollection<Guid> organizationIds, Guid userId, string signInMethod, CancellationToken ct = default);
 }
