@@ -307,6 +307,70 @@ delete).
 | `POST` | `/api/members/{id}/consent` | Record an answer: `{ channel, purpose, granted, source, detail }` (`form`, `member` or `staff`) |
 | `GET`/`POST` | `/api/public/unsubscribe/{token}` | The unsubscribe page's read and its button; a member's link withdraws marketing by email (source `unsubscribe`) for every member at that address, and marketing already queued to them is stopped as it goes; their service messages still come |
 | `POST` | `/api/public/unsubscribe/{token}/one-click` | RFC 8058 one-click, from a mail app's own Unsubscribe button; a `GET` there goes to the page instead and changes nothing |
+Every outbound webhook with a secret is signed twice: `X-Cadence-Signature` (hex HMAC-SHA256
+of the body, as it always was) and `X-Cadence-Timestamp` (Unix seconds) with
+`X-Cadence-Signature-256: sha256=<hex HMAC-SHA256 of "{timestamp}.{body}">`, which lets a
+receiver refuse a post replayed later.
+
+### Welcome & portal (onboarding handoff)
+
+When a lead becomes a deal, the deal's contact can be handed to the workspace's own member
+portal (Pavillon 46's, or any system that takes the contract below). The portal opens their
+account, sends the welcome email with a link to set a password, and reports each step back,
+which the deal's timeline shows. CadenceE never sends the welcome email itself. With
+"add to club members" on, the person is also added to the club's members here, with their
+start date or "to be decided".
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/onboarding/settings` | The portal address, whether there is a signing secret (never the secret), the welcome template and defaults |
+| `PUT` | `/api/onboarding/settings` | `{ webhookUrl, enabled, emailSubject, emailHtml, defaultLanguage, addToClubMembers, senderName, senderEmail, replyTo }` (Manage settings). The address must be public https |
+| `POST` | `/api/onboarding/settings/secret` | Makes a new signing secret and returns it this once (Manage settings) |
+| `POST` | `/api/onboarding/settings/test` | Posts a signed `onboarding.ping` now and returns what the portal answered, with who it sends from when it says (`{ from: { name, email } }`) (Manage settings) |
+| `POST` | `/api/onboarding/preview` | The welcome email filled for a deal's contact (or a name and email), the portal's links as stand-ins; lists placeholders nothing fills |
+| `POST` | `/api/deals/{dealId}/onboarding` | Hands the deal's contact over: `{ welcomeMessage, startsOnUtc \| startUndetermined, language, emailSubject?, emailHtml?, addToClubMembers?, leadId? }`. One per deal (409 after) |
+| `GET` | `/api/deals/{dealId}/onboarding` | The deal's handoffs with their steps and delivery state |
+| `POST` | `/api/onboarding/{id}/resend` | Hands it over again (after a failure, or to send the welcome once more) |
+| `POST` | `/api/public/onboarding/{id}/events` | The portal's reports, `Authorization: Bearer <callback.token>`: `{ event, accountId?, message?, occurredAtUtc? }` with `account_created`, `account_existing`, `email_sent`, `email_failed`, `password_set` or `failed`. A repeat changes nothing |
+
+The handoff is a `deal.onboarding` webhook through the outbox (retried like any other),
+posted to the portal's address, signed with its secret as above. Its `payload`:
+`{ version: 1, onboardingId, deal { id, name, amount, currency, stage }, contact { id, name,
+firstName, lastName, email, phone, company }, membership { startsOn: "yyyy-MM-dd" | null,
+startUndetermined, clubMemberId }, language, welcomeMessage, email { subject, html } | null,
+callback { url, token }, sentBy { name }, workspace { id, name }, from { name, email, replyTo } }`. In `email`, CadenceE's
+placeholders (`{{firstName}}`, `{{lastName}}`, `{{name}}`, `{{email}}`, `{{company}}`,
+`{{dealName}}`, `{{welcomeMessage}}`, `{{startDate}}`, `{{senderName}}`, `{{workspace}}`) are
+filled and HTML-encoded; `{{setPasswordUrl}}`, `{{portalUrl}}` and `{{loginEmail}}` are left
+for the portal. The callback token is derived from the secret, so making a new secret
+retires the tokens of earlier handoffs. A copied organization keeps the template but not the
+portal address or secret.
+
+The welcome is from the organization: `from.name` is the sender name set in Settings (else the
+organization's name), `from.replyTo` the reply-to set there (else the organization's sending
+address), and `from.email` a from address, if one is set. The portal sends through its own
+mail service, so it uses that address only on a domain it may send for (Pavillon 46: the domain
+of its `FROM_EMAIL`), and otherwise its own address under the organization's name, with replies
+to the organization. Its `email_sent` report says which address it used, on the deal's timeline.
+
+Images for the welcome email are kept by the workspace and served at public addresses,
+because mail apps show only images they can fetch (most block embedded `data:` images, and
+Pavillon 46 keeps only https ones):
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/email-images` | The workspace's images, newest first, each with its public `url` |
+| `POST` | `/api/email-images` | Multipart `file` (and optionally `width`, `height` in pixels): PNG, JPEG, GIF or WebP, read from its bytes, up to 3 MB; 300 per workspace (Edit records) |
+| `DELETE` | `/api/email-images/{id}` | Removes one; emails already sent with it show it no more (Edit records) |
+| `GET` | `/api/public/email-images/{id}.{ext}` | The image, for any mail app: anonymous, cached for a year, `nosniff` |
+
+The editor in Settings › Welcome & portal (and in the convert dialog's own-email box) adds an
+image at the cursor, takes one pasted or dropped on the HTML, hosts embedded images in one
+click, and flags images that point at a computer or plain http.
+
+`PortalHandoffEndToEndTests` runs the whole round trip against a real portal when
+`CADENCE_E2E_PORTAL` (its handoff address, e.g. a local Pavillon 46 in Development) and
+`CADENCE_E2E_PORTAL_SECRET` (its `CADENCE_ONBOARDING_SECRET`) are set; otherwise it is skipped.
 
 ### Organizations & Team
 

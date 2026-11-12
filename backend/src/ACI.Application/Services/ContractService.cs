@@ -423,8 +423,11 @@ public class ContractService : IContractService
     /// <summary>
     /// A countersigned membership contract is the club's yes: the application behind the
     /// contract's lead or deal is approved, once, as an approval by the person who countersigned,
-    /// so the member is made with their dues and initiation fee. A contract with no application
-    /// behind it (private dining, say) admits nobody.
+    /// with that person's rights. Someone who may admit members (club.members) makes the member;
+    /// the dues and initiation fee are set up only if they may also handle money (money.manage),
+    /// and left pending otherwise. A countersignature by someone who may not admit members (a
+    /// sales rep) admits nobody. A contract with no application behind it (private dining, say)
+    /// admits nobody either.
     /// </summary>
     /// <remarks>
     /// The contract is executed whatever happens here: a refusal (a tier no longer on sale, say)

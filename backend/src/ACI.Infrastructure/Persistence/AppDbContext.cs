@@ -75,6 +75,9 @@ public partial class AppDbContext : DbContext
     public DbSet<AutomationRule> AutomationRules => Set<AutomationRule>();
     public DbSet<AutomationFire> AutomationFires => Set<AutomationFire>();
     public DbSet<ClubMember> ClubMembers => Set<ClubMember>();
+    public DbSet<OnboardingSettings> OnboardingSettings => Set<OnboardingSettings>();
+    public DbSet<DealOnboarding> DealOnboardings => Set<DealOnboarding>();
+    public DbSet<EmailImage> EmailImages => Set<EmailImage>();
     public DbSet<ClubVisit> ClubVisits => Set<ClubVisit>();
     public DbSet<LoyaltyLedgerEntry> LoyaltyLedger => Set<LoyaltyLedgerEntry>();
     public DbSet<ClubDocument> ClubDocuments => Set<ClubDocument>();

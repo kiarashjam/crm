@@ -1720,6 +1720,9 @@ namespace ACI.Infrastructure.Migrations
                     b.Property<Guid?>("ContactId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("DealId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<decimal>("DuesAmount")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
@@ -1772,6 +1775,12 @@ namespace ACI.Infrastructure.Migrations
                         .HasColumnType("nvarchar(64)");
 
                     b.Property<DateTime>("RenewsAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("StartUndetermined")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("StartsOnUtc")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Status")
@@ -4252,6 +4261,100 @@ namespace ACI.Infrastructure.Migrations
                     b.ToTable("DealLineItems", (string)null);
                 });
 
+            modelBuilder.Entity("ACI.Domain.Entities.DealOnboarding", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ClubMemberId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ContactId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("DealId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("EmailHtml")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("EmailSubject")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("ExternalAccountId")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .HasMaxLength(5)
+                        .HasColumnType("nvarchar(5)");
+
+                    b.Property<Guid?>("LeadId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("OutboundMessageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<bool>("StartUndetermined")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("StartsOnUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("StepsJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("WelcomeMessage")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId", "DealId", "CreatedAtUtc")
+                        .HasDatabaseName("IX_DealOnboardings_OrganizationId_DealId_CreatedAtUtc");
+
+                    b.ToTable("DealOnboardings", (string)null);
+                });
+
             modelBuilder.Entity("ACI.Domain.Entities.DealStage", b =>
                 {
                     b.Property<Guid>("Id")
@@ -4358,6 +4461,52 @@ namespace ACI.Infrastructure.Migrations
                         .HasDatabaseName("IX_DuplicateDecisions_OrganizationId_Kind");
 
                     b.ToTable("DuplicateDecisions", (string)null);
+                });
+
+            modelBuilder.Entity("ACI.Domain.Entities.EmailImage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("Content")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int?>("Height")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Size")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("Width")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId", "CreatedAtUtc")
+                        .HasDatabaseName("IX_EmailImages_OrganizationId_CreatedAtUtc");
+
+                    b.ToTable("EmailImages", (string)null);
                 });
 
             modelBuilder.Entity("ACI.Domain.Entities.EmailSuppression", b =>
@@ -5291,6 +5440,68 @@ namespace ACI.Infrastructure.Migrations
                     b.HasIndex("UserId", "OrganizationId", "Read");
 
                     b.ToTable("Notifications", (string)null);
+                });
+
+            modelBuilder.Entity("ACI.Domain.Entities.OnboardingSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("AddToClubMembers")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("DefaultLanguage")
+                        .IsRequired()
+                        .HasMaxLength(5)
+                        .HasColumnType("nvarchar(5)");
+
+                    b.Property<string>("EmailHtml")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("EmailSubject")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ReplyTo")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("SenderEmail")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("SenderName")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("WebhookSecret")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("WebhookUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_OnboardingSettings_OrganizationId");
+
+                    b.ToTable("OnboardingSettings", (string)null);
                 });
 
             modelBuilder.Entity("ACI.Domain.Entities.OrgSettings", b =>

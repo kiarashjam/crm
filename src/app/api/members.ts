@@ -38,6 +38,12 @@ export interface Member {
   notes?: string;
   /** When the club's billing lapsed the member for a charge left unpaid; null otherwise. */
   billingLapsedAtUtc?: string | null;
+  /** When the membership starts; with startUndetermined, still to be decided. */
+  startsOnUtc?: string | null;
+  startUndetermined?: boolean;
+  /** The deal and contact they joined through, when they came from a converted lead. */
+  dealId?: string | null;
+  contactId?: string | null;
 }
 
 /** The tiers every club starts with, in order: what demo data and a club with no catalogue yet show. */
@@ -185,9 +191,11 @@ export async function createMember(input: MemberInput): Promise<Member | null> {
  * The fields of a member to change. A field left out is kept; the phone and the notes
  * are taken off when sent as null.
  */
-export type MemberUpdate = Partial<Omit<MemberInput, 'phone' | 'notes'>> & {
+export type MemberUpdate = Partial<Omit<MemberInput, 'phone' | 'notes' | 'startsOnUtc'>> & {
   phone?: string | null;
   notes?: string | null;
+  /** Sent as null, the start date is taken off. */
+  startsOnUtc?: string | null;
 };
 
 export async function updateMember(id: string, patch: MemberUpdate): Promise<Member | null> {
