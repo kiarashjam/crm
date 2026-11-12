@@ -6,10 +6,15 @@
 // sign-in page and the public pages (an application form, an unsubscribe link) open in
 // it, and the app opens in it at once instead of flashing the workspace's language
 // while the account's answer is on its way.
+//
+// The browser's copy says whose account it came from. A club's front desk shares one
+// browser: the copy of one person's language is theirs, and is not the language of the
+// next person to sign in there, who reads their own choice or, without one, their
+// workspace's.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
-import { AUTH_SESSION_CHANGED, getAuthToken } from '@/app/lib/auth';
+import { AUTH_SESSION_CHANGED, getAuthToken, getCurrentUser } from '@/app/lib/auth';
 import { getMyLanguage, saveMyLanguage } from '@/app/api/language';
 import { catalogueIfLoaded, loadCatalogue, messageFor, type MessageKey } from './catalog';
 import { formatMessage, type MessageParams } from './format';
@@ -20,6 +25,8 @@ import { renderRich, type RichParams } from './rich';
 import { setCurrentLanguage } from './current';
 
 const DEVICE_KEY = 'cadence.language';
+/** The account the language kept in this browser was copied from; none when it was picked signed out. */
+const DEVICE_ACCOUNT_KEY = 'cadence.language.account';
 
 /**
  * What a public page knows about the language it is read in: "reader" when it is the
@@ -29,21 +36,35 @@ const DEVICE_KEY = 'cadence.language';
  */
 export type PageLanguageKind = 'reader' | 'club';
 
-function readDeviceChoice(): Language | null {
+/** The language kept in this browser, and whose account it is a copy of (null: picked signed out). */
+interface DeviceChoice {
+  language: Language | null;
+  account: string | null;
+}
+
+function readDeviceChoice(): DeviceChoice {
   try {
-    return asLanguage(localStorage.getItem(DEVICE_KEY));
+    const language = asLanguage(localStorage.getItem(DEVICE_KEY));
+    return { language, account: language ? localStorage.getItem(DEVICE_ACCOUNT_KEY) : null };
   } catch {
-    return null;
+    return { language: null, account: null };
   }
 }
 
-function writeDeviceChoice(language: Language | null): void {
+function writeDeviceChoice(language: Language | null, account: string | null): void {
   try {
     if (language) localStorage.setItem(DEVICE_KEY, language);
     else localStorage.removeItem(DEVICE_KEY);
+    if (language && account) localStorage.setItem(DEVICE_ACCOUNT_KEY, account);
+    else localStorage.removeItem(DEVICE_ACCOUNT_KEY);
   } catch {
     // Private mode or a full quota: the choice still applies until the tab closes.
   }
+}
+
+/** Who is signed in, when someone is: whose account a choice made now belongs to. */
+function signedInAccount(): string | null {
+  return getAuthToken() ? getCurrentUser()?.id ?? null : null;
 }
 
 export interface I18nValue {
@@ -99,9 +120,13 @@ export { translate, currentDateLocale } from './current';
 
 export function I18nProvider({ children, initialLanguage }: { children: ReactNode; initialLanguage?: Language }) {
   const workspaceLocale = useOrgOptional()?.currentOrg?.locale ?? null;
-  const [deviceChoice, setDeviceChoice] = useState<Language | null>(() => initialLanguage ?? readDeviceChoice());
+  const [deviceChoice, setDeviceChoice] = useState<DeviceChoice>(
+    () => (initialLanguage ? { language: initialLanguage, account: null } : readDeviceChoice()),
+  );
   // undefined: not known yet (signed out, or still asking); null: the account has no choice.
   const [accountChoice, setAccountChoice] = useState<Language | null | undefined>(undefined);
+  // Whose session this is, so the browser's copy of someone else's language is not taken for theirs.
+  const [account, setAccount] = useState<string | null>(signedInAccount);
   const [pageLanguage, setPageLanguageState] = useState<Record<PageLanguageKind, string | null>>({ reader: null, club: null });
   const setPageLanguage = useCallback((language: string | null, kind: PageLanguageKind = 'reader') => {
     setPageLanguageState((was) => (was[kind] === language ? was : { ...was, [kind]: language }));
@@ -116,21 +141,28 @@ export function I18nProvider({ children, initialLanguage }: { children: ReactNod
     let cancelled = false;
     const controller = new AbortController();
     const ask = () => {
-      if (!getAuthToken()) {
-        setAccountChoice(undefined);
-        return;
-      }
+      const asking = signedInAccount();
+      setAccount(asking);
+      // Another person's answer, still on its way, is not this one's.
+      setAccountChoice(undefined);
+      if (!getAuthToken()) return;
       const asked = choices.current;
       getMyLanguage({ signal: controller.signal })
         .then((chosen) => {
           // A language picked while the account was being asked (on the sign-in page, as
-          // the session began) is newer than this answer and is being saved over it.
-          if (cancelled || asked !== choices.current) return;
+          // the session began) is newer than this answer and is being saved over it; and an
+          // answer for someone who has signed out since is nobody's now.
+          if (cancelled || asked !== choices.current || asking !== signedInAccount()) return;
           setAccountChoice(chosen);
-          // Kept here too, so this browser opens in it next time without waiting.
+          // Kept here too, so this browser opens in it next time without waiting. A copy of
+          // this person's earlier choice goes when their account no longer has one.
+          const kept = readDeviceChoice();
           if (chosen) {
-            writeDeviceChoice(chosen);
-            setDeviceChoice(chosen);
+            writeDeviceChoice(chosen, asking);
+            setDeviceChoice({ language: chosen, account: asking });
+          } else if (kept.account !== null && kept.account === asking) {
+            writeDeviceChoice(null, null);
+            setDeviceChoice({ language: null, account: null });
           }
         })
         .catch(() => {
@@ -146,8 +178,17 @@ export function I18nProvider({ children, initialLanguage }: { children: ReactNod
     };
   }, []);
 
+  // The browser's copy stands in for the person while their account is being asked, and for
+  // nobody in particular while no one is signed in. A copy of someone else's account is that
+  // person's language, not this one's; one picked here signed out is whoever is here now.
+  const deviceLanguage = !account || deviceChoice.account === null || deviceChoice.account === account
+    ? deviceChoice.language
+    : null;
+  const chosen = accountChoice === undefined
+    ? deviceLanguage
+    : accountChoice ?? (deviceChoice.account === null ? deviceChoice.language : null);
   const { language, source } = resolveLanguage({
-    chosen: accountChoice ?? deviceChoice,
+    chosen,
     page: pageLanguage.reader,
     workspaceLocale,
     club: pageLanguage.club,
@@ -175,8 +216,9 @@ export function I18nProvider({ children, initialLanguage }: { children: ReactNod
 
   const choose = useCallback(async (next: Language | null) => {
     choices.current += 1;
-    writeDeviceChoice(next);
-    setDeviceChoice(next);
+    const owner = signedInAccount();
+    writeDeviceChoice(next, owner);
+    setDeviceChoice({ language: next, account: owner });
     if (next) await loadCatalogue(next).catch(() => undefined);
     if (!getAuthToken()) return;
     setAccountChoice(next);
