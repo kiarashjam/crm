@@ -199,7 +199,9 @@ describe('campaigns', () => {
     expect(campaignsApi.stop).not.toHaveBeenCalled();
     await user.click(within(dialog).getByRole('button', { name: 'Stop sending' }));
 
-    await waitFor(() => expect(campaignsApi.stop).toHaveBeenCalledWith('cmp-6', 'v6'));
+    // Without the version on screen: the scheduler gives a sending campaign a new one each time
+    // it takes it up again, and a stop sent with the older one was refused as a conflict.
+    await waitFor(() => expect(campaignsApi.stop).toHaveBeenCalledWith('cmp-6', undefined));
     expect(toast.success).toHaveBeenCalledWith('"Wine evening" is stopped. Members it had not reached get nothing.');
   });
 

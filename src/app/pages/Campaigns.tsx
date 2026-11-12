@@ -615,7 +615,11 @@ function StopDialog({ campaign, onClose }: { campaign: Campaign; onClose: () => 
   const stop = async () => {
     setStopping(true);
     try {
-      await stopCampaign(campaign.id, campaign.version);
+      // Sent without the version this copy was read at: while a campaign sends, the scheduler
+      // takes it up again for each retry and that gives it a new version, so a stop pressed on
+      // the copy on screen was refused as "changed by someone else". Nothing a person reads is
+      // overwritten by a stop, and one that comes too late is still refused (not sending).
+      await stopCampaign(campaign.id);
       toast.success(`"${campaign.name}" is stopped. Members it had not reached get nothing.`);
       onClose();
     } catch (err) {
