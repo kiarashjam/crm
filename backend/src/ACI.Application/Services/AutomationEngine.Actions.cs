@@ -109,7 +109,15 @@ public sealed partial class AutomationEngine
         string link;
         if (run.LeadId is Guid lead) link = $"/leads/{lead}";
         else if (run.DealId is Guid deal) link = $"/deals/{deal}";
-        else if (IsClubRecord(run)) link = (await ViewAsync(run, ct)).Link;
+        else if (IsClubRecord(run))
+        {
+            // As a club record's task and email do: a booking cancelled or a member deleted
+            // since the rule fired stops the run, rather than tell staff about it with a link
+            // to nowhere.
+            var view = await ViewAsync(run, ct);
+            if (view.Gone != null) return Outcome.End(view.Gone);
+            link = view.Link;
+        }
         else link = "/tasks";
         // Keyed by the run's step: a step tried again after the notice went does not send a second.
         await _notifications.CreateAsync(recipient, run.OrganizationId, new CreateNotificationRequest(

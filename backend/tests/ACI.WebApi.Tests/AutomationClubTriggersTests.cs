@@ -256,6 +256,36 @@ public class AutomationClubTriggersTests
     }
 
     [Fact]
+    public async Task ANoticeAboutABookingCancelledMeanwhileIsNotSent()
+    {
+        await using var app = new App();
+        var (owner, _, _) = await ClubAsync(app);
+        await RuleAsync(owner, new
+        {
+            name = "Prepare the court", trigger = "reservation.created",
+            actions = new object[]
+            {
+                new { type = "wait", config = new { amount = "1", unit = "hours" } },
+                new { type = "notify", config = new { message = "Jean plays on Friday" } },
+            },
+        });
+        var court = (await Json(await owner.PostAsync("/api/resources", Body(new { name = "Court", kind = "Court", capacity = 4 })), "add a court")).GetProperty("id").GetString();
+        var start = app.Clock.GetUtcNow().UtcDateTime.AddDays(3);
+        var booking = (await Json(await owner.PostAsync("/api/reservations", Body(new
+        {
+            resourceId = court, memberId = await MemberAsync(owner, "Jean"), startAtUtc = start, endAtUtc = start.AddHours(1),
+        })), "Jean books")).GetProperty("id").GetGuid();
+        await Json(await owner.PutAsync($"/api/reservations/{booking}", Body(new { status = "Cancelled" })), "Jean cancels");
+
+        app.Clock.Advance(TimeSpan.FromMinutes(61));
+        await app.RunDueAsync();
+
+        (await app.Services.Read(db => db.Notifications.Count(n => n.Title == "Prepare the court"))).Should().Be(0,
+            "staff are not told to prepare for a booking that was cancelled");
+        (await app.Services.Read(db => db.AutomationRuns.Single())).LastError.Should().Contain("booking was cancelled");
+    }
+
+    [Fact]
     public async Task ARunAboutAPlaceCancelledMeanwhileStops_SoItsReminderDoesNotGo()
     {
         await using var app = new App();
