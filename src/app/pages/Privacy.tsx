@@ -209,7 +209,8 @@ function NoticeBody({ notice }: { notice: PrivacyNotice | null }) {
             </li>
             <li>
               Names in the audit trail, and details around requests (webhook payloads, till tickets, the subjects of
-              replies, notifications), are removed: {after(notice.retention.detailMonths, 'month')}.
+              replies, notifications, the logs of finished automation runs), are removed:{' '}
+              {after(notice.retention.detailMonths, 'month')}.
             </li>
           </ul>
         ) : (

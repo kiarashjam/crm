@@ -263,6 +263,76 @@ public class RetentionTests
     }
 
     [Fact]
+    public async Task ALeadAnAutomationStillWorksOnIsNotStale_AndOldFinishedRunsGoWithTheDetails()
+    {
+        var (factory, client, s) = await ClubAsync();
+        using var _ = factory;
+        var now = DateTime.UtcNow;
+        var old = now.AddYears(-3);
+        var waiting = Guid.NewGuid();
+        var oldFinished = Guid.NewGuid();
+        var recentFinished = Guid.NewGuid();
+        var oldStillGoing = Guid.NewGuid();
+        await using (var db = factory.Services.EveryWorkspace())
+        {
+            var rule = new AutomationRule
+            {
+                Id = Guid.NewGuid(), OrganizationId = s.Org, Name = "Nurture", Trigger = "lead.created", ActionsJson = "[]", CreatedAtUtc = old, Version = Guid.NewGuid(),
+            };
+            AutomationRun Run(Guid id, string status, Guid leadId, string email, DateTime started, DateTime? finished) => new()
+            {
+                Id = id, OrganizationId = s.Org, RuleId = rule.Id, RuleName = rule.Name, Trigger = rule.Trigger, SourceKey = id.ToString(), Status = status,
+                RecordType = "lead", RecordId = leadId, LeadId = leadId, RecordName = "Someone", Email = email, StepsJson = "[]", CurrentPath = "1",
+                StartedAtUtc = started, UpdatedAtUtc = finished ?? started, FinishedAtUtc = finished,
+                NextAttemptAtUtc = finished == null ? now.AddDays(30) : null, WaitingFor = finished == null ? "30 days" : null,
+            };
+            AutomationRunStep Step(Guid runId, DateTime at) => new()
+            {
+                Id = Guid.NewGuid(), OrganizationId = s.Org, RunId = runId, Path = "0", StepType = "send_email", Outcome = AutomationStepOutcomes.Done,
+                Summary = "Queued the email \"Hello\" to someone@example.ch.", Attempt = 1, AtUtc = at,
+            };
+            db.AutomationRules.Add(rule);
+            db.AutomationRuns.AddRange(
+                // The old prospect's run waits a month before its next email: something is still to happen.
+                Run(waiting, AutomationRunStatuses.Waiting, s.StaleLead, "old@example.ch", old, null),
+                Run(oldFinished, AutomationRunStatuses.Completed, s.RecentLead, "new@example.ch", old, old.AddDays(2)),
+                Run(recentFinished, AutomationRunStatuses.Completed, s.RecentLead, "new@example.ch", now.AddDays(-3), now.AddDays(-2)),
+                // Started long ago, but not finished (its rule was turned off): it has steps to come.
+                Run(oldStillGoing, AutomationRunStatuses.Waiting, s.RecentLead, "new@example.ch", old, null));
+            db.AutomationRunSteps.AddRange(Step(oldFinished, old), Step(oldFinished, old.AddDays(2)), Step(recentFinished, now.AddDays(-2)), Step(oldStillGoing, old));
+            await db.SaveChangesAsync();
+        }
+        await Ok(await client.PutAsync("/api/privacy/settings", Body(Periods(leads: 24, details: 12))), "set the periods");
+
+        var preview = await Ok(await client.GetAsync("/api/privacy/retention/preview"), "preview");
+        var counts = preview.GetProperty("rules").EnumerateArray().ToDictionary(r => r.GetProperty("rule").GetString()!, r => r.GetProperty("count").GetInt32());
+        counts["leads"].Should().Be(0, "an automation is still working on the old prospect, as a sequence would be");
+        counts["details"].Should().Be(4, "the old audit line's name, webhook payload and notification, and the run that finished long ago");
+
+        var run = await Ok(await client.PostAsync("/api/privacy/retention/run", null), "run now");
+        (run.GetProperty("leadsDeleted").GetInt32(), run.GetProperty("detailsPurged").GetInt32()).Should().Be((0, 4));
+        await using (var db = factory.Services.EveryWorkspace())
+        {
+            db.Leads.Any(l => l.Id == s.StaleLead).Should().BeTrue();
+            db.AutomationRuns.Select(r => r.Id).Should().BeEquivalentTo(new[] { waiting, recentFinished, oldStillGoing });
+            db.AutomationRunSteps.Any(x => x.RunId == oldFinished).Should().BeFalse("a run goes with its log");
+            db.AutomationRunSteps.Count(x => x.RunId == recentFinished || x.RunId == oldStillGoing).Should().Be(2);
+
+            // Its run over, the old prospect is stale again, and goes with it.
+            var done = db.AutomationRuns.Single(r => r.Id == waiting);
+            done.Status = AutomationRunStatuses.Completed;
+            done.FinishedAtUtc = now;
+            done.NextAttemptAtUtc = null;
+            await db.SaveChangesAsync();
+        }
+        var again = await Ok(await client.PostAsync("/api/privacy/retention/run", null), "run again");
+        again.GetProperty("leadsDeleted").GetInt32().Should().Be(1);
+        await using var check = factory.Services.EveryWorkspace();
+        check.Leads.Any(l => l.Id == s.StaleLead).Should().BeFalse();
+        check.AutomationRuns.Any(r => r.Id == waiting).Should().BeFalse("the erasure of the lead takes the run about it");
+    }
+
+    [Fact]
     public async Task OneRunAtATime_AndARunCutOffLongAgoNoLongerHoldsTheWorkspace()
     {
         var (factory, client, s) = await ClubAsync();

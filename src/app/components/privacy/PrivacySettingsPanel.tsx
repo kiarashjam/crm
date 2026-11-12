@@ -64,7 +64,7 @@ const PERIODS: { key: keyof Form; label: string; unit: string; max: number; hint
   { key: 'leadRetentionMonths', label: 'Delete leads nobody worked on after', unit: 'months', max: 120, hint: 'Never-converted leads with nothing done on them for this long.' },
   { key: 'memberRetentionYears', label: 'Anonymise members who left after', unit: 'years', max: 30, hint: 'Resigned, lapsed or cancelled, nothing on their account for this long; their money stays in the books under a pseudonym.' },
   { key: 'mailRetentionMonths', label: 'Remove the text of sent emails after', unit: 'months', max: 120, hint: 'Who, when and whether it arrived stay.' },
-  { key: 'detailRetentionMonths', label: 'Remove names from the audit trail after', unit: 'months', max: 120, hint: 'And webhook payloads, raw till tickets, reply subjects and notifications.' },
+  { key: 'detailRetentionMonths', label: 'Remove names from the audit trail after', unit: 'months', max: 120, hint: 'And webhook payloads, raw till tickets, reply subjects, notifications and the logs of finished automation runs.' },
 ];
 
 export function PrivacySettingsPanel() {

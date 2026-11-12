@@ -86,7 +86,7 @@ public sealed class RetentionService : IRetention
 
         var details = settings?.DetailRetentionMonths is int detailMonths ? await CountDetailsAsync(organizationId, now.AddMonths(-detailMonths), ct) : 0;
         rules.Add(new("details", settings?.DetailRetentionMonths, "months", details,
-            "Older audit lines lose the name of the record they were about, and older webhook payloads, raw till tickets, reply subjects and notifications are removed."));
+            "Older audit lines lose the name of the record they were about, and older webhook payloads, raw till tickets, reply subjects, notifications and logs of finished automation runs are removed."));
 
         var anythingOn = settings != null && (settings.LeadRetentionMonths != null || settings.MemberRetentionYears != null
             || settings.MailRetentionMonths != null || settings.DetailRetentionMonths != null);
@@ -267,6 +267,10 @@ public sealed class RetentionService : IRetention
             && !_db.TaskItems.Any(t => t.LeadId == l.Id && (t.CreatedAtUtc >= cutoff || (t.UpdatedAtUtc != null && t.UpdatedAtUtc >= cutoff)
                 || (t.Status != TaskStatus.Completed && t.Status != TaskStatus.Cancelled && t.DueDateUtc != null && t.DueDateUtc >= cutoff)))
             && !_db.OutreachEnrollments.Any(e => e.TargetType == "lead" && e.TargetId == l.Id && (e.Status == "active" || e.Status == "paused"))
+            // Nor one an automation is still working on (a wait before its next email, say), as
+            // for a sequence: the run would go with the lead.
+            && !_db.AutomationRuns.Any(r => r.LeadId == l.Id && (r.Status == AutomationRunStatuses.Running
+                || r.Status == AutomationRunStatuses.Waiting || r.Status == AutomationRunStatuses.Retrying))
             && !_db.ClubMembers.Any(m => m.LeadId == l.Id)
             && !_db.ClubApplications.Any(a => a.LeadId == l.Id)
             && !_db.Contracts.Any(c => c.LeadId == l.Id && (c.Status == ContractStatuses.SignedByClient || c.Status == ContractStatuses.Countersigned))
@@ -329,6 +333,9 @@ public sealed class RetentionService : IRetention
             && !_db.ClubEventRegistrations.Any(r => r.MemberId == m.Id && r.RegisteredAtUtc >= cutoff)
             && !_db.MemberMessages.Any(x => x.MemberId == m.Id && x.CreatedAtUtc >= cutoff)
             && !_db.AuditEvents.Any(e => e.EntityId == m.Id && e.CreatedAtUtc >= cutoff)
+            // An automation still working on them keeps them, as it keeps a lead.
+            && !_db.AutomationRuns.Any(r => r.MemberId == m.Id && (r.Status == AutomationRunStatuses.Running
+                || r.Status == AutomationRunStatuses.Waiting || r.Status == AutomationRunStatuses.Retrying))
             // Back as someone's guest, or booking a table, under the same address but no member.
             && (m.Email.Trim() == ""
                 || (!_db.ClubEventRegistrations.Any(r => r.Email != null && r.Email.Trim().ToLower() == m.Email.Trim().ToLower()
@@ -421,7 +428,17 @@ public sealed class RetentionService : IRetention
         + await _db.OutboundMessages.CountAsync(m => m.OrganizationId == organizationId && m.Channel == OutboundChannels.Webhook && m.CreatedAtUtc < cutoff && m.PayloadJson != null, ct)
         + await _db.ClubPosTickets.CountAsync(t => t.OrganizationId == organizationId && t.ImportedAtUtc < cutoff && t.DataJson != null, ct)
         + await _db.InboundEmails.CountAsync(i => i.OrganizationId == organizationId && i.ReceivedAtUtc < cutoff && i.Subject != null, ct)
-        + await _db.Notifications.CountAsync(n => n.OrganizationId == organizationId && n.CreatedAtUtc < cutoff, ct);
+        + await _db.Notifications.CountAsync(n => n.OrganizationId == organizationId && n.CreatedAtUtc < cutoff, ct)
+        + await OldAutomationRuns(organizationId, cutoff).CountAsync(ct);
+
+    /// <summary>
+    /// Automation runs that finished before <paramref name="cutoff"/>: each keeps the name of the
+    /// record it was about, the address it wrote to and, in its log, what it did. A run still
+    /// going is kept, whatever its age: it has steps to come.
+    /// </summary>
+    private IQueryable<AutomationRun> OldAutomationRuns(Guid organizationId, DateTime cutoff) =>
+        _db.AutomationRuns.Where(r => r.OrganizationId == organizationId && r.FinishedAtUtc != null && r.FinishedAtUtc < cutoff
+            && (r.Status == AutomationRunStatuses.Completed || r.Status == AutomationRunStatuses.Failed || r.Status == AutomationRunStatuses.Cancelled));
 
     private async Task<int> PurgeDetailsAsync(Guid organizationId, DateTime cutoff, CancellationToken ct)
     {
@@ -441,8 +458,16 @@ public sealed class RetentionService : IRetention
         var notifications = await _db.Notifications.Where(n => n.OrganizationId == organizationId && n.CreatedAtUtc < cutoff)
             .OrderBy(n => n.CreatedAtUtc).Take(RowsPerRun).ToListAsync(ct);
         _db.Notifications.RemoveRange(notifications);
+        // A finished run goes with its log, as a notification does.
+        var runs = await OldAutomationRuns(organizationId, cutoff).OrderBy(r => r.FinishedAtUtc).Take(RowsPerRun).ToListAsync(ct);
+        foreach (var slice in runs.Select(r => r.Id).Chunk(1000))
+        {
+            var chunk = slice.ToList();
+            _db.AutomationRunSteps.RemoveRange(await _db.AutomationRunSteps.Where(x => chunk.Contains(x.RunId)).ToListAsync(ct));
+        }
+        _db.AutomationRuns.RemoveRange(runs);
         await _db.SaveChangesAsync(ct);
-        return lines.Count + hooks.Count + tickets.Count + replies.Count + notifications.Count;
+        return lines.Count + hooks.Count + tickets.Count + replies.Count + notifications.Count + runs.Count;
     }
 
     private static RetentionRunDto ToDto(RetentionRun r) => new(
