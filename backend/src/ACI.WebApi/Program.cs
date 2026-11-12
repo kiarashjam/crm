@@ -233,6 +233,27 @@ try
                 Window = TimeSpan.FromMinutes(10),
                 QueueLimit = 0,
             }));
+        // Single sign-on and passkey sign-in are anonymous too, so they also go by the address,
+        // each with its own allowance. A sign-on is three requests (start, the provider's
+        // callback, the hand-back) and a passkey sign-in two; a club's team arriving at once
+        // behind one address fits easily, while a script trying codes or credentials stops.
+        // Failed passkeys also count against the account they name (AuthAttemptLimiter).
+        options.AddPolicy("sso", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            "sso:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 60,
+                Window = TimeSpan.FromMinutes(10),
+                QueueLimit = 0,
+            }));
+        options.AddPolicy("passkey", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            "passkey:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 30,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
     });
     builder.Services.AddResponseCompression(options => options.EnableForHttps = true);
     builder.Services.AddEndpointsApiExplorer();

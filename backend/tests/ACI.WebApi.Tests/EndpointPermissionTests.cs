@@ -22,6 +22,7 @@ public class EndpointPermissionTests
     private static readonly Dictionary<string, string> NoPermissionNeeded = new()
     {
         ["AuthController.*"] = "the caller's own sign-in, password and two-step codes",
+        ["SsoController.*"] = "the caller's own sign-in with Google or Microsoft",
         ["SettingsController.*"] = "the caller's own preferences",
         ["NotificationsController.*"] = "the caller's own bell",
         ["OrganizationsController.Create"] = "a new organization of their own",

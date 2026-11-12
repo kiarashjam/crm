@@ -420,8 +420,11 @@ public class AuthService : IAuthService
         var email = request.Email.Trim();
         _logger.LogInformation("Password reset requested for email {Email}", email);
 
+        // An account without a password (made by single sign-on, or whose unconfirmed password
+        // went when the address's owner signed on) gets the link too: it goes to the address,
+        // so following it proves the inbox, and it is how such an account sets a password.
         var user = await _userRepository.GetByEmailAsync(email, ct);
-        if (user == null || string.IsNullOrEmpty(user.PasswordHash))
+        if (user == null)
         {
             // Same outcome as success to avoid account enumeration.
             return Result.Success();

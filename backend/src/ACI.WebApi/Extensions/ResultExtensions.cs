@@ -109,6 +109,11 @@ public static class ResultExtensions
         "Auth.TooManyVerificationEmails" => StatusCodes.Status429TooManyRequests,
         "Auth.EmailNotVerified" => StatusCodes.Status403Forbidden,
         "Auth.InvalidResetToken" => StatusCodes.Status400BadRequest,
+        // A passkey sign-in refused, like a wrong password (only anonymous endpoints answer these).
+        "Passkeys.NotRecognised" => StatusCodes.Status401Unauthorized,
+        "Passkeys.CounterWentBack" => StatusCodes.Status401Unauthorized,
+        // A workspace that requires single sign-on, refusing a session that began another way.
+        DomainErrors.Sso.RequiredCode => StatusCodes.Status403Forbidden,
         "General.Unauthorized" => StatusCodes.Status401Unauthorized,
         
         // Forbidden errors

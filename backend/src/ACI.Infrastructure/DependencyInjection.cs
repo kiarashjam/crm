@@ -27,6 +27,16 @@ public static class DependencyInjection
         services.Configure<EmailSettings>(configuration.GetSection(EmailSettings.SectionName));
         services.AddSingleton<IEmailSender, SmtpEmailSender>();
 
+        // Signing in without a password: single sign-on with Google and Microsoft (off until
+        // the Sso section names a client id and secret), and the sign-in steps both keep.
+        services.Configure<SingleSignOnSettings>(configuration.GetSection(SingleSignOnSettings.SectionName));
+        services.AddSingleton<ACI.Infrastructure.Services.SignIn.OidcProviderCatalog>();
+        services.AddSingleton<ACI.Infrastructure.Services.SignIn.OidcMetadataSource>();
+        services.AddHttpClient(ACI.Infrastructure.Services.SignIn.OidcMetadataSource.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(10));
+        services.AddScoped<IAuthChallenges, ACI.Infrastructure.Services.SignIn.AuthChallengeStore>();
+        services.AddScoped<SignInSessions>();
+        services.AddScoped<ISingleSignOn, ACI.Infrastructure.Services.SignIn.SingleSignOnService>();
+
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IContactRepository, ContactRepository>();
         services.AddScoped<IDuplicateRepository, DuplicateRepository>();

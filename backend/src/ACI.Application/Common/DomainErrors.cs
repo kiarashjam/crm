@@ -1397,6 +1397,83 @@ public static readonly Error AlreadyMember = new(
     }
 
     /// <summary>
+    /// Single sign-on with Google and Microsoft, and a workspace's requirement of it.
+    /// </summary>
+    public static class Sso
+    {
+        public const string RequiredCode = "Sso.Required";
+
+        public static readonly Error NotOffered = new(
+            "Sso.NotOffered", "Signing in with that provider is not set up on this server.");
+
+        public static readonly Error BadChallenge = new(
+            "Sso.BadChallenge", "The sign-in could not start: the app sent no valid challenge. Reload the page and try again.");
+
+        public static readonly Error ProviderUnavailable = new(
+            "Sso.ProviderUnavailable", "The sign-in provider did not answer. Try again in a moment.");
+
+        public static readonly Error HandoffExpired = new(
+            "Sso.HandoffExpired", "This sign-in has expired or was already used. Sign in again.");
+
+        public static readonly Error HandoffNotYours = new(
+            "Sso.HandoffNotYours", "This sign-in was started in another browser or tab. Start it again here.");
+
+        public static readonly Error LinkNotFound = new(
+            "Sso.LinkNotFound", "That sign-in is not linked to your account.");
+
+        public static readonly Error LastWayIn = new(
+            "Sso.LastWayIn", "This is the only way you sign in. Add a passkey or set a password (Forgot password sends a link) before you unlink it.");
+
+        public static readonly Error NoProvider = new(
+            "Sso.NoProvider", "No single sign-on provider is set up on this server, so nobody could meet the requirement. Ask whoever runs Cadence to set up Google or Microsoft sign-in first.");
+
+        public static Error InvalidDomain(string domain) => new(
+            "Sso.InvalidDomain", $"\"{domain}\" is not an email domain. Write domains like pavillon46.ch, without the @.");
+
+        public static readonly Error TooManyDomains = new(
+            "Sso.TooManyDomains", "List at most 20 email domains.");
+
+        public static Error Required(string workspace) => new(
+            RequiredCode, $"{workspace} asks its team to sign in with Google or Microsoft. Sign in that way to open it.");
+    }
+
+    /// <summary>
+    /// Passkeys (WebAuthn): adding them and signing in with them.
+    /// </summary>
+    public static class Passkeys
+    {
+        public static readonly Error NotConfigured = new(
+            "Passkeys.NotConfigured", "Passkeys are not set up on this server.");
+
+        public static readonly Error CeremonyExpired = new(
+            "Passkeys.CeremonyExpired", "That passkey prompt has expired. Try again.");
+
+        public static readonly Error NotRecognised = new(
+            "Passkeys.NotRecognised", "That passkey was not recognised. Use another, or sign in with your password.");
+
+        public static readonly Error CounterWentBack = new(
+            "Passkeys.CounterWentBack", "That passkey was refused: its counter went backwards, which happens when a security key has been copied. Sign in another way and remove it in Settings.");
+
+        public static readonly Error RegistrationFailed = new(
+            "Passkeys.RegistrationFailed", "The passkey could not be added. Try again, or use another device.");
+
+        public static readonly Error AlreadyAdded = new(
+            "Passkeys.AlreadyAdded", "That passkey is already added to an account.");
+
+        public static readonly Error RecentSignInRequired = new(
+            "Passkeys.RecentSignInRequired", "For your security, sign in again before you add a passkey: your account has no password to confirm it with.");
+
+        public static readonly Error PasswordRequired = new(
+            "Passkeys.PasswordRequired", "Enter your password to add a passkey.");
+
+        public static readonly Error NotFound = new(
+            "Passkeys.NotFound", "That passkey is not one of yours.");
+
+        public static readonly Error TooMany = new(
+            "Passkeys.TooMany", "You have 20 passkeys already. Remove one you no longer use first.");
+    }
+
+    /// <summary>
     /// General/shared errors.
     /// </summary>
     public static class General
