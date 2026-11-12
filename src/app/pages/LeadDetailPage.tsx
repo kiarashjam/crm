@@ -41,6 +41,7 @@ import {
 import { cn } from '@/app/components/ui/utils';
 import { DerivedStatusBadge } from './leads/components/DerivedStatusBadge';
 import PageHero, { heroPrimary, heroSecondary } from '@/app/components/PageHero';
+import { PrivacyRequestLink } from '@/app/components/privacy/PrivacyRequestLink';
 import { QuickLogPopover } from './leads/components/QuickLogPopover';
 import { LeadPipelineTracker } from './leads/components/LeadPipelineTracker';
 import { ContractPanel } from './contracts/ContractPanel';
@@ -945,6 +946,7 @@ export default function LeadDetailPage() {
                     <Mail className="h-4 w-4" /> Email
                   </Button>
                 ))}
+                <PrivacyRequestLink kind="lead" id={lead.id} className={heroSecondary} />
                 {!isReadOnly && (
                   <>
                     <QuickLogPopover

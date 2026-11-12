@@ -55,6 +55,7 @@ const Reports = lazy(() => import('@/app/pages/Reports'));
 const Automations = lazy(() => import('@/app/pages/Automations'));
 const Duplicates = lazy(() => import('@/app/pages/Duplicates'));
 const AuditLog = lazy(() => import('@/app/pages/AuditLog'));
+const PrivacyRequests = lazy(() => import('@/app/pages/PrivacyRequests'));
 const Companies = lazy(() => import('@/app/pages/Companies'));
 const CompanyDetail = lazy(() => import('@/app/pages/CompanyDetail'));
 const Contacts = lazy(() => import('@/app/pages/Contacts'));
@@ -214,6 +215,7 @@ export default function App() {
                     <Route path="/automations" element={<Automations />} />
                     <Route path="/duplicates" element={<Duplicates />} />
                     <Route path="/audit" element={<AuditLog />} />
+                    <Route path="/privacy-requests" element={<PrivacyRequests />} />
                     <Route path="/contacts" element={<Contacts />} />
                     <Route path="/contacts/import" element={<ContactImport />} />
                     <Route path="/contacts/:id" element={<ContactDetail />} />

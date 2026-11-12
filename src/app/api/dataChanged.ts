@@ -51,11 +51,14 @@ export function touches(change: DataChange, resources: readonly string[]): boole
  * today's), and an import's reading of its file and dry run, which are POSTs only
  * because they carry the file. Announcing them would make every listener re-read
  * for nothing — the Settings page, for one, POSTs to /api/auth/2fa/setup every time
- * it opens.
+ * it opens. A privacy lookup, an erasure's dry run and an export are POSTs too (they
+ * carry an email address, which does not belong in a URL), and change no record: an
+ * export only writes its line in the audit trail.
  */
 const NOT_RECORD_WRITES = [
   '/api/auth/', '/api/notifications', '/api/copy', '/api/settings', '/api/lead-ops/',
   '/api/imports/analyze', '/api/imports/preview',
+  '/api/privacy/find', '/api/privacy/export', '/api/privacy/erasure/preview',
 ];
 
 /** …except these, under an excluded prefix, which do change records. */
@@ -96,6 +99,17 @@ const MEMBER_MERGE = [
   'tabs', 'reservations', 'events', 'gift-cards', 'donations', 'subscriptions', 'households', 'applications',
   'payment-profile', 'online-payments', 'bank', 'sales', 'pos', 'member-codes', 'club-reports',
 ];
+
+/**
+ * What erasing a person changes, and a retention run, which erases people too: their leads
+ * and contacts go, the deals and tasks kept lose their name, their timeline, enrolments and
+ * messages go, their member account is anonymised with the money on it kept under a
+ * pseudonym, their bookings and places on event lists are cancelled, their subscriptions
+ * stopped, their household left, and the erasure is logged.
+ */
+const PERSON_ERASURE = [...new Set([
+  ...LINKED, ...MEMBER_MERGE, 'contracts', 'activities', 'communications', 'campaigns', 'privacy',
+])];
 
 /**
  * What a household write changes: the household, what a member's page says of it (whose
@@ -262,6 +276,9 @@ export function resourcesChangedBy(method: string | undefined, path: string, bod
   }
   // Households merge on their own: the people move to the household kept.
   if (base === 'households') return [...HOUSEHOLD_WRITE];
+  // An erasure, or a retention run, reaches every record the person had; saving the privacy
+  // settings changes only them.
+  if (base === 'privacy' && (last === 'erasure' || last === 'run')) return [...PERSON_ERASURE];
   // A spouse or partner recorded on a contact's or a lead's page is a household's couple,
   // and a tie between two of one household is held by it.
   if ((base === 'contacts' || base === 'leads') && segments.includes('relationships')) {

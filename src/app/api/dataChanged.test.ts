@@ -317,3 +317,27 @@ describe('the signal', () => {
     expect(heard).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('what a privacy request changes', () => {
+  it('a lookup, the dry run of an erasure and a download change no record', () => {
+    // POSTs because they carry an email address, which does not belong in a URL.
+    expect(changesRecords('POST', '/api/privacy/find')).toBe(false);
+    expect(changesRecords('POST', '/api/privacy/erasure/preview')).toBe(false);
+    expect(changesRecords('POST', '/api/privacy/export')).toBe(false);
+  });
+
+  it('an erasure, and a retention run, reach every record the person had', () => {
+    for (const path of ['/api/privacy/erasure', '/api/privacy/retention/run']) {
+      expect(changesRecords('POST', path)).toBe(true);
+      expect(resourcesChangedBy('POST', path)).toEqual(expect.arrayContaining([
+        'leads', 'contacts', 'deals', 'tasks', 'activities', 'sequences', 'members', 'charges', 'payments',
+        'reservations', 'events', 'subscriptions', 'households', 'applications', 'communications', 'campaigns', 'privacy',
+      ]));
+    }
+  });
+
+  it('saving the privacy settings changes only them', () => {
+    expect(changesRecords('PUT', '/api/privacy/settings')).toBe(true);
+    expect(resourcesChangedBy('PUT', '/api/privacy/settings')).toEqual(['privacy']);
+  });
+});

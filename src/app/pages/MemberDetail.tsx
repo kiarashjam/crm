@@ -51,6 +51,7 @@ import {
 } from '@/app/hooks/queries';
 import { LoadFailed } from '@/app/components/LoadFailed';
 import PageHero, { heroSecondary } from '@/app/components/PageHero';
+import { PrivacyRequestLink } from '@/app/components/privacy/PrivacyRequestLink';
 import { RecordAvatar } from '@/app/components/RecordCard';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
 import { WriteOnly } from '@/app/components/WriteOnly';
@@ -303,6 +304,7 @@ export default function MemberDetail() {
                     </Link>
                   </Button>
                 </WriteOnly>
+                <PrivacyRequestLink kind="member" id={member.id} className={heroSecondary} />
                 <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.DeleteRecords]} all>
                   <Button
                     variant="outline"

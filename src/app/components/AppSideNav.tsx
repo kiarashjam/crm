@@ -38,6 +38,7 @@ import {
   ScrollText,
   Search,
   Settings,
+  ShieldCheck,
   SlidersHorizontal,
   UserCircle,
   Users,
@@ -51,7 +52,8 @@ import {
 import { Button } from '@/app/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/app/components/ui/sheet';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
-import type { WorkspaceModule } from '@/app/api/organizations';
+import { type Permission, type WorkspaceModule, PERMISSION } from '@/app/api/organizations';
+import { mayIn } from '@/app/hooks/useMay';
 import { useModules, type ModulesOn } from '@/app/hooks/useModules';
 import { cn } from './ui/utils';
 
@@ -63,6 +65,8 @@ type NavLinkItem = {
   module?: WorkspaceModule;
   /** Shown only while this module is off: a shared page whose usual place is in that module's group. */
   onlyWhenOff?: WorkspaceModule;
+  /** Shown only in a workspace, to those who hold this permission: the page has nothing for anyone else. */
+  permission?: Permission;
   children?: { path: string; label: string; icon: LucideIcon }[];
 };
 
@@ -141,6 +145,7 @@ const GROUPS: NavGroup[] = [
       { path: '/reports', label: 'Reports', icon: BarChart3, module: 'sales' },
       { path: '/duplicates', label: 'Duplicates', icon: Copy },
       { path: '/audit', label: 'Audit', icon: ScrollText },
+      { path: '/privacy-requests', label: 'Privacy requests', icon: ShieldCheck, permission: PERMISSION.ManagePrivacy },
     ],
   },
   {
@@ -213,12 +218,13 @@ function matchesPath(pathname: string, search: string, path: string): boolean {
  * module is off, a group with nothing left goes, and a page whose usual place went with
  * its module shows where it is kept instead.
  */
-function groupsFor(modules: ModulesOn): NavGroup[] {
+function groupsFor(modules: ModulesOn, may: (permission: Permission) => boolean): NavGroup[] {
   return GROUPS.map((group) => ({
     ...group,
     label: !modules.sales && group.labelWithoutSales ? group.labelWithoutSales : group.label,
     items: group.items.filter((item) =>
-      (!item.module || modules[item.module]) && (!item.onlyWhenOff || !modules[item.onlyWhenOff])),
+      (!item.module || modules[item.module]) && (!item.onlyWhenOff || !modules[item.onlyWhenOff])
+      && (!item.permission || may(item.permission))),
   })).filter((group) => group.items.length > 0);
 }
 
@@ -271,7 +277,11 @@ function SideNavBody({ onNavigate }: { onNavigate: () => void }) {
   const location = useLocation();
   const org = useOrgOptional();
   const modules = useModules();
-  const groups = useMemo(() => groupsFor(modules), [modules]);
+  const groups = useMemo(
+    // A page behind a permission needs a workspace too: a personal one has no such page.
+    () => groupsFor(modules, (permission) => !!org?.currentOrg && mayIn(org, permission)),
+    [modules, org],
+  );
   const filterId = useId();
   const activeGroup = groupForPath(groups, location.pathname, location.search);
   const here = currentItem(groups, location.pathname, location.search);

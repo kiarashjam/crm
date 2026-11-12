@@ -78,6 +78,8 @@ export const PERMISSION = {
   SeeAllDeals: 'deals.all',
   ManageSettings: 'settings.manage',
   ManageMembers: 'members.manage',
+  /** Export everything held about a person, erase a person, and set how long personal data is kept. */
+  ManagePrivacy: 'privacy.manage',
   ManageMoney: 'money.manage',
   VoidMoney: 'money.void',
   ClubMembers: 'club.members',

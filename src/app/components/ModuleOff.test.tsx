@@ -136,6 +136,18 @@ describe('the menu', () => {
     expect(nav.getByText('Members')).toBeInTheDocument();
     expect(nav.getByText('Contacts')).toBeInTheDocument();
   });
+
+  it('offers privacy requests only to someone who may handle them', async () => {
+    workspace({ permissions: [PERMISSION.EditRecords, PERMISSION.DeleteRecords, PERMISSION.ExportRecords] });
+    const { unmount } = render(<MemoryRouter initialEntries={['/contacts']}><AppSideNav /></MemoryRouter>);
+    await userEvent.click(screen.getByRole('button', { name: 'Open menu' }));
+    expect(within(screen.getByRole('navigation', { name: 'Main navigation' })).queryByText('Privacy requests')).not.toBeInTheDocument();
+    unmount();
+
+    workspace({ permissions: [PERMISSION.ManagePrivacy] });
+    const nav = await openMenu();
+    expect(nav.getByText('Privacy requests')).toBeInTheDocument();
+  });
 });
 
 describe('turning modules on and off in Settings', () => {

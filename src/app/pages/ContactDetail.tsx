@@ -52,6 +52,7 @@ import { useMoney } from '@/app/hooks/useMoney';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroSecondary } from '@/app/components/PageHero';
+import { PrivacyRequestLink } from '@/app/components/privacy/PrivacyRequestLink';
 import { RecordAvatar, RecordCard } from '@/app/components/RecordCard';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import { ActivityLogForm, ActivityRow, withActivity, type ActivityDraft } from '@/app/components/RecordActivity';
@@ -371,6 +372,7 @@ export default function ContactDetail() {
                     <Pencil className="h-4 w-4" /> Edit
                   </Button>
                 </WriteOnly>
+                <PrivacyRequestLink kind="contact" id={contact.id} className={heroSecondary} />
                 <WriteOnly>
                   <Button variant="outline" onClick={handleArchiveToggle} className={heroSecondary}>
                     {contact.isArchived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
