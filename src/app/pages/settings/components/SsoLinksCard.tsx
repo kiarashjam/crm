@@ -47,7 +47,11 @@ export function SsoLinksCard() {
       ) : links.isPending ? (
         <p className="text-sm text-slate-500">Loading…</p>
       ) : links.data.length === 0 ? (
-        <p className="text-sm text-slate-600">None yet. To add one, sign out and choose “Continue with {options.data?.sso.map((p) => p.name).join('” or “') || 'Google'}” on the sign-in page.</p>
+        <p className="text-sm text-slate-600">
+          None yet. To add one, sign out and choose{' '}
+          {(options.data?.sso.length ? options.data.sso : [{ id: 'google', name: 'Google' }]).map((p) => `“Continue with ${p.name}”`).join(' or ')}
+          {' '}on the sign-in page.
+        </p>
       ) : (
         <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
           {links.data.map((link) => (
