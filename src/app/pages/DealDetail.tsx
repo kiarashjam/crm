@@ -27,6 +27,7 @@ import DealLineItemsCard from '@/app/components/DealLineItemsCard';
 import CustomFieldsCard from '@/app/components/CustomFieldsCard';
 import AttachmentsCard from '@/app/components/AttachmentsCard';
 import StageHistoryCard from '@/app/components/StageHistoryCard';
+import { DealWelcomeCard } from '@/app/components/onboarding';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import { getDealById, getDealStageHistory, updateDeal, deleteDeal, messages } from '@/app/api';
@@ -468,6 +469,8 @@ export default function DealDetail() {
                   {deal.closedReason ? <p className="mt-1 text-sm text-slate-600">{deal.closedReason}</p> : !deal.closedAtUtc && <p className="text-sm text-slate-500">Closed.</p>}
                 </RecordCard>
               )}
+
+              {deal.contactId && <DealWelcomeCard dealId={deal.id} contactName={deal.contactName} dealName={deal.name} index={3} />}
 
               <RecordCard title="Deal details" icon={<Target className="h-3.5 w-3.5" />} tone="violet" index={3}>
                 {!deal.contactName && !deal.companyName && !deal.assigneeName && !deal.pipelineName && !deal.expectedCloseDateUtc && !deal.createdAtUtc && !deal.description && (

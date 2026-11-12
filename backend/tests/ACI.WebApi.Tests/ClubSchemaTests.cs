@@ -1,13 +1,17 @@
 using System.Text.RegularExpressions;
 using ACI.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.SqlServer.TransactSql.ScriptDom;
 
 namespace ACI.WebApi.Tests;
 
 /// <summary>
-/// The club tables are created by the hand-written DDL in Program.cs, not by a
-/// migration, so a column the model maps exists in production only if that DDL adds it.
+/// The club tables were created by the hand-written DDL in Program.cs before the baseline
+/// migration, and that DDL still brings an old database up to the baseline before the
+/// baseline is recorded on it. So it must make every column the baseline makes; a column
+/// added since comes from its own migration, on every database alike.
 /// </summary>
 /// <remarks>
 /// A column added to the entity and forgotten in the DDL compiles, passes every test
@@ -67,7 +71,7 @@ public class ClubSchemaTests
     public void TheCreateTableDeclaresEveryColumnAsEfWouldWriteIt(string table)
     {
         var block = Between(ProgramDdl(), $"CREATE TABLE [{table}]", ");");
-        var expected = Between(EfCreateScript(), $"CREATE TABLE [{table}]", "CONSTRAINT");
+        var expected = Between(BaselineScript(), $"CREATE TABLE [{table}]", "CONSTRAINT");
 
         var columns = 0;
         foreach (var line in expected.Split('\n'))
@@ -82,6 +86,28 @@ public class ClubSchemaTests
             found.Groups["null"].Value.Should().Be(m.Groups["null"].Value, $"the DDL and the model disagree about whether {table}.{column} is nullable");
         }
         columns.Should().BeGreaterThan(3, "the EF script should have been read");
+    }
+
+    /// <summary>
+    /// An old database is checked against what the baseline makes before the baseline is
+    /// recorded on it. Today's model also has what later migrations add, which only those
+    /// migrations give it, after: checking for that first refused every old database.
+    /// </summary>
+    [Fact]
+    public void AnOldDatabaseIsCheckedAgainstTheBaselinesOwnModel()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseSqlServer("Server=not-connected;Database=none;Trusted_Connection=True;")
+            .Options;
+        using var db = new AppDbContext(options);
+        var baseline = ACI.WebApi.SchemaBaseline.BaselineModel(db);
+        var today = db.GetService<Microsoft.EntityFrameworkCore.Metadata.IDesignTimeModel>().Model.GetRelationalModel();
+
+        baseline.Tables.Should().Contain(t => t.Name == "ClubMembers");
+        baseline.Tables.Select(t => t.Name).Should().NotContain("DealOnboardings", "a later migration makes it");
+        baseline.Tables.Single(t => t.Name == "ClubMembers").Columns.Select(c => c.Name).Should().NotContain("StartsOnUtc");
+        today.Tables.Single(t => t.Name == "ClubMembers").Columns.Select(c => c.Name).Should().Contain("StartsOnUtc");
+        baseline.Tables.Count().Should().BeGreaterThan(50, "the baseline makes the whole schema as it stood");
     }
 
     [Theory]
@@ -106,14 +132,14 @@ public class ClubSchemaTests
         return File.ReadAllText(Path.Combine(dir!.FullName, "backend", "src", "ACI.WebApi", "Program.cs"));
     }
 
-    /// <summary>What EF itself would write for this model, with no database involved.</summary>
-    internal static string EfCreateScript()
+    /// <summary>What the migrations up to the baseline write, with no database involved.</summary>
+    internal static string BaselineScript()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseSqlServer("Server=not-connected;Database=none;Trusted_Connection=True;")
             .Options;
         using var db = new AppDbContext(options);
-        return db.Database.GenerateCreateScript();
+        return db.GetService<IMigrator>().GenerateScript(fromMigration: null, toMigration: ACI.WebApi.SchemaBaseline.MigrationId);
     }
 
     internal static string Between(string text, string start, string end)

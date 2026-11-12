@@ -7,7 +7,8 @@ namespace ACI.Application.Services;
 public record MemberDto(
     Guid Id, string FirstName, string LastName, string Email, string? Phone,
     string Tier, string Status, DateTime JoinedAtUtc, DateTime RenewsAtUtc,
-    decimal DuesAmount, string DuesFrequency, decimal HouseAccountBalance, string? Notes);
+    decimal DuesAmount, string DuesFrequency, decimal HouseAccountBalance, string? Notes,
+    DateTime? StartsOnUtc = null, bool StartUndetermined = false, Guid? DealId = null, Guid? ContactId = null);
 
 /// <summary>
 /// A member to add, or the fields of one to change. On a change a field left out is
@@ -27,6 +28,12 @@ public class MemberWriteRequest : IMergePatchRequest
     public string? DuesFrequency { get; set; }
     public decimal? HouseAccountBalance { get; set; }
     public string? Notes { get; set; }
+
+    /// <summary>When the membership starts. Sent as null, it is taken off.</summary>
+    public DateTime? StartsOnUtc { get; set; }
+
+    /// <summary>The start is still to be decided. Setting a start date clears it.</summary>
+    public bool? StartUndetermined { get; set; }
 
     /// <inheritdoc />
     [System.Text.Json.Serialization.JsonIgnore]
@@ -137,6 +144,8 @@ public sealed class ClubService : IClubService
             // A new member has no charges yet, so all of an opening balance is theirs to keep.
             ManualBalance = request.HouseAccountBalance ?? 0,
             Notes = request.Notes,
+            StartsOnUtc = request.StartsOnUtc,
+            StartUndetermined = request.StartsOnUtc == null && request.StartUndetermined == true,
         };
         await _club.SaveMemberAsync(row, ct);
         return ToDto(row);
@@ -172,6 +181,18 @@ public sealed class ClubService : IClubService
         }
         if (request.Notes != null) row.Notes = request.Notes;
         else if (request.Clears(nameof(request.Notes))) row.Notes = null;
+        // A date and "still to be decided" are one answer: either replaces the other.
+        if (request.StartsOnUtc.HasValue)
+        {
+            row.StartsOnUtc = request.StartsOnUtc.Value;
+            row.StartUndetermined = false;
+        }
+        else if (request.Clears(nameof(request.StartsOnUtc))) row.StartsOnUtc = null;
+        if (request.StartUndetermined is bool undetermined && !request.StartsOnUtc.HasValue)
+        {
+            row.StartUndetermined = undetermined;
+            if (undetermined) row.StartsOnUtc = null;
+        }
         await _club.SaveMemberAsync(row, ct);
         return ToDto(row);
     }
@@ -271,5 +292,6 @@ public sealed class ClubService : IClubService
 
     private static MemberDto ToDto(ClubMember m) => new(
         m.Id, m.FirstName, m.LastName, m.Email, m.Phone, m.Tier, m.Status,
-        m.JoinedAtUtc, m.RenewsAtUtc, m.DuesAmount, m.DuesFrequency, m.HouseAccountBalance, m.Notes);
+        m.JoinedAtUtc, m.RenewsAtUtc, m.DuesAmount, m.DuesFrequency, m.HouseAccountBalance, m.Notes,
+        m.StartsOnUtc, m.StartUndetermined, m.DealId, m.ContactId);
 }

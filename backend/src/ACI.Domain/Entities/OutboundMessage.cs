@@ -188,4 +188,9 @@ public static class OutboundSources
     /// <summary>A club mailing. Nothing queues these yet; the outbox carries them when campaigns send.</summary>
     public const string Campaign = "campaign";
     public const string Webhook = "webhook";
+    /// <summary>
+    /// A new customer handed to the workspace's onboarding address (see DealOnboarding),
+    /// posted there rather than to its events address, with SourceId the handoff.
+    /// </summary>
+    public const string Onboarding = "onboarding";
 }

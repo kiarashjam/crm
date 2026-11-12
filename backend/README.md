@@ -259,6 +259,49 @@ an email whose lead or contact is deleted while it waits is cancelled, not sent.
 | `POST` | `/api/public/email/inbound/{secret}` | SendGrid Inbound Parse: a reply, matched to its message by reply+token address or In-Reply-To/References, written on the timeline; the person's sequences stop (not for an automatic reply such as an out-of-office). 404 without `Email:InboundParseSecret` |
 | `POST` | `/api/public/email/events/{secret}` | SendGrid Event Webhook (or `/events` with a signature checked against `Email:EventWebhookVerificationKey`): bounces, drops, spam reports and unsubscribes suppress the address and stop sequences; deliveries and opens are recorded |
 
+Every outbound webhook with a secret is signed twice: `X-Cadence-Signature` (hex HMAC-SHA256
+of the body, as it always was) and `X-Cadence-Timestamp` (Unix seconds) with
+`X-Cadence-Signature-256: sha256=<hex HMAC-SHA256 of "{timestamp}.{body}">`, which lets a
+receiver refuse a post replayed later.
+
+### Welcome & portal (onboarding handoff)
+
+When a lead becomes a deal, the deal's contact can be handed to the workspace's own member
+portal (Pavillon 46's, or any system that takes the contract below). The portal opens their
+account, sends the welcome email with a link to set a password, and reports each step back,
+which the deal's timeline shows. CadenceE never sends the welcome email itself. With
+"add to club members" on, the person is also added to the club's members here, with their
+start date or "to be decided".
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/onboarding/settings` | The portal address, whether there is a signing secret (never the secret), the welcome template and defaults |
+| `PUT` | `/api/onboarding/settings` | `{ webhookUrl, enabled, emailSubject, emailHtml, defaultLanguage, addToClubMembers }` (Manage settings). The address must be public https |
+| `POST` | `/api/onboarding/settings/secret` | Makes a new signing secret and returns it this once (Manage settings) |
+| `POST` | `/api/onboarding/settings/test` | Posts a signed `onboarding.ping` now and returns what the portal answered (Manage settings) |
+| `POST` | `/api/onboarding/preview` | The welcome email filled for a deal's contact (or a name and email), the portal's links as stand-ins; lists placeholders nothing fills |
+| `POST` | `/api/deals/{dealId}/onboarding` | Hands the deal's contact over: `{ welcomeMessage, startsOnUtc \| startUndetermined, language, emailSubject?, emailHtml?, addToClubMembers?, leadId? }`. One per deal (409 after) |
+| `GET` | `/api/deals/{dealId}/onboarding` | The deal's handoffs with their steps and delivery state |
+| `POST` | `/api/onboarding/{id}/resend` | Hands it over again (after a failure, or to send the welcome once more) |
+| `POST` | `/api/public/onboarding/{id}/events` | The portal's reports, `Authorization: Bearer <callback.token>`: `{ event, accountId?, message?, occurredAtUtc? }` with `account_created`, `account_existing`, `email_sent`, `email_failed`, `password_set` or `failed`. A repeat changes nothing |
+
+The handoff is a `deal.onboarding` webhook through the outbox (retried like any other),
+posted to the portal's address, signed with its secret as above. Its `payload`:
+`{ version: 1, onboardingId, deal { id, name, amount, currency, stage }, contact { id, name,
+firstName, lastName, email, phone, company }, membership { startsOn: "yyyy-MM-dd" | null,
+startUndetermined, clubMemberId }, language, welcomeMessage, email { subject, html } | null,
+callback { url, token }, sentBy { name }, workspace { id, name } }`. In `email`, CadenceE's
+placeholders (`{{firstName}}`, `{{lastName}}`, `{{name}}`, `{{email}}`, `{{company}}`,
+`{{dealName}}`, `{{welcomeMessage}}`, `{{startDate}}`, `{{senderName}}`, `{{workspace}}`) are
+filled and HTML-encoded; `{{setPasswordUrl}}`, `{{portalUrl}}` and `{{loginEmail}}` are left
+for the portal. The callback token is derived from the secret, so making a new secret
+retires the tokens of earlier handoffs. A copied organization keeps the template but not the
+portal address or secret.
+
+`PortalHandoffEndToEndTests` runs the whole round trip against a real portal when
+`CADENCE_E2E_PORTAL` (its handoff address, e.g. a local Pavillon 46 in Development) and
+`CADENCE_E2E_PORTAL_SECRET` (its `CADENCE_ONBOARDING_SECRET`) are set; otherwise it is skipped.
+
 ### Organizations & Team
 
 | Method | Endpoint | Description |

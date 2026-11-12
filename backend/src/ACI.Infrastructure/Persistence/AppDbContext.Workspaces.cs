@@ -111,6 +111,8 @@ public partial class AppDbContext
         Scope<ClubVisit>(model, e => e.OrganizationId);
         Scope<LoyaltyLedgerEntry>(model, e => e.OrganizationId);
         Scope<ClubDocument>(model, e => e.OrganizationId);
+        Scope<OnboardingSettings>(model, e => e.OrganizationId);
+        Scope<DealOnboarding>(model, e => e.OrganizationId);
 
         // Copy templates follow a person rather than a workspace (TemplateRepository): the
         // system's templates are everyone's, a person's own go with them, and a team's

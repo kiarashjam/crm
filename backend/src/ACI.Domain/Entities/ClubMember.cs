@@ -30,6 +30,17 @@ public class ClubMember : Common.BaseEntity
     public decimal ManualBalance { get; set; }
 
     public string? Notes { get; set; }
+
+    /// <summary>
+    /// When the membership starts, if it is known. Null with <see cref="StartUndetermined"/>
+    /// set means the start is still to be decided; null without it means nobody said.
+    /// </summary>
+    public DateTime? StartsOnUtc { get; set; }
+    public bool StartUndetermined { get; set; }
+
+    /// <summary>The deal and contact the member joined through, when they came from a converted lead.</summary>
+    public Guid? DealId { get; set; }
+    public Guid? ContactId { get; set; }
 }
 
 public class ClubVisit : Common.BaseEntity

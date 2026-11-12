@@ -125,6 +125,16 @@ try
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
             }));
+        // A portal reporting on one handoff: a handful of reports each, so a token posted
+        // in a loop stops quickly. Per handoff, as the token is checked on each.
+        options.AddPolicy("public-onboarding", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            "onboarding:" + (context.Request.RouteValues["id"]?.ToString() ?? ""),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 30,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
         // The unsubscribe link: a person opens it once or twice. Per token, like the
         // two above; a forged token fails its signature check before any database work.
         options.AddPolicy("public-unsubscribe", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
@@ -290,6 +300,7 @@ try
     builder.Services.AddScoped<IAutomationService, AutomationService>();
     builder.Services.AddScoped<IAutomationEngine, AutomationEngine>();
     builder.Services.AddScoped<IClubService, ClubService>();
+    builder.Services.AddScoped<IOnboardingService, OnboardingService>();
     builder.Services.AddScoped<IClubDocumentService, ClubDocumentService>();
     builder.Services.AddScoped<IEventAttendeeService, EventAttendeeService>();
     builder.Services.AddScoped<ITaskService, TaskService>();
