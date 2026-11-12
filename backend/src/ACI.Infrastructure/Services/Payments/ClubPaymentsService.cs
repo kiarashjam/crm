@@ -187,14 +187,14 @@ public sealed partial class ClubPaymentsService : IClubPayments
             return new PublicPayPageDto(config.ClubName, firstName, Setup,
                 claim.AutoPay ? L("pay.setupAutoPay") : L("pay.setupPlain"),
                 0, currency, config.OnlinePayments ? config.SaveableFor(currency) : [], config.OnlinePayments,
-                config.OnlinePayments ? null : L("pay.noCardsOnline"), claim.AutoPay, language);
+                config.OnlinePayments ? null : L("pay.noCardsOnline"), claim.AutoPay, language, config.Locale);
 
         var (amount, description) = await WhatIsOwedAsync(claim.OrganizationId, member.Id, claim, config, ct, language);
         var reason = !config.OnlinePayments ? L("pay.noPaymentsOnline")
             : amount <= 0 ? L("pay.nothingToPay")
             : currency is not { Length: 3 } ? L("pay.currencyNotPayable") : null;
         return new PublicPayPageDto(config.ClubName, firstName, claim.Purpose, description, amount, currency,
-            config.OnlinePayments ? config.MethodsFor(currency) : [], reason == null, reason, false, language);
+            config.OnlinePayments ? config.MethodsFor(currency) : [], reason == null, reason, false, language, config.Locale);
     }
 
     public async Task<Result<CheckoutStartedDto>> StartCheckoutAsync(string token, CancellationToken ct = default)

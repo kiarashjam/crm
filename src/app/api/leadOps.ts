@@ -232,14 +232,19 @@ async function publicFetch(path: string, init?: RequestInit): Promise<Response> 
 /** Whether a public form asks for marketing consent: not at all, optionally, or as a condition of sending it. */
 export type MarketingConsentMode = 'off' | 'optional' | 'required';
 
-export async function getPublicCaptureForm(token: string) {
-  const res = await publicFetch(`/api/public/capture/${encodeURIComponent(token)}`);
+export async function getPublicCaptureForm(token: string, language?: string) {
+  // The language the page is read in: the standard checkbox sentence (when the workspace
+  // wrote none) comes back in it.
+  const query = language ? `?lang=${encodeURIComponent(language)}` : '';
+  const res = await publicFetch(`/api/public/capture/${encodeURIComponent(token)}${query}`);
   if (!res.ok) throw new PublicCaptureError('Form not available', res.status);
   return res.json() as Promise<{
     name: string;
     successMessage?: string | null;
     marketingConsent?: MarketingConsentMode;
     marketingConsentText?: string | null;
+    /** The workspace's language (from its locale), for a visitor whose browser speaks none of the app's. */
+    language?: string | null;
   }>;
 }
 
@@ -255,6 +260,8 @@ export async function submitPublicCapture(token: string, body: {
   website?: string;
   /** Whether they ticked the box to hear about news and offers; recorded either way when the form asks. */
   marketingConsent?: boolean;
+  /** The language the form was filled in (en, de, fr): the thank-you and the consent record are in it. */
+  language?: string;
 }): Promise<string | null> {
   const res = await publicFetch(`/api/public/capture/${encodeURIComponent(token)}`, {
     method: 'POST',

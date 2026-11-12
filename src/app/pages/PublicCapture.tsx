@@ -1,6 +1,8 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { getPublicCaptureForm, submitPublicCapture, PublicCaptureError, type MarketingConsentMode } from '@/app/api/leadOps';
+import { PublicPage } from '@/app/components/PublicPage';
+import { usePageLanguage, useT } from '@/app/i18n';
 
 /**
  * The public form a stranger fills in on the club's website.
@@ -10,13 +12,21 @@ import { getPublicCaptureForm, submitPublicCapture, PublicCaptureError, type Mar
  * in Cadence". It also used to show the same "This form is not active" for a
  * network blip as for a dead link, keep the fields editable on a dead link, and
  * ignore the thank-you message the workspace configured.
+ *
+ * It reads in the visitor's language (one they picked here, the ?lang= on the link, their
+ * browser's, else the workspace's), and says which with the form, so the thank-you and the
+ * consent record are in the words they read. The workspace's own words stay as written.
  */
 type FormState = 'loading' | 'ready' | 'missing' | 'unreachable';
 
 export default function PublicCapture() {
   const { token = '' } = useParams();
+  const [search] = useSearchParams();
+  const { t, tx, language } = useT();
   const [state, setState] = useState<FormState>('loading');
-  const [title, setTitle] = useState('Tell us about you');
+  // The form's name as the workspace wrote it; until then, or without one, the standard heading.
+  const [title, setTitle] = useState<string | null>(null);
+  const [clubLanguage, setClubLanguage] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState('');
@@ -34,28 +44,37 @@ export default function PublicCapture() {
   const [busy, setBusy] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const thanksRef = useRef<HTMLHeadingElement>(null);
+  const loaded = useRef(false);
 
+  usePageLanguage(search.get('lang'));
+  usePageLanguage(clubLanguage, 'club');
+
+  // Asked again when the page turns to another language, so the standard checkbox sentence
+  // is in it; what was typed stays, and only the first load shows "Loading…".
   useEffect(() => {
     let cancelled = false;
-    setState('loading');
-    getPublicCaptureForm(token)
+    if (!loaded.current) setState('loading');
+    getPublicCaptureForm(token, language)
       .then((form) => {
         if (cancelled) return;
-        if (form.name?.trim()) setTitle(form.name.trim());
+        loaded.current = true;
+        setTitle(form.name?.trim() || null);
+        setClubLanguage(form.language ?? null);
         const mode = form.marketingConsent ?? 'off';
         setConsentMode(mode === 'optional' || mode === 'required' ? mode : 'off');
-        setConsentText(form.marketingConsentText?.trim() || 'Yes, I would like to hear about news, events and offers by email.');
+        setConsentText(form.marketingConsentText?.trim() || '');
         setState('ready');
       })
       .catch((err: unknown) => {
         if (cancelled) return;
         // Only a 404 means the link is dead. Anything else is worth retrying.
+        loaded.current = false;
         setState(err instanceof PublicCaptureError && err.status === 404 ? 'missing' : 'unreachable');
       });
     return () => {
       cancelled = true;
     };
-  }, [token, attempt]);
+  }, [token, attempt, language]);
 
   // Move focus to the thank-you, so a screen reader announces it and keyboard
   // focus is not left on a button that no longer exists.
@@ -71,16 +90,17 @@ export default function PublicCapture() {
       const message = await submitPublicCapture(token, {
         name, email, phone, company, jobTitle, country, website,
         ...(consentMode === 'off' ? {} : { marketingConsent: consent }),
+        language,
       });
-      setDone(message ?? "Thanks. We'll be in touch.");
+      setDone(message ?? t('capture.thanks'));
     } catch (err) {
       const status = err instanceof PublicCaptureError ? err.status : 0;
       setError(
-        status === 429 ? 'A lot of messages are arriving right now. Please try again in a minute.'
-          : status === 400 && consentMode === 'required' && !consent ? 'Please tick the box: this form signs you up for news.'
-          : status === 400 ? 'Please check the email address and that each field is not too long.'
-          : status === 404 ? 'This form is no longer available.'
-          : 'That could not be sent. Please check your connection and try again.',
+        status === 429 ? t('capture.errorBusy')
+          : status === 400 && consentMode === 'required' && !consent ? t('capture.errorConsentRequired')
+          : status === 400 ? t('capture.errorInvalid')
+          : status === 404 ? t('apply.errorGone')
+          : t('apply.errorNetwork'),
       );
     } finally {
       setBusy(false);
@@ -88,43 +108,42 @@ export default function PublicCapture() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-16">
-      <div className="mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <PublicPage>
         {done ? (
           <div className="text-center">
             <h1 ref={thanksRef} tabIndex={-1} className="text-xl font-semibold text-slate-900 focus:outline-none">
-              Thank you
+              {t('public.thanksTitle')}
             </h1>
             <p className="mt-2 text-sm text-slate-700">{done}</p>
           </div>
         ) : state === 'missing' ? (
           <>
-            <h1 className="text-xl font-semibold text-slate-900">This form is no longer available</h1>
-            <p className="mt-2 text-sm text-slate-600">The link may be out of date. Please contact the club directly.</p>
+            <h1 className="text-xl font-semibold text-slate-900">{t('public.formMissingTitle')}</h1>
+            <p className="mt-2 text-sm text-slate-600">{t('public.formMissingText')}</p>
           </>
         ) : state === 'unreachable' ? (
           <>
-            <h1 className="text-xl font-semibold text-slate-900">This form could not be loaded</h1>
-            <p className="mt-2 text-sm text-slate-600">Please check your connection.</p>
+            <h1 className="text-xl font-semibold text-slate-900">{t('public.formUnreachableTitle')}</h1>
+            <p className="mt-2 text-sm text-slate-600">{t('common.checkConnection')}</p>
             <button
               type="button"
               onClick={() => setAttempt((n) => n + 1)}
               className="mt-4 h-10 w-full rounded-xl bg-slate-900 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2"
             >
-              Try again
+              {t('common.tryAgain')}
             </button>
           </>
         ) : (
           <form onSubmit={submit} aria-busy={state === 'loading' || busy}>
-            <h1 className="text-xl font-semibold text-slate-900">{state === 'loading' ? 'Loading…' : title}</h1>
-            <p className="mt-1 text-sm text-slate-500">Leave your details and we will get back to you.</p>
+            <h1 className="text-xl font-semibold text-slate-900">{state === 'loading' ? t('common.loading') : title ?? t('capture.titleDefault')}</h1>
+            <p className="mt-1 text-sm text-slate-500">{t('capture.intro')}</p>
             <fieldset disabled={state !== 'ready' || busy} className="mt-6 space-y-3">
-              <Field label="Name" value={name} onChange={setName} autoComplete="name" maxLength={256} required />
-              <Field label="Email" value={email} onChange={setEmail} type="email" autoComplete="email" maxLength={256} required />
-              <Field label="Phone" value={phone} onChange={setPhone} type="tel" autoComplete="tel" maxLength={64} />
-              <Field label="Company" value={company} onChange={setCompany} autoComplete="organization" maxLength={200} />
-              <Field label="Job title" value={jobTitle} onChange={setJobTitle} autoComplete="organization-title" maxLength={200} />
-              <Field label="Country" value={country} onChange={setCountry} autoComplete="country-name" maxLength={80} />
+              <Field label={t('capture.name')} value={name} onChange={setName} autoComplete="name" maxLength={256} required />
+              <Field label={t('capture.email')} value={email} onChange={setEmail} type="email" autoComplete="email" maxLength={256} required />
+              <Field label={t('capture.phone')} value={phone} onChange={setPhone} type="tel" autoComplete="tel" maxLength={64} />
+              <Field label={t('capture.company')} value={company} onChange={setCompany} autoComplete="organization" maxLength={200} />
+              <Field label={t('capture.jobTitle')} value={jobTitle} onChange={setJobTitle} autoComplete="organization-title" maxLength={200} />
+              <Field label={t('capture.country')} value={country} onChange={setCountry} autoComplete="country-name" maxLength={80} />
               {/* Honeypot: hidden from people and from assistive technology. A bot
                   that fills every field fills this one, and nothing is saved. */}
               <div aria-hidden="true" className="absolute left-[-10000px] top-auto h-px w-px overflow-hidden">
@@ -143,27 +162,27 @@ export default function PublicCapture() {
                     className="mt-0.5 h-4 w-4 rounded border-slate-300"
                   />
                   <span>
-                    {consentText}
+                    {consentText || t('capture.consentDefault')}
                     {consentMode === 'required' && <span className="text-red-600" aria-hidden="true"> *</span>}
                   </span>
                 </label>
               )}
               <p className="text-xs text-slate-500">
-                How your details are used, and your rights over them:{' '}
-                <Link to={`/privacy?form=${encodeURIComponent(token)}`} className="underline">privacy notice</Link>.
+                {tx('public.privacyLine', {
+                  link: (words) => <Link to={`/privacy?form=${encodeURIComponent(token)}`} className="underline">{words}</Link>,
+                })}
               </p>
               <p role="alert" className="min-h-0 text-sm text-red-600">{error}</p>
               <button
                 type="submit"
                 className="h-10 w-full rounded-xl bg-slate-900 text-sm font-medium text-white disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2"
               >
-                {busy ? 'Sending…' : 'Send'}
+                {busy ? t('common.sending') : t('capture.submit')}
               </button>
             </fieldset>
           </form>
         )}
-      </div>
-    </main>
+    </PublicPage>
   );
 }
 

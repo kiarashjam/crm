@@ -22,6 +22,8 @@ export interface UnsubscribeTarget {
    * confirmations still come.
    */
   scope?: 'all' | 'marketing';
+  /** A club member's own language (en, de, fr), which the page opens in; null follows the browser. */
+  language?: string | null;
 }
 
 async function call(token: string, method: 'GET' | 'POST'): Promise<UnsubscribeTarget> {

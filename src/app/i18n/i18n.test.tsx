@@ -48,6 +48,15 @@ describe('choosing the language', () => {
     expect(resolveLanguage({ workspaceLocale: 'it-CH', browser: 'it-IT' })).toEqual({ language: 'en', source: 'default' });
   });
 
+  it('puts a public page’s club after the visitor’s browser, and before English', () => {
+    // The club's language says nothing about the visitor: their browser comes first.
+    expect(resolveLanguage({ browser: 'fr-CH', club: 'de' })).toEqual({ language: 'fr', source: 'browser' });
+    expect(resolveLanguage({ browser: 'it-CH', club: 'de' })).toEqual({ language: 'de', source: 'club' });
+    // What the page knows about its reader (a member's own language) still comes first.
+    expect(resolveLanguage({ page: 'fr', browser: 'de-CH', club: 'de' })).toEqual({ language: 'fr', source: 'page' });
+    expect(resolveLanguage({ browser: 'it-CH', club: 'it' })).toEqual({ language: 'en', source: 'default' });
+  });
+
   it('reads a language from a locale name and passes over ones it does not have', () => {
     expect(asLanguage('de-CH')).toBe('de');
     expect(asLanguage('FR_ch')).toBe('fr');

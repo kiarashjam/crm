@@ -127,7 +127,7 @@ public class MemberLanguageTests
         french.TextBody.Should().StartWith("Bonjour Jeanne,").And.Contain("Montant dû : CHF 299.00")
             .And.Contain("Pour toute question à ce sujet");
         // The PDF's own escapes stand for its accented letters here (\351 for é), so only plain words are looked for.
-        PdfText.Of(french.Attachments.Single().Content).Should().Contain(" de compte").And.Contain("Membre Gold").And.Contain("Page 1 sur 1")
+        PdfText.Of(french.Attachments!.Single().Content).Should().Contain(" de compte").And.Contain("Membre Gold").And.Contain("Page 1 sur 1")
             .And.NotContain("Amount due");
 
         var english = app.Mail.Sent.Single(m => m.To.Contains("jean@example.ch"));

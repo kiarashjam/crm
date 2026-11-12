@@ -21,6 +21,14 @@ import { setCurrentLanguage } from './current';
 
 const DEVICE_KEY = 'cadence.language';
 
+/**
+ * What a public page knows about the language it is read in: "reader" when it is the
+ * visitor's own (a member's language on their pay link, the ?lang= on a form's link), which
+ * comes before their browser; "club" when it is only the club's (from its locale), which
+ * comes after it.
+ */
+export type PageLanguageKind = 'reader' | 'club';
+
 function readDeviceChoice(): Language | null {
   try {
     return asLanguage(localStorage.getItem(DEVICE_KEY));
@@ -56,8 +64,8 @@ export interface I18nValue {
    * once, kept in this browser, and on their account when they are signed in.
    */
   choose: (language: Language | null) => Promise<void>;
-  /** What a public page knows about its reader's language (see {@link usePageLanguage}). */
-  setPageLanguage: (language: string | null) => void;
+  /** What a public page knows about its reader's language, or its club's (see {@link usePageLanguage}). */
+  setPageLanguage: (language: string | null, kind?: PageLanguageKind) => void;
   /**
    * The app picked a language other than English for someone signed in who never chose one
    * (their workspace's, or their browser's): the app shell says so once and offers the others.
@@ -94,7 +102,10 @@ export function I18nProvider({ children, initialLanguage }: { children: ReactNod
   const [deviceChoice, setDeviceChoice] = useState<Language | null>(() => initialLanguage ?? readDeviceChoice());
   // undefined: not known yet (signed out, or still asking); null: the account has no choice.
   const [accountChoice, setAccountChoice] = useState<Language | null | undefined>(undefined);
-  const [pageLanguage, setPageLanguage] = useState<string | null>(null);
+  const [pageLanguage, setPageLanguageState] = useState<Record<PageLanguageKind, string | null>>({ reader: null, club: null });
+  const setPageLanguage = useCallback((language: string | null, kind: PageLanguageKind = 'reader') => {
+    setPageLanguageState((was) => (was[kind] === language ? was : { ...was, [kind]: language }));
+  }, []);
 
   // The account's choice, when someone is signed in, and again whenever the session
   // changes (a sign-in, a sign-out, another account in another tab).
@@ -131,8 +142,9 @@ export function I18nProvider({ children, initialLanguage }: { children: ReactNod
 
   const { language, source } = resolveLanguage({
     chosen: accountChoice ?? deviceChoice,
-    page: pageLanguage,
+    page: pageLanguage.reader,
     workspaceLocale,
+    club: pageLanguage.club,
   });
 
   // German and French come down the first time they are needed. Until then the page
@@ -173,7 +185,7 @@ export function I18nProvider({ children, initialLanguage }: { children: ReactNod
   const suggestChoice = accountChoice === null && (source === 'workspace' || source === 'browser') && language !== DEFAULT_LANGUAGE;
   const value = useMemo(
     () => makeValue(shown, shown === language ? source : 'default', workspaceLocale, choose, setPageLanguage, suggestChoice),
-    [shown, language, source, workspaceLocale, choose, suggestChoice],
+    [shown, language, source, workspaceLocale, choose, setPageLanguage, suggestChoice],
   );
   // Code outside components (toasts from API helpers, date helpers) follows the same language.
   setCurrentLanguage({ language: value.language, numberLocale: value.numberLocale, dateLocale: value.dateLocale });
@@ -197,14 +209,16 @@ export function useT(): I18nValue {
 }
 
 /**
- * What a public page knows about its reader's language, used when they have not chosen
- * one in this browser: a member's own language on their pay or unsubscribe link, the
- * club's on its application form.
+ * What a public page knows about the language it is read in, used when the visitor has not
+ * chosen one in this browser. "reader" (the default) is the visitor's own: a member's
+ * language on their pay or unsubscribe link, the ?lang= a club's website put on its form's
+ * link; it comes before the browser. "club" is only the club's, from its locale; it comes
+ * after the browser, for a visitor whose browser speaks none of the app's languages.
  */
-export function usePageLanguage(language: string | null | undefined): void {
+export function usePageLanguage(language: string | null | undefined, kind: PageLanguageKind = 'reader'): void {
   const { setPageLanguage } = useT();
   useEffect(() => {
-    setPageLanguage(language ?? null);
-    return () => setPageLanguage(null);
-  }, [language, setPageLanguage]);
+    setPageLanguage(language ?? null, kind);
+    return () => setPageLanguage(null, kind);
+  }, [language, kind, setPageLanguage]);
 }

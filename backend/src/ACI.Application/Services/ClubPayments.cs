@@ -294,12 +294,14 @@ public sealed record PayLinkDto(
 
 /// <summary>What the public pay page shows: the club, whom it is for, what and how much. No account details.</summary>
 /// <param name="Language">The member's language (en, de, fr), which the page reads in unless the visitor picks another.</param>
+/// <param name="Locale">The workspace's number format ("de-CH"), so the page writes the amount as the club's statements do.</param>
 public sealed record PublicPayPageDto(
     string ClubName, string MemberFirstName, string Purpose, string Description, decimal Amount, string Currency,
     IReadOnlyList<string> Methods, bool Available,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Reason,
     bool AutoPay,
-    string Language = "en");
+    string Language = "en",
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Locale = null);
 
 public sealed record CheckoutStartedDto(string Url);
 

@@ -168,6 +168,8 @@ public class StripePaymentsTests
         page.GetProperty("amount").GetDecimal().Should().Be(299m);
         page.GetProperty("available").GetBoolean().Should().BeTrue();
         page.GetProperty("methods").EnumerateArray().Select(m => m.GetString()).Should().Equal("card", "twint");
+        // The page writes the amount in the club's number format, as its statements do.
+        page.GetProperty("locale").GetString().Should().Be("de-CH");
         app.Stripe.Sent("POST", "/v1/checkout/sessions").Should().BeEmpty("opening the page changes nothing: mail scanners open every link");
 
         var started = await Json(await PayAsync(anonymous, token), "press Pay");

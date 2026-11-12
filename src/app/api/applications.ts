@@ -456,6 +456,8 @@ export interface PublicApplicationForm {
   tiers: PublicTier[];
   /** Whether the form shows the marketing checkbox, and whether it must be ticked (the workspace's privacy settings). */
   marketingConsent?: 'off' | 'optional' | 'required';
+  /** The club's language (from its locale: en, de, fr), for a visitor whose browser speaks none of the app's. */
+  language?: string | null;
 }
 
 export interface PublicApplication {
@@ -470,6 +472,8 @@ export interface PublicApplication {
   marketingConsent: boolean;
   /** The honeypot: always empty when a person fills the form in. */
   website?: string;
+  /** The language the form was filled in (en, de, fr): the thank-you, and the member's language once approved. */
+  language?: string;
 }
 
 /** A public form request that failed, with its status (404: no such form; 429: too many). */
@@ -492,9 +496,14 @@ async function publicFetch(path: string, init?: RequestInit): Promise<Response> 
   }
 }
 
-/** The form a stranger sees: no sign-in, the link is the whole of it. */
-export async function getPublicApplicationForm(token: string): Promise<PublicApplicationForm> {
-  const res = await publicFetch(`/api/public/apply/${encodeURIComponent(token)}`);
+/**
+ * The form a stranger sees: no sign-in, the link is the whole of it. `language` is the one
+ * the page is read in, so the standard words the server adds (the news checkbox, when the
+ * club wrote none) are in it too.
+ */
+export async function getPublicApplicationForm(token: string, language?: string): Promise<PublicApplicationForm> {
+  const query = language ? `?lang=${encodeURIComponent(language)}` : '';
+  const res = await publicFetch(`/api/public/apply/${encodeURIComponent(token)}${query}`);
   if (!res.ok) throw new PublicApplicationError('Form not available', res.status);
   return res.json() as Promise<PublicApplicationForm>;
 }

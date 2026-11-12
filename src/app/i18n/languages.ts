@@ -42,26 +42,33 @@ export function browserLanguage(): Language | null {
 }
 
 /** Where the language a person sees came from. */
-export type LanguageSource = 'chosen' | 'page' | 'workspace' | 'browser' | 'default';
+export type LanguageSource = 'chosen' | 'page' | 'workspace' | 'browser' | 'club' | 'default';
 
 export interface LanguageInputs {
   /** What the person chose: on their account, or in this browser. */
   chosen?: string | null;
   /**
    * What a public page knows about its reader: a member's own language on their
-   * unsubscribe or pay link, the club's on its application form.
+   * unsubscribe or pay link, the ?lang= a club's website put on its form's link.
    */
   page?: string | null;
   /** The workspace's locale ("de-CH"), for someone signed in. */
   workspaceLocale?: string | null;
   /** The browser's language; read from the browser when left out. */
   browser?: string | null;
+  /**
+   * The language of the club behind a public page (from its locale), for a visitor whose
+   * browser speaks none of ours: an Italian browser on a Lausanne club's form reads French.
+   * It says nothing about the visitor, so their browser comes first.
+   */
+  club?: string | null;
 }
 
 /**
  * The language to show and where it came from: the person's choice, then what the
- * page knows about them, then their workspace's locale, then their browser, then
- * English. A value that is not one of ours ("it-CH") is passed over.
+ * page knows about them, then their workspace's locale, then their browser, then the
+ * club's language on a public page, then English. A value that is not one of ours
+ * ("it-CH") is passed over.
  */
 export function resolveLanguage(inputs: LanguageInputs): { language: Language; source: LanguageSource } {
   const chosen = asLanguage(inputs.chosen);
@@ -72,6 +79,8 @@ export function resolveLanguage(inputs: LanguageInputs): { language: Language; s
   if (workspace) return { language: workspace, source: 'workspace' };
   const browser = inputs.browser !== undefined ? asLanguage(inputs.browser) : browserLanguage();
   if (browser) return { language: browser, source: 'browser' };
+  const club = asLanguage(inputs.club);
+  if (club) return { language: club, source: 'club' };
   return { language: DEFAULT_LANGUAGE, source: 'default' };
 }
 
