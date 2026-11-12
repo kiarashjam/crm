@@ -74,6 +74,8 @@ public partial class AppDbContext : DbContext
     public DbSet<InboundEmail> InboundEmails => Set<InboundEmail>();
     public DbSet<AutomationRule> AutomationRules => Set<AutomationRule>();
     public DbSet<AutomationFire> AutomationFires => Set<AutomationFire>();
+    public DbSet<AutomationRun> AutomationRuns => Set<AutomationRun>();
+    public DbSet<AutomationRunStep> AutomationRunSteps => Set<AutomationRunStep>();
     public DbSet<ClubMember> ClubMembers => Set<ClubMember>();
     public DbSet<OnboardingSettings> OnboardingSettings => Set<OnboardingSettings>();
     public DbSet<DealOnboarding> DealOnboardings => Set<DealOnboarding>();

@@ -43,7 +43,54 @@ internal sealed class AutomationRuleConfiguration : IEntityTypeConfiguration<Aut
         builder.Property(e => e.Name).HasMaxLength(200).IsRequired();
         builder.Property(e => e.Trigger).HasMaxLength(40).IsRequired();
         builder.Property(e => e.ActionsJson).IsRequired();
+        // Checked on every save of the rule and moved only by an edit (AutomationService),
+        // never by the run count.
+        builder.Property(e => e.Version).IsConcurrencyToken();
         builder.HasIndex(e => new { e.OrganizationId, e.Trigger });
+    }
+}
+
+internal sealed class AutomationRunConfiguration : IEntityTypeConfiguration<AutomationRun>
+{
+    public void Configure(EntityTypeBuilder<AutomationRun> builder)
+    {
+        builder.ToTable("AutomationRuns");
+        builder.HasKey(e => e.Id);
+        builder.Property(e => e.RuleName).HasMaxLength(200).IsRequired();
+        builder.Property(e => e.Trigger).HasMaxLength(40).IsRequired();
+        builder.Property(e => e.SourceKey).HasMaxLength(80).IsRequired();
+        builder.Property(e => e.Status).HasMaxLength(20).IsRequired();
+        builder.Property(e => e.RecordType).HasMaxLength(20).IsRequired();
+        builder.Property(e => e.RecordName).HasMaxLength(300);
+        builder.Property(e => e.Email).HasMaxLength(320);
+        builder.Property(e => e.StepsJson).IsRequired();
+        builder.Property(e => e.CurrentPath).HasMaxLength(40).IsRequired();
+        builder.Property(e => e.WaitingFor).HasMaxLength(300);
+        builder.Property(e => e.LastError).HasMaxLength(1000);
+        // A runner's save lands only while the run still holds the claim it took.
+        builder.Property(e => e.ClaimCount).IsConcurrencyToken();
+        builder.HasOne<AutomationRule>().WithMany().HasForeignKey(e => e.RuleId).OnDelete(DeleteBehavior.Cascade);
+        // What the runner looks for: runs not finished, by when they are due. A finished run
+        // has no due time, so the index holds only the runs still going.
+        builder.HasIndex(e => e.NextAttemptAtUtc).HasFilter("[NextAttemptAtUtc] IS NOT NULL");
+        builder.HasIndex(e => new { e.OrganizationId, e.RuleId, e.StartedAtUtc });
+        builder.HasIndex(e => new { e.OrganizationId, e.Status, e.StartedAtUtc });
+    }
+}
+
+internal sealed class AutomationRunStepConfiguration : IEntityTypeConfiguration<AutomationRunStep>
+{
+    public void Configure(EntityTypeBuilder<AutomationRunStep> builder)
+    {
+        builder.ToTable("AutomationRunSteps");
+        builder.HasKey(e => e.Id);
+        builder.Property(e => e.Path).HasMaxLength(40).IsRequired();
+        builder.Property(e => e.StepType).HasMaxLength(40).IsRequired();
+        builder.Property(e => e.Outcome).HasMaxLength(20).IsRequired();
+        builder.Property(e => e.Summary).HasMaxLength(1000).IsRequired();
+        builder.Property(e => e.Error).HasMaxLength(1000);
+        builder.HasOne<AutomationRun>().WithMany().HasForeignKey(e => e.RunId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasIndex(e => new { e.RunId, e.AtUtc });
     }
 }
 

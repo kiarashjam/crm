@@ -113,6 +113,7 @@ public class OrganizationCloneTests
         var definition = new CustomFieldDefinition { Id = Guid.NewGuid(), OrganizationId = org.Id, OwnerUserId = owner, EntityType = "deal", Key = "board_seat", Label = "Board seat", Type = "checkbox", CreatedAtUtc = now };
         var spouse = new Contact { Id = Guid.NewGuid(), UserId = owner, OrganizationId = org.Id, Name = "Marie Dupont", Email = $"marie@{name}.ch", CreatedAtUtc = now };
         var sentEmailId = Guid.NewGuid();
+        var runId = Guid.NewGuid();
         var sentCampaignId = Guid.NewGuid();
         var sentEmail = new OutboundMessage
         {
@@ -133,6 +134,14 @@ public class OrganizationCloneTests
             new OutreachEnrollment { Id = Guid.NewGuid(), SequenceId = sequence.Id, OrganizationId = org.Id, EnrolledByUserId = owner, TargetId = lead.Id, TargetName = "Jean Dupont", Status = "active", EnrolledAtUtc = now, NextActionAtUtc = now.AddHours(1) },
             new OutreachEnrollment { Id = Guid.NewGuid(), SequenceId = sequence.Id, OrganizationId = org.Id, EnrolledByUserId = owner, TargetId = lead.Id, TargetName = "Jean Dupont", Status = "stopped", EnrolledAtUtc = now },
             new AutomationFire { Id = Guid.NewGuid(), RuleId = rule.Id, SourceKey = lead.Id.ToString(), FiredAtUtc = now },
+            // A run of the rule, waiting two days before its email, and the line its log has so far.
+            new AutomationRun
+            {
+                Id = runId, OrganizationId = org.Id, RuleId = rule.Id, RuleName = rule.Name, Trigger = rule.Trigger, SourceKey = lead.Id.ToString(),
+                Status = AutomationRunStatuses.Waiting, ActorUserId = owner, RecordType = "lead", RecordId = lead.Id, LeadId = lead.Id,
+                StepsJson = "[]", CurrentPath = "1", NextAttemptAtUtc = now.AddDays(2), WaitingFor = "2 days", StartedAtUtc = now, UpdatedAtUtc = now,
+            },
+            new AutomationRunStep { Id = Guid.NewGuid(), OrganizationId = org.Id, RunId = runId, Path = "0", StepType = "wait", Outcome = AutomationStepOutcomes.Waiting, Summary = "Waiting 2 days", Attempt = 1, AtUtc = now },
             new SalesTeamMember { TeamId = team.Id, UserId = rep },
             new Activity { Id = Guid.NewGuid(), UserId = rep, OrganizationId = org.Id, Type = "call", Subject = "Called", LeadId = lead.Id, DealId = deal.Id, ContactId = contact.Id, CreatedAtUtc = now },
             new Notification { Id = Guid.NewGuid(), UserId = rep, OrganizationId = org.Id, Type = "task", Title = "Due tomorrow", Link = $"/tasks/{task.Id}", SourceKey = $"task-reminder:{task.Id}", CreatedAtUtc = now },
@@ -564,6 +573,11 @@ public class OrganizationCloneTests
         copiedEmail.MessageIdHeader.Should().Be($"<{copiedEmail.Id:N}@pavillon46.ch>");
         copiedEmail.ReplyToken.Should().BeNull();
         (await db.OutboundMessages.IgnoreQueryFilters().CountAsync(m => m.OrganizationId == original.Org && m.Status == OutboundStatuses.Queued)).Should().Be(1);
+        // A rule's run still waiting is carried on by the original alone, or its email would go twice.
+        var copiedRun = await db.AutomationRuns.IgnoreQueryFilters().SingleAsync(r => r.OrganizationId == report.CopyId);
+        copiedRun.Status.Should().Be(AutomationRunStatuses.Cancelled);
+        copiedRun.NextAttemptAtUtc.Should().BeNull();
+        (await db.AutomationRuns.IgnoreQueryFilters().SingleAsync(r => r.OrganizationId == original.Org)).Status.Should().Be(AutomationRunStatuses.Waiting);
 
         // The original is exactly as it was.
         var after = await db.Organizations.IgnoreQueryFilters().AsNoTracking().SingleAsync(o => o.Id == original.Org);
