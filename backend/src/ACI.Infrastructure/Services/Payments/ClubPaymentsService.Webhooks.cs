@@ -236,7 +236,6 @@ public sealed partial class ClubPaymentsService
     /// </summary>
     private async Task ApplyIntentAsync(Guid organizationId, ClubOnlinePayment attempt, ProviderPaymentIntent intent, CancellationToken ct)
     {
-        var failedBefore = attempt.Status == OnlinePaymentStatuses.Failed;
         attempt.PaymentIntentId ??= Clip(intent.Id, 100);
         attempt.ProviderChargeId = Clip(intent.LatestChargeId, 100) ?? attempt.ProviderChargeId;
         attempt.MethodType = Clip(intent.MethodType, 30) ?? attempt.MethodType;
@@ -307,7 +306,11 @@ public sealed partial class ClubPaymentsService
                 break;
         }
         await SaveAttemptAsync(attempt, ct);
-        if (!failedBefore && attempt.Status == OnlinePaymentStatuses.Failed) await AnnounceFailureAsync(organizationId, attempt, ct);
+        // Whenever Stripe's word leaves it failed, even when it was marked failed before: a
+        // charge Stripe did not answer is marked failed, "not known yet", and Stripe's webhook
+        // is what says it really was declined. Each rule fires once for the attempt however
+        // often this is reached (its source key), so a repeated failure sets nothing off twice.
+        if (attempt.Status == OnlinePaymentStatuses.Failed) await AnnounceFailureAsync(organizationId, attempt, ct);
     }
 
     /// <summary>Keeps the card the member saved on Stripe's page: its ids and what Stripe shows of it, never its number.</summary>
