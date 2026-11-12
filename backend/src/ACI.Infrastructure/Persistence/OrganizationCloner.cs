@@ -66,6 +66,9 @@ public sealed class OrganizationCloner
     {
         [typeof(User)] = "People are shared between the two organizations, not copied.",
         [typeof(UserSettings)] = "A person's own preferences, the same in every organization.",
+        [typeof(UserExternalLogin)] = "A person's own single sign-on, the same in every organization.",
+        [typeof(UserPasskey)] = "A person's own passkeys, the same in every organization.",
+        [typeof(AuthChallenge)] = "Sign-in steps in progress, which belong to no organization.",
         [typeof(Organization)] = "The copy is a new organization, made rather than copied row for row.",
         [typeof(JoinRequest)] = "Requests to join the original. Everyone in it is a member of the copy already.",
     };
