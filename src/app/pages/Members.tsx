@@ -22,6 +22,7 @@ import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import EmptyState from '@/app/components/EmptyState';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
+import { DateInput } from '@/app/components/DateInput';
 import { Label } from '@/app/components/ui/label';
 import { Textarea } from '@/app/components/ui/textarea';
 import {
@@ -748,21 +749,19 @@ export default function Members() {
             </div>
             <div>
               <Label htmlFor="renews">Renews on</Label>
-              <Input
+              <DateInput
                 id="renews"
-                type="date"
                 value={form.renewsAtUtc}
-                onChange={(e) => setForm({ ...form, renewsAtUtc: e.target.value })}
+                onChange={(day) => setForm({ ...form, renewsAtUtc: day })}
               />
             </div>
             <div>
               <Label htmlFor="startsOn">Membership starts</Label>
-              <Input
+              <DateInput
                 id="startsOn"
-                type="date"
                 value={form.startUndetermined ? '' : form.startsOn}
                 disabled={form.startUndetermined}
-                onChange={(e) => setForm({ ...form, startsOn: e.target.value })}
+                onChange={(day) => setForm({ ...form, startsOn: day })}
               />
             </div>
             <label className="flex items-end gap-2 pb-2 text-sm text-slate-600">

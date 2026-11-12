@@ -19,6 +19,7 @@ import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import EmptyState from '@/app/components/EmptyState';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
+import { DateInput } from '@/app/components/DateInput';
 import { Label } from '@/app/components/ui/label';
 import {
   Dialog,
@@ -856,10 +857,9 @@ export default function Charges() {
             </div>
             <div>
               <Label>Due date</Label>
-              <Input aria-label="Due date"
-                type="date"
+              <DateInput aria-label="Due date"
                 value={chargeForm.dueAtUtc}
-                onChange={(e) => setChargeForm({ ...chargeForm, dueAtUtc: e.target.value })}
+                onChange={(day) => setChargeForm({ ...chargeForm, dueAtUtc: day })}
               />
             </div>
           </div>

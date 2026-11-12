@@ -51,6 +51,7 @@ import {
 import { formatClubMoney } from '@/app/lib/clubMoney';
 import { customPeriod, dateInputValue, periodFor, PERIOD_LABELS, type PeriodPreset } from '@/app/pages/reports/reportFilters';
 import { currentDateLocale, currentNumberLocale } from '@/app/i18n/current';
+import { DateInput } from '@/app/components/DateInput';
 
 type GrainChoice = 'auto' | ClubReportGrain;
 
@@ -121,14 +122,14 @@ export default function HospitalityReports() {
       </label>
       {preset === 'custom' && (
         <>
-          <label className="text-sm font-medium text-slate-700">
-            From
-            <input type="date" className="mt-1 block h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
-          </label>
-          <label className="text-sm font-medium text-slate-700">
-            To
-            <input type="date" className="mt-1 block h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
-          </label>
+          <div className="text-sm font-medium text-slate-700">
+            <label htmlFor="club-report-from">From</label>
+            <DateInput id="club-report-from" className="mt-1 h-10 w-40 rounded-xl border-slate-300 bg-white" value={customFrom} onChange={setCustomFrom} />
+          </div>
+          <div className="text-sm font-medium text-slate-700">
+            <label htmlFor="club-report-to">To</label>
+            <DateInput id="club-report-to" className="mt-1 h-10 w-40 rounded-xl border-slate-300 bg-white" value={customTo} onChange={setCustomTo} />
+          </div>
         </>
       )}
       <label className="text-sm font-medium text-slate-700">

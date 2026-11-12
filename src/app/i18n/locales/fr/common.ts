@@ -32,4 +32,10 @@ export const common: Translation<typeof en> = {
   'language.saved': 'Langue enregistrée.',
   'language.notice': 'Cadence suit désormais la langue de votre espace de travail. Choisissez celle dans laquelle vous souhaitez le lire :',
   'language.noticeDismiss': 'Fermer',
+
+  'date.dd': 'jj',
+  'date.mm': 'mm',
+  'date.yyyy': 'aaaa',
+  'date.pick': 'Choisir une date',
+  'date.invalid': 'Ce n’est pas une date. Écrivez-la sous la forme {pattern}.',
 };

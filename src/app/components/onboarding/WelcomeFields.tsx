@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { CalendarClock, CalendarDays, Code2, Crown, HelpCircle, Languages, MessageSquareHeart, Settings2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Input } from '@/app/components/ui/input';
+import { DateInput } from '@/app/components/DateInput';
 import { Label } from '@/app/components/ui/label';
 import { Switch } from '@/app/components/ui/switch';
 import { Textarea } from '@/app/components/ui/textarea';
@@ -133,11 +134,10 @@ export function WelcomeFields({
                     </Label>
                     <div className="mt-1.5 flex items-center gap-2">
                       {/* Typing a date decides it; "to be decided" takes the date off. */}
-                      <Input
+                      <DateInput
                         id={`${idPrefix}-start`}
-                        type="date"
                         value={draft.undetermined ? '' : draft.startsOn}
-                        onChange={(e) => set({ startsOn: e.target.value, undetermined: !e.target.value })}
+                        onChange={(day) => set({ startsOn: day, undetermined: !day })}
                         className="h-10 bg-white"
                       />
                     </div>

@@ -18,6 +18,7 @@ import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import EmptyState from '@/app/components/EmptyState';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
+import { DateInput } from '@/app/components/DateInput';
 import { Label } from '@/app/components/ui/label';
 import { Textarea } from '@/app/components/ui/textarea';
 import {
@@ -684,10 +685,9 @@ export default function GiftCards() {
               </div>
               <div>
                 <Label>Expires</Label>
-                <Input aria-label="Expires"
-                  type="date"
+                <DateInput aria-label="Expires"
                   value={issueForm.expiresAtUtc}
-                  onChange={(e) => setIssueForm({ ...issueForm, expiresAtUtc: e.target.value })}
+                  onChange={(day) => setIssueForm({ ...issueForm, expiresAtUtc: day })}
                 />
               </div>
             </div>

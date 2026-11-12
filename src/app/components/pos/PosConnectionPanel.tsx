@@ -9,6 +9,7 @@ import { Link2, Loader2, Plus, RefreshCw, Trash2, Unplug } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
+import { DateInput } from '@/app/components/DateInput';
 import { Label } from '@/app/components/ui/label';
 import { LoadFailed } from '@/app/components/LoadFailed';
 import { ApiError } from '@/app/api/apiClient';
@@ -228,7 +229,7 @@ export function PosConnectionPanel({ canManage }: { canManage: boolean }) {
         <div className="grid gap-4 md:grid-cols-2">
           <div>
             <Label htmlFor="pos-from">Import tickets closed from</Label>
-            <Input id="pos-from" type="date" className="mt-1" value={form.importFrom} onChange={(e) => set({ importFrom: e.target.value })} />
+            <DateInput id="pos-from" className="mt-1" value={form.importFrom} onChange={(day) => set({ importFrom: day })} />
             <p className="mt-1 text-xs text-slate-500">
               Nothing closed before this is imported. Left empty, from when the import is turned on or first run. Changed, or with
               another location, tickets are read again from this date; those already in are not added twice.

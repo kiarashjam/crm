@@ -19,6 +19,7 @@ import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import EmptyState from '@/app/components/EmptyState';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
+import { DateInput } from '@/app/components/DateInput';
 import { Label } from '@/app/components/ui/label';
 import {
   Dialog,
@@ -644,10 +645,9 @@ export default function Subscriptions() {
             </div>
             <div>
               <Label>First billing date</Label>
-              <Input aria-label="First billing date"
-                type="date"
+              <DateInput aria-label="First billing date"
                 value={form.firstBilling}
-                onChange={(e) => setForm({ ...form, firstBilling: e.target.value })}
+                onChange={(day) => setForm({ ...form, firstBilling: day })}
               />
               <p className="mt-1 text-xs text-slate-500">
                 Billed in advance: the first period starts on this day and is billed then, the next one a period later.

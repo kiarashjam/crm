@@ -31,4 +31,10 @@ export const common = {
   'language.saved': 'Language saved.',
   'language.notice': 'Cadence now follows your workspace’s language. Choose the one you want to read it in:',
   'language.noticeDismiss': 'Close',
+
+  'date.dd': 'dd',
+  'date.mm': 'mm',
+  'date.yyyy': 'yyyy',
+  'date.pick': 'Pick a date',
+  'date.invalid': 'Not a date. Write it as {pattern}.',
 } satisfies Record<string, Message>;
