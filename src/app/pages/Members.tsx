@@ -70,7 +70,7 @@ import { CADENCE_LABEL, tierNamed, tiersOnSale, type CatalogItem } from '@/app/a
 import { currentDateLocale } from '@/app/i18n/current';
 import { asLanguage, LANGUAGES, LANGUAGE_NAMES, type Language } from '@/app/i18n/languages';
 import { useRegional } from '@/app/hooks/useMoney';
-import { useT, type I18nValue, type MessageKey } from '@/app/i18n';
+import { translate, useT, type I18nValue, type MessageKey } from '@/app/i18n';
 
 /** A member's status ("Lapsed") in the reader's language. */
 const statusLabel = (t: I18nValue['t'], status: MemberStatus) => t(`club.status.${status}` as MessageKey);
@@ -203,7 +203,8 @@ export default function Members() {
       const list = await getMembers();
       setMembers(list);
     } catch {
-      toast.error(t('members.loadFailed'));
+      // Read when shown, in the language of the moment, so the effect below runs once.
+      toast.error(translate('members.loadFailed'));
     } finally {
       setLoading(false);
     }
