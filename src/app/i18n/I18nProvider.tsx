@@ -7,7 +7,7 @@
 // it, and the app opens in it at once instead of flashing the workspace's language
 // while the account's answer is on its way.
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
 import { AUTH_SESSION_CHANGED, getAuthToken } from '@/app/lib/auth';
 import { getMyLanguage, saveMyLanguage } from '@/app/api/language';
@@ -106,6 +106,9 @@ export function I18nProvider({ children, initialLanguage }: { children: ReactNod
   const setPageLanguage = useCallback((language: string | null, kind: PageLanguageKind = 'reader') => {
     setPageLanguageState((was) => (was[kind] === language ? was : { ...was, [kind]: language }));
   }, []);
+  // Counts the person's choices, so an answer from the account that was asked for before
+  // the latest one can be told apart and dropped.
+  const choices = useRef(0);
 
   // The account's choice, when someone is signed in, and again whenever the session
   // changes (a sign-in, a sign-out, another account in another tab).
@@ -117,9 +120,12 @@ export function I18nProvider({ children, initialLanguage }: { children: ReactNod
         setAccountChoice(undefined);
         return;
       }
+      const asked = choices.current;
       getMyLanguage({ signal: controller.signal })
         .then((chosen) => {
-          if (cancelled) return;
+          // A language picked while the account was being asked (on the sign-in page, as
+          // the session began) is newer than this answer and is being saved over it.
+          if (cancelled || asked !== choices.current) return;
           setAccountChoice(chosen);
           // Kept here too, so this browser opens in it next time without waiting.
           if (chosen) {
@@ -168,6 +174,7 @@ export function I18nProvider({ children, initialLanguage }: { children: ReactNod
   const shown = catalogueIfLoaded(language) ? language : ready;
 
   const choose = useCallback(async (next: Language | null) => {
+    choices.current += 1;
     writeDeviceChoice(next);
     setDeviceChoice(next);
     if (next) await loadCatalogue(next).catch(() => undefined);

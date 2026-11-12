@@ -3,13 +3,13 @@
 // opens in it in every browser they use. A language they did not touch leaves the account's.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { http, HttpResponse } from 'msw';
 import { server } from '@/test/mocks/server';
 import { withQueries } from '@/test/queryWrapper';
-import { I18nProvider, loadCatalogue } from '@/app/i18n';
+import { I18nProvider, loadCatalogue, useT } from '@/app/i18n';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), message: vi.fn() } }));
 
@@ -42,14 +42,20 @@ beforeEach(async () => {
   );
 });
 
+/** Where sign-in lands, saying which language the app is in. */
+function SignedIn() {
+  const { language } = useT();
+  return <p>Signed in <span data-testid="language">{language}</span></p>;
+}
+
 function renderLogin() {
   return render(withQueries(
     <MemoryRouter initialEntries={['/login']}>
       <I18nProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route path="/organizations" element={<p>Signed in</p>} />
-          <Route path="/dashboard" element={<p>Signed in</p>} />
+          <Route path="/organizations" element={<SignedIn />} />
+          <Route path="/dashboard" element={<SignedIn />} />
         </Routes>
       </I18nProvider>
     </MemoryRouter>,
@@ -73,6 +79,33 @@ describe('the sign-in page in another language', () => {
 
     expect(await screen.findByText('Signed in')).toBeInTheDocument();
     await waitFor(() => expect(saved).toEqual([{ language: 'de' }]));
+  });
+
+  it('keeps the language picked here over the older one the account answers with as the session starts', async () => {
+    // The account says French; the person picks German on this page and signs in. The app
+    // asks the account for its language as the session starts, before the new choice is
+    // saved, and that older answer used to switch the app (and this browser) to French.
+    let asked = 0;
+    server.use(http.get(`${BASE}/api/settings/language`, () => {
+      asked += 1;
+      return HttpResponse.json({ language: 'fr' });
+    }));
+    const user = userEvent.setup();
+    renderLogin();
+    await user.selectOptions(screen.getByLabelText('Language'), 'de');
+    await user.type(screen.getByLabelText('E-Mail'), 'nora@example.ch');
+    await user.type(screen.getByLabelText('Passwort'), 'correct horse');
+    await user.click(last(screen.getAllByRole('button', { name: /Anmelden/ })));
+
+    expect(await screen.findByText('Signed in', { exact: false })).toBeInTheDocument();
+    await waitFor(() => expect(saved).toEqual([{ language: 'de' }]));
+    await waitFor(() => expect(asked).toBeGreaterThan(0));
+    // Let the account's answer arrive and be read.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(screen.getByTestId('language')).toHaveTextContent('de');
+    expect(localStorage.getItem('cadence.language')).toBe('de');
   });
 
   it('leaves the account alone when nobody touched the language', async () => {

@@ -19,7 +19,6 @@ import { invitationToResume } from '@/app/lib/inviteLink';
 import { BrandName } from '@/app/components/BrandName';
 import { useT, type Language, type MessageKey } from '@/app/i18n';
 import { LanguageSwitcher } from '@/app/i18n/LanguageSwitcher';
-import { saveMyLanguage } from '@/app/api/language';
 
 const HIGHLIGHTS: { icon: typeof Bot; title: MessageKey; body: MessageKey }[] = [
   { icon: Bot, title: 'login.highlight1Title', body: 'login.highlight1Body' },
@@ -30,12 +29,14 @@ const HIGHLIGHTS: { icon: typeof Bot; title: MessageKey; body: MessageKey }[] = 
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { t } = useT();
+  const { t, choose } = useT();
   // A language picked on this page is the person's latest choice: it goes onto their account
-  // once they are signed in. One they did not touch leaves whatever the account has.
+  // once they are signed in. One they did not touch leaves whatever the account has. Chosen
+  // again through the app's language, not saved behind its back: the account's answer to the
+  // question the app asks as the session starts is older, and would switch the page back.
   const [pickedLanguage, setPickedLanguage] = useState<Language | null | undefined>(undefined);
   const keepPickedLanguage = () => {
-    if (pickedLanguage !== undefined) void saveMyLanguage(pickedLanguage).catch(() => undefined);
+    if (pickedLanguage !== undefined) void choose(pickedLanguage);
   };
   // An invitation link opened while signed out: go back to it, token and all.
   const resumeInvitation = invitationToResume(location.state);
