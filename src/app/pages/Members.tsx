@@ -70,6 +70,14 @@ import { CADENCE_LABEL, tierNamed, tiersOnSale, type CatalogItem } from '@/app/a
 import { currentDateLocale } from '@/app/i18n/current';
 import { asLanguage, LANGUAGES, LANGUAGE_NAMES, type Language } from '@/app/i18n/languages';
 import { useRegional } from '@/app/hooks/useMoney';
+import { useT, type I18nValue, type MessageKey } from '@/app/i18n';
+
+/** A member's status ("Lapsed") in the reader's language. */
+const statusLabel = (t: I18nValue['t'], status: MemberStatus) => t(`club.status.${status}` as MessageKey);
+/** A dues frequency ("Monthly") in the reader's language. */
+const frequencyLabel = (t: I18nValue['t'], frequency: DuesFrequency) => t(`club.frequency.${frequency}` as MessageKey);
+/** "/monthly", "/Monat", "/mois": after an amount of dues. */
+const perLabel = (t: I18nValue['t'], frequency: DuesFrequency) => t(`club.per.${frequency}` as MessageKey);
 
 /** A tier's dues as a member's dues frequency: the catalogue bills the same four cadences. */
 function frequencyOf(tier: CatalogItem | undefined): DuesFrequency {
@@ -118,15 +126,17 @@ const day = 86_400_000;
 
 /** When the membership starts, as a badge: a date, "to be decided", or nothing said. */
 function StartBadge({ member }: { member: Member }) {
+  const { t } = useT();
   if (member.startUndetermined) {
-    return <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-200">Start to be decided</span>;
+    return <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-200">{t('members.startUndecided')}</span>;
   }
   if (!member.startsOnUtc) return null;
   const starts = new Date(member.startsOnUtc);
   const future = starts.getTime() > Date.now();
+  const date = starts.toLocaleDateString(currentDateLocale(), { day: 'numeric', month: 'short', year: 'numeric' });
   return (
     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ${future ? 'bg-sky-50 text-sky-700 ring-sky-200' : 'bg-slate-50 text-slate-600 ring-slate-200'}`}>
-      {future ? 'Starts' : 'Started'} {starts.toLocaleDateString(currentDateLocale(), { day: 'numeric', month: 'short', year: 'numeric' })}
+      {future ? t('members.startsOn', { date }) : t('members.startedOn', { date })}
     </span>
   );
 }
@@ -184,6 +194,7 @@ export default function Members() {
   // A new member is written to in the workspace's language unless staff pick another.
   const workspaceLanguage = asLanguage(useRegional().locale) ?? 'en';
   const [form, setForm] = useState<FormState>(() => newForm(undefined, workspaceLanguage));
+  const { t } = useT();
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -192,7 +203,7 @@ export default function Members() {
       const list = await getMembers();
       setMembers(list);
     } catch {
-      toast.error('Failed to load members');
+      toast.error(t('members.loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -211,7 +222,7 @@ export default function Members() {
   const memberColumns: RecordColumn<Member>[] = [
     {
       id: 'name',
-      label: 'Member',
+      label: t('members.colMember'),
       required: true,
       cell: (m) => (
         <span className="flex items-center gap-2.5">
@@ -220,15 +231,15 @@ export default function Members() {
         </span>
       ),
     },
-    { id: 'tier', label: 'Tier', cell: (m) => <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${tierBadge(m.tier)}`}>{m.tier}</span> },
-    { id: 'status', label: 'Status', cell: (m) => <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[m.status]}`}>{m.status}</span> },
-    { id: 'email', label: 'Email', cell: (m) => m.email || '—' },
-    { id: 'phone', label: 'Phone', byDefault: false, cell: (m) => m.phone || '—' },
-    { id: 'dues', label: 'Dues', numeric: true, cell: (m) => `${formatCurrency(m.duesAmount)} /${m.duesFrequency.toLowerCase()}` },
-    { id: 'house', label: 'House account', numeric: true, cell: (m) => <span className={m.houseAccountBalance < 0 ? 'text-rose-600' : ''}>{formatCurrency(m.houseAccountBalance)}</span> },
-    { id: 'renews', label: 'Renews', cell: (m) => formatDate(m.renewsAtUtc) },
-    { id: 'joined', label: 'Member since', byDefault: false, cell: (m) => formatDate(m.joinedAtUtc) },
-    { id: 'starts', label: 'Starts', cell: (m) => (m.startUndetermined || m.startsOnUtc ? <StartBadge member={m} /> : '—') },
+    { id: 'tier', label: t('members.tier'), cell: (m) => <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${tierBadge(m.tier)}`}>{m.tier}</span> },
+    { id: 'status', label: t('members.status'), cell: (m) => <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[m.status]}`}>{statusLabel(t, m.status)}</span> },
+    { id: 'email', label: t('members.colEmail'), cell: (m) => m.email || '—' },
+    { id: 'phone', label: t('members.colPhone'), byDefault: false, cell: (m) => m.phone || '—' },
+    { id: 'dues', label: t('members.colDues'), numeric: true, cell: (m) => `${formatCurrency(m.duesAmount)} ${perLabel(t, m.duesFrequency)}` },
+    { id: 'house', label: t('members.colHouse'), numeric: true, cell: (m) => <span className={m.houseAccountBalance < 0 ? 'text-rose-600' : ''}>{formatCurrency(m.houseAccountBalance)}</span> },
+    { id: 'renews', label: t('members.colRenews'), cell: (m) => formatDate(m.renewsAtUtc) },
+    { id: 'joined', label: t('members.colJoined'), byDefault: false, cell: (m) => formatDate(m.joinedAtUtc) },
+    { id: 'starts', label: t('members.colStarts'), cell: (m) => (m.startUndetermined || m.startsOnUtc ? <StartBadge member={m} /> : '—') },
   ];
   /** Open, edit and remove: the same in every layout. */
   const memberActions = (m: Member) => (
@@ -238,7 +249,7 @@ export default function Members() {
           type="button"
           onClick={() => openEdit(m)}
           className="rounded p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-          aria-label="Edit member"
+          aria-label={t('members.edit')}
         >
           <Pencil className="h-4 w-4" />
         </button>
@@ -249,7 +260,7 @@ export default function Members() {
           onClick={() => remove(m)}
           disabled={deletingId === m.id}
           className="rounded p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
-          aria-label="Remove member"
+          aria-label={t('members.remove')}
         >
           {deletingId === m.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
         </button>
@@ -312,15 +323,15 @@ export default function Members() {
 
   const save = async () => {
     if (!form.firstName.trim() || !form.lastName.trim()) {
-      toast.error('First and last name are required');
+      toast.error(t('members.namesRequired'));
       return;
     }
     if (!form.email.trim()) {
-      toast.error('Email is required');
+      toast.error(t('members.emailRequired'));
       return;
     }
     if (!form.tier) {
-      toast.error('Pick a tier');
+      toast.error(t('members.pickTier'));
       return;
     }
     setSaving(true);
@@ -351,7 +362,7 @@ export default function Members() {
           ...payload, phone: payload.phone ?? null, notes: payload.notes ?? null,
           ...(languageChanged ? { preferredLanguage: form.language } : {}),
         });
-        toast.success('Member updated');
+        toast.success(t('members.updated'));
       } else {
         // What adding them does to their account, said as it is: the fee is charged now;
         // starting the dues starts a subscription, whose first period the billing bills
@@ -365,37 +376,37 @@ export default function Members() {
           startDues: form.startDues || undefined,
           chargeInitiationFee: feeCharged || undefined,
         });
-        toast.success(feeCharged && duesStarted ? 'Member added: initiation fee charged, and their dues start today'
-          : feeCharged ? 'Member added and initiation fee charged'
-            : duesStarted ? 'Member added: their dues start today'
-              : 'Member added');
+        toast.success(feeCharged && duesStarted ? t('members.addedFeeAndDues')
+          : feeCharged ? t('members.addedFee')
+            : duesStarted ? t('members.addedDues')
+              : t('members.added'));
       }
       setDialogOpen(false);
       await load();
     } catch (err) {
       // A tier no longer offered, or no right to bill: the server says so in a sentence.
-      toast.error(err instanceof Error && err.message ? err.message : 'Failed to save member');
+      toast.error(err instanceof Error && err.message ? err.message : t('members.saveFailed'));
     } finally {
       setSaving(false);
     }
   };
 
   const remove = async (m: Member) => {
-    if (!confirm(`Remove ${m.firstName} ${m.lastName} from members?`)) return;
+    if (!confirm(t('members.removeConfirm', { name: `${m.firstName} ${m.lastName}` }))) return;
     setDeletingId(m.id);
     try {
       const ok = await deleteMember(m.id);
       if (ok) {
-        toast.success('Member removed');
+        toast.success(t('members.removed'));
         await load();
       } else {
-        toast.error('Failed to remove member');
+        toast.error(t('members.removeFailed'));
       }
     } catch (err) {
       // A member who still owes the club, is owed by it, or has a tab or a subscription
       // running is refused, and the server says what to do instead. Uncaught, the refusal
       // went nowhere and the button seemed to do nothing.
-      toast.error(err instanceof Error && err.message ? err.message : 'Failed to remove member');
+      toast.error(err instanceof Error && err.message ? err.message : t('members.removeFailed'));
     } finally {
       setDeletingId(null);
     }
@@ -413,21 +424,21 @@ export default function Members() {
           <PageHero
             icon={Crown}
             tone="indigo"
-            title="Members"
-            subtitle="Tiers, dues, renewals, and house account balances."
+            title={t('members.title')}
+            subtitle={t('members.subtitle')}
             actions={
               <WriteOnly permission={PERMISSION.ClubMembers}>
                 <Button onClick={openCreate} className={heroPrimary('indigo')}>
                   <Plus className="h-4 w-4" />
-                  Add member
+                  {t('members.add')}
                 </Button>
               </WriteOnly>
             }
             stats={[
-              { label: 'Total members', value: stats.total, icon: Crown, tone: 'indigo', hint: `${stats.active} active` },
-              { label: 'Monthly recurring', value: stats.monthlyRecurringRevenue, icon: Sparkles, tone: 'emerald', hint: 'active dues', format: formatCurrency },
-              { label: 'House accounts', value: stats.totalHouseAccountBalance, icon: DollarSign, tone: 'amber', hint: 'total balance', format: formatCurrency },
-              { label: 'Renewing < 30d', value: stats.renewingSoon, icon: CalendarClock, tone: 'rose', hint: `${stats.lapsed} lapsed · ${stats.pending} pending` },
+              { label: t('members.statTotal'), value: stats.total, icon: Crown, tone: 'indigo', hint: t('members.statTotalHint', { count: stats.active }) },
+              { label: t('members.statRecurring'), value: stats.monthlyRecurringRevenue, icon: Sparkles, tone: 'emerald', hint: t('members.statRecurringHint'), format: formatCurrency },
+              { label: t('members.statHouse'), value: stats.totalHouseAccountBalance, icon: DollarSign, tone: 'amber', hint: t('members.statHouseHint'), format: formatCurrency },
+              { label: t('members.statRenewing'), value: stats.renewingSoon, icon: CalendarClock, tone: 'rose', hint: t('members.statRenewingHint', { lapsed: stats.lapsed, pending: stats.pending }) },
             ]}
           />
 
@@ -440,7 +451,7 @@ export default function Members() {
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by name, email, phone..."
+                placeholder={t('members.search')}
                 className="pl-9 h-11 rounded-xl"
               />
             </div>
@@ -448,11 +459,11 @@ export default function Members() {
               value={tierFilter}
               onValueChange={(v) => setTierFilter(v as 'All' | MemberTier)}
             >
-              <SelectTrigger aria-label="Filter by tier" className="h-11 rounded-xl md:w-44">
-                <SelectValue placeholder="Tier" />
+              <SelectTrigger aria-label={t('members.filterTier')} className="h-11 rounded-xl md:w-44">
+                <SelectValue placeholder={t('members.tier')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="All">All tiers</SelectItem>
+                <SelectItem value="All">{t('members.allTiers')}</SelectItem>
                 {tierFilterChoices.map((t) => (
                   <SelectItem key={t} value={t}>
                     {t}
@@ -464,14 +475,14 @@ export default function Members() {
               value={statusFilter}
               onValueChange={(v) => setStatusFilter(v as 'All' | MemberStatus)}
             >
-              <SelectTrigger aria-label="Filter by status" className="h-11 rounded-xl md:w-44">
-                <SelectValue placeholder="Status" />
+              <SelectTrigger aria-label={t('members.filterStatus')} className="h-11 rounded-xl md:w-44">
+                <SelectValue placeholder={t('members.status')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="All">All statuses</SelectItem>
+                <SelectItem value="All">{t('members.allStatuses')}</SelectItem>
                 {MEMBER_STATUSES.map((s) => (
                   <SelectItem key={s} value={s}>
-                    {s}
+                    {statusLabel(t, s)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -487,13 +498,13 @@ export default function Members() {
           ) : filtered.length === 0 ? (
             <EmptyState
               icon={Crown}
-              title={members.length === 0 ? 'No members yet' : 'No members match these filters'}
+              title={members.length === 0 ? t('members.emptyTitle') : t('members.emptyFilteredTitle')}
               description={
                 members.length === 0
-                  ? 'Add your first member to start tracking tiers, dues, and renewals.'
-                  : 'Try clearing filters or adjusting your search.'
+                  ? t('members.emptyText')
+                  : t('members.emptyFilteredText')
               }
-              actionLabel={members.length === 0 ? 'Add member' : undefined}
+              actionLabel={members.length === 0 ? t('members.add') : undefined}
               onAction={members.length === 0 ? openCreate : undefined}
               actionPermission={PERMISSION.ClubMembers}
               variant="orange"
@@ -502,7 +513,7 @@ export default function Members() {
             <ViewTransition layout={view.layout}>
             {view.layout === 'table' ? (
               <RecordTable
-                label="Members"
+                label={t('members.title')}
                 items={filtered}
                 view={view}
                 getKey={(m) => m.id}
@@ -529,20 +540,20 @@ export default function Members() {
                     </div>
                     <div className="mt-3 flex flex-wrap gap-1.5">
                       <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${tierBadge(m.tier)}`}>{m.tier}</span>
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[m.status]}`}>{m.status}</span>
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[m.status]}`}>{statusLabel(t, m.status)}</span>
                     </div>
                     <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-3 text-sm">
                       <div>
-                        <p className="text-[10px] uppercase tracking-wide text-slate-500">Dues</p>
-                        <p className="font-semibold text-slate-900">{formatCurrency(m.duesAmount)}<span className="text-xs font-normal text-slate-500"> /{m.duesFrequency.toLowerCase()}</span></p>
+                        <p className="text-[10px] uppercase tracking-wide text-slate-500">{t('members.dues')}</p>
+                        <p className="font-semibold text-slate-900">{formatCurrency(m.duesAmount)}<span className="text-xs font-normal text-slate-500"> {perLabel(t, m.duesFrequency)}</span></p>
                       </div>
                       <div>
-                        <p className="text-[10px] uppercase tracking-wide text-slate-500">House</p>
+                        <p className="text-[10px] uppercase tracking-wide text-slate-500">{t('members.house')}</p>
                         <p className={`font-semibold ${m.houseAccountBalance < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{formatCurrency(m.houseAccountBalance)}</p>
                       </div>
                     </div>
                     <div className="mt-auto flex items-center justify-between pt-3">
-                      <span className="inline-flex items-center gap-1 text-xs text-slate-500"><CalendarClock className="h-3.5 w-3.5" /> Renews {formatDate(m.renewsAtUtc)}</span>
+                      <span className="inline-flex items-center gap-1 text-xs text-slate-500"><CalendarClock className="h-3.5 w-3.5" /> {t('members.renewsOnDate', { date: formatDate(m.renewsAtUtc) })}</span>
                       <div className="flex items-center">{memberActions(m)}</div>
                     </div>
                   </StaggerItem>
@@ -574,17 +585,17 @@ export default function Members() {
                               {m.tier}
                             </span>
                             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[m.status]}`}>
-                              {m.status}
+                              {statusLabel(t, m.status)}
                             </span>
                             <StartBadge member={m} />
                             {overdue && (
                               <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-rose-50 text-rose-700 ring-1 ring-rose-200">
-                                <AlertCircle className="w-3 h-3" /> Overdue
+                                <AlertCircle className="w-3 h-3" /> {t('members.overdue')}
                               </span>
                             )}
                             {renewSoon && (
                               <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-amber-50 text-amber-700 ring-1 ring-amber-200">
-                                Renews soon
+                                {t('members.renewsSoon')}
                               </span>
                             )}
                           </div>
@@ -598,7 +609,7 @@ export default function Members() {
                               </span>
                             )}
                             <span className="inline-flex items-center gap-1">
-                              <CalendarClock className="w-3.5 h-3.5" /> Renews {formatDate(m.renewsAtUtc)}
+                              <CalendarClock className="w-3.5 h-3.5" /> {t('members.renewsOnDate', { date: formatDate(m.renewsAtUtc) })}
                             </span>
                           </div>
                           {m.notes && (
@@ -608,16 +619,16 @@ export default function Members() {
                       </div>
                       <div className="flex items-center gap-6 md:gap-8">
                         <div className="text-right">
-                          <p className="text-xs uppercase tracking-wide text-slate-500">Dues</p>
+                          <p className="text-xs uppercase tracking-wide text-slate-500">{t('members.dues')}</p>
                           <p className="font-semibold text-slate-900">
                             {formatCurrency(m.duesAmount)}
                             <span className="text-xs font-normal text-slate-500">
-                              {' '}/{m.duesFrequency.toLowerCase()}
+                              {' '}{perLabel(t, m.duesFrequency)}
                             </span>
                           </p>
                         </div>
                         <div className="text-right">
-                          <p className="text-xs uppercase tracking-wide text-slate-500">House</p>
+                          <p className="text-xs uppercase tracking-wide text-slate-500">{t('members.house')}</p>
                           <p
                             className={`font-semibold ${
                               m.houseAccountBalance < 0 ? 'text-rose-600' : 'text-slate-900'
@@ -630,7 +641,7 @@ export default function Members() {
                           <Link
                             to={`/members/${m.id}`}
                             className="rounded p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-                            aria-label="Open member"
+                            aria-label={t('members.open')}
                           >
                             <ChevronRight className="h-4 w-4" />
                           </Link>
@@ -651,14 +662,14 @@ export default function Members() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{editing ? 'Edit member' : 'Add member'}</DialogTitle>
+            <DialogTitle>{editing ? t('members.edit') : t('members.add')}</DialogTitle>
             <DialogDescription>
-              Membership details, dues, and renewal date.
+              {t('members.dialogText')}
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-2">
             <div>
-              <Label htmlFor="firstName">First name</Label>
+              <Label htmlFor="firstName">{t('members.firstName')}</Label>
               <Input
                 id="firstName"
                 value={form.firstName}
@@ -666,7 +677,7 @@ export default function Members() {
               />
             </div>
             <div>
-              <Label htmlFor="lastName">Last name</Label>
+              <Label htmlFor="lastName">{t('members.lastName')}</Label>
               <Input
                 id="lastName"
                 value={form.lastName}
@@ -674,7 +685,7 @@ export default function Members() {
               />
             </div>
             <div>
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{t('members.email')}</Label>
               <Input
                 id="email"
                 type="email"
@@ -683,7 +694,7 @@ export default function Members() {
               />
             </div>
             <div>
-              <Label htmlFor="phone">Phone</Label>
+              <Label htmlFor="phone">{t('members.phone')}</Label>
               <Input
                 id="phone"
                 value={form.phone}
@@ -691,7 +702,7 @@ export default function Members() {
               />
             </div>
             <div>
-              <Label htmlFor="member-language">Writes to them in</Label>
+              <Label htmlFor="member-language">{t('members.language')}</Label>
               <select
                 id="member-language"
                 value={form.language}
@@ -701,10 +712,10 @@ export default function Members() {
               >
                 {LANGUAGES.map((code) => <option key={code} value={code} lang={code}>{LANGUAGE_NAMES[code]}</option>)}
               </select>
-              <p id="member-language-hint" className="mt-1 text-xs text-slate-500">Their statements, reminders and the club&apos;s emails.</p>
+              <p id="member-language-hint" className="mt-1 text-xs text-slate-500">{t('members.languageHint')}</p>
             </div>
             <div>
-              <Label>Tier</Label>
+              <Label>{t('members.tier')}</Label>
               <Select
                 value={form.tier}
                 onValueChange={(v) => {
@@ -718,8 +729,8 @@ export default function Members() {
                   });
                 }}
               >
-                <SelectTrigger aria-label="Tier">
-                  <SelectValue placeholder={catalogQuery.isError ? 'The tiers could not be read' : 'Pick a tier'} />
+                <SelectTrigger aria-label={t('members.tier')}>
+                  <SelectValue placeholder={catalogQuery.isError ? t('members.tiersUnreadable') : t('members.pickTier')} />
                 </SelectTrigger>
                 <SelectContent>
                   {tierChoices.map((t) => {
@@ -734,22 +745,22 @@ export default function Members() {
               </Select>
             </div>
             <div>
-              <Label>Status</Label>
+              <Label>{t('members.status')}</Label>
               <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v as MemberStatus })}>
-                <SelectTrigger aria-label="Status">
+                <SelectTrigger aria-label={t('members.status')}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {MEMBER_STATUSES.map((s) => (
                     <SelectItem key={s} value={s}>
-                      {s}
+                      {statusLabel(t, s)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <Label htmlFor="duesAmount">Dues amount</Label>
+              <Label htmlFor="duesAmount">{t('members.duesAmount')}</Label>
               <Input
                 id="duesAmount"
                 type="number"
@@ -760,25 +771,25 @@ export default function Members() {
               />
             </div>
             <div>
-              <Label>Frequency</Label>
+              <Label>{t('members.frequency')}</Label>
               <Select
                 value={form.duesFrequency}
                 onValueChange={(v) => setForm({ ...form, duesFrequency: v as DuesFrequency })}
               >
-                <SelectTrigger aria-label="Frequency">
+                <SelectTrigger aria-label={t('members.frequency')}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {DUES_FREQUENCIES.map((f) => (
                     <SelectItem key={f} value={f}>
-                      {f}
+                      {frequencyLabel(t, f)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <Label htmlFor="renews">Renews on</Label>
+              <Label htmlFor="renews">{t('members.renewsOn')}</Label>
               <DateInput
                 id="renews"
                 value={form.renewsAtUtc}
@@ -786,7 +797,7 @@ export default function Members() {
               />
             </div>
             <div>
-              <Label htmlFor="startsOn">Membership starts</Label>
+              <Label htmlFor="startsOn">{t('members.startsLabel')}</Label>
               <DateInput
                 id="startsOn"
                 value={form.startUndetermined ? '' : form.startsOn}
@@ -798,9 +809,9 @@ export default function Members() {
               <Checkbox
                 checked={form.startUndetermined}
                 onCheckedChange={(v) => setForm({ ...form, startUndetermined: v === true })}
-                aria-label="Start still to be decided"
+                aria-label={t('members.startUndetermined')}
               />
-              Start still to be decided
+              {t('members.startUndetermined')}
             </label>
             {!editing && (
               <WriteOnly permission={PERMISSION.ManageMoney}>
@@ -809,48 +820,50 @@ export default function Members() {
                     <Checkbox
                       checked={form.startDues}
                       onCheckedChange={(v) => setForm({ ...form, startDues: v === true })}
-                      aria-label="Start their dues today"
+                      aria-label={t('members.startDues')}
                     />
-                    Start their dues today ({formatCurrency(Number(form.duesAmount) || 0)} a{' '}
-                    {CADENCE_LABEL[form.duesFrequency] ?? 'month'})
+                    {t('members.startDuesText', {
+                      amount: formatCurrency(Number(form.duesAmount) || 0),
+                      period: CADENCE_LABEL[form.duesFrequency] ? t(`club.cadence.${form.duesFrequency}` as MessageKey) : t('club.cadence.Monthly'),
+                    })}
                   </label>
                   {formTier?.initiationFee ? (
                     <label className="flex items-center gap-2 text-sm text-slate-700">
                       <Checkbox
                         checked={form.chargeInitiationFee}
                         onCheckedChange={(v) => setForm({ ...form, chargeInitiationFee: v === true })}
-                        aria-label="Charge the initiation fee"
+                        aria-label={t('members.chargeFee')}
                       />
-                      Charge the {formTier.name} initiation fee ({formatCurrency(formTier.initiationFee)})
+                      {t('members.chargeFeeText', { tier: formTier.name, amount: formatCurrency(formTier.initiationFee) })}
                     </label>
                   ) : null}
                 </div>
               </WriteOnly>
             )}
             <div className="md:col-span-2">
-              <Label htmlFor="notes">Notes</Label>
+              <Label htmlFor="notes">{t('members.notes')}</Label>
               <Textarea
                 id="notes"
                 value={form.notes}
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
                 rows={3}
-                placeholder="Preferences, allergies, anniversaries..."
+                placeholder={t('members.notesPlaceholder')}
               />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>
-              Cancel
+              {t('common.cancel')}
             </Button>
             <Button onClick={save} disabled={saving}>
               {saving ? (
                 <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" /> {t('members.saving')}
                 </>
               ) : editing ? (
-                'Save changes'
+                t('members.saveChanges')
               ) : (
-                'Add member'
+                t('members.add')
               )}
             </Button>
           </DialogFooter>

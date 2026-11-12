@@ -5,7 +5,8 @@ import { messages } from './messages';
 import { signing } from './signing';
 import { settings } from './settings';
 import { nav } from './nav';
+import { members } from './members';
 
-export const sections = { common, publicPages, messages, signing, settings, nav };
+export const sections = { common, publicPages, messages, signing, settings, nav, members };
 
-export const en = { ...common, ...publicPages, ...messages, ...signing, ...settings, ...nav };
+export const en = { ...common, ...publicPages, ...messages, ...signing, ...settings, ...nav, ...members };
