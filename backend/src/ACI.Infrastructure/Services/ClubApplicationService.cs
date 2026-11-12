@@ -1038,9 +1038,16 @@ public sealed class ClubApplicationService : IClubApplications
             AppLanguages.Normalise(workspace?.Locale));
     }
 
-    /// <summary>The words beside the marketing checkbox: the club's own, else the standard ones in <paramref name="language"/>.</summary>
+    /// <summary>
+    /// The words beside the marketing checkbox: the club's own, else the standard ones in
+    /// <paramref name="language"/>. The wording dialog shows the English standard sentence when
+    /// the club wrote none, and saving any change sends it back, so that sentence stored is read
+    /// as the standard one, not as words the club wrote (as the capture form reads its default).
+    /// </summary>
     private static string ConsentTextIn(ClubApplicationForm form, string language) =>
-        string.IsNullOrWhiteSpace(form.ConsentText) ? MemberTexts.T(language, "form.applicationConsent") : form.ConsentText;
+        string.IsNullOrWhiteSpace(form.ConsentText) || form.ConsentText.Trim() == DefaultConsentText
+            ? MemberTexts.T(language, "form.applicationConsent")
+            : form.ConsentText;
 
     public async Task<Result<PublicApplicationReceipt>> SubmitAsync(string token, PublicApplicationRequest request, CancellationToken ct = default)
     {

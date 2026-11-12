@@ -197,6 +197,40 @@ public class MemberLanguageTests
     }
 
     [Fact]
+    public async Task WordingSavedWithTheStandardConsentSentence_StillShowsAndRecordsItInTheApplicantsLanguage()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (owner, _, _) = await ClubAsync(factory);
+        await Json(await owner.PutAsync("/api/applications/form", Body(new { isActive = true })), "set up the form");
+        // The wording dialog opens with the standard sentence in the consent box (the form
+        // reads it back in English when the club wrote none), so saving a new introduction
+        // sends that English sentence along with it.
+        var staffForm = await Json(await owner.GetAsync("/api/applications/form"), "the form as staff see it");
+        var shown = staffForm.GetProperty("form").GetProperty("consentText").GetString();
+        shown.Should().StartWith("Yes, I would like to hear", "the dialog shows the standard sentence in English");
+        var token = (await Json(await owner.PutAsync("/api/applications/form", Body(new
+        {
+            intro = "Bienvenue au club.", successMessage = "", consentText = shown,
+        })), "save the wording as the dialog showed it")).GetProperty("publicToken").GetString();
+        using var visitor = factory.CreateClient();
+
+        (await Json(await visitor.GetAsync($"/api/public/apply/{token}?lang=fr"), "open the form in French"))
+            .GetProperty("consentText").GetString().Should().StartWith("Oui, je souhaite recevoir par e-mail",
+                "the standard sentence is not the club's own words, even when it was saved back");
+        await Json(await visitor.PostAsync($"/api/public/apply/{token}", Body(new
+        {
+            firstName = "Lena", lastName = "Weber", email = "lena@example.ch", marketingConsent = true, language = "fr",
+        })), "apply in French");
+        (await factory.Services.Read(db => db.ConsentRecords.Single().Detail)).Should().Contain("Oui, je souhaite recevoir par e-mail",
+            "the record keeps the words the applicant read");
+
+        // Words the club wrote itself are shown as written, in every language.
+        await Json(await owner.PutAsync("/api/applications/form", Body(new { consentText = "Oui, envoyez-moi les nouvelles du Pavillon." })), "write its own");
+        (await Json(await visitor.GetAsync($"/api/public/apply/{token}?lang=de"), "open the form in German"))
+            .GetProperty("consentText").GetString().Should().Be("Oui, envoyez-moi les nouvelles du Pavillon.");
+    }
+
+    [Fact]
     public async Task TheCaptureFormShowsItsStandardWordsInTheLanguageAsked_AndAnsweredInIt()
     {
         using var factory = new CustomWebApplicationFactory();
