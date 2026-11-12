@@ -258,6 +258,12 @@ export function resourcesChangedBy(method: string | undefined, path: string, bod
   if ((base === 'contacts' || base === 'leads') && segments.includes('relationships')) {
     return [...new Set([...(CHANGES[base] ?? [base]), 'households', 'members'])];
   }
+  // Countersigning a contract approves the membership application of its lead or deal: the
+  // member is made or linked, their dues start, the initiation fee is charged, they join
+  // the household and are sent the welcome (logged in their communications).
+  if (base === 'contracts' && last === 'countersign') {
+    return [...new Set([...(CHANGES.contracts ?? []), ...(CHANGES.applications ?? [])])];
+  }
   // Handing a deal's contact to the member portal notes it on the deal's and the contact's
   // timelines, and can add them to the club's members.
   if (base === 'deals' && last === 'onboarding') return [...(CHANGES.deals ?? []), 'members', 'club-reports'];

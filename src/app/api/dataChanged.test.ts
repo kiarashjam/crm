@@ -219,6 +219,13 @@ describe('what a write changes', () => {
     expect(resourcesChangedBy('PUT', '/api/contacts/c-1')).not.toContain('households');
   });
 
+  it("countersigning a contract refreshes the member and the money its admission makes", () => {
+    expect(resourcesChangedBy('POST', '/api/contracts/k-1/countersign')).toEqual(expect.arrayContaining([
+      'contracts', 'deals', 'applications', 'members', 'charges', 'subscriptions', 'communications', 'households', 'club-reports',
+    ]));
+    expect(resourcesChangedBy('POST', '/api/contracts/k-1/send')).not.toContain('members');
+  });
+
   it("handing a deal's contact to the portal can add them to the club's members", () => {
     expect(resourcesChangedBy('POST', '/api/deals/d-1/onboarding')).toEqual(expect.arrayContaining(['deals', 'activities', 'contacts', 'members', 'club-reports']));
     expect(resourcesChangedBy('PUT', '/api/deals/d-1')).not.toContain('members');
