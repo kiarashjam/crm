@@ -33,6 +33,25 @@ vi.mock('@/app/contexts/OrgContext', () => ({
   useOrgOptional: () => ({ currentOrg: org }),
 }));
 
+// A keystroke can land while React commits the render a newer copy of the lead brings,
+// before that render's effects run. A layout effect in the dialog runs in exactly that
+// gap, so a test can type there (see "keeps a keystroke made while the newer copy arrives").
+const commit = vi.hoisted(() => ({ next: null as null | (() => void) }));
+vi.mock('@/app/components/ui/label', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/app/components/ui/label')>();
+  const React = await import('react');
+  function Label(props: React.ComponentProps<typeof actual.Label>) {
+    React.useLayoutEffect(() => {
+      const run = commit.next;
+      if (!run) return;
+      commit.next = null;
+      run();
+    });
+    return React.createElement(actual.Label, props);
+  }
+  return { ...actual, Label };
+});
+
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn(), message: vi.fn() }));
 vi.mock('sonner', () => ({ toast }));
 
@@ -141,6 +160,27 @@ describe('the lead edit dialog', () => {
     await waitFor(() => expect(api.updateLead).toHaveBeenCalledTimes(1));
     // Still checked against the copy it was typed on, so a stale save is refused, not written.
     expect(api.updateLead.mock.calls[0]![1]).toMatchObject({ phone: '+41 79 222 22 22', version: 'v1' });
+  });
+
+  it('keeps a keystroke made while the newer copy arrives', async () => {
+    let arrive: (fresh: Lead) => void = () => {};
+    // The first read is the ?edit hand-over's own; the second is the dialog's.
+    api.getLeadById.mockResolvedValueOnce(lead).mockReturnValueOnce(new Promise<Lead>((resolve) => { arrive = resolve; }));
+
+    const phone = await openEdit();
+    await waitFor(() => expect(api.getLeadById).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      // Typed as React commits the render the newer copy brings, before its effects run.
+      commit.next = () => fireEvent.change(phone, { target: { value: '+41 79 222 22 22' } });
+      arrive({ ...lead, phone: '+41 79 555 55 55', description: 'Coming to the gala', version: 'v2' });
+    });
+
+    expect(commit.next).toBeNull();
+    expect(screen.getByDisplayValue('+41 79 222 22 22')).toBeInTheDocument();
+    await saveDialog();
+    await waitFor(() => expect(api.updateLead).toHaveBeenCalledTimes(1));
+    // Typed on the newer copy, and checked against that copy's version.
+    expect(api.updateLead.mock.calls[0]![1]).toMatchObject({ phone: '+41 79 222 22 22', description: 'Coming to the gala', version: 'v2' });
   });
 
   it('keeps the referrer when the newer copy arrives before the contact list does', async () => {

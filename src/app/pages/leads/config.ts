@@ -137,6 +137,8 @@ export const EMPTY_LEAD_FORM = {
   leadScore: '',
   description: '',
   lifecycleStage: '',
+  version: '',
+  referredByContactIdAsRead: '',
 };
 
 // Default convert form state
