@@ -69,8 +69,11 @@ public interface IClubApplications
 
     /// <summary>
     /// The hook a countersigned contract calls: approves the open application of the contract's
-    /// lead or deal (or the one it names), once, as the person who countersigned. A contract with
-    /// no application behind it admits nobody. Answers what it approved.
+    /// lead or deal (or the one it names), once, as the person who countersigned, held to the
+    /// approve button's rules. Someone without club.members (a sales rep can countersign)
+    /// admits nobody, and the application stays open for a reviewer; someone without
+    /// money.manage admits the member with the dues and fee left pending. A contract with no
+    /// application behind it admits nobody. Answers what it approved.
     /// </summary>
     Task<IReadOnlyList<ApprovalResultDto>> AdmitForContractAsync(Guid organizationId, Guid contractId, Guid? leadId, Guid? dealId, Guid userId, CancellationToken ct = default);
 

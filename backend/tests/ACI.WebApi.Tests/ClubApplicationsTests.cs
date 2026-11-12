@@ -408,6 +408,70 @@ public class ClubApplicationsTests
         (await Read(factory, db => db.ClubSubscriptions.Count(s => s.MemberId == member.Id))).Should().Be(1, "the dues started");
     }
 
+    /// <summary>
+    /// A lead with an open Silver application and a membership contract the applicant has signed,
+    /// waiting for the club's countersignature. Made by the owner.
+    /// </summary>
+    private static async Task<(Guid Lead, string ContractId)> SignedMembershipContractAsync(CustomWebApplicationFactory factory, HttpClient owner)
+    {
+        var lead = (await Json(await owner.PostAsync("/api/leads", Body(new { name = "Jean-Michel Dupont", email = "jm@example.ch", status = "New" })), "lead"))
+            .GetProperty("id").GetGuid();
+        var application = await Json(await owner.PostAsync($"/api/applications/from-lead/{lead}", null), "apply from the lead");
+        await Json(await owner.PutAsync($"/api/applications/{application.GetProperty("id").GetGuid()}", Body(new { requestedTier = "Silver" })), "pick the tier");
+        var draft = await Json(await owner.PostAsync("/api/contracts/draft", Body(new { leadId = lead, title = "Membership Agreement" })), "draft");
+        var contractId = draft.GetProperty("id").GetString()!;
+        await Json(await owner.PutAsync($"/api/contracts/{contractId}", Body(new
+        {
+            title = "Membership Agreement", body = "MEMBERSHIP AGREEMENT\n\n1. Fees: CHF 129 a month.\n",
+            counterpartyName = "Jean-Michel Dupont", counterpartyEmail = "jm@example.ch",
+        })), "edit");
+        var sent = await Json(await owner.PostAsync($"/api/contracts/{contractId}/send", null), "send");
+        var token = sent.GetProperty("signingUrl").GetString()!.Split("/sign/").Last();
+        using var anon = factory.CreateClient();
+        await Json(await anon.PostAsync($"/api/public/contracts/{token}/sign", Body(new { signatureName = "Jean-Michel Dupont", agreed = true })), "sign");
+        return (lead, contractId);
+    }
+
+    [Fact]
+    public async Task CountersigningByASalesRep_ExecutesTheContractButAdmitsNobody()
+    {
+        // Countersigning needs only records.edit, which a sales rep has; admitting a member needs
+        // club.members and charging the fee needs money.manage. The rep's countersignature used
+        // to admit the member and post the fee and dues all the same.
+        using var factory = new CustomWebApplicationFactory();
+        var (owner, _, org) = await ClubAsync(factory);
+        var (_, contractId) = await SignedMembershipContractAsync(factory, owner);
+        var rep = await JoinAsync(factory, owner, org, "rep@pavillon46.ch", "sales_rep");
+
+        var executed = await Json(await rep.PostAsync($"/api/contracts/{contractId}/countersign", Body(new { signatureName = "Sam Rep", agreed = true })), "the rep countersigns");
+
+        executed.GetProperty("status").GetString().Should().Be("countersigned", "the contract is executed whoever countersigns it");
+        (await Read(factory, db => db.ClubMembers.Count())).Should().Be(0, "a sales rep may not admit members");
+        (await Read(factory, db => db.ClubCharges.Count())).Should().Be(0, "nor charge anyone");
+        (await Read(factory, db => db.ClubSubscriptions.Count())).Should().Be(0);
+        (await Read(factory, db => db.ClubApplications.Single().Status)).Should().NotBe("Approved", "the application waits for a reviewer");
+    }
+
+    [Fact]
+    public async Task CountersigningByAMembershipDirector_AdmitsTheMemberAndLeavesTheMoneyPending()
+    {
+        // A membership director may admit members but not handle money: the approve button
+        // admits with the dues and fee pending for them, and so does their countersignature.
+        using var factory = new CustomWebApplicationFactory();
+        var (owner, _, org) = await ClubAsync(factory);
+        var (lead, contractId) = await SignedMembershipContractAsync(factory, owner);
+        var director = await JoinAsync(factory, owner, org, "director@pavillon46.ch", "membership_director");
+
+        await Json(await director.PostAsync($"/api/contracts/{contractId}/countersign", Body(new { signatureName = "Dana Director", agreed = true })), "the director countersigns");
+
+        var member = await Read(factory, db => db.ClubMembers.Single());
+        member.LeadId.Should().Be(lead);
+        var approved = await Read(factory, db => db.ClubApplications.Single());
+        (approved.Status, approved.ApprovalTrigger, approved.MoneyPending).Should().Be(("Approved", ApprovalTriggers.Contract, true));
+        (await Read(factory, db => db.ClubCharges.Count())).Should().Be(0, "no fee without money.manage");
+        (await Read(factory, db => db.ClubSubscriptions.Count())).Should().Be(0, "no dues without money.manage");
+    }
+
     [Fact]
     public async Task AContractWithNoApplicationBehindIt_AdmitsNobody()
     {
