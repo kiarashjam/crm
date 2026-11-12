@@ -116,17 +116,18 @@ export default function Help() {
             </div>
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
               <p className="text-slate-700 mb-4">
-                We only use what’s needed to generate and send copy. Here’s the short version:
+                What happens to the data in Cadence, in short:
               </p>
               <ul className="list-disc list-inside space-y-2 text-slate-700 mb-4">
-                <li>Access is limited to the data required for copy and sending</li>
+                <li>Each workspace sees only its own records, and each person in it only what their permissions allow</li>
                 <li>Data is encrypted in transit and at rest</li>
-                <li>We don’t sell or share your data</li>
+                <li>It is never sold, and goes only to the services the privacy notice lists</li>
+                <li>A club can download everything it holds about a person, or erase them, from Privacy requests</li>
                 <li>You can ask for your account and data to be deleted at any time (Settings → Account says how)</li>
-                <li>We follow GDPR, CCPA, and similar privacy rules</li>
+                <li>The Swiss data protection act (nFADP) applies, and the GDPR for people in the EU and EEA</li>
               </ul>
               <Link to="/privacy" className="text-teal-700 hover:text-teal-800 font-medium focus-visible:underline">
-                Full Privacy Policy →
+                Full privacy notice →
               </Link>
             </div>
           </section>
