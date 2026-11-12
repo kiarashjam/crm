@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
-import { CheckCircle2, Copy, KeyRound, Loader2, MessageSquareHeart, PlugZap, Save, ShieldCheck, Wand2, XCircle } from 'lucide-react';
+import { CheckCircle2, Copy, KeyRound, Loader2, Lock, MessageSquareHeart, PlugZap, Save, ShieldCheck, Wand2, XCircle } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { servesDemoData } from '@/app/api/apiClient';
 import { orgCan, PERMISSION, type Organization } from '@/app/api/organizations';
 import {
@@ -15,6 +16,7 @@ import { Switch } from '@/app/components/ui/switch';
 import { Textarea } from '@/app/components/ui/textarea';
 import { cn } from '@/app/components/ui/utils';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { useOrgMembers } from '@/app/hooks/queries/records';
 import { EmailPreviewFrame, PlaceholderChips, insertAt } from '@/app/components/onboarding';
 
 const STARTER = `<div style="font-family:Georgia,serif;max-width:560px;margin:0 auto;padding:32px;background:#ffffff;color:#0f172a">
@@ -25,6 +27,13 @@ const STARTER = `<div style="font-family:Georgia,serif;max-width:560px;margin:0 
   <p><a href="{{setPasswordUrl}}" style="display:inline-block;padding:12px 22px;border-radius:999px;background:#0f172a;color:#fff;text-decoration:none;font:600 14px system-ui,sans-serif">Choisir mon mot de passe</a></p>
   <p style="font:13px system-ui,sans-serif;color:#94a3b8">{{workspace}} · <a href="{{portalUrl}}" style="color:#94a3b8">Espace membre</a></p>
 </div>`;
+
+/** "Anna", "Anna and Ben", "Anna, Ben and Carla", "Anna, Ben and 3 others". */
+function namesList(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? '';
+  if (names.length <= 3) return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+  return `${names.slice(0, 2).join(', ')} and ${names.length - 2} others`;
+}
 
 const SAMPLE = { name: 'Camille Laurent', email: 'camille@example.com', company: 'Maison Laurent', dealName: 'Gold membership' };
 
@@ -38,6 +47,15 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
   const [loading, setLoading] = useState(!servesDemoData());
   usePageLoading(loading);
   const canEdit = Boolean(currentOrg) && orgCan(currentOrg, PERMISSION.ManageSettings);
+  // Who can change it, for someone who cannot: the fields alone, greyed out, said nothing.
+  const members = useOrgMembers().data;
+  const managers = useMemo(
+    () => (members ?? [])
+      .filter((m) => orgCan({ role: m.role, permissions: m.permissions }, PERMISSION.ManageSettings))
+      .map((m) => m.name || m.email)
+      .filter(Boolean),
+    [members],
+  );
 
   const [url, setUrl] = useState('');
   const [enabled, setEnabled] = useState(true);
@@ -172,6 +190,21 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
           {settings?.configured ? 'Connected' : 'Not connected'}
         </span>
       </div>
+
+      {!canEdit && (
+        <div role="status" className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <Lock className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden />
+          <div>
+            <p className="font-medium">You can see these settings, but not change them.</p>
+            <p className="mt-0.5 text-amber-800">
+              Changing the portal, its secret or the welcome email takes the <strong>Manage settings</strong> permission
+              {managers.length > 0 ? `, which ${namesList(managers)} ${managers.length === 1 ? 'has' : 'have'}` : ''}.
+              They can change it here, or give you that permission in{' '}
+              <Link to="/settings?tab=organization" className="font-medium underline underline-offset-2">Settings › Team</Link>.
+            </p>
+          </div>
+        </div>
+      )}
 
       <ol className="grid gap-3 sm:grid-cols-3">
         {[
