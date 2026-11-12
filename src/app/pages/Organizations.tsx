@@ -149,7 +149,9 @@ export default function Organizations() {
   useEffect(() => {
     if (servesDemoData() || !hasFetched) return;
     let alive = true;
-    const ids = organizations.map((o) => o.id);
+    // A workspace that wants single sign-on from this session refuses its member list
+    // too: its card says so instead of showing a count that failed.
+    const ids = organizations.filter((o) => !o.ssoSignInNeeded).map((o) => o.id);
     const owned = organizations.filter((o) => o.isOwner).map((o) => o.id);
 
     void (async () => {

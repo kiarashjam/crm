@@ -12,7 +12,7 @@
 
 import { memo } from 'react';
 import { motion } from 'motion/react';
-import { Crown, Eye, Users, ShieldCheck, CornerDownLeft } from 'lucide-react';
+import { Crown, Eye, Users, ShieldCheck, CornerDownLeft, KeyRound } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
 import { liftOnHover } from '@/app/components/motion/Stagger';
 import type { Organization } from '@/app/api/organizations';
@@ -73,7 +73,7 @@ export const WorkspaceCard = memo(function WorkspaceCard({
       data-active={isActive || undefined}
       data-highlighted={isHighlighted || undefined}
       aria-current={isActive ? 'true' : undefined}
-      aria-label={`Open ${org.name}${isActive ? ' (current workspace)' : ''}`}
+      aria-label={`Open ${org.name}${isActive ? ' (current workspace)' : ''}${org.ssoSignInNeeded ? ' (asks you to sign in with single sign-on)' : ''}`}
       // The chosen tile must not be re-animated by the exit choreography — the
       // overlay takes over its plate, so anything applied here would fight it.
       // The entrance belongs to the StaggerItem around it, so none here.
@@ -152,6 +152,14 @@ export const WorkspaceCard = memo(function WorkspaceCard({
                   Current
                 </span>
               )}
+              {/* Its owner requires single sign-on and this session began another way:
+                  opening it asks for Google or Microsoft first. */}
+              {org.ssoSignInNeeded && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                  <KeyRound className="h-3 w-3" aria-hidden />
+                  Single sign-on
+                </span>
+              )}
               {/* Undefined = still loading, null = the request failed. Saying
                   "—" for a failure beats silently showing nothing, which reads
                   as "this workspace has no members". */}
@@ -170,7 +178,9 @@ export const WorkspaceCard = memo(function WorkspaceCard({
         {/* Enter affordance, revealed on the highlighted tile. */}
         <span className="relative mt-3.5 flex items-center justify-between gap-3 border-t border-slate-100 px-4 py-2.5 sm:px-5">
           <span className="truncate text-xs text-slate-500">
-            {isActive ? 'Continue where you left off' : 'Open this workspace'}
+            {org.ssoSignInNeeded
+              ? 'Sign in with Google or Microsoft to open it'
+              : isActive ? 'Continue where you left off' : 'Open this workspace'}
           </span>
           <span
             className={cn(
