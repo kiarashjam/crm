@@ -55,11 +55,12 @@ public sealed class ClubApplicationService : IClubApplications
     private readonly ITenantContext _tenant;
     private readonly ILogger<ClubApplicationService> _logger;
     private readonly ILedgerReadObserver _reads;
+    private readonly IWorkspaceModules _modules;
 
     public ClubApplicationService(AppDbContext db, IClubLedger ledger, IClubCatalog catalog, IClubRules rules, IOutbox outbox,
         IConsentRepository consent, IPermissionService permissions, IWorkspaceRecords records, ILeadService leads,
         ILeadOpsService leadOps, INotificationService notifications, ITenantContext tenant, ILogger<ClubApplicationService> logger,
-        ILedgerReadObserver reads)
+        ILedgerReadObserver reads, IWorkspaceModules modules)
     {
         _db = db;
         _ledger = ledger;
@@ -75,6 +76,7 @@ public sealed class ClubApplicationService : IClubApplications
         _tenant = tenant;
         _logger = logger;
         _reads = reads;
+        _modules = modules;
     }
 
     // ── reads ────────────────────────────────────────────────────────────────
@@ -299,6 +301,16 @@ public sealed class ClubApplicationService : IClubApplications
         if (!held.Contains(MemberPermissions.ClubMembers))
         {
             _logger.LogInformation("Contract {ContractId} was countersigned by someone who may not admit members; any application behind it stays open for a reviewer", contractId);
+            return [];
+        }
+        // A workspace that has turned its club off admits nobody from the Sales side either, as
+        // a deal's handoff adds nobody to its members (OnboardingService): the member, their
+        // initiation fee and their dues would be posted to a club whose pages and endpoints are
+        // gone, where nobody could see or bill them. The contract is still executed; the
+        // application stays open for a reviewer once the club is on again.
+        if (!await _modules.IsOnAsync(organizationId, WorkspaceModules.Club, ct))
+        {
+            _logger.LogInformation("Contract {ContractId} was countersigned while the club is turned off; any application behind it stays open for a reviewer", contractId);
             return [];
         }
         var mayHandleMoney = held.Contains(MemberPermissions.ManageMoney);
