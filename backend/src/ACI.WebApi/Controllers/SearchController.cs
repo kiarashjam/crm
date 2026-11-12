@@ -41,6 +41,7 @@ public class SearchController : ControllerBase
     /// Results are limited to entities the user has access to.
     /// </remarks>
     /// <param name="q">Search query string.</param>
+    /// <param name="modules">Which modules the workspace has on: with Sales off, leads and deals are left out.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>Search results grouped by entity type.</returns>
     /// <response code="200">Returns search results.</response>

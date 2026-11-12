@@ -332,7 +332,7 @@ public class ClubReportsTests
         visits.GetProperty("byVenue").EnumerateArray().Select(v => (v.GetProperty("name").GetString(), v.GetProperty("count").GetInt32()))
             .Should().Equal(("Bar", 2), ("Spa", 1));
 
-        report.GetProperty("topSpenders").EnumerateArray().Select(s => (s.GetProperty("memberName").GetString(), s.GetProperty("amount").GetDecimal()))
+        report.GetProperty("topSpenders").EnumerateArray().Select(s => (s.GetProperty("memberName").GetString()!, s.GetProperty("amount").GetDecimal()))
             .Should().Equal(new[] { ("Anna Keller", 300m), ("Sam Keller", 150m), ("Bruno Meier", 100m) },
                 "a rolled-up charge is the spend of who ran it up, and a voided bill is no spend");
     }
@@ -421,6 +421,9 @@ public class ClubReportsTests
         var res = await club.Owner.GetAsync(Range().Replace("/api/club-reports?", "/api/club-reports/export?"));
         res.StatusCode.Should().Be(HttpStatusCode.OK);
         res.Content.Headers.ContentType!.MediaType.Should().Be("text/csv");
+        // Named by its days on the workspace's calendar: January to March in Zurich, whose
+        // midnight on 1 January is still 31 December in UTC.
+        res.Content.Headers.ContentDisposition!.FileName!.Trim('"').Should().Be("club-report-2025-01-01-to-2025-03-31.csv");
         var text = await res.Content.ReadAsStringAsync();
         var lines = text.Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
         lines[0].TrimStart('﻿').Should().Be("Figure,Period,Currency,Detail,Amount,Count");
