@@ -214,6 +214,7 @@ public sealed partial class PersonDataService
         Add("Activities and notes on their records", ErasureActions.Delete, d.Activities.Count);
         Add("Notes on other records that mention them", ErasureActions.Anonymise, d.ActivityMentions.Count, "The mention is replaced by the pseudonym.");
         Add("Tasks", ErasureActions.Delete, d.Tasks.Count, d.TaskComments.Count > 0 ? $"With {d.TaskComments.Count} {Plural(d.TaskComments.Count, "comment")}." : null);
+        Add("Tasks elsewhere that mention them", ErasureActions.Anonymise, d.TaskMentions.Count, "The mention is replaced by the pseudonym.");
         Add("Notifications about them", ErasureActions.Delete, d.Notifications.Count);
         Add("Sequence enrolments", ErasureActions.Delete, d.Enrollments.Count);
         Add("Automation runs", ErasureActions.Delete, AutomationRunsOf(d), "With the log of what each step did.");
@@ -323,6 +324,13 @@ public sealed partial class PersonDataService
         }
         _db.TaskComments.RemoveRange(d.TaskComments);
         _db.TaskItems.RemoveRange(d.Tasks);
+        // Clipped to their columns: the pseudonym can be longer than the name it replaces.
+        foreach (var t in d.TaskMentions)
+        {
+            t.Title = Clip(Scrub(t.Title) ?? t.Title, 512);
+            t.Description = t.Description == null ? null : Clip(Scrub(t.Description) ?? "", 4096);
+            t.Notes = t.Notes == null ? null : Clip(Scrub(t.Notes) ?? "", 4096);
+        }
         _db.LeadStatusEvents.RemoveRange(d.LeadStatusEvents);
         _db.OutreachEnrollments.RemoveRange(d.Enrollments);
         _db.AutomationFires.RemoveRange(d.AutomationFires);

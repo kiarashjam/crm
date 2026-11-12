@@ -75,6 +75,11 @@ public class PersonDataOnSqlServerTests
                 };
                 db.AutomationRules.Add(rule);
                 db.AutomationRuns.AddRange(leadRun, memberRun);
+                // The task the member's run made names her and is linked to nothing of hers; another
+                // task, on Bob's lead, mentions her.
+                var madeTask = new TaskItem { Id = Guid.NewGuid(), UserId = ownerId, OrganizationId = org, Title = "Welcome call", Description = "About Anna Keller.", CreatedAtUtc = DateTime.UtcNow };
+                db.TaskItems.AddRange(madeTask,
+                    new TaskItem { Id = Guid.NewGuid(), UserId = ownerId, OrganizationId = org, Title = "Ask Anna Keller to bring Bob", LeadId = s.BobLeadId, CreatedAtUtc = DateTime.UtcNow });
                 db.AutomationFires.Add(new AutomationFire { Id = Guid.NewGuid(), RuleId = rule.Id, SourceKey = s.LeadId.ToString(), FiredAtUtc = DateTime.UtcNow });
                 db.AutomationRunSteps.AddRange(
                     new AutomationRunStep
@@ -85,7 +90,7 @@ public class PersonDataOnSqlServerTests
                     new AutomationRunStep
                     {
                         Id = Guid.NewGuid(), OrganizationId = org, RunId = memberRun.Id, Path = "0", StepType = "create_task", Outcome = AutomationStepOutcomes.Done,
-                        Summary = "Created the task \"Call Anna Keller\".", Attempt = 1, AtUtc = DateTime.UtcNow,
+                        Summary = "Created the task \"Welcome call\".", TaskId = madeTask.Id, Attempt = 1, AtUtc = DateTime.UtcNow,
                     });
                 // Her application as the old documents kept it, before it had a table of its own
                 // (the moved row kept the document's id): the names apart, the phone beside them.
@@ -123,6 +128,8 @@ public class PersonDataOnSqlServerTests
             (await Count($"SELECT COUNT(*) FROM [AutomationRuns] WHERE [OrganizationId] = '{org}'")).Should().Be(0, "the runs about her go, the one still waiting too");
             (await Count($"SELECT COUNT(*) FROM [AutomationRunSteps] WHERE [OrganizationId] = '{org}'")).Should().Be(0, "with their logs");
             (await Count($"SELECT COUNT(*) FROM [AutomationFires] WHERE [SourceKey] = '{s.LeadId}'")).Should().Be(0);
+            (await Count($"SELECT COUNT(*) FROM [TaskItems] WHERE [OrganizationId] = '{org}' AND [Title] = N'Welcome call'")).Should().Be(0, "the task her run made goes with her");
+            (await Count($"SELECT COUNT(*) FROM [TaskItems] WHERE [LeadId] = '{s.BobLeadId}' AND [Title] = N'Ask Erased member 1 to bring Bob'")).Should().Be(1, "Bob's task keeps its words, without her name");
 
             // Nothing in the workspace's people, mail, history or club records names her any more.
             foreach (var (table, column) in new[]
@@ -132,6 +139,7 @@ public class PersonDataOnSqlServerTests
                 ("ClubCharges", "MemberName"), ("ClubPayments", "MemberName"), ("ClubVisits", "MemberName"), ("ClubReservations", "MemberName"),
                 ("ClubEventRegistrations", "Name"), ("AuditEvents", "EntityLabel"), ("AuditEvents", "Summary"), ("EmailSuppressions", "Email"),
                 ("ClubDocuments", "Payload"), ("AutomationRuns", "RecordName"), ("AutomationRuns", "Email"), ("AutomationRunSteps", "Summary"),
+                ("TaskItems", "Title"), ("TaskItems", "Description"),
             })
             {
                 var col = column.StartsWith('[') ? column : $"[{column}]";

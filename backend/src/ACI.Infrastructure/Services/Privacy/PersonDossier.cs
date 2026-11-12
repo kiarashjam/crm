@@ -31,6 +31,8 @@ internal sealed class PersonDossier
     public List<Activity> Activities { get; private set; } = new();
     public List<Activity> ActivityMentions { get; private set; } = new();
     public List<TaskItem> Tasks { get; private set; } = new();
+    /// <summary>Tasks that are not theirs but whose words name them, as notes on other records can.</summary>
+    public List<TaskItem> TaskMentions { get; private set; } = new();
     public List<TaskComment> TaskComments { get; private set; } = new();
     public List<LeadStatusEvent> LeadStatusEvents { get; private set; } = new();
     public List<OutreachEnrollment> Enrollments { get; private set; } = new();
@@ -371,9 +373,30 @@ internal sealed class PersonDossier
             var ids = chunk.ToList();
             d.AutomationRunSteps.AddRange(await Q(db.AutomationRunSteps).Where(x => ids.Contains(x.RunId)).OrderBy(x => x.AtUtc).ToListAsync(ct));
         }
+        // A task a rule made about one of their club records (a booking, a renewal) is linked to
+        // none of their records, since a task has no member, only through the run's log, and
+        // says "About Anna Keller: Court": it is theirs, as a task on their lead is.
+        var knownTasks = d.Tasks.Select(t => t.Id).ToHashSet();
+        var madeByRuns = d.AutomationRunSteps.Where(x => x.TaskId != null).Select(x => x.TaskId!.Value)
+            .Where(id => !knownTasks.Contains(id)).Distinct().ToList();
+        if (madeByRuns.Count > 0)
+        {
+            var made = await Q(db.TaskItems).Where(t => madeByRuns.Contains(t.Id)).ToListAsync(ct);
+            d.Tasks.AddRange(made);
+            var madeIds = made.Select(t => t.Id).ToList();
+            d.TaskComments.AddRange(await Q(db.TaskComments).Where(c => madeIds.Contains(c.TaskItemId)).ToListAsync(ct));
+            knownTasks.UnionWith(madeIds);
+        }
+        // Such a task outlives its run (a rule deleted takes its runs and their logs with it), and
+        // anyone may write a name into a task: tasks elsewhere that mention them are searched like
+        // notes on other records.
+        d.TaskMentions = (await MentioningAsync(Q(db.TaskItems), needles,
+                n => t => t.Title.Contains(n) || (t.Description != null && t.Description.Contains(n)) || (t.Notes != null && t.Notes.Contains(n)), ct))
+            .Where(t => !knownTasks.Contains(t.Id)).ToList();
 
         // ── The audit trail: lines about any of their records, their deals, tasks and money ──
-        var audited = recordIds.Concat(d.MoneyRecordIds).Concat(d.Tasks.Select(t => t.Id)).ToList();
+        // (and about a task elsewhere that names them: its line is labelled with the task's title).
+        var audited = recordIds.Concat(d.MoneyRecordIds).Concat(d.Tasks.Select(t => t.Id)).Concat(d.TaskMentions.Select(t => t.Id)).ToList();
         d.Audit = new List<AuditEvent>();
         foreach (var chunk in audited.Chunk(500))
         {

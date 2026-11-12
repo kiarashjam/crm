@@ -130,6 +130,43 @@ public class ErasureAndAutomationsTests
     }
 
     [Fact]
+    public async Task ATaskARuleMadeAboutAMemberGoesWithThem_AndOneWhoseRunIsGoneLosesTheirName()
+    {
+        await using var app = new App();
+        var (owner, _) = await ClubAsync(app);
+        // A club record's task names its member ("About Anna Keller.") and is linked to no record
+        // of theirs: a task has no member, and these two have no contact.
+        await RuleAsync(owner, new { name = "Welcome call", trigger = "member.created", actions = new object[] { Task("Welcome call") } });
+        var pack = await RuleAsync(owner, new { name = "Welcome pack", trigger = "member.created", actions = new object[] { Task("Send the welcome pack") } });
+        async Task<Guid> Member(string first, string last, string email) => (await Json(await owner.PostAsync("/api/members", Body(new
+        {
+            firstName = first, lastName = last, email, tier = "Gold", status = "Active",
+        })), $"{first} joins")).GetProperty("id").GetGuid();
+        var anna = await Member("Anna", "Keller", AnnaEmail);
+        await Member("Bob", "Brown", "bob@example.ch");
+        var tasks = await app.Services.Read(db => db.TaskItems.ToList());
+        tasks.Should().HaveCount(4);
+        tasks.Where(t => t.Description == "About Anna Keller.").Should().HaveCount(2).And.OnlyContain(t => t.ContactId == null && t.LeadId == null && t.DealId == null);
+        // The second rule is deleted, and its runs and their logs with it: its task stays.
+        (await owner.DeleteAsync($"/api/automations/{pack}")).IsSuccessStatusCode.Should().BeTrue();
+
+        var records = await EverythingFoundAsync(owner, new { memberId = anna });
+        var plan = await Json(await owner.PostAsync("/api/privacy/erasure/preview", Body(records)), "preview");
+        var lines = plan.GetProperty("lines").EnumerateArray().ToDictionary(l => l.GetProperty("area").GetString()!, l => (l.GetProperty("action").GetString(), l.GetProperty("count").GetInt32()));
+        lines["Tasks"].Should().Be(("delete", 1), "the welcome call, found through the log of the run that made it");
+        lines["Tasks elsewhere that mention them"].Should().Be(("anonymise", 1), "the welcome pack, whose run is gone");
+        records["confirm"] = "ERASE";
+        await Json(await owner.PostAsync("/api/privacy/erasure", Body(records)), "erase Anna");
+
+        var left = await app.Services.Read(db => db.TaskItems.ToList());
+        left.Should().NotContain(t => (t.Description ?? "").Contains("Anna") || t.Title.Contains("Anna"));
+        left.Should().ContainSingle(t => t.Description == "About Erased member 1.").Which.Title.Should().Be("Send the welcome pack");
+        left.Where(t => t.Description == "About Bob Brown.").Select(t => t.Title).Should().BeEquivalentTo(["Welcome call", "Send the welcome pack"], "Bob's are his");
+        (await app.Services.Read(db => db.AuditEvents.Any(e => (e.EntityLabel ?? "").Contains("Anna") || e.Summary.Contains("Anna Keller")))).Should().BeFalse(
+            "a task's lines in the audit trail lose her name too");
+    }
+
+    [Fact]
     public async Task ARunSetOffForAMemberWhoseDataWasErasedStops_AndMakesNoTaskAboutThem()
     {
         await using var app = new App();
