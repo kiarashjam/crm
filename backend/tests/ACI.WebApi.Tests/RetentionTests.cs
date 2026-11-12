@@ -263,6 +263,42 @@ public class RetentionTests
     }
 
     [Fact]
+    public async Task OneRunAtATime_AndARunCutOffLongAgoNoLongerHoldsTheWorkspace()
+    {
+        var (factory, client, s) = await ClubAsync();
+        using var _ = factory;
+        await Ok(await client.PutAsync("/api/privacy/settings", Body(Periods(leads: 24))), "set the period");
+        var at = DateTime.UtcNow;
+        var going = new RetentionRun
+        {
+            Id = Guid.NewGuid(), OrganizationId = s.Org, Trigger = RetentionRunTriggers.Manual, Status = RetentionRunStatuses.Running, StartedAtUtc = at.AddMinutes(-2),
+        };
+        await using (var db = factory.Services.EveryWorkspace())
+        {
+            db.RetentionRuns.Add(going);
+            await db.SaveChangesAsync();
+        }
+
+        // Two runs at once would each anonymise the same former member, under two numbers.
+        var refused = await client.PostAsync("/api/privacy/retention/run", null);
+        refused.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await refused.Content.ReadAsStringAsync()).Should().Contain("Privacy.Retention.Running.Conflict");
+        using (var scope = factory.Services.CreateScope())
+            await scope.ServiceProvider.GetRequiredService<IRetention>().RunScheduledAsync(at);
+        (await factory.Services.Read(db => db.RetentionRuns.Count(r => r.OrganizationId == s.Org))).Should().Be(1, "the daily run leaves the day for its next look");
+        (await factory.Services.Read(db => db.Leads.Any(l => l.Id == s.StaleLead))).Should().BeTrue("nothing ran");
+
+        // A run still marked running hours later was cut off (its server stopped half way).
+        await using (var db = factory.Services.EveryWorkspace())
+        {
+            db.RetentionRuns.Single(r => r.Id == going.Id).StartedAtUtc = at.AddHours(-3);
+            await db.SaveChangesAsync();
+        }
+        var ran = await Ok(await client.PostAsync("/api/privacy/retention/run", null), "run now");
+        ran.GetProperty("leadsDeleted").GetInt32().Should().Be(1);
+    }
+
+    [Fact]
     public async Task TheDailyRunTakesEachWorkspacesDayOnce_AfterFourInTheMorningItsTime()
     {
         var (factory, client, s) = await ClubAsync();

@@ -38,6 +38,9 @@ public sealed class RetentionService : IRetention
     /// <summary>The daily run waits until this time in the workspace's own zone: the quiet hours.</summary>
     private static readonly TimeSpan RunsFromLocalTime = TimeSpan.FromHours(4);
 
+    /// <summary>Far longer than a run takes with the slices above: a run still "running" after this was cut off.</summary>
+    private static readonly TimeSpan RunGoesOnFor = TimeSpan.FromHours(2);
+
     /// <summary>What an email's text reads once a retention period took it.</summary>
     internal const string PurgedText = "(The text of this email was removed: the workspace keeps sent emails for a limited time.)";
 
@@ -92,6 +95,9 @@ public sealed class RetentionService : IRetention
 
     public async Task<Result<RetentionRunDto>> RunNowAsync(Guid organizationId, Guid userId, CancellationToken ct = default)
     {
+        // One run at a time per workspace: two at once would each anonymise the same former
+        // member, under two erasure numbers.
+        if (await RunGoingAsync(organizationId, DateTime.UtcNow, ct)) return DomainErrors.Privacy.RetentionRunning;
         var settings = await _db.PrivacySettings.AsNoTracking().FirstOrDefaultAsync(s => s.OrganizationId == organizationId, ct);
         var name = await _db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.Name).FirstOrDefaultAsync(ct);
         var run = new RetentionRun
@@ -140,6 +146,8 @@ public sealed class RetentionService : IRetention
             if (await _db.RetentionRuns.IgnoreQueryFilters().AnyAsync(r => r.OrganizationId == organizationId && r.ScheduledFor == day, ct)) continue;
 
             using var acting = _db.ActFor(organizationId, null);
+            // A run started by hand is still going: the day is left for the next look.
+            if (await RunGoingAsync(organizationId, utcNow, ct)) continue;
             var run = new RetentionRun
             {
                 Id = Guid.NewGuid(),
@@ -167,6 +175,16 @@ public sealed class RetentionService : IRetention
             _db.ChangeTracker.Clear();
         }
         return ran;
+    }
+
+    /// <summary>
+    /// Whether a run of the workspace is still going. A run still marked running after
+    /// <see cref="RunGoesOnFor"/> was cut off (its server stopped half way) and no longer counts.
+    /// </summary>
+    private Task<bool> RunGoingAsync(Guid organizationId, DateTime utcNow, CancellationToken ct)
+    {
+        var since = utcNow - RunGoesOnFor;
+        return _db.RetentionRuns.AnyAsync(r => r.OrganizationId == organizationId && r.Status == RetentionRunStatuses.Running && r.StartedAtUtc > since, ct);
     }
 
     /// <summary>

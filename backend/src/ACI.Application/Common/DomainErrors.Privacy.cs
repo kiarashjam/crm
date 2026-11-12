@@ -28,6 +28,10 @@ public static partial class DomainErrors
             "Privacy.ReferenceHasPersonalData",
             "The reference is kept in the log of erasures, which names nobody: use a ticket number or a date, not the person's name or address.");
 
+        /// <summary>A retention run of the workspace is still going: one at a time.</summary>
+        public static readonly Error RetentionRunning = new(
+            "Privacy.Retention.Running.Conflict", "A retention run is going already. Wait for it to finish, then look at the runs.");
+
         /// <summary>The retention settings found someone with a booking or an event place still to come: left, not cancelled.</summary>
         public static readonly Error BookingsAhead = new(
             "Privacy.BookingsAhead", "This person has a booking or an event place still to come, so the retention settings leave them.");
