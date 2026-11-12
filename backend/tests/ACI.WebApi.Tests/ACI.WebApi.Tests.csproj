@@ -33,6 +33,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Fixtures\LegacyMigrations.sql" LogicalName="LegacyMigrations.sql" />
+    <EmbeddedResource Include="Fixtures\Passkeys\ceremonies.json" LogicalName="Passkeys.ceremonies.json" />
   </ItemGroup>
 
   <ItemGroup>

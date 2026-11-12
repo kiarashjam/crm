@@ -1471,6 +1471,9 @@ public static readonly Error AlreadyMember = new(
 
         public static readonly Error TooMany = new(
             "Passkeys.TooMany", "You have 20 passkeys already. Remove one you no longer use first.");
+
+        public static readonly Error NoneForAccount = new(
+            "Passkeys.NoneForAccount", "You have not added a passkey yet. Enter the code from your authenticator app.");
     }
 
     /// <summary>

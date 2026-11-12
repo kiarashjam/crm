@@ -23,6 +23,7 @@ public class EndpointPermissionTests
     {
         ["AuthController.*"] = "the caller's own sign-in, password and two-step codes",
         ["SsoController.*"] = "the caller's own sign-in with Google or Microsoft",
+        ["PasskeysController.*"] = "the caller's own passkeys, and signing in with one",
         ["SettingsController.*"] = "the caller's own preferences",
         ["NotificationsController.*"] = "the caller's own bell",
         ["OrganizationsController.Create"] = "a new organization of their own",

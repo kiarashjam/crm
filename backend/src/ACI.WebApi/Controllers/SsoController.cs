@@ -33,6 +33,13 @@ public class SsoController : ControllerBase
         _logger = logger;
     }
 
+    /// <summary>The ways to sign in besides the password this server offers, for the sign-in page.</summary>
+    [HttpGet("/api/auth/sign-in-options")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(SignInOptionsDto), StatusCodes.Status200OK)]
+    public ActionResult<SignInOptionsDto> SignInOptions([FromServices] IPasskeys passkeys) =>
+        Ok(new SignInOptionsDto(_sso.Providers, passkeys.IsConfigured));
+
     /// <summary>The providers this server offers (none until the owner sets them up).</summary>
     [HttpGet("providers")]
     [AllowAnonymous]

@@ -1,0 +1,86 @@
+{
+  "about": "WebAuthn ceremonies for PasskeyRecordedCeremonyTests, made by SoftwareAuthenticator (ES256, none attestation). Recorded again with CADENCE_RECORD_PASSKEY_FIXTURES=1; the key below is a test key and signs nothing else.",
+  "rpId": "app.cadence.test",
+  "origin": "https://app.cadence.test",
+  "userId": "6044327b-22cb-404f-a28b-ae55244bf5aa",
+  "credentialId": "1st2D3hDVR1aPMWTIYFu79Y99OjrUt8A4-lDoskilHY",
+  "privateKeyPkcs8": "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQggl0qSR776mkIudP3hfkdTN6Vo9uCkS67OdF3T5RL7NahRANCAARpS16oCAP02jnBHAKEMHBSKHyG5NkU72RIMDeDyLHKu4peqNJF3h/TNKjP3nEFFuK+RLYrsdC9VHUJQdqQirHk",
+  "registration": {
+    "challenge": "VAd-jOZOlGT9VTXtTkyJtx1pH0yoMKd72f4loJvvf30",
+    "credential": {
+      "id": "1st2D3hDVR1aPMWTIYFu79Y99OjrUt8A4-lDoskilHY",
+      "rawId": "1st2D3hDVR1aPMWTIYFu79Y99OjrUt8A4-lDoskilHY",
+      "type": "public-key",
+      "response": {
+        "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YVikCayZ52woTFUiRwCKFRaydYUsElB5jl3djhl5lqfkif9FAAAAAAAAAAAAAAAAAAAAAAAAAAAAINbLdg94Q1UdWjzFkyGBbu_WPfTo61LfAOPpQ6LJIpR2pQECAyYgASFYIGlLXqgIA_TaOcEcAoQwcFIofIbk2RTvZEgwN4PIscq7Ilggil6o0kXeH9M0qM_ecQUW4r5Etiux0L1UdQlB2pCKseQ",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiVkFkLWpPWk9sR1Q5VlRYdFRreUp0eDFwSDB5b01LZDcyZjRsb0p2dmYzMCIsIm9yaWdpbiI6Imh0dHBzOi8vYXBwLmNhZGVuY2UudGVzdCIsImNyb3NzT3JpZ2luIjpmYWxzZX0"
+      }
+    }
+  },
+  "signIns": [
+    {
+      "about": "the first sign-in, counter 1",
+      "expect": "session",
+      "challenge": "pgosruFyq6i6AG4o-jN8lMvr-ZcggV6R6cnceOsjr4Q",
+      "credential": {
+        "id": "1st2D3hDVR1aPMWTIYFu79Y99OjrUt8A4-lDoskilHY",
+        "rawId": "1st2D3hDVR1aPMWTIYFu79Y99OjrUt8A4-lDoskilHY",
+        "type": "public-key",
+        "response": {
+          "authenticatorData": "CayZ52woTFUiRwCKFRaydYUsElB5jl3djhl5lqfkif8FAAAAAQ",
+          "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoicGdvc3J1RnlxNmk2QUc0by1qTjhsTXZyLVpjZ2dWNlI2Y25jZU9zanI0USIsIm9yaWdpbiI6Imh0dHBzOi8vYXBwLmNhZGVuY2UudGVzdCIsImNyb3NzT3JpZ2luIjpmYWxzZX0",
+          "signature": "MEUCIQDweSQrIqkaPyuEoPkSDkxm1qBEhlvWfXl_kO0zAJqGfAIgRVyIrjsYG6_v6_0yTfQq6w3iReW1v6LDrJLUDK5n8ZE",
+          "userHandle": "ezJEYMsiT0Cii65VJEv1qg"
+        }
+      }
+    },
+    {
+      "about": "the next, counter 2",
+      "expect": "session",
+      "challenge": "3yj8TjhP4FSaD3QEFh1Idh4F0ngsVnL0JlJf8d74fkA",
+      "credential": {
+        "id": "1st2D3hDVR1aPMWTIYFu79Y99OjrUt8A4-lDoskilHY",
+        "rawId": "1st2D3hDVR1aPMWTIYFu79Y99OjrUt8A4-lDoskilHY",
+        "type": "public-key",
+        "response": {
+          "authenticatorData": "CayZ52woTFUiRwCKFRaydYUsElB5jl3djhl5lqfkif8FAAAAAg",
+          "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiM3lqOFRqaFA0RlNhRDNRRUZoMUlkaDRGMG5nc1ZuTDBKbEpmOGQ3NGZrQSIsIm9yaWdpbiI6Imh0dHBzOi8vYXBwLmNhZGVuY2UudGVzdCIsImNyb3NzT3JpZ2luIjpmYWxzZX0",
+          "signature": "MEUCIQDI2C7dOCri5-nL3P2BoAXONvRalxzo4BVH4rVqsStupQIgIeZ7EJWag85UH9tgW8wgQvT-RvZ_BWzbu3PdDDMfi40",
+          "userHandle": "ezJEYMsiT0Cii65VJEv1qg"
+        }
+      }
+    },
+    {
+      "about": "a copy of the key presenting counter 2 again",
+      "expect": "counter-went-back",
+      "challenge": "yrQMWfKIrDqBq12AqZ28-5z6_VWgqd7T3NHqjfUilwg",
+      "credential": {
+        "id": "1st2D3hDVR1aPMWTIYFu79Y99OjrUt8A4-lDoskilHY",
+        "rawId": "1st2D3hDVR1aPMWTIYFu79Y99OjrUt8A4-lDoskilHY",
+        "type": "public-key",
+        "response": {
+          "authenticatorData": "CayZ52woTFUiRwCKFRaydYUsElB5jl3djhl5lqfkif8FAAAAAg",
+          "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoieXJRTVdmS0lyRHFCcTEyQXFaMjgtNXo2X1ZXZ3FkN1QzTkhxamZVaWx3ZyIsIm9yaWdpbiI6Imh0dHBzOi8vYXBwLmNhZGVuY2UudGVzdCIsImNyb3NzT3JpZ2luIjpmYWxzZX0",
+          "signature": "MEUCIBMVLD_KX_KlXEalQxog_yHTTlUCgzAZDVrlUe93JaJXAiEAmSuZPXnNtIkO_st9FyoXrjhaTUhcm4KPItBMET1cuJ4",
+          "userHandle": "ezJEYMsiT0Cii65VJEv1qg"
+        }
+      }
+    },
+    {
+      "about": "an answer signed by another key",
+      "expect": "not-recognised",
+      "challenge": "OkfrPFi-bxBCA4H7wmx9CSZIFZUXgKswiSt-7cuViXI",
+      "credential": {
+        "id": "1st2D3hDVR1aPMWTIYFu79Y99OjrUt8A4-lDoskilHY",
+        "rawId": "1st2D3hDVR1aPMWTIYFu79Y99OjrUt8A4-lDoskilHY",
+        "type": "public-key",
+        "response": {
+          "authenticatorData": "CayZ52woTFUiRwCKFRaydYUsElB5jl3djhl5lqfkif8FAAAAAw",
+          "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiT2tmclBGaS1ieEJDQTRIN3dteDlDU1pJRlpVWGdLc3dpU3QtN2N1VmlYSSIsIm9yaWdpbiI6Imh0dHBzOi8vYXBwLmNhZGVuY2UudGVzdCIsImNyb3NzT3JpZ2luIjpmYWxzZX0",
+          "signature": "MEUCIHt1cTxkbv0iLzl_v2sKoBKerXo1cVW8MuM_-51J2rprAiEAlOh-VuZ1qzTVYTPPG8FnNAdezYciJq6Pd9mpAsU0rWw",
+          "userHandle": "ezJEYMsiT0Cii65VJEv1qg"
+        }
+      }
+    }
+  ]
+}

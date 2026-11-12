@@ -37,6 +37,10 @@ public static class DependencyInjection
         services.AddScoped<SignInSessions>();
         services.AddScoped<ISingleSignOn, ACI.Infrastructure.Services.SignIn.SingleSignOnService>();
         services.AddScoped<IOrganizationSso, ACI.Infrastructure.Services.SignIn.OrganizationSsoService>();
+        // Passkeys: on once the app's address is known (Passkeys, else Email:FrontendBaseUrl).
+        services.Configure<PasskeySettings>(configuration.GetSection(PasskeySettings.SectionName));
+        services.AddSingleton<ACI.Infrastructure.Services.SignIn.PasskeyChallengeSource>();
+        services.AddScoped<IPasskeys, ACI.Infrastructure.Services.SignIn.PasskeyService>();
 
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IContactRepository, ContactRepository>();
