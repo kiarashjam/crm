@@ -140,9 +140,11 @@ public sealed class LeadStatusSync : ILeadStatusSync
 
         if (_automations != null && runAutomations)
         {
+            // The status it left, which the lead no longer holds, for rules that ask where it came from.
             await _automations.DispatchAsync("lead.status_changed", new AutomationEvent(
                 lead.OrganizationId, actorUserId, $"{lead.Id}:{lead.Status}", lead.Name,
-                LeadId: lead.Id, Email: lead.Email, AssigneeId: lead.AssignedToUserId, FromImport: fromImport), ct);
+                LeadId: lead.Id, Email: lead.Email, AssigneeId: lead.AssignedToUserId, FromImport: fromImport,
+                Facts: fromStatus == null ? null : new Dictionary<string, string[]> { ["fromStatus"] = [fromStatus] }), ct);
         }
     }
 

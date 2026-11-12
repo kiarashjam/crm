@@ -8,37 +8,21 @@ namespace ACI.Infrastructure.Migrations
     /// <inheritdoc />
     public partial class AddAutomationRunsAndConditions : Migration
     {
-        /// <inheritdoc />
-        protected override void Up(MigrationBuilder migrationBuilder)
-        {
-            migrationBuilder.AddColumn<string>(
-                name: "ConditionsJson",
-                table: "AutomationRules",
-                type: "nvarchar(max)",
-                nullable: true);
-
-            migrationBuilder.AddColumn<string>(
-                name: "SendWindowJson",
-                table: "AutomationRules",
-                type: "nvarchar(max)",
-                nullable: true);
-
-            migrationBuilder.AddColumn<Guid>(
-                name: "Version",
-                table: "AutomationRules",
-                type: "uniqueidentifier",
-                nullable: false,
-                defaultValue: new Guid("00000000-0000-0000-0000-000000000000"));
-
-            // A rule's trigger settings were stored and never read: a rule given
-            // {"stageId": "..."} through the API ran on every stage. The keys that say what the
-            // record must be are copied into the rule's conditions, which are evaluated, for
-            // the triggers where they mean something (a stage on a deal's trigger, a status or
-            // a source on a lead's). Keys are matched in any letter case, as the API kept them
-            // as sent. The settings themselves are left as they were, a rule with no such key
-            // keeps no conditions and runs as before, and a rule that already has conditions
-            // is not touched, so running this again changes nothing.
-            migrationBuilder.Sql(@"
+        /// <summary>
+        /// Copies the trigger settings that name a condition into the rule's conditions; public so a
+        /// test can run it a second time and see it change nothing.
+        /// </summary>
+        /// <remarks>
+        /// A rule's trigger settings were stored and never read: a rule given
+        /// {"stageId": "..."} through the API ran on every stage. The keys that say what the
+        /// record must be are copied into the rule's conditions, which are evaluated, for
+        /// the triggers where they mean something (a stage on a deal's trigger, a status or
+        /// a source on a lead's). Keys are matched in any letter case, as the API kept them
+        /// as sent. The settings themselves are left as they were, a rule with no such key
+        /// keeps no conditions and runs as before, and a rule that already has conditions
+        /// is not touched, so running this again changes nothing.
+        /// </remarks>
+        public const string CopyTriggerConditionsSql = @"
 UPDATE r SET [ConditionsJson] = N'{""match"":""all"",""conditions"":' + x.[Conditions] + N'}'
 FROM [AutomationRules] r
 CROSS APPLY (
@@ -73,7 +57,31 @@ WHERE r.[ConditionsJson] IS NULL
   AND r.[TriggerConfigJson] IS NOT NULL
   AND ISJSON(r.[TriggerConfigJson]) = 1
   AND LEFT(LTRIM(r.[TriggerConfigJson]), 1) = N'{'
-  AND x.[Conditions] IS NOT NULL;");
+  AND x.[Conditions] IS NOT NULL;";
+
+        /// <inheritdoc />
+        protected override void Up(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.AddColumn<string>(
+                name: "ConditionsJson",
+                table: "AutomationRules",
+                type: "nvarchar(max)",
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "SendWindowJson",
+                table: "AutomationRules",
+                type: "nvarchar(max)",
+                nullable: true);
+
+            migrationBuilder.AddColumn<Guid>(
+                name: "Version",
+                table: "AutomationRules",
+                type: "uniqueidentifier",
+                nullable: false,
+                defaultValue: new Guid("00000000-0000-0000-0000-000000000000"));
+
+            migrationBuilder.Sql(CopyTriggerConditionsSql);
 
             migrationBuilder.CreateTable(
                 name: "AutomationRuns",

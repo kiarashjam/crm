@@ -38,7 +38,7 @@ public sealed partial class AutomationEngine
         var created = await _tasks.CreateAsync(run.ActorUserId, run.OrganizationId, new CreateTaskRequest
         {
             Title = title,
-            DueDateUtc = DateTime.UtcNow.AddDays(Math.Max(0, days)),
+            DueDateUtc = Now().AddDays(Math.Max(0, days)),
             Priority = priority is "low" or "medium" or "high" ? priority : null,
             LeadId = run.LeadId,
             DealId = run.DealId,
@@ -133,7 +133,7 @@ public sealed partial class AutomationEngine
             if (deal == null) return Outcome.Skip("The deal is gone, so it was not assigned.");
             var before = deal.AssigneeId;
             deal.AssigneeId = userId;
-            deal.UpdatedAtUtc = DateTime.UtcNow;
+            deal.UpdatedAtUtc = Now();
             await _deals.UpdateAsync(deal, run.ActorUserId, run.OrganizationId, ct);
             if (before != userId)
                 await TellNewOwnerAsync(run, RecordTypes.Deal, dealId, deal.Name, userId, ct);

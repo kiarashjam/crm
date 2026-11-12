@@ -107,6 +107,14 @@ public sealed partial class AutomationEngine : IAutomationEngine
     private readonly IWorkspaceModules? _modules;
     private readonly ITenantContext? _tenant;
 
+    /// <summary>The time waits, send windows and retries are counted on; a test moves it on.</summary>
+    private readonly TimeProvider _clock;
+
+    private DateTime Now() => _clock.GetUtcNow().UtcDateTime;
+
+    /// <summary>Told when a runner has seen a run due and is about to claim it: where a test holds two runners at once.</summary>
+    private readonly ILedgerReadObserver? _reads;
+
     public AutomationEngine(
         IAutomationRepository rules,
         IAutomationRunStore runs,
@@ -122,8 +130,12 @@ public sealed partial class AutomationEngine : IAutomationEngine
         ILogger<AutomationEngine> logger,
         ICollaborationNotifier? notifier = null,
         IWorkspaceModules? modules = null,
-        ITenantContext? tenant = null)
+        ITenantContext? tenant = null,
+        TimeProvider? clock = null,
+        ILedgerReadObserver? reads = null)
     {
+        _clock = clock ?? TimeProvider.System;
+        _reads = reads;
         _rules = rules;
         _runs = runs;
         _records = records;
@@ -218,7 +230,8 @@ public sealed partial class AutomationEngine : IAutomationEngine
 
     public async Task ResumeAsync(DueAutomationRun due, CancellationToken ct = default)
     {
-        var now = DateTime.UtcNow;
+        if (_reads != null) await _reads.ReadAsync("automations", ct);
+        var now = Now();
         if (!await _runs.TryClaimAsync(due.Id, due.ClaimCount, now, now.Add(ClaimFor), ct)) return;
         var owner = await _runs.OwnerOfAsync(due.Id, ct);
         if (owner == null) return;
@@ -254,11 +267,11 @@ public sealed partial class AutomationEngine : IAutomationEngine
         return new AutomationSubject(kind, id, evt.LeadId, evt.DealId, evt.TaskId, evt.MemberId, evt.ContractId);
     }
 
-    private static bool DueWithin(AutomationRule rule, AutomationEvent evt)
+    private bool DueWithin(AutomationRule rule, AutomationEvent evt)
     {
         if (evt.DueAtUtc is not DateTime due) return false;
         var days = AutomationCatalog.DaysBefore(TriggerConfig(rule));
-        var left = due - DateTime.UtcNow;
+        var left = due - Now();
         return left > TimeSpan.Zero && left <= TimeSpan.FromDays(days);
     }
 
@@ -276,7 +289,7 @@ public sealed partial class AutomationEngine : IAutomationEngine
         }
     }
 
-    private static AutomationRun NewRun(AutomationRule rule, string trigger, AutomationEvent evt, AutomationSubject subject, string? recordName)
+    private AutomationRun NewRun(AutomationRule rule, string trigger, AutomationEvent evt, AutomationSubject subject, string? recordName)
     {
         var steps = AutomationSteps.Parse(rule.ActionsJson);
         // A rule of actions alone runs its assignments first, as rules always have: they decide
@@ -285,7 +298,7 @@ public sealed partial class AutomationEngine : IAutomationEngine
         // off. A rule with waits or branches runs its steps in the order they are written.
         if (steps.All(s => AutomationStepTypes.Actions.Contains((s.Type ?? "").Trim())))
             steps = steps.OrderBy(s => (s.Type ?? "").Trim() == AutomationStepTypes.Assign ? 0 : 1).ToList();
-        var now = DateTime.UtcNow;
+        var now = Now();
         return new AutomationRun
         {
             Id = Guid.NewGuid(),
@@ -346,11 +359,11 @@ public sealed partial class AutomationEngine : IAutomationEngine
         var trigger = AutomationCatalog.Find(run.Trigger);
         for (var go = 0; go < MaxStepsPerGo; go++)
         {
-            var now = DateTime.UtcNow;
+            var now = Now();
             var step = AutomationSteps.At(steps, run.CurrentPath);
             if (step == null)
             {
-                Finish(run, AutomationRunStatuses.Completed, null);
+                Finish(run, AutomationRunStatuses.Completed, null, now);
                 await SaveAsync(run, ct);
                 return;
             }
@@ -385,7 +398,7 @@ public sealed partial class AutomationEngine : IAutomationEngine
         }
         // Many steps in one go: the rest is for the runner, at once.
         run.Status = AutomationRunStatuses.Running;
-        run.NextAttemptAtUtc = DateTime.UtcNow;
+        run.NextAttemptAtUtc = Now();
         run.ClaimedUntilUtc = null;
         await SaveAsync(run, ct);
     }
@@ -420,7 +433,7 @@ public sealed partial class AutomationEngine : IAutomationEngine
 
             case Outcome.Stop:
                 Log(run, step, path, AutomationStepOutcomes.Skipped, outcome.Summary, null, null, null, run.StepAttempts + 1);
-                Finish(run, AutomationRunStatuses.Cancelled, outcome.Summary);
+                Finish(run, AutomationRunStatuses.Cancelled, outcome.Summary, now);
                 break;
 
             default:
@@ -439,7 +452,7 @@ public sealed partial class AutomationEngine : IAutomationEngine
                 else
                 {
                     Log(run, step, path, AutomationStepOutcomes.Failed, $"Failed {run.StepAttempts} times; the run stopped.", error, null, null, run.StepAttempts);
-                    Finish(run, AutomationRunStatuses.Failed, error);
+                    Finish(run, AutomationRunStatuses.Failed, error, now);
                 }
                 break;
         }
@@ -452,7 +465,7 @@ public sealed partial class AutomationEngine : IAutomationEngine
     {
         if (path == null)
         {
-            Finish(run, AutomationRunStatuses.Completed, null);
+            Finish(run, AutomationRunStatuses.Completed, null, now);
             return false;
         }
         run.CurrentPath = path;
@@ -464,9 +477,8 @@ public sealed partial class AutomationEngine : IAutomationEngine
         return true;
     }
 
-    private static void Finish(AutomationRun run, string status, string? reason)
+    private static void Finish(AutomationRun run, string status, string? reason, DateTime now)
     {
-        var now = DateTime.UtcNow;
         run.Status = status;
         run.FinishedAtUtc = now;
         run.NextAttemptAtUtc = null;
@@ -489,13 +501,13 @@ public sealed partial class AutomationEngine : IAutomationEngine
             Attempt = Math.Max(1, attempt),
             OutboundMessageId = messageId,
             TaskId = taskId,
-            AtUtc = DateTime.UtcNow,
+            AtUtc = Now(),
         });
 
     /// <summary>Saves the run; false when another runner has taken it meanwhile, and this one must stop.</summary>
     private async Task<bool> SaveAsync(AutomationRun run, CancellationToken ct)
     {
-        run.UpdatedAtUtc = DateTime.UtcNow;
+        run.UpdatedAtUtc = Now();
         try
         {
             await _runs.SaveAsync(ct);

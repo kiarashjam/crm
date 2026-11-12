@@ -45,11 +45,13 @@ public sealed class AutomationRunner
 
     private readonly IServiceScopeFactory _scopes;
     private readonly ILogger<AutomationRunner> _logger;
+    private readonly TimeProvider _clock;
 
-    public AutomationRunner(IServiceScopeFactory scopes, ILogger<AutomationRunner> logger)
+    public AutomationRunner(IServiceScopeFactory scopes, ILogger<AutomationRunner> logger, TimeProvider? clock = null)
     {
         _scopes = scopes;
         _logger = logger;
+        _clock = clock ?? TimeProvider.System;
     }
 
     /// <summary>One pass. Returns how many runs were due, carried on or not.</summary>
@@ -57,7 +59,7 @@ public sealed class AutomationRunner
     {
         IReadOnlyList<DueAutomationRun> due;
         using (var scope = _scopes.CreateScope())
-            due = await scope.ServiceProvider.GetRequiredService<IAutomationRunStore>().DueAsync(DateTime.UtcNow, BatchSize, ct);
+            due = await scope.ServiceProvider.GetRequiredService<IAutomationRunStore>().DueAsync(_clock.GetUtcNow().UtcDateTime, BatchSize, ct);
 
         await Parallel.ForEachAsync(due, new ParallelOptions { MaxDegreeOfParallelism = Concurrency, CancellationToken = ct }, async (run, token) =>
         {
@@ -106,7 +108,7 @@ public sealed class AutomationRunner
                 var rules = await services.GetRequiredService<IAutomationRepository>().EnabledForTriggerAsync(organizationId, AutomationCatalog.RenewalDue, ct);
                 if (rules.Count == 0) continue;
                 var days = rules.Max(r => AutomationCatalog.DaysBefore(AutomationEngine.TriggerConfig(r)));
-                var now = DateTime.UtcNow;
+                var now = _clock.GetUtcNow().UtcDateTime;
                 var engine = services.GetRequiredService<IAutomationEngine>();
                 foreach (var renewal in await reader.RenewalsDueAsync(now, now.AddDays(days), ct))
                 {

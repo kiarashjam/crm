@@ -190,7 +190,8 @@ public partial interface IClubLedger
 /// The events and bookings services (IClubEvents, IClubReservations) report here too, once a
 /// change to an event's list or a resource's bookings has read what it decides on, and the
 /// approval of an application (IClubApplications) once it has read the open application and
-/// decided what to do, before it claims it.
+/// decided what to do, before it claims it. The automation runner reports "automations" when it
+/// has seen a run due, before it claims it.
 /// </remarks>
 public interface ILedgerReadObserver
 {
