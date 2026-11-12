@@ -162,7 +162,7 @@ export default function Donations() {
 
   const acknowledge = async (d: Donation) => {
     try {
-      await acknowledgeDonation(d.id);
+      await acknowledgeDonation(d.id, d.version);
       toast.success('Acknowledged — thank-you logged');
       await load();
     } catch (err) {

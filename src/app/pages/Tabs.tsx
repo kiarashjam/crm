@@ -157,6 +157,7 @@ export default function Tabs() {
     try {
       await addItemToTab({
         tabId: addingTo,
+        version: tabs.find((t) => t.id === addingTo)?.version,
         name: itemForm.name.trim(),
         quantity: qty,
         unitPrice: price,
@@ -174,7 +175,7 @@ export default function Tabs() {
 
   const removeItem = async (tabId: string, itemId: string) => {
     try {
-      await removeItemFromTab(tabId, itemId);
+      await removeItemFromTab(tabId, itemId, tabs.find((t) => t.id === tabId)?.version);
     } catch (err) {
       toast.error(errorText(err, 'Could not remove the item'));
     }
@@ -185,7 +186,7 @@ export default function Tabs() {
     if (!confirm(`Close tab? ${formatCurrency(t.total)} will post to ${t.memberName}'s house account.`)) return;
     setActingOn(t.id);
     try {
-      const result = await closeTab(t.id);
+      const result = await closeTab(t.id, t.version);
       if (result) {
         toast.success(
           result.pointsAwarded
@@ -207,7 +208,7 @@ export default function Tabs() {
     if (!confirm('Void this tab? No charge will post.')) return;
     setActingOn(t.id);
     try {
-      await voidTab(t.id);
+      await voidTab(t.id, t.version);
       toast.success('Tab voided');
       setAddingTo(null);
     } catch (err) {

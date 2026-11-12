@@ -32,6 +32,8 @@ export interface Subscription {
   notes?: string;
   /** The tier or dues item of the price catalogue it was started from. */
   catalogItemId?: string;
+  /** The server's version of the subscription as it was read; a change is sent with this (If-Match). */
+  version?: string;
 }
 
 export const SUBSCRIPTION_CADENCES: SubscriptionCadence[] = [
@@ -205,9 +207,12 @@ export async function createSubscription(input: SubscriptionInput): Promise<Subs
 export async function updateSubscription(
   id: string,
   patch: Partial<Subscription>,
+  version?: string,
 ): Promise<Subscription | null> {
   return apiWithFallback(
-    () => authFetchJson<Subscription>(`/api/subscriptions/${id}`, { method: 'PUT', body: JSON.stringify(patch) }),
+    // Checked against the copy the change was made from: one paused or cancelled by someone
+    // else meanwhile is refused (409), not changed back.
+    () => authFetchJson<Subscription>(`/api/subscriptions/${id}`, { method: 'PUT', headers: version ? { 'If-Match': `"${version}"` } : undefined, body: JSON.stringify(patch) }),
     async () => {
       await delay(120);
       return subStore.update(id, patch);

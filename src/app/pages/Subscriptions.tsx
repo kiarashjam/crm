@@ -211,7 +211,7 @@ export default function Subscriptions() {
   const togglePause = async (s: Subscription) => {
     const newStatus: SubscriptionStatus = s.status === 'Paused' ? 'Active' : 'Paused';
     try {
-      await updateSubscription(s.id, { status: newStatus });
+      await updateSubscription(s.id, { status: newStatus }, s.version);
       toast.success(`Subscription ${newStatus.toLowerCase()}`);
       await load();
     } catch (err) {
@@ -222,7 +222,7 @@ export default function Subscriptions() {
   const cancel = async (s: Subscription) => {
     if (!confirm(`Cancel ${s.name} for ${s.memberName}?`)) return;
     try {
-      await updateSubscription(s.id, { status: 'Cancelled' });
+      await updateSubscription(s.id, { status: 'Cancelled' }, s.version);
       toast.success('Cancelled');
       await load();
     } catch (err) {

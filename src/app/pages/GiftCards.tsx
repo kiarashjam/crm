@@ -241,7 +241,7 @@ export default function GiftCards() {
     }
     setVoidingId(c.id);
     try {
-      const ok = await voidGiftCard(c.id, reason.trim());
+      const ok = await voidGiftCard(c.id, reason.trim(), c.version);
       if (ok) {
         toast.success('Gift card voided');
         await load();
