@@ -276,6 +276,76 @@ public class PasskeyTests
         (await refused.Content.ReadAsStringAsync()).Should().Contain("Passkeys.NotRecognised");
     }
 
+    /// <summary>
+    /// Adds a passkey and turns 2FA on for the client's account, in an app that keeps the reset
+    /// links it mails (passkeys are on there for its address, https://app.cadence.test).
+    /// </summary>
+    private static async Task<SoftwareAuthenticator> AddPasskeyAndTwoFactorAsync(HttpClient client)
+    {
+        var (ceremony, options) = await CeremonyAsync(client, "/api/auth/passkeys/registration/options", new { password = AuthenticatorApp.Password });
+        var key = new SoftwareAuthenticator(PasskeyApp.RpId, PasskeyApp.Origin);
+        (await OkJson(await client.PostAsync("/api/auth/passkeys/registration", Body(new { ceremonyId = ceremony, name = "Theirs", credential = key.Register(options) })))).Dispose();
+        await AuthenticatorApp.TurnOnAsync(client);
+        return key;
+    }
+
+    private static async Task ResetPasswordThroughTheInboxAsync(SsoApp app, string email, string password)
+    {
+        var anonymous = app.CreateClient();
+        (await anonymous.PostAsync("/api/auth/forgot-password", Body(new { email }))).StatusCode.Should().Be(HttpStatusCode.OK);
+        var reset = await anonymous.PostAsync("/api/auth/reset-password", Body(new { token = app.ResetToken(email), password }));
+        reset.StatusCode.Should().Be(HttpStatusCode.OK, await reset.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task TakingBackAnAddressWithTheResetLink_RemovesThePasskeysAndTwoFactorWhoeverRegisteredItFirstAdded()
+    {
+        // Someone registered anna's address before she did and never proved the inbox. The
+        // password was theirs, so they could add a passkey and turn 2FA on. Anna takes the
+        // account back with the reset link sent to her inbox: their passkey, which signs in
+        // without any password, must not let them back in beside her.
+        await using var app = new SsoApp();
+        var (squatter, _) = await SignInAsync(app, "anna@pavillon46.ch");
+        var theirKey = await AddPasskeyAndTwoFactorAsync(squatter);
+
+        await ResetPasswordThroughTheInboxAsync(app, "anna@pavillon46.ch", "annas own passphrase 2");
+
+        var browser = app.CreateClient();
+        var (ceremony, options) = await CeremonyAsync(browser, "/api/auth/passkeys/sign-in/options");
+        var refused = await browser.PostAsync("/api/auth/passkeys/sign-in", Body(new { ceremonyId = ceremony, credential = theirKey.Assert(options) }));
+        refused.StatusCode.Should().Be(HttpStatusCode.Unauthorized, await refused.Content.ReadAsStringAsync());
+        (await refused.Content.ReadAsStringAsync()).Should().NotContain("\"token\"");
+        (await app.Services.Read(db => db.UserPasskeys.Count())).Should().Be(0);
+
+        // Their authenticator app is not hers either: her new password alone signs her in.
+        using var login = await OkJson(await browser.PostAsync("/api/auth/login", Body(new { email = "anna@pavillon46.ch", password = "annas own passphrase 2" })));
+        login.RootElement.GetProperty("requiresTwoFactor").GetBoolean().Should().BeFalse();
+        login.RootElement.GetProperty("token").GetString().Should().NotBeNullOrEmpty();
+    }
+
+    [Fact]
+    public async Task AResetOfAnAccountWhoseAddressWasConfirmed_KeepsItsPasskeysAndTwoFactor()
+    {
+        // Someone who proved their address and only forgot the password keeps the rest of their way in.
+        await using var app = new SsoApp();
+        var (anna, userId) = await SignInAsync(app, "anna@pavillon46.ch");
+        using (var scope = app.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            (await db.Users.FindAsync(userId))!.EmailVerifiedAtUtc = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+        }
+        var key = await AddPasskeyAndTwoFactorAsync(anna);
+
+        await ResetPasswordThroughTheInboxAsync(app, "anna@pavillon46.ch", "annas own passphrase 2");
+
+        var browser = app.CreateClient();
+        var (ceremony, options) = await CeremonyAsync(browser, "/api/auth/passkeys/sign-in/options");
+        using (await OkJson(await browser.PostAsync("/api/auth/passkeys/sign-in", Body(new { ceremonyId = ceremony, credential = key.Assert(options) })))) { }
+        using var login = await OkJson(await browser.PostAsync("/api/auth/login", Body(new { email = "anna@pavillon46.ch", password = "annas own passphrase 2" })));
+        login.RootElement.GetProperty("requiresTwoFactor").GetBoolean().Should().BeTrue();
+    }
+
     [Fact]
     public async Task AReadOnlyMemberManagesTheirOwnPasskeys()
     {

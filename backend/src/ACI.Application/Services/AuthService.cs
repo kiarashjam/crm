@@ -495,12 +495,27 @@ public class AuthService : IAuthService
         // The reset link went to this address, so following it proves the inbox as
         // well as a confirmation link would. It is also how the real owner takes back
         // an address someone else registered first.
+        var takesBackTheAddress = user.EmailVerifiedAtUtc == null;
         user.EmailVerifiedAtUtc ??= DateTime.UtcNow;
+        if (takesBackTheAddress)
+        {
+            // Whoever registered it first chose more than the password: they could have
+            // turned 2FA on with their own authenticator, or added passkeys of their own,
+            // and a passkey signs in with no password at all. Those go with the password,
+            // as when the owner signs on with Google or Microsoft (SingleSignOnService).
+            user.TwoFactorEnabled = false;
+            user.TwoFactorSecretProtected = null;
+            user.TwoFactorEnabledAtUtc = null;
+        }
         // A reset is what someone does when they think another person has their
         // password: every session signed in before it ends now.
         RotateSecurityStamp(user);
+        if (takesBackTheAddress)
+            await _userRepository.RemovePasskeysAsync(user.Id, ct);
         await _userRepository.UpdateAsync(user, ct);
         _stamps?.Forget(user.Id);
+        if (takesBackTheAddress)
+            _logger.LogWarning("Password reset proved the address of unconfirmed account {UserId}; its 2FA and passkeys were removed", user.Id);
 
         _logger.LogInformation("Password reset completed for user {UserId}", user.Id);
         return Result.Success();
