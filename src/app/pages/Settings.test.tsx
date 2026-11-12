@@ -28,9 +28,11 @@ vi.mock('@/app/api', async (importOriginal) => ({
 
 vi.mock('@/app/components/AppHeader', () => ({ default: () => null }));
 vi.mock('./McpSetup', () => ({ ClaudeSection: () => null }));
+// The workspace in use: none (personal) unless a test sets one.
+let currentOrg: Record<string, unknown> | null = null;
 vi.mock('@/app/contexts/OrgContext', () => ({
-  useOrg: () => ({ organizations: [], currentOrg: null, setCurrentOrg: vi.fn(), refreshOrgs: vi.fn() }),
-  useOrgOptional: () => null,
+  useOrg: () => ({ organizations: currentOrg ? [currentOrg] : [], currentOrg, setCurrentOrg: vi.fn(), refreshOrgs: vi.fn() }),
+  useOrgOptional: () => (currentOrg ? { currentOrg } : null),
 }));
 vi.mock('@/app/contexts/ThemeContext', () => ({
   useTheme: () => ({ updateAppearance: vi.fn() }),
@@ -42,6 +44,7 @@ import Settings from './Settings';
 beforeEach(() => {
   twoFactorSetup.mockClear();
   twoFactorStatus.mockClear();
+  currentOrg = null;
 });
 
 describe('opening Settings', () => {
@@ -56,5 +59,32 @@ describe('opening Settings', () => {
     expect(twoFactorStatus).toHaveBeenCalledTimes(1);
     expect(twoFactorSetup).not.toHaveBeenCalled();
     expect(screen.queryByText('JBSWY3DPEHPK3PXP')).toBeNull();
+  });
+});
+
+describe('the Sales module turned off', () => {
+  it('leaves its tabs out of Settings: pipelines, and the welcome a deal is handed over with', async () => {
+    currentOrg = { id: 'org-1', name: 'Pavillon 46', role: 'owner', salesEnabled: false, clubEnabled: true };
+    render(
+      <MemoryRouter initialEntries={['/settings?tab=profile']}>
+        <Settings />
+      </MemoryRouter>,
+    );
+
+    expect((await screen.findAllByText('Team')).length).toBeGreaterThan(0);
+    expect(screen.queryByText('Pipelines')).toBeNull();
+    expect(screen.queryByText('Welcome & portal')).toBeNull();
+  });
+
+  it('offers them while it is on', async () => {
+    currentOrg = { id: 'org-1', name: 'Pavillon 46', role: 'owner', salesEnabled: true, clubEnabled: true };
+    render(
+      <MemoryRouter initialEntries={['/settings?tab=profile']}>
+        <Settings />
+      </MemoryRouter>,
+    );
+
+    expect((await screen.findAllByText('Pipelines')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Welcome & portal').length).toBeGreaterThan(0);
   });
 });

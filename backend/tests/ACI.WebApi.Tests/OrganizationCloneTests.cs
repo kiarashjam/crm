@@ -269,7 +269,14 @@ public class OrganizationCloneTests
             new LeadScoringRule { Id = Guid.NewGuid(), OrganizationId = org.Id, Field = "source", MatchValue = "Website", Points = 10, IsActive = true },
             new LeadAssignmentRule { Id = Guid.NewGuid(), OrganizationId = org.Id, Name = "Geneva desk", Kind = "territory", TerritoryId = territory.Id, QueueId = queue.Id, IsActive = true },
             new LeadCaptureForm { Id = Guid.NewGuid(), OrganizationId = org.Id, CreatedByUserId = owner, Name = "Website form", PublicToken = Guid.NewGuid().ToString("N"), IsActive = true, CreatedAtUtc = now },
-            new LeadOpsSettings { Id = Guid.NewGuid(), OrganizationId = org.Id, SlaHours = 4 });
+            new LeadOpsSettings { Id = Guid.NewGuid(), OrganizationId = org.Id, SlaHours = 4 },
+            new OnboardingSettings { Id = Guid.NewGuid(), OrganizationId = org.Id, WebhookUrl = $"https://portal.{name}.ch/onboarding", WebhookSecret = "s3cret", UpdatedAtUtc = now },
+            new EmailImage { Id = Guid.NewGuid(), OrganizationId = org.Id, FileName = "logo.png", ContentType = "image/png", Size = 4, Content = [0x89, 0x50, 0x4E, 0x47], CreatedAtUtc = now, CreatedByUserId = owner },
+            new DealOnboarding
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, DealId = deal.Id, ContactId = contact.Id, ClubMemberId = member.Id, Name = "Jean Dupont",
+                Email = $"jean@{name}.ch", Status = OnboardingStatuses.Welcomed, CreatedAtUtc = now, CreatedByUserId = owner, UpdatedAtUtc = now,
+            });
         // The public application form, an application approved as the member from the lead and
         // contact, and a household with the member as primary and the contact (not a member) as
         // spouse: rows that point at the member, the lead, the contact and the household.
@@ -492,6 +499,10 @@ public class OrganizationCloneTests
         new[] { org.WebhookApiKeyHash, org.WebhookPassword, org.OutboundWebhookUrl, org.OutboundWebhookSecret, org.McpApiKeyHash }
             .Should().OnlyContain(v => v == null, "a copied MCP key would open both workspaces, whichever the lookup found first");
         org.McpApiKeyCreatedAtUtc.Should().BeNull();
+        var portal = await db.OnboardingSettings.IgnoreQueryFilters().SingleAsync(p => p.OrganizationId == report.CopyId);
+        new[] { portal.WebhookUrl, portal.WebhookSecret }.Should().OnlyContain(v => v == null,
+            "a customer won in the copy is never handed to the original's portal, signed as the original");
+        (await db.OnboardingSettings.IgnoreQueryFilters().SingleAsync(p => p.OrganizationId == original.Org)).WebhookSecret.Should().Be("s3cret");
         (await db.OutreachEnrollments.IgnoreQueryFilters().Where(e => e.OrganizationId == report.CopyId).Select(e => e.Status).ToListAsync())
             .Should().BeEquivalentTo(["paused", "stopped"]);
         var contract = await db.Set<Contract>().IgnoreQueryFilters().SingleAsync(c => c.OrganizationId == report.CopyId);

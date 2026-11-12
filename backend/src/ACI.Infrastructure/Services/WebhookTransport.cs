@@ -41,8 +41,9 @@ public sealed class WebhookTransport : IWebhookTransport
             // Headers only: the status is all that matters, and a receiver that answered
             // with a huge body would otherwise be read into memory whole.
             using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
-            return new WebhookPostResult((int)response.StatusCode,
-                response.IsSuccessStatusCode ? null : $"The receiver answered {(int)response.StatusCode} {response.ReasonPhrase}".TrimEnd());
+            if (!response.IsSuccessStatusCode)
+                return new WebhookPostResult((int)response.StatusCode, $"The receiver answered {(int)response.StatusCode} {response.ReasonPhrase}".TrimEnd());
+            return new WebhookPostResult((int)response.StatusCode, null, await StartOfAsync(response, ct));
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -53,6 +54,29 @@ public sealed class WebhookTransport : IWebhookTransport
             _logger.LogInformation(ex, "Outbound webhook to {Host} was not delivered this time", url.Host);
             var why = ex is TaskCanceledException ? "The receiver did not answer in time." : $"The receiver could not be reached: {ex.Message}";
             return new WebhookPostResult(null, why);
+        }
+    }
+
+    /// <summary>The first few kilobytes of an answer, never more: a receiver cannot fill memory with its reply.</summary>
+    private static async Task<string?> StartOfAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        const int Limit = 8 * 1024;
+        try
+        {
+            await using var stream = await response.Content.ReadAsStreamAsync(ct);
+            var buffer = new byte[Limit];
+            var read = 0;
+            while (read < Limit)
+            {
+                var n = await stream.ReadAsync(buffer.AsMemory(read, Limit - read), ct);
+                if (n == 0) break;
+                read += n;
+            }
+            return read == 0 ? null : Encoding.UTF8.GetString(buffer, 0, read);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return null;
         }
     }
 

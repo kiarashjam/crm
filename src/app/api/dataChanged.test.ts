@@ -207,6 +207,11 @@ describe('what a write changes', () => {
     expect(resourcesChangedBy('PUT', '/api/contacts/c-1')).not.toContain('households');
   });
 
+  it("handing a deal's contact to the portal can add them to the club's members", () => {
+    expect(resourcesChangedBy('POST', '/api/deals/d-1/onboarding')).toEqual(expect.arrayContaining(['deals', 'activities', 'contacts', 'members', 'club-reports']));
+    expect(resourcesChangedBy('PUT', '/api/deals/d-1')).not.toContain('members');
+  });
+
   it("a club member's merge moves their applications and household links", () => {
     expect(resourcesChangedBy('POST', '/api/members/m-1/merge')).toEqual(expect.arrayContaining(['applications', 'households']));
   });

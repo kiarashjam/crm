@@ -255,6 +255,9 @@ export function resourcesChangedBy(method: string | undefined, path: string, bod
   if ((base === 'contacts' || base === 'leads') && segments.includes('relationships')) {
     return [...new Set([...(CHANGES[base] ?? [base]), 'households', 'members'])];
   }
+  // Handing a deal's contact to the member portal notes it on the deal's and the contact's
+  // timelines, and can add them to the club's members.
+  if (base === 'deals' && last === 'onboarding') return [...(CHANGES.deals ?? []), 'members', 'club-reports'];
   // A merge moves everything linked to the record merged away; a conversion makes
   // a contact, a company and a deal from the lead.
   if (last === 'merge' || (base === 'leads' && last === 'convert')) return [...LINKED];

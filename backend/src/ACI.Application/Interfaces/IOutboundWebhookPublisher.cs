@@ -13,7 +13,8 @@ public interface IOutboundWebhookPublisher
 /// <summary>What the receiver answered, or why it could not be reached.</summary>
 /// <param name="StatusCode">The HTTP status, or null when there was no answer at all.</param>
 /// <param name="Error">Why there was no answer: a timeout, a refused connection, an address that is not public.</param>
-public sealed record WebhookPostResult(int? StatusCode, string? Error = null)
+/// <param name="Body">The start of a successful answer's body (a few kilobytes at most), for a caller that reads it.</param>
+public sealed record WebhookPostResult(int? StatusCode, string? Error = null, string? Body = null)
 {
     public bool Succeeded => StatusCode is >= 200 and < 300;
 }

@@ -160,6 +160,8 @@ public sealed class OutboxRepository : IOutboxRepository
     public async Task<IReadOnlyList<OutboundMessage>> WebhookDeliveriesAsync(Guid organizationId, int take, CancellationToken ct = default) =>
         await _db.OutboundMessages.AsNoTracking()
             .Where(m => m.OrganizationId == organizationId && m.Channel == OutboundChannels.Webhook)
+            // Handoffs go to the portal's own address, and show on their deal instead.
+            .Where(m => m.Source != OutboundSources.Onboarding)
             .OrderByDescending(m => m.CreatedAtUtc)
             .Take(take)
             .ToListAsync(ct);

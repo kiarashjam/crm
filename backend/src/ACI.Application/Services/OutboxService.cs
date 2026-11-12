@@ -191,6 +191,7 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
     private readonly ILogger<OutboxService> _logger;
     private readonly ITenantContext? _tenant;
     private readonly IMemberMailRules? _members;
+    private readonly IOnboardingRepository? _onboarding;
 
     public OutboxService(
         IOutboxRepository messages,
@@ -206,7 +207,8 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
         IOptions<EmailSettings> settings,
         ILogger<OutboxService> logger,
         ITenantContext? tenant = null,
-        IMemberMailRules? members = null)
+        IMemberMailRules? members = null,
+        IOnboardingRepository? onboarding = null)
     {
         _messages = messages;
         _email = email;
@@ -222,6 +224,7 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
         _logger = logger;
         _tenant = tenant;
         _members = members;
+        _onboarding = onboarding;
     }
 
     // ── Queueing ──────────────────────────────────────────────────────────────
@@ -498,13 +501,31 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
 
     private async Task AttemptWebhookAsync(OutboundMessage message, CancellationToken ct)
     {
-        var workspace = message.OrganizationId is Guid org ? await _organizations.GetByIdAsync(org, ct) : null;
-        var address = workspace?.OutboundWebhookUrl?.Trim();
-        if (string.IsNullOrEmpty(address))
+        // A handoff goes to the workspace's onboarding address, signed with its secret;
+        // every other event to its events address.
+        var onboarding = message.Source == OutboundSources.Onboarding;
+        string? address, secret;
+        if (onboarding)
         {
-            Stop(message, OutboundStatuses.Cancelled, "The workspace stopped posting events before this one went.");
-            await _messages.SaveAsync(ct);
-            return;
+            var settings = message.OrganizationId is Guid org && _onboarding != null ? await _onboarding.GetSettingsAsync(org, ct) : null;
+            (address, secret) = (settings?.WebhookUrl?.Trim(), settings?.WebhookSecret);
+            if (string.IsNullOrEmpty(address) || string.IsNullOrWhiteSpace(secret))
+            {
+                Stop(message, OutboundStatuses.Cancelled, "The workspace took away its portal's address or secret before this handoff went.");
+                await _messages.SaveAsync(ct);
+                return;
+            }
+        }
+        else
+        {
+            var workspace = message.OrganizationId is Guid org ? await _organizations.GetByIdAsync(org, ct) : null;
+            (address, secret) = (workspace?.OutboundWebhookUrl?.Trim(), workspace?.OutboundWebhookSecret);
+            if (string.IsNullOrEmpty(address))
+            {
+                Stop(message, OutboundStatuses.Cancelled, "The workspace stopped posting events before this one went.");
+                await _messages.SaveAsync(ct);
+                return;
+            }
         }
         // Checked again here: the address was public when it was saved, and is checked
         // once more on the address actually dialled.
@@ -522,8 +543,14 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
             // The same for every attempt at one event, so a receiver can drop a repeat.
             ["X-Cadence-Event-Id"] = message.Id.ToString("D"),
         };
-        if (!string.IsNullOrWhiteSpace(workspace!.OutboundWebhookSecret))
-            headers["X-Cadence-Signature"] = Signature(workspace.OutboundWebhookSecret, body);
+        if (!string.IsNullOrWhiteSpace(secret))
+        {
+            headers["X-Cadence-Signature"] = Signature(secret, body);
+            // With the time signed in, so a receiver can refuse an old post replayed at it.
+            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            headers[WebhookSigning.TimestampHeader] = timestamp.ToString(CultureInfo.InvariantCulture);
+            headers[WebhookSigning.SignatureHeader] = WebhookSigning.Sign(secret, timestamp, body);
+        }
 
         var answer = await _webhooks.PostAsync(uri, body, headers, ct);
         message.LastStatusCode = answer.StatusCode;

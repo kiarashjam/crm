@@ -50,6 +50,16 @@ public class ClubMember : Common.BaseEntity
 
     /// <summary>The lead the member came in as, when they joined through the sales pipeline.</summary>
     public Guid? LeadId { get; set; }
+
+    /// <summary>
+    /// When the membership starts, if it is known. Null with <see cref="StartUndetermined"/>
+    /// set means the start is still to be decided; null without it means nobody said.
+    /// </summary>
+    public DateTime? StartsOnUtc { get; set; }
+    public bool StartUndetermined { get; set; }
+
+    /// <summary>The deal the member joined through, when they came from a converted lead (see DealOnboarding).</summary>
+    public Guid? DealId { get; set; }
 }
 
 public class ClubVisit : Common.BaseEntity

@@ -5,7 +5,7 @@ import {
   User, Palette, Bell, Shield,
   ChevronRight,
   Settings2, Sparkles,
-  Link2, Bot,
+  Link2, Bot, MessageSquareHeart,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -61,10 +61,14 @@ import {
 import type { Pipeline, DealStage } from '@/app/api/types';
 import { BrandSection } from './settings/components/BrandSection';
 import { IntegrationsSection } from './settings/components/IntegrationsSection';
+import { WelcomePortalSection } from './settings/components/WelcomePortalSection';
 import { ClaudeSection } from './McpSetup';
 import PageHero from '@/app/components/PageHero';
 
-type SettingsTab = 'profile' | 'brand' | 'appearance' | 'notifications' | 'integrations' | 'claude' | 'organization' | 'pipelines' | 'customFields' | 'security' | 'account';
+type SettingsTab = 'profile' | 'brand' | 'appearance' | 'notifications' | 'integrations' | 'welcome' | 'claude' | 'organization' | 'pipelines' | 'customFields' | 'security' | 'account';
+
+/** The tabs of the Sales module, left out while the workspace has it turned off. */
+const SALES_TABS: readonly SettingsTab[] = ['pipelines', 'welcome'];
 
 const TAB_CONFIG: { id: SettingsTab; label: string; icon: React.ElementType; description: string }[] = [
   { id: 'profile', label: 'Profile', icon: User, description: 'Personal information and preferences' },
@@ -72,6 +76,7 @@ const TAB_CONFIG: { id: SettingsTab; label: string; icon: React.ElementType; des
   { id: 'appearance', label: 'Appearance', icon: Palette, description: 'Theme, layout, and display options' },
   { id: 'notifications', label: 'Notifications', icon: Bell, description: 'Email and in-app notifications' },
   { id: 'integrations', label: 'Integrations', icon: Link2, description: 'Inbound webhooks and URLs' },
+  { id: 'welcome', label: 'Welcome & portal', icon: MessageSquareHeart, description: 'Hand new customers to your member portal' },
   { id: 'claude', label: 'Claude', icon: Bot, description: 'Read this organization in Claude' },
   { id: 'organization', label: 'Team', icon: Users, description: 'Organization and team members' },
   { id: 'pipelines', label: 'Pipelines', icon: Kanban, description: 'Sales pipeline stages' },
@@ -85,7 +90,8 @@ export default function Settings() {
   const { organizations, currentOrg, setCurrentOrg, refreshOrgs: _refreshOrgs } = useOrg();
   const themeContext = useTheme();
   const salesOn = useModules().sales;
-  const tabsShown = TAB_CONFIG.filter((tab) => tab.id !== 'pipelines' || salesOn);
+  // Pipelines, and the welcome a deal's contact is handed over with, belong to Sales.
+  const tabsShown = TAB_CONFIG.filter((tab) => salesOn || !SALES_TABS.includes(tab.id));
 
   // Tab state
   const tabFromUrl = searchParams.get('tab') as SettingsTab | null;
@@ -572,6 +578,15 @@ export default function Settings() {
         return <NotificationsSection settings={settings} updateSettings={updateSettings} />;
       case 'integrations':
         return <IntegrationsSection currentOrg={currentOrg} />;
+      case 'welcome':
+        if (!salesOn) {
+          return (
+            <div className="p-6 text-sm text-slate-600">
+              Welcome &amp; portal hands a deal&apos;s contact to your member portal, and deals belong to the Sales module, which this workspace has turned off. Turning it on again (Team) brings the settings back as they were.
+            </div>
+          );
+        }
+        return <WelcomePortalSection currentOrg={currentOrg} />;
       case 'claude':
         return <ClaudeSection />;
       case 'organization':

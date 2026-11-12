@@ -46,6 +46,7 @@ public class EndpointPermissionTests
         ["WebhookController.GenerateMcpApiKey"] = "OrganizationService: settings.manage",
         ["WebhookController.UpdateWebhookPassword"] = "OrganizationService: settings.manage",
         ["WebhookController.UpdateOutbound"] = "OrganizationService: settings.manage",
+        ["OnboardingController.Preview"] = "reads only: the welcome email filled as it would go, nothing kept or sent",
     };
 
     private sealed record Endpoint(Type Controller, MethodInfo Action, string Verb)
