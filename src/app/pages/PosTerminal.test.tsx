@@ -19,6 +19,13 @@ import type { Sale } from '@/app/api/sales';
 vi.mock('@/app/components/AppHeader', () => ({ default: () => null }));
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock('sonner', () => ({ toast }));
+// No workspace by default (everything shows, as outside an OrgProvider); a test sets one to
+// see what a member without the front desk's permission is offered.
+const org = vi.hoisted(() => ({ current: null as null | Record<string, unknown> }));
+vi.mock('@/app/contexts/OrgContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/app/contexts/OrgContext')>()),
+  useOrgOptional: () => org.current,
+}));
 vi.mock('@/app/api/apiClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/app/api/apiClient')>()),
   servesDemoData: () => false,
@@ -76,6 +83,7 @@ const POSTED: Sale = {
 
 beforeEach(() => {
   localStorage.clear();
+  org.current = null;
   toast.success.mockReset();
   toast.error.mockReset();
   sales.post.mockReset();
@@ -164,6 +172,22 @@ describe('the house-charge screen', () => {
     await user.click(screen.getByRole('button', { name: /on the house account/ }));
     await waitFor(() => expect(sales.post).toHaveBeenCalledTimes(2));
     expect(sales.post.mock.calls[1]![1]).toBe(sales.post.mock.calls[0]![1]);
+  });
+
+  it('offers nothing to ring up to a member without the front desk\'s permission', async () => {
+    org.current = {
+      isReadOnly: false, currentOrgId: 'org-1', organizations: [], hasFetched: true,
+      currentOrg: {
+        id: 'org-1', name: 'Pavillon 46', ownerUserId: 'u-owner', isOwner: false, role: 1, permissions: ['club.members'],
+        currency: 'CHF', locale: 'de-CH', timeZone: 'Europe/Zurich',
+      },
+    };
+    const user = await openJean();
+    await user.click(await screen.findByRole('button', { name: 'Add Negroni' }));
+    expect(screen.queryByRole('button', { name: /on the house account/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Check in/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Open tab/ })).toBeNull();
+    expect(sales.post).not.toHaveBeenCalled();
   });
 
   it('offers no gift card or points tile that pays nothing, and keeps check-in and tabs', async () => {
