@@ -160,6 +160,7 @@ public sealed partial class ClubPaymentsService
                     attempt.Status = OnlinePaymentStatuses.Processing;
                 attempt.UpdatedAtUtc = DateTime.UtcNow;
                 await SaveAttemptAsync(attempt, ct);
+                if (stripeEvent.Type == "checkout.session.async_payment_failed") await AnnounceFailureAsync(organizationId, attempt, ct);
                 // The money itself is recorded from payment_intent.succeeded, which says what Stripe received.
                 return new Outcome($"checkout {attempt.Status}");
             }
@@ -235,6 +236,7 @@ public sealed partial class ClubPaymentsService
     /// </summary>
     private async Task ApplyIntentAsync(Guid organizationId, ClubOnlinePayment attempt, ProviderPaymentIntent intent, CancellationToken ct)
     {
+        var failedBefore = attempt.Status == OnlinePaymentStatuses.Failed;
         attempt.PaymentIntentId ??= Clip(intent.Id, 100);
         attempt.ProviderChargeId = Clip(intent.LatestChargeId, 100) ?? attempt.ProviderChargeId;
         attempt.MethodType = Clip(intent.MethodType, 30) ?? attempt.MethodType;
@@ -305,6 +307,7 @@ public sealed partial class ClubPaymentsService
                 break;
         }
         await SaveAttemptAsync(attempt, ct);
+        if (!failedBefore && attempt.Status == OnlinePaymentStatuses.Failed) await AnnounceFailureAsync(organizationId, attempt, ct);
     }
 
     /// <summary>Keeps the card the member saved on Stripe's page: its ids and what Stripe shows of it, never its number.</summary>

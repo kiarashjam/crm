@@ -145,10 +145,12 @@ public sealed class ClubService : IClubService
     private readonly IClubCatalog _catalog;
     private readonly IClubRules _rules;
     private readonly IWorkspaceRecords? _records;
+    private readonly IAutomationEngine? _automations;
 
     public ClubService(IClubRepository club, IClubLedger ledger, IPermissionService permissions, ICurrentUserService user,
-        IClubCatalog catalog, IClubRules rules, IWorkspaceRecords? records = null)
+        IClubCatalog catalog, IClubRules rules, IWorkspaceRecords? records = null, IAutomationEngine? automations = null)
     {
+        _automations = automations;
         _club = club;
         _ledger = ledger;
         _permissions = permissions;
@@ -282,6 +284,11 @@ public sealed class ClubService : IClubService
             }, ct);
             if (!started.IsSuccess) return started.Error;
         }
+        // The workspace's rules for a new member, once the member, the account and what joining
+        // costs are all in place.
+        if (_automations != null && organizationId is Guid org)
+            await _automations.DispatchAsync(AutomationCatalog.MemberCreated, new AutomationEvent(
+                org, userId, row.Id.ToString(), $"{row.FirstName} {row.LastName}".Trim(), Email: row.Email, MemberId: row.Id), ct);
         return ToDto(row, opening);
     }
 

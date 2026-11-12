@@ -51,8 +51,10 @@ public class ContractService : IContractService
         ILogger<ContractService> logger,
         ILeadStatusSync statusSync,
         ITenantContext? tenant = null,
-        IClubApplications? admissions = null)
+        IClubApplications? admissions = null,
+        IAutomationEngine? automations = null)
     {
+        _automations = automations;
         _contracts = contracts;
         _leads = leads;
         _organizations = organizations;
@@ -67,6 +69,19 @@ public class ContractService : IContractService
 
     private readonly ITenantContext? _tenant;
     private readonly IClubApplications? _admissions;
+    private readonly IAutomationEngine? _automations;
+
+    /// <summary>
+    /// The workspace's rules for a signature, as the contract's lead or deal. A contract is
+    /// signed once by each side (the state machine refuses a second signature), and a rule
+    /// fires once for each contract and signature.
+    /// </summary>
+    private Task AnnounceSignatureAsync(Contract contract, string trigger, string signature, Guid actorUserId, CancellationToken ct) =>
+        _automations == null
+            ? Task.CompletedTask
+            : _automations.DispatchAsync(trigger, new AutomationEvent(
+                contract.OrganizationId, actorUserId, $"{contract.Id}:{signature}", contract.Title,
+                LeadId: contract.LeadId, DealId: contract.DealId, Email: contract.CounterpartyEmail, ContractId: contract.Id), ct);
 
     /// <summary>
     /// Reads and writes as the contract's workspace until disposed. The counterparty signs
@@ -329,6 +344,8 @@ public class ContractService : IContractService
             $"Signed by {contract.ClientSignatureName}", null, contract.ClientSignatureName, ip, userAgent, ct);
 
         await NotifyOwnerOfSignatureAsync(contract, ct);
+        // Nobody in the workspace signed: the rules act as whoever made the contract.
+        await AnnounceSignatureAsync(contract, AutomationCatalog.ContractSigned, "signed", contract.CreatedByUserId, ct);
 
         return Result.Success(await ToPublicDtoAsync(contract, ct));
     }
@@ -416,6 +433,7 @@ public class ContractService : IContractService
         await ApplyPipelineEffectAsync(contract, userId, organizationId, userId, ct);
         await AdmitMemberAsync(contract, userId, ct);
         await SendExecutedCopiesAsync(contract, userId, ct);
+        await AnnounceSignatureAsync(contract, AutomationCatalog.ContractCountersigned, "countersigned", userId, ct);
 
         return Result.Success(await ToDtoAsync(contract, ct));
     }

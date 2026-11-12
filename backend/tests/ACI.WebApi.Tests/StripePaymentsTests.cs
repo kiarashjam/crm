@@ -329,6 +329,31 @@ public class StripePaymentsTests
     }
 
     [Fact]
+    public async Task AFailedPaymentSetsOffTheWorkspacesRules_OnceHoweverOftenStripeSaysSo()
+    {
+        await using var app = new PaymentsApp();
+        var club = await ClubAsync(app);
+        await Json(await club.Owner.PostAsync("/api/automations", Body(new
+        {
+            name = "Card declined", trigger = "payment.failed",
+            actions = new object[] { new { type = "create_task", config = new { title = "Call about the declined card" } } },
+        })), "add the rule");
+        var (memberId, _, metadata) = await PayOnlineAsync(app, club);
+
+        foreach (var eventId in new[] { "evt_1", "evt_2" })
+            await Json(await app.CreateClient().SendAsync(FakeStripe.Webhook(club.Webhook, Secret,
+                IntentEvent(eventId, "payment_intent.payment_failed", "pi_1", "requires_payment_method", 29900, metadata, failure: "Your card has insufficient funds."))),
+                "Stripe says it failed");
+
+        var task = await app.Services.Read(db => db.TaskItems.IgnoreQueryFilters().Single(t => t.OrganizationId == club.Org));
+        task.Title.Should().Be("Call about the declined card");
+        task.Description.Should().Contain("Jean");
+        var run = await app.Services.Read(db => db.AutomationRuns.IgnoreQueryFilters().Single(r => r.OrganizationId == club.Org));
+        run.MemberId.Should().Be(memberId);
+        run.RecordType.Should().Be("payment");
+    }
+
+    [Fact]
     public async Task ACardSavedOnStripesPageKeepsOnlyStripesIdsAndWhatItShows_AndTheMembersAgreementForTheirDues()
     {
         await using var app = new PaymentsApp();

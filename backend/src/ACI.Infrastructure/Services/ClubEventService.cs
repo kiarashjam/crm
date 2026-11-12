@@ -48,8 +48,10 @@ public sealed partial class ClubEventService : IClubEvents
     private readonly ICampaignRepository _messages;
     private readonly ILedgerReadObserver _reads;
     private readonly IClubRules _rules;
+    private readonly IAutomationEngine? _automations;
 
-    public ClubEventService(AppDbContext db, ICurrentUserService user, IClubLedger ledger, IOutbox outbox, ICampaignRepository messages, ILedgerReadObserver reads, IClubRules rules)
+    public ClubEventService(AppDbContext db, ICurrentUserService user, IClubLedger ledger, IOutbox outbox, ICampaignRepository messages, ILedgerReadObserver reads, IClubRules rules,
+        IAutomationEngine? automations = null)
     {
         _db = db;
         _user = user;
@@ -58,6 +60,7 @@ public sealed partial class ClubEventService : IClubEvents
         _messages = messages;
         _reads = reads;
         _rules = rules;
+        _automations = automations;
     }
 
     // ── reads ────────────────────────────────────────────────────────────────

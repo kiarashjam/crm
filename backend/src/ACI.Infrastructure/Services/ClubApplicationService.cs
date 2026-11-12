@@ -56,12 +56,14 @@ public sealed class ClubApplicationService : IClubApplications
     private readonly ILogger<ClubApplicationService> _logger;
     private readonly ILedgerReadObserver _reads;
     private readonly IWorkspaceModules _modules;
+    private readonly IAutomationEngine? _automations;
 
     public ClubApplicationService(AppDbContext db, IClubLedger ledger, IClubCatalog catalog, IClubRules rules, IOutbox outbox,
         IConsentRepository consent, IPermissionService permissions, IWorkspaceRecords records, ILeadService leads,
         ILeadOpsService leadOps, INotificationService notifications, ITenantContext tenant, ILogger<ClubApplicationService> logger,
-        ILedgerReadObserver reads, IWorkspaceModules modules)
+        ILedgerReadObserver reads, IWorkspaceModules modules, IAutomationEngine? automations = null)
     {
+        _automations = automations;
         _db = db;
         _ledger = ledger;
         _catalog = catalog;
@@ -428,6 +430,7 @@ public sealed class ClubApplicationService : IClubApplications
                 app.UpdatedAtUtc = DateTime.UtcNow;
                 await _db.SaveChangesAsync(ct);
                 if (transaction != null) await transaction.CommitAsync(ct);
+                await AnnounceAsync(organizationId, app, outcome.Value.MemberCreated, approval.UserId, ct);
                 return await AnswerAsync(organizationId, app, outcome.Value with { Approved = true }, ct);
             }
             finally
@@ -436,6 +439,29 @@ public sealed class ClubApplicationService : IClubApplications
             }
         }
         return DomainErrors.Application.Approving;
+    }
+
+    /// <summary>
+    /// The workspace's rules for an approved application, and for the member it made, once the
+    /// approval is committed. Only the approval that made the claim gets here, so a retry or a
+    /// second reviewer sets nothing off again. A rule that fails cannot undo the approval.
+    /// </summary>
+    private async Task AnnounceAsync(Guid organizationId, ClubApplication app, bool memberCreated, Guid userId, CancellationToken ct)
+    {
+        if (_automations == null || app.MemberId is not Guid memberId) return;
+        var name = $"{app.FirstName} {app.LastName}".Trim();
+        try
+        {
+            await _automations.DispatchAsync(AutomationCatalog.ApplicationApproved, new AutomationEvent(
+                organizationId, userId, app.Id.ToString(), name, Email: app.Email, MemberId: memberId, RecordId: app.Id), ct);
+            if (memberCreated)
+                await _automations.DispatchAsync(AutomationCatalog.MemberCreated, new AutomationEvent(
+                    organizationId, userId, memberId.ToString(), name, Email: app.Email, MemberId: memberId), ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Application {ApplicationId} was approved, but the workspace's automations for it failed", app.Id);
+        }
     }
 
     /// <summary>What an approval will do, worked out before the claim so a refusal writes nothing.</summary>

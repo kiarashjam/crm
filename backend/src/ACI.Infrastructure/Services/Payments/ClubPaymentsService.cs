@@ -58,11 +58,13 @@ public sealed partial class ClubPaymentsService : IClubPayments
     private readonly ICurrentUserService _user;
     private readonly EmailSettings _email;
     private readonly ILogger<ClubPaymentsService> _logger;
+    private readonly IAutomationEngine? _automations;
 
     public ClubPaymentsService(AppDbContext db, IClubLedger ledger, IClubBilling billing, ClubPaymentSettingsService settings,
         IEnumerable<IPaymentProvider> providers, PayLinkSigner links, IOutbox outbox, ITenantContext tenant, ICurrentUserService user,
-        IOptions<EmailSettings> email, ILogger<ClubPaymentsService> logger)
+        IOptions<EmailSettings> email, ILogger<ClubPaymentsService> logger, IAutomationEngine? automations = null)
     {
+        _automations = automations;
         _db = db;
         _ledger = ledger;
         _billing = billing;
@@ -501,6 +503,8 @@ public sealed partial class ClubPaymentsService : IClubPayments
                 : failure.Message, 500);
             attempt.UpdatedAtUtc = DateTime.UtcNow;
             await SaveAttemptAsync(attempt, ct);
+            // Refused is a failure; unanswered is not known yet, and Stripe's webhook settles it.
+            if (!failure.Unreachable) await AnnounceFailureAsync(config.OrganizationId, attempt, ct);
             return;
         }
         await ApplyIntentAsync(config.OrganizationId, attempt, answer.Value!, ct);
@@ -661,6 +665,29 @@ public sealed partial class ClubPaymentsService : IClubPayments
         {
             _db.Entry(attempt).State = EntityState.Detached;
             return false;
+        }
+    }
+
+    /// <summary>
+    /// The workspace's rules for a payment that failed for good: a card declined, or a direct
+    /// debit that did not go through. Once for each attempt, however often Stripe reports it.
+    /// Stripe or the payment job set it off, so the rules act as the workspace's owner, as a
+    /// lead from the website does. A rule that fails does not touch the payment's record.
+    /// </summary>
+    private async Task AnnounceFailureAsync(Guid organizationId, ClubOnlinePayment attempt, CancellationToken ct)
+    {
+        if (_automations == null || attempt.Status != OnlinePaymentStatuses.Failed) return;
+        try
+        {
+            var owner = await _db.Organizations.AsNoTracking().Where(o => o.Id == organizationId).Select(o => (Guid?)o.OwnerUserId).FirstOrDefaultAsync(ct);
+            if (owner is not Guid actor) return;
+            await _automations.DispatchAsync(AutomationCatalog.PaymentFailed, new AutomationEvent(
+                organizationId, actor, $"{attempt.Id}:failed", $"{attempt.MemberName}: {attempt.Description}",
+                MemberId: attempt.MemberId, RecordId: attempt.Id), ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "The automations for failed payment {AttemptId} could not run", attempt.Id);
         }
     }
 
