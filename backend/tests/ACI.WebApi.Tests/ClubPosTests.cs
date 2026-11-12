@@ -324,6 +324,43 @@ public class ClubPosTests
     }
 
     [Fact]
+    public async Task TheClubIsNotTurnedOffWhileTheImportIsOn_AndAClubTurnedOffAnywayIsNotImportedUntilItIsBack()
+    {
+        using var app = new PosApp();
+        var (client, org, jean) = await ConnectedClubAsync(app);
+        app.Lightspeed.Sales.Add(Sale("R95", Now.AddMinutes(-5), [Line("Negroni", 1, 18.50m, 8.1m)], [OnAccount(18.50m)], accountName: "1042"));
+
+        // The import posts tickets to members' house accounts: with the club's pages gone, nobody
+        // could see those charges or stop it, so the club stays on until the import is turned off.
+        var refused = await Club.Refused(await client.PutAsync($"/api/organizations/{org}/modules", Body(new { club = false })),
+            HttpStatusCode.Conflict, "turn the club off while the import is on");
+        refused.Should().Contain("import of POS tickets");
+
+        // Turned off anyway, by two people at once (one turning the import on as the other turns
+        // the club off), the scheduled import leaves the club alone and reads nothing...
+        async Task SetClubOffAsync(bool off)
+        {
+            using var scope = app.Services.CreateScope();
+            await using var db = scope.ServiceProvider.EveryWorkspace();
+            db.Organizations.Single(o => o.Id == org).ClubModuleOff = off;
+            await db.SaveChangesAsync();
+        }
+        await SetClubOffAsync(true);
+        using (var scope = app.Services.CreateScope())
+            (await scope.ServiceProvider.GetRequiredService<IClubPos>().ImportDueAsync(DateTime.UtcNow)).Should().Be(0);
+        app.Lightspeed.Sent("GET", "/f/v2/business-location/").Should().BeEmpty("a club that is off is not read");
+
+        // ...and takes its tickets up from where it was once the club is on again.
+        await SetClubOffAsync(false);
+        using (var scope = app.Services.CreateScope())
+            (await scope.ServiceProvider.GetRequiredService<IClubPos>().ImportDueAsync(DateTime.UtcNow)).Should().Be(1);
+        (await Club.BalanceAsync(client, jean)).Should().Be(-18.50m);
+
+        await Club.Json(await client.PutAsync("/api/pos/settings", Body(new { enabled = false })), "turn the import off");
+        await Club.Json(await client.PutAsync($"/api/organizations/{org}/modules", Body(new { club = false })), "turn the club off now");
+    }
+
+    [Fact]
     public async Task AnImportCutShort_PassesOverNoTicket_TheNextReadsAgainTheDayItDidNotFinish()
     {
         using var app = new PosApp();

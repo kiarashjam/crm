@@ -403,7 +403,7 @@ activities, the calendar, the team, automations and settings belong to both.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `PUT` | `/api/organizations/{id}/modules` | `{ sales?, club? }` (`settings.manage`); one module always stays on (400 `Module.OneStaysOn`), and a module whose own work still runs (the club's automatic billing, reminders, lapsing or monthly statements, a campaign scheduled or sending; leads in outreach sequences) is not turned off until that stops (409 `Module.StillRunning.Conflict`, saying what) |
+| `PUT` | `/api/organizations/{id}/modules` | `{ sales?, club? }` (`settings.manage`); one module always stays on (400 `Module.OneStaysOn`), and a module whose own work still runs (the club's automatic billing, reminders, lapsing or monthly statements, a campaign scheduled or sending, the import of POS tickets; leads in outreach sequences) is not turned off until that stops (409 `Module.StillRunning.Conflict`, saying what) |
 
 Every endpoint of a module that is off answers one refusal, before anything else and the
 same for everyone: 403 with `errorCode: "Module.Off"` and the `module` named. Endpoints
@@ -414,8 +414,9 @@ images). `GET /api/organizations` says which modules each workspace has on
 
 What one module does to the other's records stops with it too. With the club off, a deal's
 handoff adds nobody to the club's members, a countersigned contract admits nobody (the
-application stays open for when the club is on again), and no saved card is charged for dues
-(they are charged once the club is on again). With Sales off, an automation puts no
+application stays open for when the club is on again), no saved card is charged for dues
+(they are charged once the club is on again), and the scheduled POS import leaves the
+workspace alone (it carries on from where it stopped once the club is on again). With Sales off, an automation puts no
 lead in an outreach sequence (leads a website form posts are still kept), search leaves out
 leads and deals, and the weekly digest leaves the workspace out.
 

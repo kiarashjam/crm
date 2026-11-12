@@ -132,9 +132,9 @@ public class OrganizationsController : ControllerBase
     /// its endpoints refuse (Module.Off); nothing is deleted, and turning it on brings it all
     /// back. One module always stays on. A module is not turned off while work of its own is
     /// still switched on (the club's automatic billing, reminders, lapsing or monthly
-    /// statements, or a campaign scheduled or sending; leads in outreach sequences), as nobody
-    /// could see or stop that work once its pages were gone. Takes managing the workspace's
-    /// settings.
+    /// statements, a campaign scheduled or sending, or the import of POS tickets; leads in
+    /// outreach sequences), as nobody could see or stop that work once its pages were gone.
+    /// Takes managing the workspace's settings.
     /// </remarks>
     /// <response code="200">Which modules are on now.</response>
     /// <response code="400">Both modules would be off.</response>

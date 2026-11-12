@@ -72,7 +72,10 @@ public interface IClubPos
     /// <summary>Imports now what the POS closed since the last import, and posts what it can. Refused (409) while another import runs.</summary>
     Task<Result<PosImportDto>> ImportNowAsync(Guid organizationId, CancellationToken ct = default);
 
-    /// <summary>The scheduled import, in every workspace that has turned it on. Returns how many tickets came in.</summary>
+    /// <summary>
+    /// The scheduled import, in every workspace that has turned it on and has its club on.
+    /// Returns how many tickets came in.
+    /// </summary>
     Task<int> ImportDueAsync(DateTime utcNow, CancellationToken ct = default);
 
     /// <summary>

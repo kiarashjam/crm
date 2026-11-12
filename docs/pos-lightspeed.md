@@ -29,6 +29,10 @@ placed through them. So Cadence reads the Financial API:
 page by page. It does this every five minutes for every workspace that turned the import on, and
 when someone presses "Import now".
 
+The import is the Club module's: the club cannot be turned off in Settings while the import is
+on (turn it off on the Connection tab first), and a workspace whose club is off is not imported.
+How far the import has read stays where it was, so it carries on once the club is on again.
+
 - **One import at a time.** Each run claims the workspace with one conditional update (a
   10-minute lease on its POS settings). Two app instances, or the job and a click, never import
   the same workspace at once.

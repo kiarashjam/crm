@@ -70,7 +70,12 @@ public sealed partial class ClubPosService
         var due = await _db.ClubPosSettings.IgnoreQueryFilters().AsNoTracking()
             .Where(s => s.OrganizationId != null && s.Enabled && s.RefreshTokenProtected != null && s.LocationId != null
                 && (s.ClaimedUntilUtc == null || s.ClaimedUntilUtc <= utcNow)
-                && (s.LastImportAtUtc == null || s.LastImportAtUtc <= dueBefore))
+                && (s.LastImportAtUtc == null || s.LastImportAtUtc <= dueBefore)
+                // A workspace that turned its club off is left alone: nobody there could see the
+                // tickets or the charges they post. Turning the club off is refused while the
+                // import is on, so this is for two people changing both at once. How far the
+                // import has read stays where it was, and it carries on once the club is on again.
+                && !_db.Organizations.Any(o => o.Id == s.OrganizationId && o.ClubModuleOff))
             .Select(s => new { s.Id, OrganizationId = s.OrganizationId!.Value })
             .ToListAsync(ct);
         var imported = 0;

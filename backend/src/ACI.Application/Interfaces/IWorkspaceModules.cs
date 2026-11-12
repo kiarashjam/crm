@@ -19,9 +19,9 @@ public interface IWorkspaceModules
     /// <summary>
     /// Turns modules on or off; a field left out keeps its value. Takes managing the
     /// workspace's settings. One module always stays on, and a module whose automatic work
-    /// is still switched on (billing, reminders, scheduled campaigns; leads in outreach
-    /// sequences) is not turned off until that is stopped, since nobody could see or stop it
-    /// once its pages were gone.
+    /// is still switched on (billing, reminders, scheduled campaigns, the import of POS
+    /// tickets; leads in outreach sequences) is not turned off until that is stopped, since
+    /// nobody could see or stop it once its pages were gone.
     /// </summary>
     Task<Result<WorkspaceModulesDto>> SetAsync(Guid organizationId, Guid userId, SetWorkspaceModulesRequest request, CancellationToken ct = default);
 }

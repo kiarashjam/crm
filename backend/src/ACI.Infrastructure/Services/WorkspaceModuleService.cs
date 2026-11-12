@@ -89,7 +89,8 @@ public sealed class WorkspaceModuleService : IWorkspaceModules
 
     /// <summary>
     /// What the club does on its own, which nobody could see or stop with its pages gone: the
-    /// daily billing run's switches, and campaigns waiting to go out or going out.
+    /// daily billing run's switches, campaigns waiting to go out or going out, and the POS
+    /// import, which posts the tickets it reads to members' house accounts.
     /// </summary>
     private async Task<IReadOnlyList<string>> ClubStillRunningAsync(Guid organizationId, CancellationToken ct)
     {
@@ -107,6 +108,9 @@ public sealed class WorkspaceModuleService : IWorkspaceModules
             .CountAsync(ct);
         if (campaigns > 0)
             running.Add(campaigns == 1 ? "a campaign scheduled or sending (Campaigns)" : $"{campaigns} campaigns scheduled or sending (Campaigns)");
+
+        if (await _db.ClubPosSettings.AsNoTracking().AnyAsync(s => s.OrganizationId == organizationId && s.Enabled, ct))
+            running.Add("the import of POS tickets (POS tickets, Connection)");
         return running;
     }
 
