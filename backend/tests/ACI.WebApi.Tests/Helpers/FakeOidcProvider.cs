@@ -49,6 +49,9 @@ public sealed class FakeOidcProvider : HttpMessageHandler
     /// <summary>What a token endpoint answers with as the id token, given the request's form; null answers 400.</summary>
     public Func<IReadOnlyDictionary<string, string>, string?> IdToken { get; set; } = _ => null;
 
+    /// <summary>When set, reading the signing keys fails with it: a provider that does not answer in time.</summary>
+    public Exception? KeysFailWith { get; set; }
+
     public string Sign(IDictionary<string, object> claims, RsaSecurityKey? key = null) =>
         new JsonWebTokenHandler().CreateToken(
             JsonSerializer.Serialize(claims),
@@ -113,6 +116,7 @@ public sealed class FakeOidcProvider : HttpMessageHandler
                 });
             case ("GET", "https://www.googleapis.com/oauth2/v3/certs"):
             case ("GET", "https://login.microsoftonline.com/organizations/discovery/v2.0/keys"):
+                if (KeysFailWith != null) throw KeysFailWith;
                 return Json(new { keys = new[] { Jwk(Key) } });
             case ("POST", GoogleToken):
             case ("POST", MicrosoftToken):
@@ -153,6 +157,9 @@ public sealed class SsoApp : CustomWebApplicationFactory
 
     public FakeOidcProvider Provider { get; } = new();
 
+    /// <summary>The server's clock, which a test can move on (the providers' keys are kept for a while).</summary>
+    public ShiftedClock Clock { get; } = new();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         base.ConfigureWebHost(builder);
@@ -169,6 +176,7 @@ public sealed class SsoApp : CustomWebApplicationFactory
         builder.ConfigureTestServices(services =>
         {
             services.AddHttpClient(OidcMetadataSource.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => Provider);
+            services.AddSingleton<TimeProvider>(Clock);
             var sender = new Mock<IEmailSender>();
             sender.Setup(s => s.SendPasswordResetEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
                 .Callback((string to, string _, string url, CancellationToken _) => { lock (_resetLinks) _resetLinks.Add((to, url)); })

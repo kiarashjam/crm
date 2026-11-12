@@ -150,20 +150,21 @@ public sealed class SingleSignOnService : ISingleSignOn
         }
         if (string.IsNullOrEmpty(code)) return BackToApp("error", "provider_error");
 
-        string? idToken;
+        JsonWebToken? token;
         try
         {
             var metadata = await _metadata.GetAsync(p, refresh: false, ct);
-            idToken = await RedeemAsync(p, metadata, code, trip.Verifier, ct);
+            var idToken = await RedeemAsync(p, metadata, code, trip.Verifier, ct);
+            if (idToken == null) return BackToApp("error", "provider_error");
+            // Checking it can read the provider's keys again (a key published since they were
+            // kept), so a provider that does not answer then is the provider's failure too.
+            token = await ValidateAsync(p, idToken, trip.Nonce, ct);
         }
         catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or JsonException or TaskCanceledException)
         {
-            _logger.LogError(ex, "Could not redeem the {Provider} sign-in code", p.Name);
+            _logger.LogError(ex, "Could not redeem or check the {Provider} sign-in code", p.Name);
             return BackToApp("error", "provider_error");
         }
-        if (idToken == null) return BackToApp("error", "provider_error");
-
-        var token = await ValidateAsync(p, idToken, trip.Nonce, ct);
         if (token == null) return BackToApp("error", "invalid_token");
 
         var (user, refusal) = await FindOrMakeAccountAsync(p, token, ct);

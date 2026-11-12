@@ -79,7 +79,8 @@ public class SsoController : ControllerBase
         {
             return Redirect(await _sso.ReturnFromProviderAsync(provider, code, state, error, ct));
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        // Anything but the browser going away, a timeout included, still sends it back to the app.
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             _logger.LogError(ex, "Single sign-on with {Provider} failed on the way back", provider);
             return BackToApp("server_error") ?? Problem("The sign-in failed. Try again.");

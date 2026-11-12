@@ -269,6 +269,24 @@ public class SsoSignInTests
     }
 
     [Fact]
+    public async Task AProviderThatDoesNotAnswerWhileItsNewKeysAreRead_SendsTheBrowserBackToTheApp()
+    {
+        // A token signed with a key the kept set lacks has the keys read again. When the
+        // provider does not answer in time then, the browser goes back to the app saying so,
+        // not to a page of JSON at the API's address.
+        await using var app = new SsoApp();
+        var browser = new Browser(app);
+        var authorize = Query(await browser.StartAsync("google"));
+        app.Clock.Ahead = TimeSpan.FromMinutes(6);
+        app.Provider.KeysFailWith = new TaskCanceledException("The provider took too long to answer.");
+        app.Provider.IdToken = _ => app.Provider.Sign(FakeOidcProvider.GoogleClaims("google-1", "anna@gmail.com", authorize["nonce"]), app.Provider.Stranger);
+
+        var landing = Fragment(await browser.ReturnAsync("google", $"code=the-code&state={Uri.EscapeDataString(authorize["state"])}"));
+        landing["error"].Should().Be("provider_error");
+        (await app.Services.Read(db => db.Users.Any(u => u.Email == "anna@gmail.com"))).Should().BeFalse();
+    }
+
+    [Fact]
     public async Task AStateNobodyIssued_OrOneAlreadyUsed_FindsNothing()
     {
         await using var app = new SsoApp();
