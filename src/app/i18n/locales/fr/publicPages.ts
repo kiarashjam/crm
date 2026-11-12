@@ -1,4 +1,4 @@
-// Une espace insécable ( ) précède : ? ! et ; comme le veut la typographie française.
+// Une espace insécable (U+00A0) précède : ? ! et ; comme le veut la typographie française.
 import type { publicPages as en } from '../en/publicPages';
 import type { Translation } from '../../catalog';
 
