@@ -217,6 +217,97 @@ public class AutomationClubTriggersTests
             .StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
+    /// <summary>A rule that emails a day before its record's date: a reminder.</summary>
+    private static object Reminder(string trigger, string date, object? triggerConfig = null) => new
+    {
+        name = "Reminder", trigger, triggerConfig,
+        actions = new object[]
+        {
+            new { type = "wait", config = new { mode = "until", date, offsetAmount = "-1", offsetUnit = "days" } },
+            new { type = "send_email", config = new { subject = "See you tomorrow", body = "Dear {{firstName}}", purpose = "service" } },
+        },
+    };
+
+    private static Task<List<string?>> RemindedAsync(App app) =>
+        app.Services.Read(db => db.OutboundMessages.Where(m => m.Source == OutboundSources.Automation).Select(m => m.To).ToList());
+
+    [Fact]
+    public async Task ARunAboutABookingCancelledMeanwhileStops_SoItsReminderDoesNotGo()
+    {
+        await using var app = new App();
+        var (owner, _, _) = await ClubAsync(app);
+        await RuleAsync(owner, Reminder("reservation.created", "start"));
+        var jean = await MemberAsync(owner, "Jean");
+        var anna = await MemberAsync(owner, "Anna");
+        var court = (await Json(await owner.PostAsync("/api/resources", Body(new { name = "Court", kind = "Court", capacity = 4 })), "add a court")).GetProperty("id").GetString();
+        var start = app.Clock.GetUtcNow().UtcDateTime.AddDays(3);
+        await Json(await owner.PostAsync("/api/reservations", Body(new { resourceId = court, memberId = jean, startAtUtc = start, endAtUtc = start.AddHours(1) })), "Jean books");
+        var annas = (await Json(await owner.PostAsync("/api/reservations", Body(new { resourceId = court, memberId = anna, startAtUtc = start.AddHours(2), endAtUtc = start.AddHours(3) })), "Anna books"))
+            .GetProperty("id").GetGuid();
+        await Json(await owner.PutAsync($"/api/reservations/{annas}", Body(new { status = "Cancelled" })), "Anna cancels");
+
+        app.Clock.Advance(TimeSpan.FromDays(2).Add(TimeSpan.FromHours(3)));
+        await app.RunDueAsync();
+
+        (await RemindedAsync(app)).Should().Equal(["jean@example.ch"], "a cancelled booking is not one to come to");
+        var stopped = await app.Services.Read(db => db.AutomationRuns.Single(r => r.RecordId == annas));
+        stopped.Status.Should().Be(AutomationRunStatuses.Cancelled);
+        stopped.LastError.Should().Contain("booking was cancelled");
+    }
+
+    [Fact]
+    public async Task ARunAboutAPlaceCancelledMeanwhileStops_SoItsReminderDoesNotGo()
+    {
+        await using var app = new App();
+        var (owner, _, _) = await ClubAsync(app);
+        await RuleAsync(owner, Reminder("event.registered", "eventStart"));
+        var start = app.Clock.GetUtcNow().UtcDateTime.AddDays(3);
+        var eventId = (await Json(await owner.PostAsync("/api/events", Body(new
+        {
+            name = "Wine night", startAtUtc = start, endAtUtc = start.AddHours(3), capacity = 10, status = "Published",
+        })), "add the event")).GetProperty("id").GetGuid();
+        await Json(await owner.PostAsync($"/api/events/{eventId}/attendees", Body(new { memberId = await MemberAsync(owner, "Jean"), ticketTier = "Member" })), "Jean registers");
+        var annas = (await Json(await owner.PostAsync($"/api/events/{eventId}/attendees", Body(new { memberId = await MemberAsync(owner, "Anna"), ticketTier = "Member" })), "Anna registers"))
+            .GetProperty("id").GetGuid();
+        await Json(await owner.PutAsync($"/api/events/{eventId}/attendees/{annas}", Body(new { status = "Cancelled" })), "Anna cancels");
+
+        app.Clock.Advance(TimeSpan.FromDays(2).Add(TimeSpan.FromHours(3)));
+        await app.RunDueAsync();
+
+        (await RemindedAsync(app)).Should().Equal(["jean@example.ch"]);
+        (await app.Services.Read(db => db.AutomationRuns.Single(r => r.RecordId == annas))).LastError.Should().Contain("cancelled");
+    }
+
+    [Fact]
+    public async Task ARenewalRunForASubscriptionCancelledMeanwhileStops_SoNoRenewalReminderGoes()
+    {
+        await using var app = new App();
+        var (owner, _, org) = await ClubAsync(app);
+        var jean = await MemberAsync(owner, "Jean");
+        var now = app.Clock.GetUtcNow().UtcDateTime;
+        var subscription = Guid.NewGuid();
+        using (var scope = app.Services.CreateScope())
+        {
+            using var db = scope.ServiceProvider.EveryWorkspace();
+            db.ClubSubscriptions.Add(new ClubSubscription
+            {
+                Id = subscription, OrganizationId = org, MemberId = jean, MemberName = "Jean Dupont", Name = "Gold dues", Amount = 299m, Currency = "CHF",
+                Cadence = "Annual", Status = "Active", StartedAtUtc = now.AddMonths(-11), NextChargeAtUtc = now.AddDays(10), CreatedAtUtc = now.AddMonths(-11),
+            });
+            await db.SaveChangesAsync();
+        }
+        await RuleAsync(owner, Reminder("membership.renewal_due", "periodEnd", new { daysBefore = "14" }));
+        await app.ScanRenewalsAsync();
+        (await app.Services.Read(db => db.AutomationRuns.Single())).Status.Should().Be(AutomationRunStatuses.Waiting);
+
+        await Json(await owner.PutAsync($"/api/subscriptions/{subscription}", Body(new { status = "Cancelled" })), "Jean cancels");
+        app.Clock.Advance(TimeSpan.FromDays(9).Add(TimeSpan.FromHours(1)));
+        await app.RunDueAsync();
+
+        (await RemindedAsync(app)).Should().BeEmpty("a cancelled subscription does not renew");
+        (await app.Services.Read(db => db.AutomationRuns.Single())).LastError.Should().Contain("subscription was cancelled");
+    }
+
     [Fact]
     public async Task ASignatureAndACountersignatureSetOffTheirRules_OnTheContractsLead()
     {

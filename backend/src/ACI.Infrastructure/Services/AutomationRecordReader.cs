@@ -181,6 +181,11 @@ public sealed class AutomationRecordReader : IAutomationRecordReader
     {
         var subscription = id == null ? null : await _db.ClubSubscriptions.AsNoTracking().FirstOrDefaultAsync(s => s.Id == id, ct);
         if (subscription == null) return Gone("Stopped: the subscription was deleted.");
+        // A subscription cancelled or paused does not renew: a run for its renewal stops, or a
+        // "your membership renews on Friday" email would reach someone who has just cancelled.
+        // Picked up again, it renews at a later period, which sets the rule off afresh.
+        if (subscription.Status is "Cancelled" or "Paused")
+            return Gone($"Stopped: the subscription was {subscription.Status.ToLowerInvariant()}.");
         var member = await MemberAsync(subscription.MemberId, ct);
         if (member == null) return Gone("Stopped: the member was deleted.");
         var facts = new Dictionary<string, FactValue>(StringComparer.Ordinal)
@@ -203,6 +208,9 @@ public sealed class AutomationRecordReader : IAutomationRecordReader
     {
         var booking = id == null ? null : await _db.ClubReservations.AsNoTracking().FirstOrDefaultAsync(r => r.Id == id, ct);
         if (booking == null) return Gone("Stopped: the booking was deleted.");
+        // A cancelled booking is kept, with its status, for its money and its history; a run
+        // about it stops as for one deleted, so its reminder does not reach someone who cancelled.
+        if (booking.Status == ReservationStatuses.Cancelled) return Gone("Stopped: the booking was cancelled.");
         var member = await MemberAsync(booking.MemberId, ct);
         var facts = new Dictionary<string, FactValue>(StringComparer.Ordinal)
         {
@@ -222,6 +230,10 @@ public sealed class AutomationRecordReader : IAutomationRecordReader
         if (place == null) return Gone("Stopped: the place on the event's list was removed.");
         var ev = await _db.ClubEvents.AsNoTracking().FirstOrDefaultAsync(e => e.Id == place.EventId, ct);
         if (ev == null) return Gone("Stopped: the event was deleted.");
+        // Cancelled places and events stay on the list with their status: a run about one stops,
+        // so nobody who cancelled, or whose event was called off, is reminded to come.
+        if (ev.Status == ClubEventStatuses.Cancelled) return Gone("Stopped: the event was cancelled.");
+        if (place.Status == RegistrationStatuses.Cancelled) return Gone("Stopped: the place on the event's list was cancelled.");
         var member = await MemberAsync(place.MemberId, ct);
         var facts = new Dictionary<string, FactValue>(StringComparer.Ordinal)
         {
