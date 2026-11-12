@@ -4,7 +4,7 @@
 // offered what the server would refuse them.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { PERMISSION, type Permission } from '@/app/api/organizations';
@@ -182,6 +182,24 @@ describe('POS tickets', () => {
 
     await user.click(screen.getByRole('button', { name: 'Import now' }));
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('2 new tickets: 1 posted, 1 need a member, 0 not posted'));
+  });
+
+  it('sends the date to import from only when it was changed, so the moment the import began stays as it was', async () => {
+    // The server set it to the moment the import was turned on, not to a midnight.
+    api.settings.mockResolvedValue({ ...SETTINGS, importFromUtc: '2026-11-01T14:23:00Z' });
+    api.save.mockResolvedValue(SETTINGS);
+    const user = userEvent.setup();
+    renderAt('/pos-tickets?tab=connection');
+    expect(await screen.findByText(/Connected on .* by Claire/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Save POS settings' }));
+    await waitFor(() => expect(api.save).toHaveBeenCalledTimes(1));
+    expect(api.save.mock.calls[0]![0]).not.toHaveProperty('importFromUtc');
+
+    fireEvent.change(screen.getByLabelText('Import tickets closed from'), { target: { value: '2026-10-30' } });
+    await user.click(screen.getByRole('button', { name: 'Save POS settings' }));
+    await waitFor(() => expect(api.save).toHaveBeenCalledTimes(2));
+    expect(api.save.mock.calls[1]![0]).toHaveProperty('importFromUtc', new Date('2026-10-30T00:00:00').toISOString());
   });
 
   it('says when the server has no Lightspeed client', async () => {

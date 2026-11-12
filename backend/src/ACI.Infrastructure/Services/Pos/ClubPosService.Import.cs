@@ -96,6 +96,8 @@ public sealed partial class ClubPosService
         var counts = new Counts();
         string? error = null;
         DateTime? readThrough = null;
+        string? readLocation = null;
+        DateTime? readFrom = null;
         try
         {
             var row = await _db.ClubPosSettings.AsNoTracking().FirstAsync(s => s.Id == settingsId, ct);
@@ -108,7 +110,11 @@ public sealed partial class ClubPosService
             }
 
             var now = DateTime.UtcNow;
-            var start = row.ImportFromUtc ?? row.ConnectedAtUtc ?? now.AddDays(-1);
+            // With no date to import from, the first import sets it to now, as turning the import
+            // on does. It used to read from when the club connected: "Import now" pressed to try
+            // the connection days later billed every ticket since, which staff had rung up by hand.
+            var start = row.ImportFromUtc ?? await StartImportingAsync(settingsId, now, ct);
+            (readLocation, readFrom) = (row.LocationId, start);
             var from = row.LastClosedAtUtc is { } seen && seen - Lookback > start ? seen - Lookback : start;
             // The window is read a day at a time, oldest first, and how far the import has read is
             // moved on only once a day's every page is in. A run cut short (the POS refusing, or
@@ -183,8 +189,21 @@ public sealed partial class ClubPosService
         }
         finally
         {
-            await FinishAsync(settingsId, until, readThrough, counts.Imported, error);
+            await FinishAsync(settingsId, until, readThrough, counts.Imported, error, readLocation, readFrom);
         }
+    }
+
+    /// <summary>
+    /// Sets the date to import from to now, unless it was set meanwhile, and gives the date the
+    /// workspace has: nothing closed before the first import is billed.
+    /// </summary>
+    private async Task<DateTime> StartImportingAsync(Guid settingsId, DateTime now, CancellationToken ct)
+    {
+        await UpdateRowAsync(settingsId,
+            s => s.ImportFromUtc ??= now,
+            q => q.Where(s => s.ImportFromUtc == null).ExecuteUpdateAsync(set => set.SetProperty(s => s.ImportFromUtc, now), ct), ct);
+        return await _db.ClubPosSettings.IgnoreQueryFilters().AsNoTracking()
+            .Where(s => s.Id == settingsId).Select(s => s.ImportFromUtc).FirstOrDefaultAsync(ct) ?? now;
     }
 
     /// <summary>Saves a ticket the workspace does not have yet; false when it has it (read again, or by another run).</summary>
@@ -255,7 +274,13 @@ public sealed partial class ClubPosService
 
     /// <summary>Lets go of the claim and records how the run went, unless another run has the workspace by now.</summary>
     /// <param name="latest">How far this run read every ticket the POS had: the import never moves back from it.</param>
-    private async Task FinishAsync(Guid settingsId, DateTime until, DateTime? latest, int imported, string? error)
+    /// <param name="location">The location the run read, and <paramref name="from"/> the date it imported from.</param>
+    /// <remarks>
+    /// How far the run read is kept only while the settings still name the location and the date
+    /// it read: chosen anew while it ran, they are read from their date by the next run (see
+    /// <see cref="SaveSettingsAsync"/>), not from where this run got to with the old ones.
+    /// </remarks>
+    private async Task FinishAsync(Guid settingsId, DateTime until, DateTime? latest, int imported, string? error, string? location, DateTime? from)
     {
         var now = DateTime.UtcNow;
         var clipped = error != null ? Clip(error, 500) : null;
@@ -270,7 +295,8 @@ public sealed partial class ClubPosService
                         .SetProperty(s => s.LastImportAtUtc, now)
                         .SetProperty(s => s.LastImportError, clipped)
                         .SetProperty(s => s.LastImportCount, imported)
-                        .SetProperty(s => s.LastClosedAtUtc, s => s.LastClosedAtUtc == null || s.LastClosedAtUtc < seen ? (DateTime?)seen : s.LastClosedAtUtc));
+                        .SetProperty(s => s.LastClosedAtUtc, s => s.LocationId == location && s.ImportFromUtc == from
+                            && (s.LastClosedAtUtc == null || s.LastClosedAtUtc < seen) ? (DateTime?)seen : s.LastClosedAtUtc));
                 else
                     await query.ExecuteUpdateAsync(set => set
                         .SetProperty(s => s.ClaimedUntilUtc, (DateTime?)null)
@@ -285,7 +311,8 @@ public sealed partial class ClubPosService
             row.LastImportAtUtc = now;
             row.LastImportError = clipped;
             row.LastImportCount = imported;
-            if (latest != null && (row.LastClosedAtUtc == null || row.LastClosedAtUtc < latest)) row.LastClosedAtUtc = latest;
+            if (latest != null && row.LocationId == location && row.ImportFromUtc == from
+                && (row.LastClosedAtUtc == null || row.LastClosedAtUtc < latest)) row.LastClosedAtUtc = latest;
             await _db.SaveChangesAsync();
         }
         catch (Exception ex)

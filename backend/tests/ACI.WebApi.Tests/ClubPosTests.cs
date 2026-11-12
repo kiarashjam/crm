@@ -353,6 +353,101 @@ public class ClubPosTests
     }
 
     [Fact]
+    public async Task ImportingBeforeADateToImportFromIsSet_BillsNothingClosedBeforeTheFirstImport()
+    {
+        using var app = new PosApp();
+        var (client, _, org) = await Club.CreateAsync(app);
+        var jean = await Club.MemberAsync(client, "Jean", "Gold");
+        await Club.Json(await client.PostAsync($"/api/members/{jean}/codes", Body(new { code = "1042" })), "give Jean the code 1042");
+        await ConnectAsync(app, client);
+        // The club connected yesterday and has rung its bills up by hand since, as the import is not on yet.
+        using (var scope = app.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ACI.Infrastructure.Persistence.AppDbContext>();
+            using var acting = db.ActFor(org, null);
+            db.ClubPosSettings.Single().ConnectedAtUtc = DateTime.UtcNow.AddDays(-1);
+            await db.SaveChangesAsync();
+        }
+        await Club.Json(await client.PutAsync("/api/pos/settings", Body(new { locationId = "46100001" })), "choose the location, the import still off");
+        app.Lightspeed.Sales.Add(Sale("R140", Now.AddHours(-2), [Line("Dinner", 1, 60.00m, 8.1m)], [OnAccount(60.00m)], accountName: "1042"));
+
+        // "Import now", to see that it works: what was closed before it is not billed a second time.
+        (await ImportAsync(client)).GetProperty("imported").GetInt32().Should().Be(0);
+        (await Club.BalanceAsync(client, jean)).Should().Be(0m);
+        var settings = await Club.Json(await client.GetAsync("/api/pos/settings"), "read the settings");
+        settings.GetProperty("importFromUtc").GetDateTime().Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromMinutes(1),
+            "the first import says from when it imports, as turning the import on does");
+
+        // What is closed after it comes in.
+        app.Lightspeed.Sales.Add(Sale("R141", DateTime.UtcNow, [Line("Negroni", 1, 18.50m, 8.1m)], [OnAccount(18.50m)], accountName: "1042"));
+        await Task.Delay(1100);
+        await ImportAsync(client);
+        (await TicketsAsync(client)).Select(t => t.GetProperty("receiptNumber").GetString()).Should().Equal("R141");
+        (await Club.BalanceAsync(client, jean)).Should().Be(-18.50m);
+    }
+
+    [Fact]
+    public async Task AnotherLocationChosen_IsReadFromTheDateToImportFrom()
+    {
+        using var app = new PosApp();
+        var (client, _, jean) = await ConnectedClubAsync(app);
+        await Club.Json(await client.PutAsync("/api/pos/settings", Body(new { importFromUtc = Now.AddDays(-2).ToString("O") })), "import from two days ago");
+        // The wrong location was chosen first: the import reads it, finds nothing, and has read up to now.
+        await ImportAsync(client);
+
+        // The right one put a dinner on Jean's account yesterday.
+        app.Lightspeed.Sales.Add(Sale("R110", Now.AddHours(-30), [Line("Dinner", 1, 60.00m, 8.1m)], [OnAccount(60.00m)], accountName: "1042"));
+        await Club.Json(await client.PutAsync("/api/pos/settings", Body(new { locationId = "46100002", locationName = "Pavillon 46 Bar" })),
+            "choose the right location");
+        await ImportAsync(client);
+
+        var ticket = Ticket(await TicketsAsync(client), "R110");
+        ticket.GetProperty("externalId").GetString().Should().Be("46100002:R110");
+        ticket.GetProperty("status").GetString().Should().Be("posted");
+        (await Club.BalanceAsync(client, jean)).Should().Be(-60.00m);
+    }
+
+    [Fact]
+    public async Task AnEarlierDateToImportFrom_BringsInWhatWasClosedSinceThen()
+    {
+        using var app = new PosApp();
+        var (client, _, jean) = await ConnectedClubAsync(app);
+        app.Lightspeed.Sales.Add(Sale("R120", Now.AddHours(-30), [Line("Dinner", 1, 60.00m, 8.1m)], [OnAccount(60.00m)], accountName: "1042"));
+        await ImportAsync(client);
+        (await TicketsAsync(client)).Should().BeEmpty("it was closed before the date to import from");
+
+        await Club.Json(await client.PutAsync("/api/pos/settings", Body(new { importFromUtc = Now.AddDays(-2).ToString("O") })), "import from two days ago");
+        await ImportAsync(client);
+
+        Ticket(await TicketsAsync(client), "R120").GetProperty("status").GetString().Should().Be("posted");
+        (await Club.BalanceAsync(client, jean)).Should().Be(-60.00m);
+    }
+
+    [Fact]
+    public async Task ALocationChosenWhileAnImportRuns_IsStillReadFromTheDateToImportFrom()
+    {
+        using var app = new PosApp();
+        var (client, _, _) = await ConnectedClubAsync(app);
+        await Club.Json(await client.PutAsync("/api/pos/settings", Body(new { importFromUtc = Now.AddDays(-2).ToString("O") })), "import from two days ago");
+        await ImportAsync(client);
+
+        // An import is under way, reading the old location, when someone chooses another.
+        var asked = app.Lightspeed.Sent("GET", "/f/v2/business-location/").Count;
+        app.Lightspeed.HoldSales = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var running = client.PostAsync("/api/pos/import", null);
+        for (var i = 0; i < 300 && app.Lightspeed.Sent("GET", "/f/v2/business-location/").Count == asked; i++) await Task.Delay(100);
+        app.Lightspeed.Sent("GET", "/f/v2/business-location/").Count.Should().BeGreaterThan(asked, "the import is reading the old location");
+        await Club.Json(await client.PutAsync("/api/pos/settings", Body(new { locationId = "46100002" })), "choose another location while it runs");
+        app.Lightspeed.Sales.Add(Sale("R130", Now.AddHours(-30), [Line("Dinner", 1, 60.00m, 8.1m)], [OnAccount(60.00m)], accountName: "1042"));
+        app.Lightspeed.HoldSales.SetResult();
+        await Club.Json(await running, "the import that was under way");
+
+        // How far that run read the old location says nothing of the new one.
+        await ImportAsync(client);
+        Ticket(await TicketsAsync(client), "R130").GetProperty("externalId").GetString().Should().Be("46100002:R130");
+    }
+
+    [Fact]
     public async Task ANewTicketIsPostedFirst_HoweverManyWaitForStaff()
     {
         using var app = new PosApp();

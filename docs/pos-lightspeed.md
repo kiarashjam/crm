@@ -37,6 +37,9 @@ when someone presses "Import now".
   the 60 requests one run makes at most) leaves the rest to the next run, which starts again at
   the end of the last whole day. Each run also reads back six hours before that point, for tills
   that were offline.
+- **New tickets first.** After reading, a run works out whose each new ticket is, then tries the
+  tickets of the last 14 days that still wait for staff again (up to 1,000 a run). A ticket staff
+  set aside stays set aside, even one no import had got to yet.
 - **Once each.** The POS's id for a ticket (location and receipt) is unique in the workspace, so
   a ticket read again adds nothing. A ticket is posted as one sale, keyed by the ticket. If the
   sale is posted and the ticket could not say so at that moment, the ticket is marked posted
@@ -92,8 +95,10 @@ Once per server (the owner):
 
 Per club (someone with money.manage), on POS tickets → Connection:
 1. Connect Lightspeed, and allow Cadence on Lightspeed's page.
-2. Choose the location, check the date to import from (by default the day the import is turned
-   on, so nothing older is billed), and say where its sales count as sold.
+2. Choose the location, check the date to import from (by default the moment the import is
+   turned on, or first run with "Import now", so nothing older is billed), and say where its sales
+   count as sold. Choosing another location or another date later reads the tickets again from
+   that date; a ticket already imported is not added twice.
 3. List any payment method whose name doesn't say what it is. In particular, list the method the
    club uses for the house account if its name has neither "account" nor "konto" in it.
 4. Turn the import on.

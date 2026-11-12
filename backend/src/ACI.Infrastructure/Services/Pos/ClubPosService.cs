@@ -134,8 +134,12 @@ public sealed partial class ClubPosService : IClubPos
             _db.ClubPosSettings.Add(row);
         }
         // Turned on for the first time with no start date: tickets from now on, so nothing closed
-        // before the club connected is billed to anyone.
+        // before the import was turned on is billed to anyone (staff rang those up by hand).
         if (enabled && !row.Enabled && importFrom == null) importFrom = now;
+        // Another location, or another date to import from, is read from that date again. How far
+        // the import had read was the old one's: another location's tickets from before that point
+        // were never read, and an earlier date brought in nothing, whatever the page said.
+        if (locationId != row.LocationId || importFrom != row.ImportFromUtc) row.LastClosedAtUtc = null;
         row.Enabled = enabled;
         row.LocationId = locationId;
         row.LocationName = locationName;
@@ -296,6 +300,8 @@ public sealed partial class ClubPosService : IClubPos
         if (row == null) return;
         change(row);
         await _db.SaveChangesAsync(ct);
+        // Let go of it, as the one UPDATE keeps nothing: a later read sees the row as it is then.
+        _db.Entry(row).State = EntityState.Detached;
     }
 
     private string? Reveal(string? protectedValue)

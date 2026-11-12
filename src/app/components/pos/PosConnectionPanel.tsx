@@ -119,13 +119,19 @@ export function PosConnectionPanel({ canManage }: { canManage: boolean }) {
 
   const save = async () => {
     const methods = form.methods.filter((m) => m.code.trim());
+    // The date goes back only when it was changed here. Sent with every save, it moved the moment
+    // the import was turned on back to that day's midnight, billing what staff had rung up by
+    // hand that morning, and after three months the server refused every save for its age.
+    const importFromChanged = form.importFrom !== dayOf(settings.importFromUtc);
     setSaving(true);
     try {
       await savePosSettings({
         enabled: form.enabled,
         locationId: form.locationId.trim(),
         locationName: form.locationName.trim(),
-        importFromUtc: form.importFrom ? new Date(`${form.importFrom}T00:00:00`).toISOString() : '',
+        ...(importFromChanged
+          ? { importFromUtc: form.importFrom ? new Date(`${form.importFrom}T00:00:00`).toISOString() : '' }
+          : {}),
         defaultVenue: form.defaultVenue,
         methodMap: Object.fromEntries(methods.map((m) => [m.code.trim(), m.means])),
         version: settings.version,
@@ -222,7 +228,10 @@ export function PosConnectionPanel({ canManage }: { canManage: boolean }) {
           <div>
             <Label htmlFor="pos-from">Import tickets closed from</Label>
             <Input id="pos-from" type="date" className="mt-1" value={form.importFrom} onChange={(e) => set({ importFrom: e.target.value })} />
-            <p className="mt-1 text-xs text-slate-500">Nothing closed before this is imported. Left empty, the day the import is turned on.</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Nothing closed before this is imported. Left empty, from when the import is turned on or first run. Changed, or with
+              another location, tickets are read again from this date; those already in are not added twice.
+            </p>
           </div>
           <div>
             <Label htmlFor="pos-venue">Counted as sold at</Label>
