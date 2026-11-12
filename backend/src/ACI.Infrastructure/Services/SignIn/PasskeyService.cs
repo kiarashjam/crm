@@ -235,7 +235,11 @@ public sealed class PasskeyService : IPasskeys
         if (step == null) return DomainErrors.Passkeys.CeremonyExpired;
 
         var answer = Read<AuthenticatorAssertionRawResponse>(request.Credential);
-        if (answer?.Response == null || answer.RawId == null) return DomainErrors.Passkeys.NotRecognised;
+        // Nobody was named before this sign-in, so the answer must say whose passkey it is
+        // (WebAuthn §7.2 step 6): a passkey keeps its user handle and always gives it back.
+        // The library checks a handle that is there and passes one that is missing.
+        if (answer?.Response == null || answer.RawId == null || answer.Response.UserHandle is not { Length: > 0 })
+            return DomainErrors.Passkeys.NotRecognised;
         var passkey = await _db.UserPasskeys.Include(k => k.User).FirstOrDefaultAsync(k => k.CredentialId == answer.RawId, ct);
         if (passkey == null) return DomainErrors.Passkeys.NotRecognised;
 
