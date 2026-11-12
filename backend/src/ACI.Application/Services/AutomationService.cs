@@ -159,7 +159,11 @@ public sealed class AutomationService : IAutomationService
         var window = request.SendWindow ?? (request.Clears(nameof(request.SendWindow)) ? null : SendWindows.Parse(row.SendWindowJson));
         var steps = request.Actions != null ? Normalize(request.Actions) : AutomationSteps.Parse(row.ActionsJson);
         if (request.Actions != null && steps.Count == 0) return ActionRequired;
-        if (await CheckAsync(trigger, config, conditions, window, steps, organizationId, ct, stepsChanged: request.Actions != null) is { } invalid)
+        // The steps are checked again when they change, and when the trigger does: steps kept
+        // from a lead's rule (an assignment, a sequence, a wait for a lead's date) cannot run on
+        // a member's, and moved there unchecked they would be skipped every time it fires.
+        var stepsChanged = request.Actions != null || !string.Equals(trigger.Key, row.Trigger, StringComparison.Ordinal);
+        if (await CheckAsync(trigger, config, conditions, window, steps, organizationId, ct, stepsChanged) is { } invalid)
             return invalid;
 
         row.Trigger = trigger.Key;

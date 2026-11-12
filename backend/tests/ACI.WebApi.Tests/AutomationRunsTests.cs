@@ -487,6 +487,26 @@ public class AutomationRunsTests
         (await TasksAsync(app, leadId)).Should().ContainSingle(t => t.Title == "Qualify the lead");
     }
 
+    [Fact]
+    public async Task MovingARuleToAnotherTriggerChecksTheStepsItKeeps()
+    {
+        await using var app = new App();
+        var (owner, ownerId, _) = await WorkspaceAsync(app);
+        var ruleId = await RuleAsync(owner, new
+        {
+            name = "Route", trigger = "lead.created",
+            actions = new object[] { new { type = "assign", config = new { userId = ownerId.ToString() } } },
+        });
+
+        var moved = await owner.PutAsync($"/api/automations/{ruleId}", Body(new { trigger = "member.created" }));
+
+        moved.StatusCode.Should().Be(HttpStatusCode.BadRequest, "a member cannot be assigned, so the rule would skip its only step every time");
+        (await moved.Content.ReadAsStringAsync()).Should().Contain("cannot run the step");
+        (await app.Services.Read(db => db.AutomationRules.Single(r => r.Id == ruleId).Trigger)).Should().Be("lead.created");
+        // Its name or its switch alone still saves, as before.
+        await Json(await owner.PutAsync($"/api/automations/{ruleId}", Body(new { name = "Route new leads" })), "rename it");
+    }
+
     // ── claims ───────────────────────────────────────────────────────────────
 
     [Fact]
