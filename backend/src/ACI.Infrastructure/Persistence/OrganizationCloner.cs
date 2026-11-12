@@ -478,6 +478,14 @@ public sealed class OrganizationCloner
             case LeadCaptureForm f:
                 f.PublicToken = Convert.ToHexString(Guid.NewGuid().ToByteArray()).ToLowerInvariant();
                 return "Lead capture forms get their own public address";
+            case ClubApplicationForm f:
+                // The link on the club's website applies to the original; the copy's form has its own.
+                f.PublicToken = Convert.ToHexString(Guid.NewGuid().ToByteArray()).ToLowerInvariant();
+                return "The public application form gets its own link";
+            case ClubApplication a when a.ApprovalClaimedUntilUtc != null:
+                // An approval under way in the original finishes there.
+                a.ApprovalClaimedUntilUtc = null;
+                return "Applications being approved are approved in the original only";
             case Invite i:
                 // A hash of a token nobody has: the copy's invitation is accepted after a resend.
                 i.TokenHash = ACI.Application.Common.PasswordResetCrypto.HashRawToken(
@@ -499,6 +507,40 @@ public sealed class OrganizationCloner
                     m.MessageIdHeader = $"<{m.Id:N}{header[(header.IndexOf('@') is var at and >= 0 ? at : header.Length - 1)..]}";
                 m.ReplyToken = null;
                 return "Outbox messages still queued are sent from the original only, and copies get their own Message-ID";
+            case Campaign c when c.Status is CampaignStatuses.Scheduled or CampaignStatuses.Sending:
+                // The members are the same people in both organizations: a campaign waiting
+                // for its time, or still being sent, goes out once, from the original. The copy
+                // keeps it as a draft, or as sent with the messages it had when copied.
+                if (c.Status == CampaignStatuses.Scheduled)
+                {
+                    c.Status = CampaignStatuses.Draft;
+                    c.ScheduledAtUtc = null;
+                }
+                else
+                {
+                    c.Status = CampaignStatuses.Sent;
+                    c.SentAtUtc ??= DateTime.UtcNow;
+                }
+                c.ClaimedUntilUtc = null;
+                return "Campaigns waiting to be sent, or being sent, are sent from the original only";
+            case ClubPaymentSettings settings:
+                // The Stripe key and webhook stay with the original: the copy holds the same
+                // members, and must never charge one of them, or hear of a payment, a second
+                // time. Its webhook gets an address of its own, set up again if it is ever wanted.
+                settings.StripeSecretKeyProtected = null;
+                settings.StripeKeyHint = null;
+                settings.StripeWebhookSecretProtected = null;
+                settings.StripeCheckedAtUtc = null;
+                settings.WebhookKey = Guid.NewGuid();
+                return "Payment settings keep the Stripe key and webhook with the original";
+            case ClubPaymentProfile profile when profile.AutoPayDues:
+                profile.AutoPayDues = false;
+                return "Saved cards are not charged for dues from the copy";
+            case ClubOnlinePayment payment when payment.Status is OnlinePaymentStatuses.Open or OnlinePaymentStatuses.Processing:
+                // Stripe tells the original how it ends; the copy keeps the attempt as history.
+                payment.Status = OnlinePaymentStatuses.Canceled;
+                payment.FailureMessage = "Copied with its organization while still with Stripe; the original records how it ends.";
+                return "Online payments still with Stripe are recorded by the original only";
             case OnboardingSettings s when s.WebhookUrl != null || s.WebhookSecret != null:
                 // Like its events address: a customer won in the copy is never handed to the
                 // original's portal, signed as the original. The template and choices stay.

@@ -24,7 +24,7 @@ public class ForeignRecordsTests
 
     private sealed record Foreign(
         Guid Lead, Guid Contact, Guid Company, Guid Deal, Guid Task, Guid Activity, Guid Member, Guid Pipeline,
-        Guid Status, Guid Sequence, Guid Contract, Guid Event);
+        Guid Status, Guid Sequence, Guid Contract, Guid Event, Guid Registration, Guid Resource, Guid Reservation);
 
     /// <summary>One of every kind of record, in <paramref name="org"/>, each named with the mark.</summary>
     private static async Task<Foreign> SeedAsync(CustomWebApplicationFactory factory, Guid org, Guid owner)
@@ -49,8 +49,11 @@ public class ForeignRecordsTests
         var status = new LeadStatus { Id = Guid.NewGuid(), OrganizationId = org, Name = $"{Mark} Status", DisplayOrder = 99 };
         var sequence = new OutreachSequence { Id = Guid.NewGuid(), UserId = owner, OrganizationId = org, Name = $"{Mark} Sequence", Status = "active", CreatedAtUtc = now };
         var contract = new Contract { Id = Guid.NewGuid(), OrganizationId = org, LeadId = lead.Id, Title = $"{Mark} Contract", Body = Mark, CounterpartyName = $"{Mark} Signer", CounterpartyEmail = "signer@zebrafish.example", CreatedByUserId = owner, CreatedAtUtc = now, UpdatedAtUtc = now };
-        var eventDoc = new ClubDocument { Id = Guid.NewGuid(), OrganizationId = org, Kind = "events", Payload = $"{{\"name\":\"{Mark} Gala\",\"startsAtUtc\":\"{now.AddDays(3):o}\"}}", UpdatedAtUtc = now };
-        db.AddRange(company, contact, spouse, lead, pipeline, stage, deal, task, activity, member, status, sequence, contract, eventDoc);
+        var eventDoc = new ClubEvent { Id = Guid.NewGuid(), OrganizationId = org, Name = $"{Mark} Gala", StartAtUtc = now.AddDays(3), EndAtUtc = now.AddDays(3).AddHours(2), Capacity = 10, Status = "Published", CreatedAtUtc = now, UpdatedAtUtc = now, EditVersion = Guid.NewGuid() };
+        var registrationId = Guid.NewGuid();
+        var reservationId = Guid.NewGuid();
+        var resource = new ClubResource { Id = Guid.NewGuid(), OrganizationId = org, Name = $"{Mark} Court", Kind = "Court", Capacity = 4, CreatedAtUtc = now, UpdatedAtUtc = now, EditVersion = Guid.NewGuid() };
+        db.AddRange(company, contact, spouse, lead, pipeline, stage, deal, task, activity, member, status, sequence, contract, eventDoc, resource);
         db.AddRange(
             new ContactRelationship { Id = Guid.NewGuid(), UserId = owner, OrganizationId = org, ContactId = contact.Id, RelatedContactId = spouse.Id, Type = ContactRelationshipTypes.Spouse, CreatedAtUtc = now },
             new DealLineItem { Id = Guid.NewGuid(), DealId = deal.Id, Name = $"{Mark} Line", Quantity = 1, UnitPrice = 5000, CreatedAtUtc = now },
@@ -71,11 +74,13 @@ public class ForeignRecordsTests
             new CopyHistoryItem { Id = Guid.NewGuid(), UserId = owner, OrganizationId = org, Type = "email", Copy = Mark, RecipientName = $"{Mark} Lead", RecipientId = lead.Id.ToString(), CreatedAtUtc = now },
             new Attachment { Id = Guid.NewGuid(), OwnerUserId = owner, OrganizationId = org, EntityType = "lead", RecordId = lead.Id, FileName = $"{Mark}.pdf", ContentType = "application/pdf", Size = 4, Content = "%PDF"u8.ToArray(), UploadedByName = Mark, UploadedAtUtc = now },
             new ClubDocument { Id = Guid.NewGuid(), OrganizationId = org, Kind = "charges", Payload = $"{{\"memberId\":\"{member.Id}\",\"description\":\"{Mark} dinner\",\"amount\":120,\"status\":\"open\"}}", UpdatedAtUtc = now },
-            new ClubDocument { Id = Guid.NewGuid(), OrganizationId = org, Kind = "reservations", Payload = $"{{\"memberName\":\"{Mark} Member\",\"startsAtUtc\":\"{now.AddDays(1):o}\"}}", UpdatedAtUtc = now },
+            new ClubEventRegistration { Id = registrationId, OrganizationId = org, EventId = eventDoc.Id, MemberId = member.Id, Name = $"{Mark} Member", Status = "Reserved", RegisteredAtUtc = now, CreatedAtUtc = now, UpdatedAtUtc = now },
+            new ClubReservation { Id = reservationId, OrganizationId = org, ResourceId = resource.Id, ResourceName = $"{Mark} Court", MemberId = member.Id, MemberName = $"{Mark} Member", StartAtUtc = now.AddDays(1), EndAtUtc = now.AddDays(1).AddHours(1), Status = "Confirmed", CreatedAtUtc = now, UpdatedAtUtc = now },
             new ClubVisit { Id = Guid.NewGuid(), OrganizationId = org, MemberId = member.Id, MemberName = $"{Mark} Member", Venue = "Lounge", VisitedAtUtc = now },
             new LoyaltyLedgerEntry { Id = Guid.NewGuid(), OrganizationId = org, MemberId = member.Id, MemberName = $"{Mark} Member", Points = 10, Reason = Mark, CreatedAtUtc = now });
         await db.SaveChangesAsync();
-        return new Foreign(lead.Id, contact.Id, company.Id, deal.Id, task.Id, activity.Id, member.Id, pipeline.Id, status.Id, sequence.Id, contract.Id, eventDoc.Id);
+        return new Foreign(lead.Id, contact.Id, company.Id, deal.Id, task.Id, activity.Id, member.Id, pipeline.Id, status.Id, sequence.Id, contract.Id, eventDoc.Id,
+            registrationId, resource.Id, reservationId);
     }
 
     /// <summary>Every page a member reads that lists, searches, totals or exports a workspace's records.</summary>
@@ -103,7 +108,7 @@ public class ForeignRecordsTests
             "/api/templates", "/api/templates/all",
             "/api/members", "/api/visits", "/api/loyalty/ledger", "/api/charges", "/api/payments", "/api/gift-cards",
             "/api/tabs", "/api/campaigns", "/api/events", "/api/donations", "/api/communications", "/api/applications",
-            "/api/reservations", "/api/households", "/api/subscriptions",
+            "/api/reservations", "/api/resources", "/api/households", "/api/subscriptions",
             "/api/reporting/dashboard", "/api/reporting/pipeline-by-stage", "/api/reporting/pipeline-by-assignee",
             "/api/reporting/summary", "/api/reporting/forecast", "/api/reporting/forecast-snapshots",
             "/api/duplicates/contacts", "/api/duplicates/companies",
@@ -123,7 +128,8 @@ public class ForeignRecordsTests
         $"/api/sequences/{f.Sequence}", $"/api/pipelines/{f.Pipeline}", $"/api/leadstatuses/{f.Status}",
         $"/api/lead-ops/history/{f.Lead}", $"/api/attachments?entityType=lead&recordId={f.Lead}",
         $"/api/custom-fields/values?entityType=lead&recordId={f.Lead}",
-        $"/api/events/{f.Event}/attendees",
+        $"/api/events/{f.Event}/attendees", $"/api/events/{f.Event}", $"/api/events/registrations?memberId={f.Member}",
+        $"/api/reservations?memberId={f.Member}",
     };
 
     private static async Task<(HttpStatusCode Status, string Body)> GetAsync(HttpClient client, string url)
@@ -190,6 +196,15 @@ public class ForeignRecordsTests
             (HttpMethod.Delete, $"/api/companies/{f.Company}", null),
             (HttpMethod.Delete, $"/api/members/{f.Member}", null),
             (HttpMethod.Delete, $"/api/events/{f.Event}", null),
+            (HttpMethod.Put, $"/api/events/{f.Event}", new { name = "Taken" }),
+            (HttpMethod.Post, $"/api/events/{f.Event}/attendees", new { memberName = "Taken", ticketTier = "Guest" }),
+            (HttpMethod.Put, $"/api/events/{f.Event}/attendees/{f.Registration}", new { status = "Cancelled" }),
+            (HttpMethod.Delete, $"/api/events/{f.Event}/attendees/{f.Registration}", null),
+            (HttpMethod.Put, $"/api/resources/{f.Resource}", new { name = "Taken" }),
+            (HttpMethod.Delete, $"/api/resources/{f.Resource}", null),
+            (HttpMethod.Post, "/api/reservations", new { resourceId = f.Resource, memberName = "Taken", startAtUtc = DateTime.UtcNow.AddDays(2), endAtUtc = DateTime.UtcNow.AddDays(2).AddHours(1) }),
+            (HttpMethod.Put, $"/api/reservations/{f.Reservation}", new { status = "Cancelled" }),
+            (HttpMethod.Delete, $"/api/reservations/{f.Reservation}", null),
         };
         foreach (var (method, url, body) in attempts)
         {
@@ -203,7 +218,10 @@ public class ForeignRecordsTests
             db.Leads.Single(l => l.Id == f.Lead).Name, db.Contacts.Single(c => c.Id == f.Contact).Name,
             db.Companies.Single(c => c.Id == f.Company).Name, db.Deals.Single(d => d.Id == f.Deal).Name,
             db.TaskItems.Single(t => t.Id == f.Task).Title, db.ClubMembers.Single(m => m.Id == f.Member).FirstName,
-            db.Activities.Single(a => a.Id == f.Activity).Subject!, db.ClubDocuments.Single(d => d.Id == f.Event).Payload,
+            db.Activities.Single(a => a.Id == f.Activity).Subject!, db.ClubEvents.Single(e => e.Id == f.Event).Name,
+            db.ClubResources.Single(r => r.Id == f.Resource).Name,
+            db.ClubReservations.Single(r => r.Id == f.Reservation).Status == "Confirmed" ? Mark : "changed",
+            db.ClubEventRegistrations.Single(r => r.Id == f.Registration).Status == "Reserved" ? Mark : "changed",
         });
         names.Should().OnlyContain(n => n.Contains(Mark), "every one of them is as its own workspace left it");
     }

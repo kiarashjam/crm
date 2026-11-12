@@ -1,10 +1,10 @@
 // Donations.
 //
 // Optional contributions members make to causes the club supports — staff
-// pantry, scholarship fund, community grants. Each donation is a one-time
-// charge that posts to the member's house account.
+// pantry, scholarship fund, community grants. A donation is money received for a
+// cause, kept on the server's ledger: it is voided with a reason, never deleted.
 
-import { apiWithFallback, authFetch, authFetchJson, ensureOk } from './apiClient';
+import { apiWithFallback, authFetchJson, type RequestOptions } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 
 function delay(ms: number): Promise<void> {
@@ -30,6 +30,11 @@ export interface Donation {
   isAnonymous: boolean;
   message?: string;
   acknowledged: boolean;
+  /** Set when someone allowed to void money took it back: it stays listed, and counts for nothing. */
+  status?: 'Voided';
+  voidReason?: string;
+  voidedAtUtc?: string;
+  voidedByName?: string;
 }
 
 export const DONATION_CAUSES: DonationCause[] = [
@@ -105,10 +110,10 @@ const donationStore = createMockStore<Donation>({
   idOf: (d) => d.id,
 });
 
-export async function getDonations(): Promise<Donation[]> {
+export async function getDonations(req?: RequestOptions): Promise<Donation[]> {
   return apiWithFallback(
     async () => {
-      const res = await authFetchJson<Donation[]>('/api/donations');
+      const res = await authFetchJson<Donation[]>('/api/donations', { signal: req?.signal });
       return Array.isArray(res) ? res : [];
     },
     async () => {
@@ -155,16 +160,16 @@ export async function acknowledgeDonation(id: string): Promise<Donation | null> 
   );
 }
 
-export async function deleteDonation(id: string): Promise<boolean> {
+/**
+ * Void a donation with a reason: one entered twice, or one that bounced. It stays on the
+ * record, saying why, and leaves the giving totals. Takes money.void.
+ */
+export async function voidDonation(id: string, reason: string): Promise<Donation | null> {
   return apiWithFallback(
-    async () => {
-      const res = await authFetch(`/api/donations/${id}`, { method: 'DELETE' });
-      await ensureOk(res);
-      return true;
-    },
+    () => authFetchJson<Donation>(`/api/donations/${id}/void`, { method: 'POST', body: JSON.stringify({ reason }) }),
     async () => {
       await delay(100);
-      return donationStore.remove(id);
+      return donationStore.update(id, { status: 'Voided', voidReason: reason, voidedAtUtc: new Date().toISOString() });
     },
   );
 }
@@ -182,6 +187,8 @@ export function computeDonationStats(donations: Donation[]): DonationStats {
   const donors = new Set<string>();
   const causeTotals = new Map<DonationCause, number>();
   for (const d of donations) {
+    // A voided donation stays on the list but was never money the club received.
+    if (d.status === 'Voided') continue;
     totalRaised += d.amount;
     donors.add(d.memberId);
     if (!d.acknowledged) awaitingAcknowledgement++;

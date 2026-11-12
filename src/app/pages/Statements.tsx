@@ -1,13 +1,32 @@
 // Member statements — printable per-member monthly billing summaries.
+//
+// The statement is the server's: worked out from the member's ledger entries, so it shows
+// what the books show — the balance brought forward, each charge, payment, credit, void
+// and refund in the order it happened with what was owed after it, and the balance
+// carried. It used to be added up here from the charges and payments lists, which left out
+// opening balances, corrections and refunds.
+//
+// The same statement comes as a PDF built on the server (Download PDF), and can be
+// emailed to the member with that PDF attached, through the outbox (Email statement):
+// the browser's print view is no longer the only copy a member can be given.
+//
+// With the club's bank details set, the PDF carries a Swiss QR-bill whose reference says
+// whose statement it is; with Stripe set up, the member can be sent a link to pay online.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   FileText,
   Printer,
   Loader2,
   ChevronLeft,
   ChevronRight,
+  Download,
+  Mail,
+  CreditCard,
+  QrCode,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
@@ -19,13 +38,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/app/components/ui/select';
-import { getMembers, type Member } from '@/app/api/members';
-import { getCharges, getPayments, type Charge, type Payment, PAYMENT_METHOD_LABELS } from '@/app/api/charges';
+import type { StatementLine } from '@/app/api/charges';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { buildStatement } from '@/app/lib/statement';
+import { ClubReadState } from '@/app/components/ClubReadState';
+import { NONE, useClubMembers, useClubReads, useMemberStatement, usePaymentStatus } from '@/app/hooks/queries';
 import PageHero, { heroPrimary, heroSecondary } from '@/app/components/PageHero';
 import { StaggerItem } from '@/app/components/motion/Stagger';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
+import { downloadStatementPdf, emailStatement } from '@/app/api/billing';
+import { WriteOnly } from '@/app/components/WriteOnly';
+import { PERMISSION } from '@/app/api/organizations';
+import { PayOnlineDialog } from '@/app/components/payments/PayOnlineDialog';
+import { servesDemoData } from '@/app/api/apiClient';
 
 function formatDate(iso: string): string {
   try {
@@ -50,56 +74,48 @@ function endOfMonth(d: Date): number {
   return new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime();
 }
 
+/** What an entry is, when its description alone does not say: a void, a refund, a credit. */
+const ENTRY_LABEL: Record<string, string> = {
+  Opening: 'Balance brought over',
+  Adjustment: 'Correction',
+  Void: 'Void',
+  Refund: 'Refund',
+};
+
+// The server's balances are the house account's: negative while the member owes. A
+// statement says what is owed, so it shows them the other way round.
+const owed = (balance: number) => (balance === 0 ? 0 : -balance);
+
 export default function Statements() {
   const { format: formatCurrency } = useClubMoney();
-  const [members, setMembers] = useState<Member[]>([]);
-  const [charges, setCharges] = useState<Charge[]>([]);
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [loading, setLoading] = useState(true);
-  usePageLoading(loading);
-  const [memberId, setMemberId] = useState<string>('');
+  const membersQuery = useClubMembers();
+  const members = membersQuery.data ?? NONE;
+  const [picked, setPicked] = useState<string>('');
   const [cursor, setCursor] = useState<Date>(() => {
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth(), 1);
   });
 
-  const load = async () => {
-    try {
-      const [m, c, p] = await Promise.all([getMembers(), getCharges(), getPayments()]);
-      setMembers(m);
-      setCharges(c);
-      setPayments(p);
-      if (!memberId && m[0]) setMemberId(m[0].id);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // The first member until someone picks another.
+  const member = members.find((m) => m.id === picked) ?? members[0] ?? null;
+  const memberId = member?.id ?? '';
+  const fromUtc = new Date(startOfMonth(cursor)).toISOString();
+  const toUtc = new Date(endOfMonth(cursor)).toISOString();
+  const statementQuery = useMemberStatement(member?.id ?? null, fromUtc, toUtc);
+  const reads = useClubReads(membersQuery, statementQuery);
+  usePageLoading(reads.loading);
+  const statement = statementQuery.data;
+  // What the club set up for being paid: a failed read only hides the offers, it is not the statement.
+  // Demo data has no payments: its statements print in the browser, with no slip to speak of.
+  const paymentStatus = usePaymentStatus().data;
+  const payment = servesDemoData() ? undefined : paymentStatus;
+  const [paying, setPaying] = useState(false);
 
-  useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const member = useMemo(
-    () => members.find((m) => m.id === memberId) ?? null,
-    [members, memberId],
-  );
-
-  const periodStart = startOfMonth(cursor);
-  const periodEnd = endOfMonth(cursor);
-
-  const memberCharges = useMemo(() => charges.filter((c) => c.memberId === memberId), [charges, memberId]);
-  const memberPayments = useMemo(
-    () => payments.filter((p) => p.memberId === memberId),
-    [payments, memberId],
-  );
-
-  const statement = useMemo(
-    () => buildStatement(memberCharges, memberPayments, periodStart, periodEnd),
-    [memberCharges, memberPayments, periodStart, periodEnd],
-  );
-  const inPeriod = { charges: statement.charges, payments: statement.payments };
-  const { openingBalance, periodCharges, periodPayments, closingBalance } = statement;
+  const openingBalance = owed(statement?.openingBalance ?? 0);
+  const closingBalance = owed(statement?.closingBalance ?? 0);
+  const periodCharges = statement?.totalDebits ?? 0;
+  const periodCredits = statement?.totalCredits ?? 0;
+  const lines: StatementLine[] = statement?.lines ?? NONE;
 
   const goPrev = () => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1));
   const goNext = () => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1));
@@ -109,6 +125,39 @@ export default function Statements() {
   };
 
   const print = () => window.print();
+
+  const [downloading, setDownloading] = useState(false);
+  const [emailing, setEmailing] = useState(false);
+  const failed = (err: unknown, fallback: string) =>
+    toast.error(err instanceof Error && err.message ? err.message : fallback);
+
+  const downloadPdf = async () => {
+    if (!member) return;
+    setDownloading(true);
+    try {
+      await downloadStatementPdf(member.id, fromUtc, toUtc);
+    } catch (err) {
+      failed(err, 'Could not build the statement PDF');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const sendByEmail = async () => {
+    if (!member) return;
+    if (!confirm(`Email ${member.firstName} ${member.lastName} their statement for ${monthLabel(cursor)}, the PDF attached?`)) return;
+    setEmailing(true);
+    try {
+      const sent = await emailStatement(member.id, fromUtc, toUtc);
+      if (sent.status === 'queued') toast.success(`Statement on its way to ${member.email}`);
+      // Not sent, and why: they asked not to get the club's email, say.
+      else toast.error(sent.reason ?? 'The statement was not sent');
+    } catch (err) {
+      failed(err, 'Could not email the statement');
+    } finally {
+      setEmailing(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
@@ -126,13 +175,28 @@ export default function Statements() {
               title="Statements"
               subtitle="Monthly billing summary — charges, payments, and ending balance."
               actions={
-                <Button onClick={print} disabled={!member} className={heroPrimary('slate')}>
-                  <Printer className="h-4 w-4" /> Print
-                </Button>
+                <>
+                  <Button variant="outline" onClick={print} disabled={!statement} className={heroSecondary}>
+                    <Printer className="h-4 w-4" /> Print
+                  </Button>
+                  <WriteOnly permission={PERMISSION.ManageMoney}>
+                    <Button variant="outline" onClick={() => void sendByEmail()} disabled={!statement || emailing} className={heroSecondary}>
+                      {emailing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />} Email statement
+                    </Button>
+                    {payment?.onlinePayments && (
+                      <Button variant="outline" onClick={() => setPaying(true)} disabled={!member} className={heroSecondary}>
+                        <CreditCard className="h-4 w-4" /> Pay online
+                      </Button>
+                    )}
+                  </WriteOnly>
+                  <Button onClick={() => void downloadPdf()} disabled={!statement || downloading} className={heroPrimary('slate')}>
+                    {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} Download PDF
+                  </Button>
+                </>
               }
             >
               <div className="flex flex-col md:flex-row md:items-center gap-3">
-                <Select value={memberId} onValueChange={setMemberId}>
+                <Select value={memberId} onValueChange={setPicked}>
                   <SelectTrigger aria-label="Member" className="h-9 rounded-xl border-slate-200/80 bg-white/80 text-slate-700 shadow-sm backdrop-blur hover:border-slate-300 hover:bg-white md:w-64">
                     <SelectValue placeholder="Pick a member" />
                   </SelectTrigger>
@@ -160,11 +224,39 @@ export default function Statements() {
             </PageHero>
           </div>
 
-          {loading ? (
+          {payment && (
+            <p className="mb-4 inline-flex items-start gap-2 text-sm text-slate-500 print:hidden">
+              <QrCode className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              {payment.qrBills ? (
+                <span>
+                  When something is due, the PDF carries a Swiss QR-bill whose reference says whose statement it is: a payment that comes back in the
+                  bank&apos;s file is matched to the member by it.
+                </span>
+              ) : (
+                <span>
+                  The PDF carries no QR-bill yet: it needs the club&apos;s IBAN and address, set in{' '}
+                  <Link to="/hospitality-settings?tab=payments" className="font-medium underline">Club settings, Payments</Link>.
+                </span>
+              )}
+            </p>
+          )}
+
+          {member && (
+            <PayOnlineDialog
+              open={paying}
+              onOpenChange={setPaying}
+              memberId={member.id}
+              memberName={`${member.firstName} ${member.lastName}`.trim()}
+              canEmail={!!member.email}
+            />
+          )}
+
+          <ClubReadState reads={reads} what="The statement">
+          {reads.loading ? (
             <div className="flex items-center justify-center py-20 text-slate-500">
               <Loader2 className="h-6 w-6 animate-spin" />
             </div>
-          ) : !member ? (
+          ) : !member || !statement ? (
             <p className="text-slate-500">Select a member to view their statement.</p>
           ) : (
             <StaggerItem as="article" className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-8 print:shadow-none print:border-0">
@@ -187,79 +279,59 @@ export default function Statements() {
               <section className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
                 <Box label="Opening balance" value={formatCurrency(openingBalance)} />
                 <Box label="Charges this period" value={formatCurrency(periodCharges)} />
-                <Box label="Payments this period" value={formatCurrency(periodPayments)} tone="emerald" />
+                <Box label="Payments and credits" value={formatCurrency(periodCredits)} tone="emerald" />
                 <Box label="Closing balance" value={formatCurrency(closingBalance)} tone={closingBalance > 0 ? 'rose' : 'slate'} />
               </section>
 
               <section className="mb-8">
-                <h3 className="font-semibold text-slate-900 mb-3">Charges</h3>
-                {inPeriod.charges.length === 0 ? (
-                  <p className="text-sm text-slate-500">No charges this period.</p>
+                <h3 className="font-semibold text-slate-900 mb-3">Activity</h3>
+                {lines.length === 0 ? (
+                  <p className="text-sm text-slate-500">Nothing charged or paid this period.</p>
                 ) : (
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-xs uppercase tracking-wide text-slate-500 border-b border-slate-200">
-                        <th className="py-2">Date</th>
-                        <th className="py-2">Description</th>
-                        <th className="py-2">Kind</th>
-                        <th className="py-2 text-right">Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {inPeriod.charges.map((c, index) => (
-                        <StaggerItem as="tr" key={c.id} index={index} className="border-b border-slate-100 transition-colors hover:bg-slate-50">
-                          <td className="py-2 text-slate-500">{formatDate(c.postedAtUtc)}</td>
-                          <td className="py-2 text-slate-800">{c.description}</td>
-                          <td className="py-2 text-slate-500">{c.kind}</td>
-                          <td className="py-2 text-right font-medium">{formatCurrency(c.amount)}</td>
-                        </StaggerItem>
-                      ))}
-                      <tr>
-                        <td colSpan={3} className="py-2 text-right text-xs uppercase tracking-wide text-slate-500">
-                          Total
-                        </td>
-                        <td className="py-2 text-right font-semibold">{formatCurrency(periodCharges)}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                )}
-              </section>
-
-              <section className="mb-8">
-                <h3 className="font-semibold text-slate-900 mb-3">Payments</h3>
-                {inPeriod.payments.length === 0 ? (
-                  <p className="text-sm text-slate-500">No payments this period.</p>
-                ) : (
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-xs uppercase tracking-wide text-slate-500 border-b border-slate-200">
-                        <th className="py-2">Date</th>
-                        <th className="py-2">Method</th>
-                        <th className="py-2">Reference</th>
-                        <th className="py-2 text-right">Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {inPeriod.payments.map((p, index) => (
-                        <StaggerItem as="tr" key={p.id} index={index} className="border-b border-slate-100 transition-colors hover:bg-slate-50">
-                          <td className="py-2 text-slate-500">{formatDate(p.receivedAtUtc)}</td>
-                          <td className="py-2 text-slate-800">{PAYMENT_METHOD_LABELS[p.method]}</td>
-                          <td className="py-2 text-slate-500 font-mono text-xs">{p.reference ?? '—'}</td>
-                          <td className="py-2 text-right font-medium text-emerald-700">
-                            -{formatCurrency(p.amount)}
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-xs uppercase tracking-wide text-slate-500 border-b border-slate-200">
+                          <th className="py-2 pr-3">Date</th>
+                          <th className="py-2 pr-3">Description</th>
+                          <th className="py-2 pr-3 text-right">Charges</th>
+                          <th className="py-2 pr-3 text-right">Payments</th>
+                          <th className="py-2 text-right">Owed</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr className="border-b border-slate-100">
+                          <td className="py-2 pr-3 text-slate-500">{formatDate(statement.fromUtc)}</td>
+                          <td className="py-2 pr-3 text-slate-500" colSpan={3}>Balance brought forward</td>
+                          <td className="py-2 text-right font-medium">{formatCurrency(openingBalance)}</td>
+                        </tr>
+                        {lines.map((line, index) => (
+                          <StaggerItem as="tr" key={`${line.id}-${index}`} index={index} className="border-b border-slate-100 transition-colors hover:bg-slate-50">
+                            <td className="py-2 pr-3 text-slate-500 whitespace-nowrap">{formatDate(line.atUtc)}</td>
+                            <td className="py-2 pr-3 text-slate-800">
+                              <span className="block">{line.description}</span>
+                              {(ENTRY_LABEL[line.entryType] || line.reason || line.reference || line.incurredByName) && (
+                                <span className="block text-xs text-slate-500">
+                                  {[line.incurredByName ? `Incurred by ${line.incurredByName}` : undefined, ENTRY_LABEL[line.entryType], line.reason, line.reference].filter(Boolean).join(' · ')}
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-2 pr-3 text-right font-medium">{line.debit ? formatCurrency(line.debit) : ''}</td>
+                            <td className="py-2 pr-3 text-right font-medium text-emerald-700">{line.credit ? `-${formatCurrency(line.credit)}` : ''}</td>
+                            <td className="py-2 text-right text-slate-700">{formatCurrency(owed(line.balance))}</td>
+                          </StaggerItem>
+                        ))}
+                        <tr>
+                          <td colSpan={2} className="py-2 pr-3 text-right text-xs uppercase tracking-wide text-slate-500">
+                            Total
                           </td>
-                        </StaggerItem>
-                      ))}
-                      <tr>
-                        <td colSpan={3} className="py-2 text-right text-xs uppercase tracking-wide text-slate-500">
-                          Total
-                        </td>
-                        <td className="py-2 text-right font-semibold text-emerald-700">
-                          -{formatCurrency(periodPayments)}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
+                          <td className="py-2 pr-3 text-right font-semibold">{formatCurrency(periodCharges)}</td>
+                          <td className="py-2 pr-3 text-right font-semibold text-emerald-700">-{formatCurrency(periodCredits)}</td>
+                          <td />
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </section>
 
@@ -282,6 +354,7 @@ export default function Statements() {
               </footer>
             </StaggerItem>
           )}
+          </ClubReadState>
         </main>
       </PageTransition>
     </div>

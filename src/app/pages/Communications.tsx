@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   MessageSquareText,
   Search,
@@ -7,16 +7,19 @@ import {
   Smartphone,
   Bell,
   Eye,
-  MousePointerClick,
   Loader2,
   Trash2,
   CalendarDays,
+  CheckCircle2,
+  Ban,
+  Send,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import EmptyState from '@/app/components/EmptyState';
+import { LoadFailed } from '@/app/components/LoadFailed';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
@@ -37,29 +40,30 @@ import {
   SelectValue,
 } from '@/app/components/ui/select';
 import {
-  getCommunications,
-  sendCommunication,
+  logCommunication,
   deleteCommunication,
   computeCommStats,
   commStatusLabel,
   CHANNELS,
   CATEGORIES,
+  NOT_SENT,
   type Communication,
   type CommChannel,
   type CommCategory,
   type CommStatus,
 } from '@/app/api/communications';
-import { getMembers, type Member } from '@/app/api/members';
+import type { Member } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import NotDeliveredNotice from '@/app/components/NotDeliveredNotice';
-import PageHero, { heroPrimary } from '@/app/components/PageHero';
+import PageHero, { heroPrimary, heroSecondary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import {
-  RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
+  RecordTable, ViewSwitcher, ViewTransition, columnChoices, useViewPreference,
   type RecordColumn,
 } from '@/app/components/views';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { PERMISSION } from '@/app/api/organizations';
+import { useClubMembers, useCommunications } from '@/app/hooks/queries/club';
+import EmailMemberDialog from '@/app/pages/members/EmailMemberDialog';
 
 const CHANNEL_ICON: Record<CommChannel, React.ElementType> = {
   Email: Mail,
@@ -73,17 +77,22 @@ const CHANNEL_COLOR: Record<CommChannel, string> = {
   Push: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
 };
 
-const STATUS_BADGE: Record<CommStatus, string> = {
-  Queued: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
-  Sent: 'bg-blue-50 text-blue-700 ring-1 ring-blue-200',
-  Delivered: 'bg-cyan-50 text-cyan-700 ring-1 ring-cyan-200',
-  Opened: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
-  Clicked: 'bg-violet-50 text-violet-700 ring-1 ring-violet-200',
-  Failed: 'bg-rose-50 text-rose-700 ring-1 ring-rose-200',
-  Bounced: 'bg-rose-50 text-rose-700 ring-1 ring-rose-200',
+const COMM_STATUS_BADGE: Record<CommStatus, string> = {
+  queued: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
+  sent: 'bg-blue-50 text-blue-700 ring-1 ring-blue-200',
+  delivered: 'bg-cyan-50 text-cyan-700 ring-1 ring-cyan-200',
+  opened: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
+  bounced: 'bg-rose-50 text-rose-700 ring-1 ring-rose-200',
+  suppressed: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
+  skipped: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
+  failed: 'bg-rose-50 text-rose-700 ring-1 ring-rose-200',
+  logged: 'bg-slate-100 text-slate-500 ring-1 ring-slate-200',
 };
 
-function formatDateTime(iso: string): string {
+type StatusFilter = 'All' | 'delivered' | 'notSent' | 'logged';
+
+function formatDateTime(iso?: string | null): string {
+  if (!iso) return '';
   try {
     return new Date(iso).toLocaleString(undefined, {
       month: 'short',
@@ -96,138 +105,76 @@ function formatDateTime(iso: string): string {
   }
 }
 
+/** When a message went, or when it was written when it did not. */
+const whenOf = (c: Communication) => c.sentAtUtc ?? c.createdAtUtc;
+
 export default function Communications() {
-  const [comms, setComms] = useState<Communication[]>([]);
-  const [members, setMembers] = useState<Member[]>([]);
-  const [loading, setLoading] = useState(true);
+  const commsQuery = useCommunications();
+  const comms = useMemo(() => commsQuery.data ?? [], [commsQuery.data]);
+  const membersQuery = useClubMembers();
+  const loading = commsQuery.isPending;
   usePageLoading(loading);
   const [search, setSearch] = useState('');
   const [channelFilter, setChannelFilter] = useState<'All' | CommChannel>('All');
   const [categoryFilter, setCategoryFilter] = useState<'All' | CommCategory>('All');
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [form, setForm] = useState({
-    memberId: '',
-    channel: 'Email' as CommChannel,
-    category: 'Announcement' as CommCategory,
-    subject: '',
-    preview: '',
-  });
-  const [sending, setSending] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
+  const [emailing, setEmailing] = useState(false);
+  const [logging, setLogging] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const load = async () => {
-    try {
-      const [c, m] = await Promise.all([getCommunications(), getMembers()]);
-      setComms(c);
-      setMembers(m);
-    } catch {
-      toast.error('Failed to load communications');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void load();
-  }, []);
-
   const stats = useMemo(() => computeCommStats(comms), [comms]);
-  const byChannel = useMemo(() => {
-    const counts: Record<CommChannel, number> = { Email: 0, SMS: 0, Push: 0 };
-    for (const c of comms) counts[c.channel] = (counts[c.channel] ?? 0) + 1;
-    return counts;
-  }, [comms]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return comms.filter((c) => {
       if (channelFilter !== 'All' && c.channel !== channelFilter) return false;
       if (categoryFilter !== 'All' && c.category !== categoryFilter) return false;
+      if (statusFilter === 'delivered' && c.status !== 'delivered' && c.status !== 'opened') return false;
+      if (statusFilter === 'notSent' && !NOT_SENT.includes(c.status)) return false;
+      if (statusFilter === 'logged' && c.status !== 'logged') return false;
       if (!q) return true;
-      return `${c.memberName} ${c.subject} ${c.preview} ${c.campaignName ?? ''}`
+      return `${c.memberName} ${c.email ?? ''} ${c.subject} ${c.preview ?? ''} ${c.campaignName ?? ''}`
         .toLowerCase()
         .includes(q);
     });
-  }, [comms, search, channelFilter, categoryFilter]);
-
-  const openSend = () => {
-    setForm({
-      memberId: members[0]?.id ?? '',
-      channel: 'Email',
-      category: 'Announcement',
-      subject: '',
-      preview: '',
-    });
-    setDialogOpen(true);
-  };
-
-  const send = async () => {
-    const member = members.find((m) => m.id === form.memberId);
-    if (!member) {
-      toast.error('Pick a member');
-      return;
-    }
-    if (!form.subject.trim()) {
-      toast.error('Subject is required');
-      return;
-    }
-    setSending(true);
-    try {
-      await sendCommunication({
-        memberId: member.id,
-        memberName: `${member.firstName} ${member.lastName}`,
-        channel: form.channel,
-        category: form.category,
-        subject: form.subject.trim(),
-        preview: form.preview.trim() || form.subject.trim(),
-      });
-      toast.success('Message logged. CadenceE did not deliver it.');
-      setDialogOpen(false);
-      await load();
-    } catch {
-      toast.error('Failed to log the message');
-    } finally {
-      setSending(false);
-    }
-  };
+  }, [comms, search, channelFilter, categoryFilter, statusFilter]);
 
   const remove = async (c: Communication) => {
-    if (!confirm('Delete this communication?')) return;
+    if (!confirm('Delete this logged message? It was recorded by hand; nothing was sent from CadenceE.')) return;
     setDeletingId(c.id);
     try {
-      const ok = await deleteCommunication(c.id);
-      if (ok) {
-        toast.success('Deleted');
-        await load();
-      }
+      await deleteCommunication(c.id);
+      toast.success('Deleted');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'The message could not be deleted.');
     } finally {
       setDeletingId(null);
     }
   };
 
-  // How this person likes the message log shown: a feed, cards or a table, saved for them.
-  const view = useViewPreference('communications', { layouts: ['list', 'grid', 'table'] });
+  // How this person likes the message log shown: a feed or a table, saved for them.
+  const view = useViewPreference('communications', { layouts: ['list', 'table'] });
 
   /**
-   * Delete: the same on a row, a card and a table line. It used to draw an
-   * invisible icon, so the button was there but could not be seen.
+   * Only a message logged by hand can be deleted: one CadenceE sent, or did not send
+   * for a reason, is the record of what went to whom.
    */
-  const communicationActions = (c: Communication) => (
+  const communicationActions = (c: Communication) => (c.status !== 'logged' ? null : (
     <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.DeleteRecords]} all>
       <button
         type="button"
-        onClick={() => remove(c)}
+        onClick={() => void remove(c)}
         disabled={deletingId === c.id}
-        className="rounded p-1.5 text-slate-300 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 shrink-0"
-        aria-label={`Delete message to ${c.memberName}`}
+        className="rounded p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 shrink-0"
+        aria-label={`Delete logged message to ${c.memberName}`}
       >
-        {deletingId === c.id ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <Trash2 className="h-4 w-4" />
-        )}
+        {deletingId === c.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
       </button>
     </WriteOnly>
+  ));
+
+  const statusBadge = (c: Communication) => (
+    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${COMM_STATUS_BADGE[c.status]}`}>{commStatusLabel(c.status)}</span>
   );
 
   const communicationColumns: RecordColumn<Communication>[] = [
@@ -248,11 +195,11 @@ export default function Communications() {
       },
     },
     { id: 'member', label: 'To', cell: (c) => c.memberName },
-    { id: 'status', label: 'Status', cell: (c) => <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[c.status]}`}>{commStatusLabel(c.status)}</span> },
+    { id: 'status', label: 'Status', cell: (c) => statusBadge(c) },
+    { id: 'reason', label: 'Why not', byDefault: false, cell: (c) => c.reason || '—' },
     { id: 'category', label: 'Category', cell: (c) => c.category },
-    { id: 'sent', label: 'Logged', cell: (c) => formatDateTime(c.sentAtUtc) },
+    { id: 'when', label: 'When', cell: (c) => formatDateTime(whenOf(c)) },
     { id: 'opened', label: 'Opened', byDefault: false, cell: (c) => (c.openedAtUtc ? formatDateTime(c.openedAtUtc) : '—') },
-    { id: 'clicked', label: 'Clicked', byDefault: false, cell: (c) => (c.clickedAtUtc ? formatDateTime(c.clickedAtUtc) : '—') },
     { id: 'campaign', label: 'Campaign', byDefault: false, cell: (c) => c.campaignName || '—' },
   ];
 
@@ -269,27 +216,35 @@ export default function Communications() {
             icon={MessageSquareText}
             tone="violet"
             title="Communications"
-            subtitle="A log of the emails, SMS and push messages your team sent members, kept with each member."
+            subtitle="Every message the club sent a member, by a campaign or by someone on the team, and what came of it."
             actions={
               <WriteOnly permission={PERMISSION.ClubMembers}>
-                <Button onClick={openSend} className={heroPrimary('violet')}>
+                <Button onClick={() => setEmailing(true)} className={heroPrimary('violet')}>
+                  <Send className="h-4 w-4" />
+                  Email a member
+                </Button>
+                <Button onClick={() => setLogging(true)} className={heroSecondary}>
                   <NotebookPen className="h-4 w-4" />
                   Log a message
                 </Button>
               </WriteOnly>
             }
             stats={[
-              { label: 'Logged · 7d', value: stats.sentThisWeek, icon: CalendarDays, tone: 'violet', hint: 'in the last week' },
-              { label: 'Email', value: byChannel.Email, icon: Mail, tone: 'blue', hint: 'logged all-time' },
-              { label: 'SMS', value: byChannel.SMS, icon: Smartphone, tone: 'emerald', hint: 'logged all-time' },
-              { label: 'Push', value: byChannel.Push, icon: Bell, tone: 'amber', hint: 'logged all-time' },
+              { label: 'Last 7 days', value: stats.lastWeek, icon: CalendarDays, tone: 'violet', hint: 'messages' },
+              { label: 'Delivered', value: stats.delivered, icon: CheckCircle2, tone: 'emerald', hint: 'emails, opened ones too' },
+              { label: 'Opened', value: stats.opened, icon: Eye, tone: 'blue', hint: 'where opens are tracked' },
+              { label: 'Not sent', value: stats.notSent, icon: Ban, tone: 'rose', hint: 'refused, bounced or failed' },
             ]}
           />
 
-          <NotDeliveredNotice>
-            A message logged here is a record for your team, marked &ldquo;Logged, not delivered&rdquo;. Nobody
-            receives it, and opens and clicks are not tracked. Send it from your own mail or phone, then log it.
-          </NotDeliveredNotice>
+          <div role="note" className="mb-6 flex items-start gap-3 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900">
+            <Mail className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+            <p>
+              Emails go from the club&apos;s address and show whether each was delivered, opened or bounced, and why one
+              was not sent. CadenceE cannot send SMS or push messages: log a text or a letter you sent yourself, and it
+              reads &ldquo;Logged, not sent by CadenceE&rdquo;.
+            </p>
+          </div>
 
           {/* Filters */}
           <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 mb-6">
@@ -302,255 +257,234 @@ export default function Communications() {
                 className="pl-9 h-11 rounded-xl"
               />
             </div>
-            <Select
-              value={channelFilter}
-              onValueChange={(v) => setChannelFilter(v as 'All' | CommChannel)}
-            >
+            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
+              <SelectTrigger aria-label="Filter by status" className="h-11 rounded-xl md:w-40">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="All">Any status</SelectItem>
+                <SelectItem value="delivered">Delivered</SelectItem>
+                <SelectItem value="notSent">Not sent or bounced</SelectItem>
+                <SelectItem value="logged">Logged by hand</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={channelFilter} onValueChange={(v) => setChannelFilter(v as 'All' | CommChannel)}>
               <SelectTrigger aria-label="Filter by channel" className="h-11 rounded-xl md:w-36">
                 <SelectValue placeholder="Channel" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="All">All channels</SelectItem>
                 {CHANNELS.map((c) => (
-                  <SelectItem key={c} value={c}>
-                    {c}
-                  </SelectItem>
+                  <SelectItem key={c} value={c}>{c}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <Select
-              value={categoryFilter}
-              onValueChange={(v) => setCategoryFilter(v as 'All' | CommCategory)}
-            >
+            <Select value={categoryFilter} onValueChange={(v) => setCategoryFilter(v as 'All' | CommCategory)}>
               <SelectTrigger aria-label="Filter by category" className="h-11 rounded-xl md:w-44">
                 <SelectValue placeholder="Category" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="All">All categories</SelectItem>
                 {CATEGORIES.map((c) => (
-                  <SelectItem key={c} value={c}>
-                    {c}
-                  </SelectItem>
+                  <SelectItem key={c} value={c}>{c}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
             <ViewSwitcher view={view} columns={columnChoices(communicationColumns)} className="md:ml-auto" />
           </div>
 
-          {/* Feed */}
           {loading ? (
             <div className="flex items-center justify-center py-20 text-slate-500">
               <Loader2 className="h-6 w-6 animate-spin" />
             </div>
-          ) : filtered.length === 0 ? (
-            <EmptyState
-              icon={MessageSquareText}
-              title={comms.length === 0 ? 'No messages logged yet' : 'No messages match these filters'}
-              description={
-                comms.length === 0
-                  ? 'Log a message you sent a member, so the team can see what went to whom.'
-                  : 'Try clearing filters or adjusting your search.'
-              }
-              actionLabel={comms.length === 0 ? 'Log a message' : undefined}
-              onAction={comms.length === 0 ? openSend : undefined}
-              variant="orange"
-            />
+          ) : commsQuery.isError && !commsQuery.data ? (
+            <LoadFailed what="Messages" error={commsQuery.error} onRetry={() => void commsQuery.refetch()} retrying={commsQuery.isFetching} />
           ) : (
-            <ViewTransition layout={view.layout}>
-            {view.layout === 'table' ? (
-              <RecordTable
-                label="Communications"
-                items={filtered}
-                view={view}
-                getKey={(c) => c.id}
-                columns={communicationColumns}
-                actions={communicationActions}
-              />
-            ) : view.layout === 'grid' ? (
-              <div className={`grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 ${gridDensity(view, 'gap-4', 'gap-3 2xl:grid-cols-4')}`}>
-                {filtered.map((c, index) => {
-                  const Icon = CHANNEL_ICON[c.channel];
-                  return (
-                    <StaggerItem
-                      key={c.id}
-                      index={index}
-                      className={`flex flex-col rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:border-violet-200 ${view.density === 'compact' ? 'p-3' : 'p-4'} ${liftOnHover}`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${CHANNEL_COLOR[c.channel]}`}>
-                          <Icon className="w-4 h-4" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="font-semibold text-slate-900 truncate">{c.subject}</p>
-                          <p className="text-xs text-slate-500 truncate">To {c.memberName}</p>
-                        </div>
-                        <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[c.status]}`}>{commStatusLabel(c.status)}</span>
-                      </div>
-                      {view.density !== 'compact' && <p className="mt-2 text-sm text-slate-500 line-clamp-2">{c.preview}</p>}
-                      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-600">{c.category}</span>
-                        {c.openedAtUtc && (
-                          <span className="inline-flex items-center gap-1 text-emerald-700"><Eye className="w-3 h-3" /> opened</span>
-                        )}
-                        {c.clickedAtUtc && (
-                          <span className="inline-flex items-center gap-1 text-violet-600"><MousePointerClick className="w-3 h-3" /> clicked</span>
-                        )}
-                      </div>
-                      <div className="mt-auto flex items-center justify-between pt-3 text-xs text-slate-500">
-                        <span>{formatDateTime(c.sentAtUtc)}</span>
-                        {communicationActions(c)}
-                      </div>
-                    </StaggerItem>
-                  );
-                })}
-              </div>
-            ) : (
-            <div className="space-y-2">
-              {filtered.map((c, index) => {
-                const Icon = CHANNEL_ICON[c.channel];
-                return (
-                  <StaggerItem
-                    key={c.id}
-                    index={index}
-                    className={`rounded-xl border border-slate-200 bg-white ${view.density === 'compact' ? 'p-2.5' : 'p-4'} shadow-sm hover:border-violet-200 ${liftOnHover}`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${CHANNEL_COLOR[c.channel]}`}>
-                        <Icon className="w-4 h-4" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-semibold text-slate-900 truncate">{c.subject}</p>
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[c.status]}`}>
-                            {commStatusLabel(c.status)}
-                          </span>
-                          <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-slate-100 text-slate-600">
-                            {c.category}
-                          </span>
-                        </div>
-                        <p className="text-sm text-slate-500 mt-0.5 line-clamp-2">{c.preview}</p>
-                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-slate-500">
-                          <span>To <span className="font-medium text-slate-600">{c.memberName}</span></span>
-                          <span>{formatDateTime(c.sentAtUtc)}</span>
-                          {c.openedAtUtc && (
-                            <span className="inline-flex items-center gap-1 text-emerald-700">
-                              <Eye className="w-3 h-3" /> opened {formatDateTime(c.openedAtUtc)}
-                            </span>
-                          )}
-                          {c.clickedAtUtc && (
-                            <span className="inline-flex items-center gap-1 text-violet-600">
-                              <MousePointerClick className="w-3 h-3" /> clicked {formatDateTime(c.clickedAtUtc)}
-                            </span>
-                          )}
-                          {c.campaignName && (
-                            <span className="font-mono text-[10px]">{c.campaignName}</span>
-                          )}
-                        </div>
-                      </div>
-                      {communicationActions(c)}
+            <>
+              {commsQuery.isError && (
+                <LoadFailed stale what="Messages" error={commsQuery.error} onRetry={() => void commsQuery.refetch()} retrying={commsQuery.isFetching} className="mb-4" />
+              )}
+              {filtered.length === 0 ? (
+                <EmptyState
+                  icon={MessageSquareText}
+                  title={comms.length === 0 ? 'No messages yet' : 'No messages match these filters'}
+                  description={
+                    comms.length === 0
+                      ? 'Email a member, or log a message you sent another way, so the team can see what went to whom.'
+                      : 'Try clearing filters or adjusting your search.'
+                  }
+                  actionLabel={comms.length === 0 ? 'Email a member' : undefined}
+                  onAction={comms.length === 0 ? () => setEmailing(true) : undefined}
+                  variant="orange"
+                />
+              ) : (
+                <ViewTransition layout={view.layout}>
+                  {view.layout === 'table' ? (
+                    <RecordTable
+                      label="Communications"
+                      items={filtered}
+                      view={view}
+                      getKey={(c) => c.id}
+                      columns={communicationColumns}
+                      actions={communicationActions}
+                    />
+                  ) : (
+                    <div className="space-y-2">
+                      {filtered.map((c, index) => {
+                        const Icon = CHANNEL_ICON[c.channel];
+                        return (
+                          <StaggerItem
+                            as="article"
+                            key={c.id}
+                            index={index}
+                            className={`rounded-xl border border-slate-200 bg-white ${view.density === 'compact' ? 'p-2.5' : 'p-4'} shadow-sm hover:border-violet-200 ${liftOnHover}`}
+                          >
+                            <div className="flex items-start gap-3">
+                              <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${CHANNEL_COLOR[c.channel]}`}>
+                                <Icon className="w-4 h-4" />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="font-semibold text-slate-900 truncate">{c.subject}</p>
+                                  {statusBadge(c)}
+                                  <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-slate-100 text-slate-600">
+                                    {c.purpose === 'marketing' ? 'Marketing · ' : c.purpose === 'service' ? 'Service · ' : ''}{c.category}
+                                  </span>
+                                </div>
+                                {c.preview && view.density !== 'compact' && (
+                                  <p className="text-sm text-slate-500 mt-0.5 line-clamp-2">{c.preview}</p>
+                                )}
+                                {c.reason && <p className="text-xs text-rose-700 mt-1">{c.reason}</p>}
+                                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-slate-500">
+                                  <span>
+                                    To <span className="font-medium text-slate-600">{c.memberName}</span>
+                                    {c.email ? ` · ${c.email}` : ''}
+                                  </span>
+                                  <span>{formatDateTime(whenOf(c))}</span>
+                                  {c.openedAtUtc && (
+                                    <span className="inline-flex items-center gap-1 text-emerald-700">
+                                      <Eye className="w-3 h-3" /> opened {formatDateTime(c.openedAtUtc)}
+                                    </span>
+                                  )}
+                                  {c.campaignName && <span>Campaign: {c.campaignName}</span>}
+                                </div>
+                              </div>
+                              {communicationActions(c)}
+                            </div>
+                          </StaggerItem>
+                        );
+                      })}
                     </div>
-                  </StaggerItem>
-                );
-              })}
-            </div>
-            )}
-            </ViewTransition>
+                  )}
+                </ViewTransition>
+              )}
+            </>
           )}
         </main>
       </PageTransition>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Log a message</DialogTitle>
-            <DialogDescription>
-              Record an email, SMS or push you sent a member. CadenceE does not deliver it: send it yourself
-              first.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
+      {emailing && <EmailMemberDialog members={membersQuery.data} onClose={() => setEmailing(false)} />}
+      {logging && <LogMessageDialog members={membersQuery.data} onClose={() => setLogging(false)} />}
+    </div>
+  );
+}
+
+/** A message the team sent some other way, recorded so everyone can see it. Nothing is sent. */
+function LogMessageDialog({ members, onClose }: { members?: Member[]; onClose: () => void }) {
+  const [memberId, setMemberId] = useState('');
+  const [channel, setChannel] = useState<CommChannel>('SMS');
+  const [category, setCategory] = useState<CommCategory>('Announcement');
+  const [subject, setSubject] = useState('');
+  const [preview, setPreview] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    const member = members?.find((m) => m.id === memberId);
+    if (!member) {
+      toast.error('Pick the member it went to.');
+      return;
+    }
+    if (!subject.trim()) {
+      toast.error('Say what it was about.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await logCommunication(
+        { memberId: member.id, channel, category, subject: subject.trim(), preview: preview.trim() || undefined },
+        `${member.firstName} ${member.lastName}`,
+      );
+      toast.success('Logged. CadenceE did not send it.');
+      onClose();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'The message could not be logged.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open && !saving) onClose(); }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Log a message</DialogTitle>
+          <DialogDescription>
+            Record a text, a letter or an email you sent yourself, so the team can see it. Nothing is sent from here:
+            CadenceE cannot send SMS or push.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div>
+            <Label htmlFor="log-member">To</Label>
+            <Select value={memberId} onValueChange={setMemberId}>
+              <SelectTrigger id="log-member" aria-label="To">
+                <SelectValue placeholder={members ? 'Pick a member' : 'Loading members…'} />
+              </SelectTrigger>
+              <SelectContent>
+                {(members ?? []).map((m) => (
+                  <SelectItem key={m.id} value={m.id}>
+                    {m.firstName} {m.lastName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label>To member</Label>
-              <Select value={form.memberId} onValueChange={(v) => setForm({ ...form, memberId: v })}>
-                <SelectTrigger aria-label="To member">
-                  <SelectValue placeholder="Pick a member" />
-                </SelectTrigger>
+              <Label htmlFor="log-channel">Sent by</Label>
+              <Select value={channel} onValueChange={(v) => setChannel(v as CommChannel)}>
+                <SelectTrigger id="log-channel" aria-label="Sent by"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {members.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>
-                      {m.firstName} {m.lastName} — {m.email}
-                    </SelectItem>
-                  ))}
+                  {CHANNELS.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Channel</Label>
-                <Select value={form.channel} onValueChange={(v) => setForm({ ...form, channel: v as CommChannel })}>
-                  <SelectTrigger aria-label="Channel">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CHANNELS.map((c) => (
-                      <SelectItem key={c} value={c}>
-                        {c}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Category</Label>
-                <Select
-                  value={form.category}
-                  onValueChange={(v) => setForm({ ...form, category: v as CommCategory })}
-                >
-                  <SelectTrigger aria-label="Category">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CATEGORIES.map((c) => (
-                      <SelectItem key={c} value={c}>
-                        {c}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
             <div>
-              <Label>Subject / message</Label>
-              <Input aria-label="Subject / message"
-                value={form.subject}
-                onChange={(e) => setForm({ ...form, subject: e.target.value })}
-              />
-            </div>
-            <div>
-              <Label>Preview body</Label>
-              <Textarea aria-label="Preview body"
-                value={form.preview}
-                onChange={(e) => setForm({ ...form, preview: e.target.value })}
-                rows={3}
-              />
+              <Label htmlFor="log-category">Category</Label>
+              <Select value={category} onValueChange={(v) => setCategory(v as CommCategory)}>
+                <SelectTrigger id="log-category" aria-label="Category"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={sending}>
-              Cancel
-            </Button>
-            <Button onClick={send} disabled={sending}>
-              {sending ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Logging
-                </>
-              ) : (
-                'Log message'
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+          <div>
+            <Label htmlFor="log-subject">What it was about</Label>
+            <Input id="log-subject" aria-label="What it was about" value={subject} onChange={(e) => setSubject(e.target.value)} maxLength={300} />
+          </div>
+          <div>
+            <Label htmlFor="log-preview">Note (optional)</Label>
+            <Textarea id="log-preview" aria-label="Note" value={preview} onChange={(e) => setPreview(e.target.value)} rows={3} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button onClick={() => void save()} disabled={saving}>
+            {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden /> Saving</> : 'Log message'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

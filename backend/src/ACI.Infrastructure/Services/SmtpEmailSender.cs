@@ -308,10 +308,16 @@ public sealed class SmtpEmailSender : IEmailSender
         message.Subject = email.Subject;
         // MimeKit writes the angle brackets itself.
         message.MessageId = email.MessageId.Trim().TrimStart('<').TrimEnd('>');
-        // The page, not a one-click POST endpoint (RFC 8058): the link opens the
-        // confirmation page, which is what a mail app's "Unsubscribe" does with it.
+        // The one address a mail app's own Unsubscribe button uses. When it is the API's
+        // one-click address (RFC 8058), List-Unsubscribe-Post says the app may POST to it
+        // and be done, as Gmail and Yahoo expect of anyone sending to many people; otherwise
+        // it is the confirmation page, which the app opens.
         if (!string.IsNullOrWhiteSpace(email.UnsubscribeUrl))
+        {
             message.Headers.Add("List-Unsubscribe", $"<{email.UnsubscribeUrl.Trim()}>");
+            if (email.OneClickUnsubscribe)
+                message.Headers.Add("List-Unsubscribe-Post", "List-Unsubscribe=One-Click");
+        }
         // SendGrid copies these into every event it reports about the message (delivered,
         // bounced, marked as spam), which is how a report finds its way back to it.
         if (tagForSendGrid)
@@ -319,7 +325,10 @@ public sealed class SmtpEmailSender : IEmailSender
             {
                 unique_args = new Dictionary<string, string> { [OutboxEmailTags.MessageIdArg] = email.OutboundMessageId.ToString("D") },
             }));
-        message.Body = new BodyBuilder { TextBody = email.TextBody, HtmlBody = email.HtmlBody }.ToMessageBody();
+        var body = new BodyBuilder { TextBody = email.TextBody, HtmlBody = email.HtmlBody };
+        foreach (var file in email.Attachments ?? [])
+            body.Attachments.Add(file.FileName, file.Content, ContentType.Parse(file.ContentType));
+        message.Body = body.ToMessageBody();
         return message;
     }
 

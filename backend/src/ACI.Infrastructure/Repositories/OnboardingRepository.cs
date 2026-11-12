@@ -49,8 +49,6 @@ public sealed class OnboardingRepository : IOnboardingRepository
             .FirstOrDefaultAsync(ct);
     }
 
-    public void AddClubMember(ClubMember member) => _db.ClubMembers.Add(member);
-
     public async Task SaveAsync(CancellationToken ct = default)
     {
         try

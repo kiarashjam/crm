@@ -23,7 +23,7 @@ const MODULE_RESOURCES = {
   events: ['events'],
   giftCards: ['gift-cards'],
   hospitalitySettings: ['hospitality'],
-  households: ['households', 'household-members'],
+  households: ['households'],
   loyalty: ['loyalty'],
   members: ['members'],
   products: ['products', 'deals/line-items'],

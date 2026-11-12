@@ -24,6 +24,7 @@ internal sealed class OutboundMessageConfiguration : IEntityTypeConfiguration<Ou
         builder.Property(e => e.RecipientName).HasMaxLength(200);
         builder.Property(e => e.Subject).HasMaxLength(300);
         builder.Property(e => e.UnsubscribeUrl).HasMaxLength(1000);
+        builder.Property(e => e.Purpose).HasMaxLength(16);
         builder.Property(e => e.MessageIdHeader).HasMaxLength(255);
         builder.Property(e => e.ReplyToken).HasMaxLength(64);
         builder.Property(e => e.DeliveryStatus).HasMaxLength(32);
@@ -41,6 +42,21 @@ internal sealed class OutboundMessageConfiguration : IEntityTypeConfiguration<Ou
             .HasDatabaseName("IX_OutboundMessages_MessageIdHeader");
         builder.HasIndex(e => e.ReplyToken).IsUnique().HasFilter("[ReplyToken] IS NOT NULL")
             .HasDatabaseName("IX_OutboundMessages_ReplyToken");
+    }
+}
+
+internal sealed class OutboundAttachmentConfiguration : IEntityTypeConfiguration<OutboundAttachment>
+{
+    public void Configure(EntityTypeBuilder<OutboundAttachment> builder)
+    {
+        builder.ToTable("OutboundAttachments");
+        builder.HasKey(e => e.Id);
+        builder.Property(e => e.FileName).HasMaxLength(255).IsRequired();
+        builder.Property(e => e.ContentType).HasMaxLength(100).IsRequired();
+        builder.Property(e => e.Content).IsRequired();
+        // Messages are never deleted, so a file never outlives the email it went with.
+        builder.HasOne<OutboundMessage>().WithMany().HasForeignKey(e => e.OutboundMessageId).OnDelete(DeleteBehavior.NoAction);
+        builder.HasIndex(e => e.OutboundMessageId).HasDatabaseName("IX_OutboundAttachments_OutboundMessageId");
     }
 }
 

@@ -63,4 +63,20 @@ describe('the unsubscribe page', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('did not go through');
     expect(screen.queryByRole('heading', { name: 'You are unsubscribed' })).toBeNull();
   });
+
+  it("a club member's link stops news and offers, and says their membership's messages still come", async () => {
+    const target = { workspaceName: 'Pavillon 46', email: 'jean@example.ch', scope: 'marketing' as const };
+    api.get.mockResolvedValue(target);
+    api.confirm.mockResolvedValue(target);
+    show();
+    expect(await screen.findByRole('heading', { name: 'Stop news and offers from Pavillon 46?' })).toBeInTheDocument();
+    expect(screen.getByText(/statements and booking confirmations, still come/)).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Unsubscribe' }));
+
+    expect(await screen.findByRole('heading', { name: 'You are unsubscribed' })).toHaveFocus();
+    expect(screen.getByText(/will not send news and offers to jean@example\.ch again/)).toBeInTheDocument();
+    expect(screen.queryByText('Pavillon 46 will not email jean@example.ch again.')).toBeNull();
+  });
 });

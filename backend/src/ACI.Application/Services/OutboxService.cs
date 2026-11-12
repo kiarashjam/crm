@@ -52,6 +52,21 @@ public sealed record OutboundEmailRequest
     public Guid? DealId { get; init; }
     public Guid? MemberId { get; init; }
 
+    /// <summary>
+    /// For an email to a club member (<see cref="MemberId"/>, one address): marketing, which
+    /// needs the member's consent to marketing by email and carries a link that withdraws it,
+    /// or service (a statement, a booking), which goes whatever they said. Null for sales
+    /// outreach, as before.
+    /// </summary>
+    public string? Purpose { get; init; }
+
+    /// <summary>
+    /// For someone in the workspace itself, such as a campaign's test copy for the person who
+    /// pressed "Send a test to me": nobody there is unsubscribing from anything, so it
+    /// carries no unsubscribe link.
+    /// </summary>
+    public bool ForOwnTeam { get; init; }
+
     /// <summary>A person wrote it, so its timeline entry is their response (see <see cref="OutboundMessage.CountsAsResponse"/>).</summary>
     public bool CountsAsResponse { get; init; }
 
@@ -64,6 +79,12 @@ public sealed record OutboundEmailRequest
     /// placeholder that cannot be filled is refused rather than left out.
     /// </summary>
     public bool PersonWaiting { get; init; }
+
+    /// <summary>
+    /// Files that go with it (a statement's PDF), kept with the message so every attempt
+    /// sends the same ones.
+    /// </summary>
+    public IReadOnlyList<EmailAttachment> Attachments { get; init; } = [];
 }
 
 /// <summary>How an attempt at a message ended.</summary>
@@ -169,6 +190,7 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
     private readonly EmailSettings _settings;
     private readonly ILogger<OutboxService> _logger;
     private readonly ITenantContext? _tenant;
+    private readonly IMemberMailRules? _members;
     private readonly IOnboardingRepository? _onboarding;
 
     public OutboxService(
@@ -185,6 +207,7 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
         IOptions<EmailSettings> settings,
         ILogger<OutboxService> logger,
         ITenantContext? tenant = null,
+        IMemberMailRules? members = null,
         IOnboardingRepository? onboarding = null)
     {
         _messages = messages;
@@ -200,6 +223,7 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
         _settings = settings.Value;
         _logger = logger;
         _tenant = tenant;
+        _members = members;
         _onboarding = onboarding;
     }
 
@@ -214,8 +238,19 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
         var wrong = to.Concat(cc).Concat(bcc).FirstOrDefault(a => !ValidationHelper.IsValidEmail(a));
         if (wrong != null) return new Error("Email.InvalidAddress", $"\"{wrong}\" is not a valid email address.");
 
+        var purpose = request.Purpose;
+        if (purpose != null)
+        {
+            // A member's consent and their unsubscribe link are theirs alone, so an email
+            // with a purpose goes to one member and nobody else.
+            if (!ConsentPurposes.All.Contains(purpose))
+                return new Error("Email.PurposeInvalid", "An email to a member is for marketing or a service message.");
+            if (request.MemberId == null || to.Count != 1 || cc.Count > 0 || bcc.Count > 0)
+                return new Error("Email.PurposeNeedsMember", "An email to a member goes to that member's address alone.");
+        }
+
         var organizationId = request.OrganizationId;
-        if (await RefusalAsync(organizationId, to.Concat(cc).Concat(bcc).ToList(), request.LeadId, request.ContactId, ct) is { } refusal)
+        if (await RefusalAsync(organizationId, to.Concat(cc).Concat(bcc).ToList(), request.LeadId, request.ContactId, purpose, request.MemberId, ct) is { } refusal)
             return refusal;
 
         // Under the workspace's name, from its own address once that is verified, and a
@@ -234,8 +269,14 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
 
         // A link at the foot for each person it is visibly addressed to, to stop this
         // workspace's email. Not for Bcc: naming them would show everyone who else got it.
+        // A member's marketing carries a link that withdraws their consent to it, and a
+        // service message none: their choices do not stop their statements.
         var tracking = request.TrackOpens && request.LeadId is Guid leadId ? _outreach.TrackingUrl(leadId) : null;
-        var mail = _outreach.Body(organizationId, sender.WorkspaceName, body, to.Concat(cc).ToList(), tracking);
+        var mail = request.ForOwnTeam
+            ? new OutreachBody(body, PlainTextEmail.ToHtml(body, null, sender.WorkspaceName), null)
+            : purpose != null && request.MemberId is Guid memberId
+                ? _outreach.MemberBody(organizationId, sender.WorkspaceName, body, memberId, to[0], purpose == ConsentPurposes.Marketing)
+                : _outreach.Body(organizationId, sender.WorkspaceName, body, to.Concat(cc).ToList(), tracking);
 
         var id = Guid.NewGuid();
         var replyDomain = _settings.CapturesReplies ? _settings.ReplyDomain() : null;
@@ -277,6 +318,8 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
             TextBody = mail.Text,
             HtmlBody = mail.Html,
             UnsubscribeUrl = mail.UnsubscribeUrl,
+            OneClickUnsubscribe = mail.OneClick,
+            Purpose = purpose,
             MessageIdHeader = $"<{id:N}@{MessageIdDomain(sender.FromAddress)}>",
             ReplyToken = token,
             CountsAsResponse = request.CountsAsResponse,
@@ -285,7 +328,17 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
             DealId = request.DealId,
             MemberId = request.MemberId,
         };
-        await _messages.AddAsync(message, ct);
+        var files = request.Attachments.Select(a => new OutboundAttachment
+        {
+            Id = Guid.NewGuid(),
+            OrganizationId = organizationId,
+            OutboundMessageId = id,
+            FileName = Clip(a.FileName, 255) ?? "attachment",
+            ContentType = Clip(a.ContentType, 100) ?? "application/octet-stream",
+            Content = a.Content,
+            CreatedAtUtc = now,
+        }).ToList();
+        await _messages.AddAsync(message, files, ct);
         if (!request.PersonWaiting) _signal.Notify();
         return message;
     }
@@ -397,7 +450,7 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
         // Asked again at the moment it goes: someone may have unsubscribed or bounced
         // since it was queued, and a "stop" has to win over a message already waiting.
         if (message.OrganizationId is Guid org
-            && await RefusalAsync(org, to.Concat(cc).Concat(bcc).ToList(), message.LeadId, message.ContactId, ct) is { } refusal)
+            && await RefusalAsync(org, to.Concat(cc).Concat(bcc).ToList(), message.LeadId, message.ContactId, message.Purpose, message.MemberId, ct) is { } refusal)
         {
             Stop(message, OutboundStatuses.Suppressed, refusal.Description);
             await _messages.SaveAsync(ct);
@@ -408,10 +461,12 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
             return new OutboxAttempt(OutboxAttemptResult.Suppressed, refusal.Description, refusal.Code);
         }
 
+        var attachments = (await _messages.AttachmentsAsync(message.Id, ct))
+            .Select(a => new EmailAttachment(a.FileName, a.ContentType, a.Content)).ToList();
         var result = await _email.SendOutboxAsync(new OutboxEmail(
             message.FromName, message.FromAddress, Split(message.ReplyTo), to, cc, bcc, message.RecipientName,
             message.Subject ?? "", message.TextBody ?? "", message.HtmlBody ?? "", message.MessageIdHeader ?? $"<{message.Id:N}@{MessageIdDomain(null)}>",
-            message.UnsubscribeUrl, message.Id), ct);
+            message.UnsubscribeUrl, message.Id, message.OneClickUnsubscribe, attachments.Count == 0 ? null : attachments), ct);
         message.LastStatusCode = result.Code;
 
         switch (result.Outcome)
@@ -595,7 +650,9 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
         {
             _logger.LogWarning(ex, "The sequence behind outbox email {MessageId} could not be stopped", message.Id);
         }
-        if (!personWaiting)
+        // A campaign's failures are counted on the campaign, one figure for all its members;
+        // a notification for each would bury the sender under hundreds of them.
+        if (!personWaiting && message.Source != OutboundSources.Campaign)
             await TellCreatorAsync(message, "An email could not be sent", message.LastError ?? "It did not go through.", ct);
     }
 
@@ -701,18 +758,36 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
     /// address, or through the lead or contact the message is about; and an address the
     /// mail service reported as bounced, invalid or complaining.
     /// </summary>
-    private async Task<Error?> RefusalAsync(Guid organizationId, IReadOnlyList<string> addresses, Guid? leadId, Guid? contactId, CancellationToken ct)
+    /// <remarks>
+    /// For a club member, what the message is for decides the rest. Marketing goes only to
+    /// a member whose standing answer for marketing by email is yes. A service message (a
+    /// statement, a booking confirmation) goes whatever they said about marketing, and do
+    /// not contact, an objection to sales outreach, does not stop it either; what the mail
+    /// service reported about the address still does, since the mail would not arrive.
+    /// </remarks>
+    private async Task<Error?> RefusalAsync(Guid organizationId, IReadOnlyList<string> addresses, Guid? leadId, Guid? contactId, string? purpose, Guid? memberId, CancellationToken ct)
     {
-        if (await _contacts.FindDoNotContactAddressAsync(organizationId, addresses, ct) is { } stopped)
-            return new Error(DomainErrors.Contact.DoNotContact.Code, $"{stopped} is marked do not contact, so nothing was sent.");
-        if (await _contacts.IsDoNotContactAsync(organizationId, leadId, contactId, ct))
-            return new Error(DomainErrors.Contact.DoNotContact.Code, "This person is marked do not contact, so nothing was sent.");
+        if (purpose == ConsentPurposes.Marketing)
+        {
+            // Without the rules there is no way to show the member agreed, so nothing goes.
+            if (memberId is not Guid member || _members == null)
+                return new Error("Consent.Missing", "This member has not agreed to marketing by email, so nothing was sent.");
+            if (await _members.MarketingRefusalAsync(organizationId, member, ConsentChannels.Email, ct) is { } no)
+                return new Error(no.Code, no.Reason);
+        }
+        if (purpose != ConsentPurposes.Service)
+        {
+            if (await _contacts.FindDoNotContactAddressAsync(organizationId, addresses, ct) is { } stopped)
+                return new Error(DomainErrors.Contact.DoNotContact.Code, $"{stopped} is marked do not contact, so nothing was sent.");
+            if (await _contacts.IsDoNotContactAsync(organizationId, leadId, contactId, ct))
+                return new Error(DomainErrors.Contact.DoNotContact.Code, "This person is marked do not contact, so nothing was sent.");
+        }
         if (await _messages.FindSuppressionAsync(organizationId, addresses, ct) is { } suppressed)
             return new Error("Email.Suppressed", $"{suppressed.Email} {SuppressedBecause(suppressed)}, so email to it is suppressed and nothing was sent.");
         return null;
     }
 
-    /// <summary>Why the lead or contact a message is about no longer counts, or null while it does.</summary>
+    /// <summary>Why the lead, contact or member a message is about no longer counts, or null while it does.</summary>
     private async Task<string?> GoneAsync(OutboundMessage message, CancellationToken ct)
     {
         if (message.OrganizationId is not Guid org) return null;
@@ -720,6 +795,8 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
             return "The lead it was for has been deleted, so it was not sent.";
         if (message.ContactId is Guid contactId && await _targets.TargetStateAsync("contact", contactId, org, ct) is { Exists: false })
             return "The contact it was for has been deleted, so it was not sent.";
+        if (message.MemberId is Guid memberId && _members != null && !await _members.MemberExistsAsync(org, memberId, ct))
+            return "The member it was for has been removed, so it was not sent.";
         return null;
     }
 
@@ -802,6 +879,7 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
         message.LeadId is Guid lead ? $"/leads/{lead}"
         : message.ContactId is Guid contact ? $"/contacts/{contact}"
         : message.DealId is Guid deal ? $"/deals/{deal}"
+        : message.MemberId is Guid member ? $"/members/{member}"
         : null;
 
     /// <summary>"a@x.ch, b@y.ch; c@z.ch" or a list → each address once, trimmed.</summary>

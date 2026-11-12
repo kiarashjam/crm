@@ -74,7 +74,11 @@ internal sealed class ClubMemberConfiguration : IEntityTypeConfiguration<ClubMem
         builder.Property(e => e.DuesAmount).HasPrecision(18, 2);
         builder.Property(e => e.HouseAccountBalance).HasPrecision(18, 2);
         builder.Property(e => e.ManualBalance).HasPrecision(18, 2);
+        builder.Property(e => e.StatusBeforeLapse).HasMaxLength(32);
         builder.HasIndex(e => e.OrganizationId);
+        // A contact or lead page asks which member is that person.
+        builder.HasIndex(e => new { e.OrganizationId, e.ContactId }).HasFilter("[ContactId] IS NOT NULL");
+        builder.HasIndex(e => new { e.OrganizationId, e.LeadId }).HasFilter("[LeadId] IS NOT NULL");
     }
 }
 

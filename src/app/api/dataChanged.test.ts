@@ -87,7 +87,133 @@ describe('what a write changes', () => {
   });
 
   it('a club write changes only its own records, whatever the query string', () => {
-    expect(resourcesChangedBy('POST', 'https://api.example.com/api/visits?memberId=m-1')).toEqual(['visits']);
+    // A check-in writes the points it earns with the visit, so the loyalty ledger moves too.
+    expect(resourcesChangedBy('POST', 'https://api.example.com/api/visits?memberId=m-1')).toEqual(['visits', 'loyalty']);
+  });
+
+  it("the club's money is one ledger: a charge, a payment or a tab moves balances and statements", () => {
+    // A charge or a payment moves the member's balance on the members list and their
+    // statement; a payment settles charges; a tab's close posts a charge and earns points.
+    expect(resourcesChangedBy('POST', '/api/charges')).toEqual(expect.arrayContaining(['charges', 'members', 'statements']));
+    expect(resourcesChangedBy('POST', '/api/payments/p-1/void')).toEqual(expect.arrayContaining(['payments', 'charges', 'members', 'statements']));
+    expect(resourcesChangedBy('POST', '/api/tabs/t-1/close')).toEqual(expect.arrayContaining(['tabs', 'charges', 'members', 'loyalty', 'statements']));
+    expect(resourcesChangedBy('POST', '/api/subscriptions/s-1/bill')).toEqual(expect.arrayContaining(['subscriptions', 'charges', 'members']));
+    // A balance set by hand on a member is an entry on the ledger too.
+    expect(resourcesChangedBy('PUT', '/api/members/m-1')).toEqual(expect.arrayContaining(['members', 'charges', 'statements']));
+    // A member added can start their dues today: a subscription, and a period billing now would post.
+    expect(resourcesChangedBy('POST', '/api/members')).toEqual(expect.arrayContaining(['subscriptions', 'billing']));
+  });
+
+  it("a club member's merge moves club records, not the sales lists", () => {
+    const changed = resourcesChangedBy('POST', '/api/members/m-1/merge');
+    expect(changed).toEqual(expect.arrayContaining(['members', 'charges', 'payments']));
+    expect(changed).not.toContain('leads');
+  });
+
+  it("a club member's save or merge refreshes what both the ledger and the campaigns show of them", () => {
+    // Two groups add to what a member write changes. The ledger: a balance set by hand is
+    // an entry, and a merge moves the duplicate's entries, so their tabs and statement. The
+    // communications: a tier or status changes who a campaign reaches, and a merge moves
+    // consent and messages. Neither may push the other's out.
+    expect(resourcesChangedBy('PUT', '/api/members/m-1')).toEqual(
+      expect.arrayContaining(['members', 'charges', 'payments', 'statements', 'campaigns']),
+    );
+    expect(resourcesChangedBy('POST', '/api/members/m-1/merge')).toEqual(
+      expect.arrayContaining(['members', 'charges', 'payments', 'statements', 'tabs', 'campaigns', 'communications', 'duplicates']),
+    );
+    // A consent answer is not money: it leaves the ledger's lists alone.
+    expect(resourcesChangedBy('POST', '/api/members/m-1/consent')).not.toContain('charges');
+  });
+
+  it("sending a campaign fills the communications log, and a member's consent or merge refreshes what campaigns reach", () => {
+    expect(resourcesChangedBy('POST', '/api/campaigns/c-1/send')).toEqual(['campaigns', 'communications']);
+    expect(resourcesChangedBy('POST', '/api/members/m-1/consent')).toEqual(['members', 'campaigns']);
+    expect(resourcesChangedBy('POST', '/api/members/m-1/merge')).toEqual(
+      expect.arrayContaining(['members', 'campaigns', 'communications', 'duplicates', 'charges', 'visits']),
+    );
+  });
+
+  it("a change to an event's list refreshes the money and messages it can touch", () => {
+    // A registration posts a ticket, a cancellation takes it back (a payment for it becoming
+    // credit) and emails the next in line, and a check-in gives the member points.
+    for (const path of [
+      '/api/events/e-1/attendees',
+      '/api/events/e-1/attendees/walk-in',
+      '/api/events/e-1/attendees/a-1',
+      '/api/events/e-1',
+    ]) {
+      expect(resourcesChangedBy('POST', path)).toEqual(
+        expect.arrayContaining(['events', 'charges', 'payments', 'members', 'statements', 'loyalty', 'communications']),
+      );
+    }
+    expect(resourcesChangedBy('PUT', '/api/events/e-1/attendees/a-1')).not.toContain('leads');
+  });
+
+  it("a booking refreshes the money its deposit and fee touch, and a resource's settings its bookings", () => {
+    expect(resourcesChangedBy('POST', '/api/reservations')).toEqual(
+      expect.arrayContaining(['reservations', 'charges', 'payments', 'members', 'statements']),
+    );
+    expect(resourcesChangedBy('PUT', '/api/resources/r-1')).toEqual(['resources', 'reservations']);
+    expect(resourcesChangedBy('POST', '/api/resources/defaults')).toEqual(['resources', 'reservations']);
+  });
+
+  it("a club member's merge moves their registrations too", () => {
+    expect(resourcesChangedBy('POST', '/api/members/m-1/merge')).toEqual(expect.arrayContaining(['events', 'reservations']));
+  });
+
+  it("deleting a club member detaches their registrations and bookings, but an edit leaves those lists alone", () => {
+    // The server keeps their places and bookings under the name, with no member: a page still
+    // showing the member on one would send the id of someone who is gone.
+    expect(resourcesChangedBy('DELETE', '/api/members/m-1')).toEqual(
+      expect.arrayContaining(['members', 'charges', 'statements', 'events', 'reservations']),
+    );
+    expect(resourcesChangedBy('PUT', '/api/members/m-1')).not.toContain('events');
+    expect(resourcesChangedBy('PUT', '/api/members/m-1')).not.toContain('reservations');
+  });
+
+  it('an approval refreshes the member it made, their dues, fee and welcome, and the lead and contact pages', () => {
+    expect(resourcesChangedBy('POST', '/api/applications/a-1/approve')).toEqual(expect.arrayContaining([
+      'applications', 'members', 'charges', 'subscriptions', 'statements', 'communications', 'households', 'leads', 'contacts',
+    ]));
+  });
+
+  it("a household's merge refreshes the households, not every sales list", () => {
+    // It used to be read as any merge, which refreshed the leads and deals and left the
+    // households list showing the duplicates merged away.
+    const merged = resourcesChangedBy('POST', '/api/households/h-1/merge');
+    expect(merged).toEqual(expect.arrayContaining(['households', 'duplicates', 'members']));
+    expect(merged).not.toContain('deals');
+    expect(resourcesChangedBy('PUT', '/api/households/h-1/members/l-1')).toEqual(expect.arrayContaining(['households', 'members']));
+  });
+
+  it("a spouse recorded on a contact's or a lead's page refreshes the households: a couple is one", () => {
+    expect(resourcesChangedBy('POST', '/api/contacts/c-1/relationships')).toContain('households');
+    expect(resourcesChangedBy('DELETE', '/api/leads/l-1/relationships/r-1')).toContain('households');
+    expect(resourcesChangedBy('PUT', '/api/contacts/c-1')).not.toContain('households');
+  });
+
+  it("a club member's merge moves their applications and household links", () => {
+    expect(resourcesChangedBy('POST', '/api/members/m-1/merge')).toEqual(expect.arrayContaining(['applications', 'households']));
+  });
+
+  it("money from outside: a bank file's payments and a saved card's charge refresh the ledger's lists, a card's setup only itself", () => {
+    // Matched transfers and one allocated by hand are payments: they settle charges and move balances.
+    for (const path of ['/api/bank/imports', '/api/bank/transactions/t-1/allocate', '/api/bank/transactions/t-1/ignore']) {
+      expect(resourcesChangedBy('POST', path)).toEqual(expect.arrayContaining(['bank', 'payments', 'charges', 'members', 'statements']));
+    }
+    // Stripe can answer a saved card's charge at once, and the payment is on the ledger before the answer.
+    expect(resourcesChangedBy('POST', '/api/members/m-1/card/charge')).toEqual(
+      expect.arrayContaining(['payment-profile', 'online-payments', 'payments', 'charges', 'members', 'statements']),
+    );
+    // A card removed, dues on file turned on or a pay link made move no money.
+    expect(resourcesChangedBy('DELETE', '/api/members/m-1/card')).toEqual(['payment-profile']);
+    expect(resourcesChangedBy('PUT', '/api/members/m-1/autopay')).toEqual(['payment-profile']);
+    expect(resourcesChangedBy('POST', '/api/members/m-1/pay-link')).toEqual(['payment-profile']);
+    // Emailing the link logs a message, like emailing a statement.
+    expect(resourcesChangedBy('POST', '/api/members/m-1/pay-link/email')).toEqual(['communications']);
+    expect(resourcesChangedBy('PUT', '/api/payment-settings')).toEqual(['payment-settings']);
+    // A merge moves the duplicate's card, online payments and transfers to the kept member.
+    expect(resourcesChangedBy('POST', '/api/members/m-1/merge')).toEqual(expect.arrayContaining(['payment-profile', 'online-payments', 'bank']));
   });
 });
 

@@ -241,13 +241,59 @@ public class MergeDuplicatesTests
         db.AddRange(charge, untouched);
         db.Add(Doc("household-members", $$"""{"householdId":"{{household}}","memberId":"{{keep.Id}}"}"""));
         db.Add(Doc("household-members", $$"""{"householdId":"{{household}}","memberId":"{{drop.Id}}"}"""));
+        // Both in one household, the kept member its primary; and the duplicate heading another,
+        // with a child in it, who takes over when the duplicate goes.
+        var home = new ClubHousehold { Id = Guid.NewGuid(), OrganizationId = w.Org.Id, Name = "Hartwell", CreatedAtUtc = DateTime.UtcNow };
+        var other = new ClubHousehold { Id = Guid.NewGuid(), OrganizationId = w.Org.Id, Name = "Old Hartwell", CreatedAtUtc = DateTime.UtcNow };
+        var child = Member("kid@example.ch", 0, DateTime.UtcNow.AddDays(-5));
+        child.FirstName = "Kit";
+        db.AddRange(home, other, child);
+        ClubHouseholdMember Link(Guid householdId, Guid memberId, string role, bool primary) => new()
+        {
+            Id = Guid.NewGuid(), OrganizationId = w.Org.Id, HouseholdId = householdId, MemberId = memberId, Role = role, IsPrimary = primary,
+            Source = HouseholdLinkSources.Club, CreatedAtUtc = DateTime.UtcNow,
+        };
+        db.Add(Link(home.Id, keep.Id, HouseholdRoles.Primary, true));
+        db.Add(Link(other.Id, drop.Id, HouseholdRoles.Primary, true));
+        db.Add(Link(other.Id, child.Id, HouseholdRoles.Child, false));
+        // What the duplicate ran up on someone's account, and the application that admitted them.
+        var spaId = Guid.NewGuid();
+        db.Add(new ClubCharge
+        {
+            Id = spaId, OrganizationId = w.Org.Id, MemberId = keep.Id, MemberName = "Amelia Hartwell", Description = "Spa",
+            Amount = 10, PostedAtUtc = DateTime.UtcNow, CreatedAtUtc = DateTime.UtcNow, IncurredByMemberId = drop.Id, IncurredByName = "A. Hartwell",
+        });
+        var application = new ClubApplication
+        {
+            Id = Guid.NewGuid(), OrganizationId = w.Org.Id, FirstName = "Amelia", LastName = "Hartwell", Email = "amelia@example.ch",
+            RequestedTier = "Gold", Status = ApplicationStatuses.Approved, Source = ApplicationSources.Moved, MemberId = drop.Id,
+            SubmittedAtUtc = DateTime.UtcNow, CreatedAtUtc = DateTime.UtcNow,
+        };
+        db.Add(application);
+        // The billing's records of what it sent the duplicate: a reminder of a charge, and the
+        // statements of two months, one the kept member also had.
+        var october = new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc);
+        var september = october.AddMonths(-1);
+        ClubStatementDelivery Statement(Guid memberId, DateTime month) => new()
+        {
+            Id = Guid.NewGuid(), OrganizationId = w.Org.Id, MemberId = memberId, PeriodStartUtc = month, PeriodEndUtc = month.AddMonths(1),
+            Source = StatementSources.Monthly, CreatedAtUtc = DateTime.UtcNow,
+        };
+        var keptOctober = Statement(keep.Id, october);
+        var droppedOctober = Statement(drop.Id, october);
+        var droppedSeptember = Statement(drop.Id, september);
+        db.AddRange(keptOctober, droppedOctober, droppedSeptember);
+        db.Add(new ClubPaymentReminder
+        {
+            Id = Guid.NewGuid(), OrganizationId = w.Org.Id, ChargeId = spaId, MemberId = drop.Id, Step = 1, DaysAfterDue = 3, CreatedAtUtc = DateTime.UtcNow,
+        });
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
         (await new ClubRepository(db).MergeMembersAsync(keep.Id, drop.Id, w.Org.Id)).Should().BeTrue();
         db.ChangeTracker.Clear();
 
-        var kept = await db.ClubMembers.SingleAsync();
+        var kept = await db.ClubMembers.SingleAsync(m => m.Id != child.Id);
         kept.Id.Should().Be(keep.Id);
         kept.HouseAccountBalance.Should().Be(140.5m);
         kept.Phone.Should().Be("+41 21 555 01 42");
@@ -255,7 +301,22 @@ public class MergeDuplicatesTests
         (await db.ClubVisits.SingleAsync()).MemberId.Should().Be(keep.Id);
         (await db.LoyaltyLedger.SingleAsync()).MemberName.Should().Be("Amelia Hartwell");
         (await db.ClubDocuments.SingleAsync(d => d.Id == charge.Id)).Payload.Should().Contain(keep.Id.ToString()).And.NotContain(drop.Id.ToString());
-        (await db.ClubDocuments.CountAsync(d => d.Kind == "household-members")).Should().Be(1, "one person is in a household once");
+        // The old household documents are frozen: rewritten to the kept member, but none removed.
+        (await db.ClubDocuments.CountAsync(d => d.Kind == "household-members")).Should().Be(2, "the documents are kept as they were");
+        // A person is in one household: the kept member's stands, and the household the duplicate
+        // headed passes to the one left in it.
+        (await db.ClubHouseholdMembers.CountAsync(l => l.MemberId == keep.Id)).Should().Be(1);
+        (await db.ClubHouseholdMembers.AnyAsync(l => l.MemberId == drop.Id)).Should().BeFalse();
+        var headed = await db.ClubHouseholdMembers.SingleAsync(l => l.HouseholdId == other.Id);
+        (headed.MemberId, headed.IsPrimary, headed.Role).Should().Be((child.Id, true, HouseholdRoles.Primary));
+        (await db.ClubCharges.SingleAsync()).IncurredByMemberId.Should().Be(keep.Id, "what the duplicate ran up was the kept member's doing");
+        (await db.ClubApplications.SingleAsync()).MemberId.Should().Be(keep.Id);
+        // Reminders follow their charges; a month's statement moves unless the kept member had
+        // one for it, so the next monthly run sends no second statement for a month done.
+        (await db.ClubPaymentReminders.SingleAsync()).MemberId.Should().Be(keep.Id);
+        (await db.ClubStatementDeliveries.SingleAsync(d => d.Id == droppedSeptember.Id)).MemberId.Should().Be(keep.Id);
+        (await db.ClubStatementDeliveries.SingleAsync(d => d.Id == droppedOctober.Id)).MemberId.Should().Be(drop.Id, "kept as the record of what was sent");
+        (await db.ClubStatementDeliveries.CountAsync(d => d.MemberId == keep.Id && d.PeriodStartUtc == october)).Should().Be(1);
     }
 
     [Fact]

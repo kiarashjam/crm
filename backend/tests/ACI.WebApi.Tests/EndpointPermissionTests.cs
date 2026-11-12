@@ -116,7 +116,8 @@ public class EndpointPermissionTests
         { "ActivitiesController", "Delete" }, { "TasksController", "Delete" }, { "ProductsController", "Delete" },
         { "SequencesController", "Delete" }, { "ImportsController", "Undo" },
         { "MembersController", "Delete" }, { "MembersController", "Merge" }, { "VisitsController", "Delete" }, { "LoyaltyController", "Delete" },
-        { "CampaignsController", "Delete" }, { "EventsController", "Delete" }, { "DonationsController", "Delete" },
+        // A donation is voided, not deleted (DonationsController.Void, money.void below).
+        { "CampaignsController", "Delete" }, { "EventsController", "Delete" },
         { "CommunicationsController", "Delete" }, { "ApplicationsController", "Delete" }, { "ReservationsController", "Delete" },
         { "HouseholdsController", "Delete" }, { "SubscriptionsController", "Delete" },
     };
@@ -141,6 +142,9 @@ public class EndpointPermissionTests
         { "ChargesController", "Void", MemberPermissions.VoidMoney },
         { "PaymentsController", "Void", MemberPermissions.VoidMoney },
         { "GiftCardsController", "Void", MemberPermissions.VoidMoney },
+        { "PaymentsController", "Refund", MemberPermissions.VoidMoney },
+        { "DonationsController", "Void", MemberPermissions.VoidMoney },
+        { "GiftCardsController", "TopUp", MemberPermissions.ManageMoney },
         // Voiding takes the money permission too, as it does for charges and payments.
         { "GiftCardsController", "Void", MemberPermissions.ManageMoney },
         // A check-in's points are written by the app as a ledger entry, so the front desk may add one.

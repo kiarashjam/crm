@@ -27,7 +27,7 @@ public class OutboxSchemaTests
     public void EachTableIsCreatedAsEfWouldWriteIt(string table)
     {
         var block = ClubSchemaTests.Between(ClubSchemaTests.ProgramDdl(), $"CREATE TABLE [{table}]", ");");
-        var expected = ClubSchemaTests.Between(ClubSchemaTests.BaselineScript(), $"CREATE TABLE [{table}]", "CONSTRAINT");
+        var expected = ClubSchemaTests.Between(ClubSchemaTests.EfCreateScript(), $"CREATE TABLE [{table}]", "CONSTRAINT");
 
         var columns = 0;
         foreach (var line in expected.Split('\n'))
@@ -80,7 +80,9 @@ public class OutboxSchemaTests
         {
             using (SqlServerApp.Start(database)) { }
 
-            // As production is before this deploy.
+            // As production is before this deploy. The messages' attachments (a statement's
+            // PDF) came later, by a migration, and refer to the messages: they go first.
+            await SqlServerApp.ExecuteAsync(database, "DROP TABLE [OutboundAttachments]");
             foreach (var table in new[] { "OutboundMessages", "EmailSuppressions", "InboundEmails" })
                 await SqlServerApp.ExecuteAsync(database, $"DROP TABLE [{table}]");
             await SqlServerApp.ExecuteAsync(database, "ALTER TABLE [Organizations] DROP COLUMN [SendingAddress]");

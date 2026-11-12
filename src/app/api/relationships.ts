@@ -48,6 +48,12 @@ export interface ContactRelationship {
   /** The lead the related contact came from, when there is one. */
   relatedLeadId?: string | null;
   createdAtUtc: string;
+  /**
+   * The household that holds the tie, when it is one: a spouse or partner always is, and so
+   * is any family tie between two people of one household. Ended, the non-primary leaves it.
+   */
+  householdId?: string | null;
+  householdName?: string | null;
 }
 
 export interface ContactRelationshipList {

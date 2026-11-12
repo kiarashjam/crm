@@ -1,23 +1,31 @@
-// Who is coming to an event.
+// Who is coming to an event, and the door.
 //
 // The list used to be kept only in this browser, even against the real server (see
-// `scopedStorageKey`): the events manager registered forty members on a laptop and
-// the door host, on an iPad, saw nobody to check in. It lives on the server now, at
-// /api/events/{id}/attendees, which also keeps the event's registered and waitlist
-// counts and decides reserved or waitlisted against the capacity.
+// `scopedStorageKey`): the events manager registered forty members on a laptop and the door
+// host, on an iPad, saw nobody to check in. Then the rules ran in the page. The server keeps
+// all of it now, at /api/events/{id}/attendees: it decides a seat or the waitlist against the
+// capacity (two people taking the last seat get one seat and one place in line), posts each
+// ticket to a house account through the ledger, gives the next in line a seat when someone
+// cancels and emails them, gives a member's check-in points once, and posts no-show fees.
 //
-// The browser store stays for the demo. A server too old to have the route answers
-// with an error, as any call does: the list is never kept in this browser instead.
-// Lists a browser kept before the move can be uploaded once from the event page
-// (`uploadLocalAttendees`).
+// The browser store stays for the demo. A server too old to have the route answers with an
+// error, as any call does: the list is never kept in this browser instead. Lists a browser
+// kept before the move can be uploaded once from the event page (`uploadLocalAttendees`).
 
-import { apiWithFallback, authFetch, authFetchJson, ensureOk, servesDemoData } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson, ensureOk, servesDemoData, type RequestOptions } from './apiClient';
 import { isLocalOnly } from './localOnly';
 import { createMockStore, mockId, scopedStorageKey } from './mockStore';
 import { updateEvent, type ClubEvent } from './events';
 
-export type AttendeeStatus = 'Reserved' | 'CheckedIn' | 'Cancelled' | 'Waitlisted';
+export type AttendeeStatus = 'Reserved' | 'CheckedIn' | 'Cancelled' | 'Waitlisted' | 'NoShow';
 export type TicketTier = 'Member' | 'Guest';
+
+/**
+ * A ticket on the ledger: free; charged (on a house account); reversed (taken back by a
+ * cancellation); waiting (charged when a seat comes); to-collect (a guest nobody brings, so no
+ * house account to put it on); not-charged (registered before tickets were charged); none.
+ */
+export type ChargeState = 'free' | 'charged' | 'reversed' | 'waiting' | 'to-collect' | 'not-charged' | 'none';
 
 export interface EventAttendee {
   id: string;
@@ -29,6 +37,29 @@ export interface EventAttendee {
   status: AttendeeStatus;
   rsvpAtUtc: string;
   checkedInAtUtc?: string;
+  /** For a guest: the member who brings them, whose account the guest ticket goes on. */
+  hostMemberId?: string;
+  hostName?: string;
+  source?: 'Registered' | 'WalkIn' | 'Moved' | 'Uploaded';
+  walkIn?: boolean;
+  /** Their place in line, 1 first; only while on the waitlist. */
+  waitlistPosition?: number;
+  promotedAtUtc?: string;
+  checkedInByName?: string;
+  noShowAtUtc?: string;
+  cancelledAtUtc?: string;
+  cancelReason?: string;
+  ticketPrice?: number;
+  currency?: string;
+  chargeState?: ChargeState;
+  chargeId?: string;
+  noShowFee?: number;
+  noShowChargeId?: string;
+  noShowFeeState?: 'charged' | 'reversed';
+  pointsAwarded?: number;
+  /** On a member's own list of registrations. */
+  eventName?: string;
+  eventStartAtUtc?: string;
 }
 
 export interface AttendeeInput {
@@ -36,6 +67,8 @@ export interface AttendeeInput {
   memberName: string;
   email?: string;
   ticketTier: TicketTier;
+  /** For a guest: the member who brings them. */
+  hostMemberId?: string;
 }
 
 const STORAGE_KEY = 'crm.mock.eventAttendees.v1';
@@ -119,7 +152,7 @@ function localList(eventId: string): EventAttendee[] {
     .sort((a, b) => Date.parse(a.rsvpAtUtc) - Date.parse(b.rsvpAtUtc));
 }
 
-/** The browser's way of keeping the event's counts, as the page did before the server kept them. */
+/** The demo's way of keeping the event's counts, as the page did before the server kept them. */
 async function moveLocalCounts(event: ClubEvent, from: AttendeeStatus | null, to: AttendeeStatus | null): Promise<void> {
   const registered = event.registeredCount + (to && isRegistered(to) ? 1 : 0) - (from && isRegistered(from) ? 1 : 0);
   const waitlist = event.waitlistCount + (to === 'Waitlisted' ? 1 : 0) - (from === 'Waitlisted' ? 1 : 0);
@@ -129,17 +162,31 @@ async function moveLocalCounts(event: ClubEvent, from: AttendeeStatus | null, to
   if (Object.keys(patch).length) await updateEvent(event.id, patch);
 }
 
-export async function getEventAttendees(eventId: string): Promise<EventAttendee[]> {
+export async function getEventAttendees(eventId: string, req?: RequestOptions): Promise<EventAttendee[]> {
   return apiWithFallback(
     async () => {
-      const res = await authFetchJson<EventAttendee[]>(`/api/events/${eventId}/attendees`);
+      const res = await authFetchJson<EventAttendee[]>(`/api/events/${eventId}/attendees`, { signal: req?.signal });
       return Array.isArray(res) ? res : [];
     },
     async () => localList(eventId),
   );
 }
 
-/** Adds someone to the list. The server puts them on the waitlist when the event is full. */
+/** A member's registrations across events: on their own ticket, or bringing a guest. */
+export async function getMemberRegistrations(memberId: string, req?: RequestOptions): Promise<EventAttendee[]> {
+  return apiWithFallback(
+    async () => {
+      const res = await authFetchJson<EventAttendee[]>(`/api/events/registrations?memberId=${encodeURIComponent(memberId)}`, { signal: req?.signal });
+      return Array.isArray(res) ? res : [];
+    },
+    async () => attendeeStore.list().filter((a) => a.memberId === memberId || a.hostMemberId === memberId),
+  );
+}
+
+/**
+ * Puts a member or a guest on the list. The server gives a seat while there is one, else the
+ * waitlist, and posts the ticket of a seat with a price.
+ */
 export async function addEventAttendee(event: ClubEvent, input: AttendeeInput): Promise<EventAttendee> {
   return apiWithFallback(
     () => authFetchJson<EventAttendee>(`/api/events/${event.id}/attendees`, {
@@ -147,7 +194,7 @@ export async function addEventAttendee(event: ClubEvent, input: AttendeeInput): 
       body: JSON.stringify(input),
     }),
     async () => {
-      // A capacity of 0 is no limit, as on the server; this used to waitlist everyone.
+      // A capacity of 0 is no limit, as on the server.
       const reserved = localList(event.id).filter((a) => isRegistered(a.status)).length;
       const status: AttendeeStatus = event.capacity > 0 && reserved >= event.capacity ? 'Waitlisted' : 'Reserved';
       const row = attendeeStore.add({
@@ -163,25 +210,53 @@ export async function addEventAttendee(event: ClubEvent, input: AttendeeInput): 
   );
 }
 
+/** Someone at the door with no registration: checked in at once on a free seat, refused when the event is full. */
+export async function addWalkIn(event: ClubEvent, input: AttendeeInput): Promise<EventAttendee> {
+  return apiWithFallback(
+    () => authFetchJson<EventAttendee>(`/api/events/${event.id}/attendees/walk-in`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+    async () => {
+      const reserved = localList(event.id).filter((a) => isRegistered(a.status)).length;
+      if (event.capacity > 0 && reserved >= event.capacity) throw new Error(`The event is full: all ${event.capacity} seats are taken.`);
+      const now = new Date().toISOString();
+      const row = attendeeStore.add({
+        id: mockId('att'),
+        eventId: event.id,
+        ...input,
+        status: 'CheckedIn',
+        source: 'WalkIn',
+        walkIn: true,
+        rsvpAtUtc: now,
+        checkedInAtUtc: now,
+      });
+      await moveLocalCounts(event, null, 'CheckedIn');
+      return row;
+    },
+  );
+}
+
 /**
- * Check in, cancel, or move off the waitlist. The server refuses a promotion while the
- * event is full, and a check-in of someone already checked in.
+ * Check in, cancel, take off the waitlist (Reserved) or mark a no-show. The server refuses a
+ * seat while the event is full and a check-in that already happened; a cancellation gives
+ * the seat to the first in line, who is emailed.
  */
 export async function setAttendeeStatus(
   event: ClubEvent,
   attendee: EventAttendee,
   status: AttendeeStatus,
+  reason?: string,
 ): Promise<EventAttendee | null> {
   return apiWithFallback(
     () => authFetchJson<EventAttendee>(`/api/events/${event.id}/attendees/${attendee.id}`, {
       method: 'PUT',
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ status, reason }),
     }),
     async () => {
-      // As on the server: a check-in is refused when it already happened, so the page
-      // does not give the member their event points twice.
+      // As on the server: a check-in is refused when it already happened.
       if (status === 'CheckedIn' && attendeeStore.byId(attendee.id)?.status === 'CheckedIn') {
-        throw new Error('This person is already checked in');
+        throw new Error('This person is already checked in.');
       }
       const row = attendeeStore.update(attendee.id, {
         status,
@@ -227,10 +302,10 @@ export interface AttendeeUploadResult {
 }
 
 /**
- * Sends the browser's list to the server as it is: statuses and check-in times kept,
- * and not counted again, because the browser already added each one to the event's
- * counts on the server when it was entered. Each row leaves this browser only once
- * the server has it; a copy of the whole list is kept under a backup key first.
+ * Sends the browser's list to the server as it is: statuses and check-in times kept, nothing
+ * charged, and each one taking one of the event's unnamed seats, since the browser counted it
+ * on the server when it was entered. Each row leaves this browser only once the server has
+ * it; a copy of the whole list is kept under a backup key first.
  */
 export async function uploadLocalAttendees(eventId: string, rows: EventAttendee[]): Promise<AttendeeUploadResult> {
   const key = scopedStorageKey(STORAGE_KEY);

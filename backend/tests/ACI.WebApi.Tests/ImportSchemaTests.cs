@@ -20,7 +20,7 @@ public class ImportSchemaTests
     public void TheImportBatchesTableIsCreatedAsEfWouldWriteIt()
     {
         var block = ClubSchemaTests.Between(ClubSchemaTests.ProgramDdl(), "CREATE TABLE [ImportBatches]", ");");
-        var expected = ClubSchemaTests.Between(ClubSchemaTests.BaselineScript(), "CREATE TABLE [ImportBatches]", "CONSTRAINT");
+        var expected = ClubSchemaTests.Between(ClubSchemaTests.EfCreateScript(), "CREATE TABLE [ImportBatches]", "CONSTRAINT");
 
         var columns = 0;
         foreach (var line in expected.Split('\n'))

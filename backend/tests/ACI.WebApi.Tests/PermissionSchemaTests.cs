@@ -33,7 +33,7 @@ public class PermissionSchemaTests
         alter.Should().BeGreaterThan(guard);
         ddl[guard..alter].Should().NotContain(";", "the ALTER belongs to that IF");
 
-        var model = ClubSchemaTests.Between(ClubSchemaTests.BaselineScript(), "CREATE TABLE [OrganizationMembers]", "CONSTRAINT");
+        var model = ClubSchemaTests.Between(ClubSchemaTests.EfCreateScript(), "CREATE TABLE [OrganizationMembers]", "CONSTRAINT");
         Regex.IsMatch(model, $@"\[{column}\]\s+{Regex.Escape(type)}\s+NULL").Should().BeTrue($"the model maps {column} as {type} NULL, as the DDL adds it");
     }
 

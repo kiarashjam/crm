@@ -4,6 +4,10 @@ namespace ACI.Application.DTOs;
 /// One relationship, seen from the contact it was asked for: <c>RelatedContactName</c>
 /// is this contact's <c>Type</c> (their spouse, their child, ...).
 /// </summary>
+/// <param name="HouseholdId">
+/// For two people who share a household: the household, which holds the tie (its id is the
+/// household link that records it). Null for a relationship between people who live apart.
+/// </param>
 public record ContactRelationshipDto(
     Guid Id,
     string Type,
@@ -12,7 +16,9 @@ public record ContactRelationshipDto(
     string? RelatedContactEmail,
     bool RelatedContactIsArchived,
     Guid? RelatedLeadId,
-    DateTime CreatedAtUtc);
+    DateTime CreatedAtUtc,
+    Guid? HouseholdId = null,
+    string? HouseholdName = null);
 
 /// <summary>
 /// A contact's relationships. <c>ContactId</c> is null for a lead that has no contact yet,

@@ -111,6 +111,54 @@ public partial class AppDbContext
         Scope<ClubVisit>(model, e => e.OrganizationId);
         Scope<LoyaltyLedgerEntry>(model, e => e.OrganizationId);
         Scope<ClubDocument>(model, e => e.OrganizationId);
+        // The club's money ledger. Every row says its organization, the ones that hang off
+        // another (a tab's items, an allocation, a card's transactions) included, so none
+        // is ever read through a parent from another workspace.
+        Scope<ClubHouseAccount>(model, e => e.OrganizationId);
+        Scope<ClubCharge>(model, e => e.OrganizationId);
+        Scope<ClubPayment>(model, e => e.OrganizationId);
+        Scope<ClubPaymentAllocation>(model, e => e.OrganizationId);
+        Scope<ClubSubscription>(model, e => e.OrganizationId);
+        Scope<ClubGiftCard>(model, e => e.OrganizationId);
+        Scope<ClubGiftCardTransaction>(model, e => e.OrganizationId);
+        Scope<ClubTab>(model, e => e.OrganizationId);
+        Scope<ClubTabItem>(model, e => e.OrganizationId);
+        Scope<ClubDonation>(model, e => e.OrganizationId);
+        // Events and their guest lists, the bookable resources and their bookings: club
+        // records, an organization's alone. A registration says its organization too, so it is
+        // never read through an event from another workspace.
+        Scope<ClubEvent>(model, e => e.OrganizationId);
+        Scope<ClubEventRegistration>(model, e => e.OrganizationId);
+        Scope<ClubResource>(model, e => e.OrganizationId);
+        Scope<ClubReservation>(model, e => e.OrganizationId);
+        // Member communications and consent: club records, so an organization's alone.
+        Scope<ConsentRecord>(model, e => e.OrganizationId);
+        Scope<Campaign>(model, e => e.OrganizationId);
+        Scope<MemberMessage>(model, e => e.OrganizationId);
+        // The club's price catalogue and what its billing run records. A file that goes with
+        // an outbox email says its organization too, though it is only reached through the email.
+        Scope<ClubCatalogItem>(model, e => e.OrganizationId);
+        Scope<ClubBillingRun>(model, e => e.OrganizationId);
+        Scope<ClubPaymentReminder>(model, e => e.OrganizationId);
+        Scope<ClubStatementDelivery>(model, e => e.OrganizationId);
+        Scope<OutboundAttachment>(model, e => e.OrganizationId);
+        // Applications, the public application form and households: club records, an
+        // organization's alone. A household's people say their organization too, so none is
+        // ever read through a household from another workspace.
+        Scope<ClubApplication>(model, e => e.OrganizationId);
+        Scope<ClubApplicationForm>(model, e => e.OrganizationId);
+        Scope<ClubHousehold>(model, e => e.OrganizationId);
+        Scope<ClubHouseholdMember>(model, e => e.OrganizationId);
+        // Payments from outside the club and the accounting settings: club money, so an
+        // organization's alone. Stripe's posts and the payment job find their workspace
+        // across workspaces first (IgnoreQueryFilters, said where), then act for it.
+        Scope<ClubPaymentSettings>(model, e => e.OrganizationId);
+        Scope<ClubPaymentProfile>(model, e => e.OrganizationId);
+        Scope<ClubOnlinePayment>(model, e => e.OrganizationId);
+        Scope<ClubProviderEvent>(model, e => e.OrganizationId);
+        Scope<ClubPaymentReference>(model, e => e.OrganizationId);
+        Scope<ClubBankImport>(model, e => e.OrganizationId);
+        Scope<ClubBankTransaction>(model, e => e.OrganizationId);
         Scope<OnboardingSettings>(model, e => e.OrganizationId);
         Scope<DealOnboarding>(model, e => e.OrganizationId);
         Scope<EmailImage>(model, e => e.OrganizationId);

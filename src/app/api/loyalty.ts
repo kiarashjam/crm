@@ -5,7 +5,7 @@
 // balance is derived from the ledger so the books always reconcile. Each tier
 // earns at a configurable multiplier.
 
-import { apiWithFallback, authFetch, authFetchJson, ensureOk } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson, ensureOk, type RequestOptions } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import type { MemberTier } from './members';
 
@@ -64,6 +64,10 @@ export const REASON_LABELS: Record<LoyaltyReason, string> = {
   GiftCardRedemption: 'Gift card',
 };
 
+/**
+ * The multipliers of the tiers every club starts with: demo data's, and the browser's own
+ * reckoning where it still makes one. The server applies each tier's own, from the catalogue.
+ */
 export const TIER_MULTIPLIERS: Record<MemberTier, number> = {
   Bronze: 1.0,
   Silver: 1.25,
@@ -163,10 +167,10 @@ const ledgerStore = createMockStore<LoyaltyEntry>({
   idOf: (l) => l.id,
 });
 
-export async function getLoyaltyLedger(): Promise<LoyaltyEntry[]> {
+export async function getLoyaltyLedger(req?: RequestOptions): Promise<LoyaltyEntry[]> {
   return apiWithFallback(
     async () => {
-      const res = await authFetchJson<LoyaltyEntry[]>('/api/loyalty/ledger');
+      const res = await authFetchJson<LoyaltyEntry[]>('/api/loyalty/ledger', { signal: req?.signal });
       return Array.isArray(res) ? res : [];
     },
     async () => {
@@ -274,5 +278,5 @@ export function computeLoyaltyStats(entries: LoyaltyEntry[]): LoyaltyStats {
 
 export function pointsForPurchase(amountDollars: number, tier: MemberTier): number {
   const base = Math.floor(amountDollars * 10); // 10 base points per $1
-  return Math.floor(base * TIER_MULTIPLIERS[tier]);
+  return Math.floor(base * (TIER_MULTIPLIERS[tier] ?? 1));
 }

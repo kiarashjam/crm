@@ -59,6 +59,7 @@ public sealed class OnboardingService : IOnboardingService
     private readonly IOrganizationRepository _organizations;
     private readonly IDealService _deals;
     private readonly IContactRepository _contacts;
+    private readonly IClubService _club;
     private readonly IUserRepository _users;
     private readonly IOutboxRepository _outbox;
     private readonly IOutboxSignal _signal;
@@ -73,6 +74,7 @@ public sealed class OnboardingService : IOnboardingService
         IOrganizationRepository organizations,
         IDealService deals,
         IContactRepository contacts,
+        IClubService club,
         IUserRepository users,
         IOutboxRepository outbox,
         IOutboxSignal signal,
@@ -86,6 +88,7 @@ public sealed class OnboardingService : IOnboardingService
         _organizations = organizations;
         _deals = deals;
         _contacts = contacts;
+        _club = club;
         _users = users;
         _outbox = outbox;
         _signal = signal;
@@ -450,33 +453,55 @@ public sealed class OnboardingService : IOnboardingService
     /// The person among the club's members here: the one with their email if there is one,
     /// with the start brought up to date, else a new pending member.
     /// </summary>
-    private async Task<Guid> JoinClubAsync(DealOnboarding onboarding, Person person, Guid userId, CancellationToken ct)
+    private async Task<Guid?> JoinClubAsync(DealOnboarding onboarding, Person person, Guid userId, CancellationToken ct)
     {
         var member = await _onboarding.ClubMemberByEmailAsync(onboarding.OrganizationId, onboarding.Email, ct);
         if (member == null)
         {
+            // Made the way the club makes every member (ClubService): at its first tier on
+            // sale, with the house account the money ledger keeps for each member, and links
+            // to the contact and lead checked to be this workspace's. No dues and no fee: the
+            // club starts those when the membership does.
             var space = onboarding.Name.IndexOf(' ');
+            var first = space < 0 ? onboarding.Name : onboarding.Name[..space];
+            var last = space < 0 ? "" : onboarding.Name[(space + 1)..].Trim();
             var joined = onboarding.StartsOnUtc ?? DateTime.UtcNow.Date;
-            member = new ClubMember
+            MemberWriteRequest Request(Guid? leadId) => new()
             {
-                Id = Guid.NewGuid(),
-                OrganizationId = onboarding.OrganizationId,
-                OwnerUserId = userId,
-                FirstName = Clip(space < 0 ? onboarding.Name : onboarding.Name[..space], 100)!,
-                LastName = Clip(space < 0 ? "" : onboarding.Name[(space + 1)..].Trim(), 100)!,
+                FirstName = Clip(first, 100),
+                // A member has a last name; someone known by one name has it twice rather than none.
+                LastName = Clip(last.Length > 0 ? last : first, 100),
                 Email = onboarding.Email,
                 Phone = onboarding.Phone,
                 Status = "Pending",
                 JoinedAtUtc = joined,
                 RenewsAtUtc = joined.AddYears(1),
                 Notes = Clip($"Joined through the deal \"{person.Deal.Name}\".", 1000),
+                ContactId = onboarding.ContactId,
+                LeadId = leadId,
+                StartsOnUtc = onboarding.StartsOnUtc,
+                StartUndetermined = onboarding.StartUndetermined,
             };
-            _onboarding.AddClubMember(member);
+            var created = await _club.CreateMemberAsync(userId, onboarding.OrganizationId, Request(onboarding.LeadId), ct);
+            // The lead came from the browser: one the club cannot link to is left off, not a reason to add nobody.
+            if (created.IsFailure && onboarding.LeadId != null)
+                created = await _club.CreateMemberAsync(userId, onboarding.OrganizationId, Request(null), ct);
+            if (created.IsFailure)
+            {
+                // The handoff goes on without them: the portal welcome is what was asked for.
+                _logger.LogWarning("Handoff {OnboardingId}: the club member could not be added: {Error}", onboarding.Id, created.Error.Description);
+                return null;
+            }
+            member = await _onboarding.ClubMemberByEmailAsync(onboarding.OrganizationId, onboarding.Email, ct);
+            if (member == null) return created.Value.Id;
         }
-        member.StartsOnUtc = onboarding.StartsOnUtc;
-        member.StartUndetermined = onboarding.StartUndetermined;
+        else
+        {
+            member.StartsOnUtc = onboarding.StartsOnUtc;
+            member.StartUndetermined = onboarding.StartUndetermined;
+            member.ContactId ??= onboarding.ContactId;
+        }
         member.DealId ??= onboarding.DealId;
-        member.ContactId ??= onboarding.ContactId;
         return member.Id;
     }
 

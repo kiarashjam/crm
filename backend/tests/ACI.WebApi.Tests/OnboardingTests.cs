@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using ACI.Application.Interfaces;
+using ACI.Domain.Entities;
 using ACI.Domain.Enums;
 using ACI.WebApi.Tests.Helpers;
 using Microsoft.AspNetCore.Hosting;
@@ -143,6 +144,9 @@ public class OnboardingTests
         member.StartsOnUtc.Should().Be(new DateTime(2027, 1, 15));
         member.StartUndetermined.Should().BeFalse();
         member.DealId.Should().Be(dealId);
+        member.ContactId.Should().NotBeNull("the member is linked to the deal's contact");
+        (await app.Services.Read(db => db.Set<ClubHouseAccount>().IgnoreQueryFilters().Count(a => a.MemberId == member.Id)))
+            .Should().Be(1, "a member added by a handoff gets the house account every member has");
         list[0].GetProperty("clubMemberId").GetGuid().Should().Be(member.Id);
 
         (await owner.GetAsync("/api/webhook/organizations/" + org + "/deliveries")).StatusCode.Should().Be(HttpStatusCode.OK);

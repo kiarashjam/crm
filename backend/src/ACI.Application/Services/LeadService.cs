@@ -21,6 +21,7 @@ public class LeadService : ILeadService
     private readonly IAutomationEngine? _automations;
     private readonly IOutboundWebhookPublisher? _webhooks;
     private readonly IContactRelationshipRepository? _relationships;
+    private readonly IClubHouseholds? _households;
     private readonly IOrganizationRepository? _organizations;
     private readonly IDealStageRepository? _stages;
     private readonly ICollaborationNotifier? _notifier;
@@ -40,8 +41,10 @@ public class LeadService : ILeadService
         IContactRelationshipRepository? relationships = null,
         IOrganizationRepository? organizations = null,
         IDealStageRepository? stages = null,
-        ICollaborationNotifier? notifier = null)
+        ICollaborationNotifier? notifier = null,
+        IClubHouseholds? households = null)
     {
+        _households = households;
         _repository = repository;
         _companyRepository = companyRepository;
         _contactRepository = contactRepository;
@@ -862,11 +865,16 @@ public class LeadService : ILeadService
         var contactIds = leads.Where(l => l.ConvertedToContactId != null).Select(l => l.ConvertedToContactId!.Value).Distinct().ToList();
         if (contactIds.Count == 0) return dtos;
         var rows = await _relationships.ForContactsAsync(contactIds, userId, organizationId, ct);
-        if (rows.Count == 0) return dtos;
+        // A couple is a household: the leads list shows a spouse kept there as it shows one kept as a row.
+        var households = organizationId is { } org && _households != null
+            ? await _households.ForContactsAsync(org, contactIds, ct)
+            : new Dictionary<Guid, HouseholdDto>();
+        if (rows.Count == 0 && households.Count == 0) return dtos;
         for (var i = 0; i < leads.Count; i++)
         {
             if (leads[i].ConvertedToContactId is not Guid contactId) continue;
-            var seen = ContactRelationshipService.SeenFrom(rows, contactId);
+            var seen = ContactRelationshipService.WithHousehold(ContactRelationshipService.SeenFrom(rows, contactId),
+                households.GetValueOrDefault(contactId), contactId);
             if (seen.Count > 0) dtos[i] = dtos[i] with { Relationships = seen };
         }
         return dtos;

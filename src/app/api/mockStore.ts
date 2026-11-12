@@ -123,7 +123,7 @@ const STORE_ROUTES: Readonly<Record<string, string>> = {
   contactRelationships: 'relationships',
   giftCards: 'gift-cards',
   giftCardRedemptions: 'gift-cards',
-  householdMembers: 'household-members',
+  memberConsent: 'members',
 };
 
 /** What a write to a demo store changes: what the same write to the server would. */

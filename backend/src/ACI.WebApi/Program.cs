@@ -125,6 +125,17 @@ try
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
             }));
+        // The public application form: a few applications a minute per form link is plenty for
+        // a club; a script posting in a loop stops at ten instead of filling the list. Per link,
+        // like the capture form, for the same reason (the caller's address can't be trusted).
+        options.AddPolicy("public-apply", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            "apply:" + (context.Request.RouteValues["token"]?.ToString() ?? ""),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
         // A portal reporting on one handoff: a handful of reports each, so a token posted
         // in a loop stops quickly. Per handoff, as the token is checked on each.
         options.AddPolicy("public-onboarding", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
@@ -139,6 +150,17 @@ try
         // two above; a forged token fails its signature check before any database work.
         options.AddPolicy("public-unsubscribe", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
             "unsubscribe:" + (context.Request.RouteValues["token"]?.ToString() ?? ""),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
+        // A pay link: a member opens it and presses Pay once or twice. Per token, like the
+        // unsubscribe link (the pay page sends it in a header); a forged token fails its
+        // check before any database work.
+        options.AddPolicy("public-pay", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            "pay:" + context.Request.Headers[ACI.WebApi.Controllers.PublicPaymentsController.TokenHeader].ToString(),
             _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
             {
                 PermitLimit = 10,
@@ -303,7 +325,15 @@ try
     builder.Services.AddScoped<IOnboardingService, OnboardingService>();
     builder.Services.AddScoped<IEmailImageService, EmailImageService>();
     builder.Services.AddScoped<IClubDocumentService, ClubDocumentService>();
-    builder.Services.AddScoped<IEventAttendeeService, EventAttendeeService>();
+    // What the club's settings and price catalogue say the server applies (points, dues, billing).
+    builder.Services.AddScoped<IClubRules, ClubRules>();
+    // Member consent, which the outbox reads before marketing goes to a member.
+    builder.Services.AddScoped<ConsentService>();
+    builder.Services.AddScoped<IConsentService>(sp => sp.GetRequiredService<ConsentService>());
+    builder.Services.AddScoped<IMemberMailRules>(sp => sp.GetRequiredService<ConsentService>());
+    // Campaigns and the communications log, delivered through the outbox.
+    builder.Services.AddScoped<ICampaignService, CampaignService>();
+    builder.Services.AddScoped<IMemberMessageService, MemberMessageService>();
     builder.Services.AddScoped<ITaskService, TaskService>();
     builder.Services.AddScoped<IActivityService, ActivityService>();
     builder.Services.AddScoped<INotificationService, NotificationService>();
@@ -344,6 +374,10 @@ try
     builder.Services.AddHostedService<ACI.WebApi.Services.LeadFollowUpBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.WeeklyDigestBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.PersonContactBackfillBackgroundService>();
+    builder.Services.AddHostedService<ACI.WebApi.Services.GiftCardExpiryBackgroundService>();
+    builder.Services.AddHostedService<ACI.WebApi.Services.CampaignSchedulerBackgroundService>();
+    builder.Services.AddHostedService<ACI.WebApi.Services.ClubBillingBackgroundService>();
+    builder.Services.AddHostedService<ACI.WebApi.Services.ClubPaymentsBackgroundService>();
 
     // HTTP Context accessor for current user service
     builder.Services.AddHttpContextAccessor();
@@ -2249,7 +2283,21 @@ try
                 db, scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("ACI.WebApi.SchemaBaseline"));
 
             Log.Information("Applying database migrations...");
-            await db.Database.MigrateAsync();
+            // A migration that moves data runs it as one command: the club ledger's copy of
+            // the money documents took 16 seconds for a club with 140,000 of them on a
+            // developer's machine, and longer on the Basic tier, against a command's default
+            // 30. A timeout rolls the migration back, and every start after it fails the
+            // same way. So migrations have the ten minutes the long DDL above has.
+            var migrationTimeout = db.Database.GetCommandTimeout();
+            db.Database.SetCommandTimeout(TimeSpan.FromMinutes(10));
+            try
+            {
+                await db.Database.MigrateAsync();
+            }
+            finally
+            {
+                db.Database.SetCommandTimeout(migrationTimeout);
+            }
 
             Log.Information("Seeding database...");
             await SeedData.SeedAsync(db, passwordHasher, seedDemoUser: app.Environment.IsDevelopment());

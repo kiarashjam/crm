@@ -1,6 +1,6 @@
 namespace ACI.Domain.Entities;
 
-/// <summary>A club member. This is not a CRM contact.</summary>
+/// <summary>A club member. Linked to their CRM contact and the lead they came in as, when they have them.</summary>
 public class ClubMember : Common.BaseEntity
 {
     public Guid? OrganizationId { get; set; }
@@ -32,15 +32,34 @@ public class ClubMember : Common.BaseEntity
     public string? Notes { get; set; }
 
     /// <summary>
+    /// When the club's billing set the member Lapsed for a charge left unpaid past the grace
+    /// period. Only a lapse the billing made is undone by it, once nothing is overdue; one
+    /// set by hand stays. Cleared when someone changes the status themselves.
+    /// </summary>
+    public DateTime? BillingLapsedAtUtc { get; set; }
+
+    /// <summary>The status the billing's lapse replaced, put back when the member is reinstated.</summary>
+    public string? StatusBeforeLapse { get; set; }
+
+    /// <summary>
+    /// The member's CRM contact, when they have one: the same person in the sales records.
+    /// Members and contacts were two separate lists that never met, so the contact page could
+    /// not say someone was a member and the member page could not reach their history.
+    /// </summary>
+    public Guid? ContactId { get; set; }
+
+    /// <summary>The lead the member came in as, when they joined through the sales pipeline.</summary>
+    public Guid? LeadId { get; set; }
+
+    /// <summary>
     /// When the membership starts, if it is known. Null with <see cref="StartUndetermined"/>
     /// set means the start is still to be decided; null without it means nobody said.
     /// </summary>
     public DateTime? StartsOnUtc { get; set; }
     public bool StartUndetermined { get; set; }
 
-    /// <summary>The deal and contact the member joined through, when they came from a converted lead.</summary>
+    /// <summary>The deal the member joined through, when they came from a converted lead (see DealOnboarding).</summary>
     public Guid? DealId { get; set; }
-    public Guid? ContactId { get; set; }
 }
 
 public class ClubVisit : Common.BaseEntity

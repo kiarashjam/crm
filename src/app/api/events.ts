@@ -1,11 +1,12 @@
 // Events & ticketing.
 //
-// An `Event` is a scheduled occurrence (dinner, mixer, class, party) members
-// can register for. Tickets have member vs. non-member pricing and a hard cap;
-// the registered count is tracked client-side for demo, server-side in real
-// deployment. Like other modules, mock storage keeps the UI functional offline.
+// An `Event` is a scheduled occurrence (dinner, mixer, class, party) members can register
+// for. The server keeps who is coming (see eventAttendees.ts): the capacity and the
+// waitlist, each ticket on a house account through the ledger, and the door. The counts
+// on an event are the server's, worked out from its list. Demo mode keeps a mock store so
+// the screens work offline.
 
-import { apiWithFallback, authFetch, authFetchJson, ensureOk } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson, ensureOk, type RequestOptions } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 
 function delay(ms: number): Promise<void> {
@@ -30,6 +31,22 @@ export interface ClubEvent {
   visibility: EventVisibility;
   status: EventStatus;
   coverEmoji: string;
+  /** The server's: what its prices are in. */
+  currency?: string;
+  /** Posted to a member's account when they are marked a no-show; 0 is none. */
+  noShowFee?: number;
+  checkedInCount?: number;
+  noShowCount?: number;
+  walkInCount?: number;
+  /** Seats the old events list counted for RSVPs with no name: they take seats until released. */
+  unnamedSeats?: number;
+  unnamedWaitlist?: number;
+  /** Seats still free; left out when there is no limit. */
+  seatsLeft?: number;
+  /** What the tickets on house accounts come to, posted and not taken back. */
+  ticketRevenue?: number;
+  /** The version to edit the details from; a registration does not change it. */
+  version?: string;
 }
 
 export const EVENT_STATUSES: EventStatus[] = ['Draft', 'Published', 'Cancelled', 'Completed'];
@@ -133,10 +150,10 @@ const eventStore = createMockStore<ClubEvent>({
   idOf: (e) => e.id,
 });
 
-export async function getEvents(): Promise<ClubEvent[]> {
+export async function getEvents(req?: RequestOptions): Promise<ClubEvent[]> {
   return apiWithFallback(
     async () => {
-      const res = await authFetchJson<ClubEvent[]>('/api/events');
+      const res = await authFetchJson<ClubEvent[]>('/api/events', { signal: req?.signal });
       return Array.isArray(res) ? res : [];
     },
     async () => {
@@ -148,9 +165,27 @@ export async function getEvents(): Promise<ClubEvent[]> {
   );
 }
 
-export type EventInput = Omit<ClubEvent, 'id' | 'registeredCount' | 'waitlistCount'> & {
+/** One event, as the server keeps it now. Null when it is not there. */
+export async function getEvent(id: string, req?: RequestOptions): Promise<ClubEvent | null> {
+  return apiWithFallback(
+    () => authFetchJson<ClubEvent>(`/api/events/${id}`, { signal: req?.signal }),
+    async () => {
+      await delay(80);
+      return eventStore.byId(id) ?? null;
+    },
+  );
+}
+
+/**
+ * The fields an event is made or edited with. Text sent empty clears it on the server; the
+ * counts are the server's own, and unnamed seats can only be lowered (released).
+ */
+export type EventInput = Omit<ClubEvent, 'id' | 'registeredCount' | 'waitlistCount' | 'version' | 'currency' | 'checkedInCount'
+  | 'noShowCount' | 'walkInCount' | 'seatsLeft' | 'ticketRevenue'> & {
   registeredCount?: number;
   waitlistCount?: number;
+  /** The version the edit was made from: an edit from an older copy is refused (409). */
+  version?: string;
 };
 
 export async function createEvent(input: EventInput): Promise<ClubEvent | null> {
@@ -192,23 +227,6 @@ export async function deleteEvent(id: string): Promise<boolean> {
   );
 }
 
-export async function rsvpToEvent(id: string): Promise<ClubEvent | null> {
-  // Demo-only behavior: increment registeredCount; if at capacity, push to waitlist.
-  return apiWithFallback(
-    () => authFetchJson<ClubEvent>(`/api/events/${id}/rsvp`, { method: 'POST' }),
-    async () => {
-      await delay(140);
-      const current = eventStore.byId(id);
-      if (!current) return null;
-      const atCapacity = current.registeredCount >= current.capacity;
-      const patch: Partial<ClubEvent> = atCapacity
-        ? { waitlistCount: current.waitlistCount + 1 }
-        : { registeredCount: current.registeredCount + 1 };
-      return eventStore.update(id, patch);
-    },
-  );
-}
-
 export interface EventStats {
   upcoming: number;
   draftCount: number;
@@ -229,9 +247,10 @@ export function computeEventStats(events: ClubEvent[]): EventStats {
     if (e.status === 'Published' && Date.parse(e.startAtUtc) > now) upcoming++;
     totalRsvps += e.registeredCount;
     totalWaitlist += e.waitlistCount;
-    if (e.status === 'Published' || e.status === 'Completed') {
-      projectedRevenue += e.registeredCount * e.memberPrice;
-    }
+    // The server says what the tickets on house accounts come to; the demo's events, which
+    // have no tickets, are estimated from the seats taken.
+    if (e.ticketRevenue !== undefined) projectedRevenue += e.ticketRevenue;
+    else if (e.status === 'Published' || e.status === 'Completed') projectedRevenue += e.registeredCount * e.memberPrice;
   }
   return {
     upcoming,

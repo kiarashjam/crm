@@ -23,10 +23,11 @@ import {
   createMember,
   MEMBER_TIERS,
   MEMBER_STATUSES,
-  TIER_DUES,
   type MemberTier,
   type MemberStatus,
 } from '@/app/api/members';
+import { tiersOnSale } from '@/app/api/catalog';
+import { useClubCatalog } from '@/app/hooks/queries';
 import PageHero from '@/app/components/PageHero';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { PERMISSION } from '@/app/api/organizations';
@@ -49,7 +50,12 @@ Felix,Ashford,felix.ashford@example.com,,Silver,Active
 Magnolia,Vega,magnolia.vega@example.com,+1 (212) 555-0123,Platinum,Pending
 `;
 
-function parseCsv(text: string): ParsedRow[] {
+/**
+ * The rows of a members file. A tier is one of the club's tiers on sale (any case); a row
+ * with none takes the first, and a row naming one the club does not have is an error
+ * rather than quietly put on another tier, as every unknown tier used to become Silver.
+ */
+function parseCsv(text: string, tiers: readonly MemberTier[]): ParsedRow[] {
   const trimmed = text.trim();
   if (!trimmed) return [];
   const lines = trimmed.split(/\r?\n/);
@@ -71,9 +77,10 @@ function parseCsv(text: string): ParsedRow[] {
     const lastName = iLast >= 0 ? cells[iLast] ?? '' : '';
     const email = iEmail >= 0 ? cells[iEmail] ?? '' : '';
     const phone = iPhone >= 0 ? cells[iPhone] ?? '' : '';
-    const tierRaw = iTier >= 0 ? cells[iTier] ?? 'Silver' : 'Silver';
+    const tierRaw = iTier >= 0 ? cells[iTier] ?? '' : '';
     const statusRaw = iStatus >= 0 ? cells[iStatus] ?? 'Pending' : 'Pending';
-    const tier: MemberTier = MEMBER_TIERS.find((t) => t.toLowerCase() === tierRaw.toLowerCase()) ?? 'Silver';
+    const named = tiers.find((t) => t.toLowerCase() === tierRaw.toLowerCase());
+    const tier: MemberTier = named ?? (tierRaw ? tierRaw : tiers[0] ?? '');
     const status: MemberStatus =
       MEMBER_STATUSES.find((s) => s.toLowerCase() === statusRaw.toLowerCase()) ?? 'Pending';
 
@@ -82,6 +89,7 @@ function parseCsv(text: string): ParsedRow[] {
     else if (!lastName) error = 'Missing last name';
     else if (!email) error = 'Missing email';
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) error = 'Invalid email';
+    else if (!named && tierRaw) error = `Unknown tier "${tierRaw}"`;
 
     rows.push({
       rowIndex: i,
@@ -107,7 +115,13 @@ export default function MemberImport() {
   const [imported, setImported] = useState(0);
   const [errored, setErrored] = useState(0);
 
-  const rows = useMemo(() => parseCsv(csvText), [csvText]);
+  // The club's tiers on sale; until they are read, the four every club starts with.
+  const catalog = useClubCatalog('Membership').data;
+  const tierNames = useMemo(() => {
+    const onSale = tiersOnSale(catalog ?? []).map((t) => t.name);
+    return onSale.length > 0 ? onSale : MEMBER_TIERS;
+  }, [catalog]);
+  const rows = useMemo(() => parseCsv(csvText, tierNames), [csvText, tierNames]);
   const validRows = useMemo(() => rows.filter((r) => !r.error), [rows]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -139,10 +153,9 @@ export default function MemberImport() {
             lastName: row.lastName,
             email: row.email,
             phone: row.phone || undefined,
+            // The dues are the tier's, from the catalogue: left out, the server fills them in.
             tier: row.tier,
             status: row.status,
-            duesAmount: TIER_DUES[row.tier],
-            duesFrequency: 'Monthly',
             joinedAtUtc: new Date().toISOString(),
             renewsAtUtc: new Date(Date.now() + 365 * day).toISOString(),
           });

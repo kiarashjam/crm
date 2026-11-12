@@ -41,7 +41,9 @@ const ContactImport = lazy(() => import('@/app/pages/ContactImport'));
 const CompanyImport = lazy(() => import('@/app/pages/CompanyImport'));
 const LeadRouting = lazy(() => import('@/app/pages/LeadRouting'));
 const PublicCapture = lazy(() => import('@/app/pages/PublicCapture'));
+const PublicApply = lazy(() => import('@/app/pages/PublicApply'));
 const Unsubscribe = lazy(() => import('@/app/pages/Unsubscribe'));
+const PayPage = lazy(() => import('@/app/pages/PayPage'));
 const Pipeline = lazy(() => import('@/app/pages/Pipeline'));
 const DealDetail = lazy(() => import('@/app/pages/DealDetail'));
 const Tasks = lazy(() => import('@/app/pages/Tasks'));
@@ -75,6 +77,7 @@ const Campaigns = lazy(() => import('@/app/pages/Campaigns'));
 const Donations = lazy(() => import('@/app/pages/Donations'));
 const Calendar = lazy(() => import('@/app/pages/Calendar'));
 const Statements = lazy(() => import('@/app/pages/Statements'));
+const ClubPayments = lazy(() => import('@/app/pages/ClubPayments'));
 const HospitalityReports = lazy(() => import('@/app/pages/HospitalityReports'));
 const TabsPage = lazy(() => import('@/app/pages/Tabs'));
 const PosTerminal = lazy(() => import('@/app/pages/PosTerminal'));
@@ -154,11 +157,23 @@ export default function App() {
                     <PublicCapture />
                   </Suspense>
                 } />
+                {/* The club's membership application: a stranger applies without an account. */}
+                <Route path="/apply/:token" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <PublicApply />
+                  </Suspense>
+                } />
                 {/* The unsubscribe link in a workspace's email. Public for the same
                     reason as signing: the person following it has no account. */}
                 <Route path="/unsubscribe/:token" element={
                   <Suspense fallback={<PageLoader />}>
                     <Unsubscribe />
+                  </Suspense>
+                } />
+                {/* A club's pay link: the member paying has no account here either. */}
+                <Route path="/pay/:token" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <PayPage />
                   </Suspense>
                 } />
                 <Route path="/terms" element={
@@ -219,6 +234,7 @@ export default function App() {
                     <Route path="/donations" element={<Donations />} />
                     <Route path="/calendar" element={<Calendar />} />
                     <Route path="/statements" element={<Statements />} />
+                    <Route path="/club-payments" element={<ClubPayments />} />
                     <Route path="/club-reports" element={<HospitalityReports />} />
                     <Route path="/tabs" element={<TabsPage />} />
                     <Route path="/pos" element={<PosTerminal />} />

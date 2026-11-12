@@ -13,6 +13,12 @@ public interface IOutboxRepository
 {
     Task AddAsync(OutboundMessage message, CancellationToken ct = default);
 
+    /// <summary>Adds a message and the files that go with it, in one save.</summary>
+    Task AddAsync(OutboundMessage message, IReadOnlyList<OutboundAttachment> attachments, CancellationToken ct = default);
+
+    /// <summary>The files that go with a message, in the order they were added.</summary>
+    Task<IReadOnlyList<OutboundAttachment>> AttachmentsAsync(Guid messageId, CancellationToken ct = default);
+
     /// <summary>One message, tracked, so changes to it are kept by <see cref="SaveAsync"/>.</summary>
     Task<OutboundMessage?> GetAsync(Guid id, CancellationToken ct = default);
 

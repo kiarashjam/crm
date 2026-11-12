@@ -301,6 +301,28 @@ public class ImportUndoTests
     }
 
     [Fact]
+    public async Task AContactOrLeadTheClubNowPointsAtStays_AMembersContactAndAnApplicantsLead()
+    {
+        await using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await WorkspaceAsync(factory);
+        var contacts = await OkJson(await Import(client, "contact", "name,email\nAnna Meier,anna@meier.example\nTom Ott,tom@ott.example\n", new[] { "name", "email" }), "import contacts");
+        var leads = await OkJson(await Import(client, "lead", "name,email\nLena Keller,lena@keller.example\nFritz Huber,fritz@huber.example\n", new[] { "name", "email" }), "import leads");
+        var anna = await factory.Services.Read(db => db.Contacts.Single(c => c.Name == "Anna Meier").Id);
+        var lena = await factory.Services.Read(db => db.Leads.Single(l => l.Name == "Lena Keller").Id);
+        await OkJson(await client.PostAsync("/api/members", Body(new
+        {
+            firstName = "Anna", lastName = "Meier", email = "anna@meier.example", tier = "Gold", status = "Active", contactId = anna,
+        })), "Anna becomes a member, linked to her contact");
+        await OkJson(await client.PostAsync($"/api/applications/from-lead/{lena}", null), "Lena applies");
+
+        await OkJson(await client.PostAsync($"/api/imports/{contacts.GetProperty("batchId").GetGuid()}/undo", null), "undo the contacts");
+        await OkJson(await client.PostAsync($"/api/imports/{leads.GetProperty("batchId").GetGuid()}/undo", null), "undo the leads");
+
+        (await factory.Services.Read(db => db.Contacts.Select(c => c.Name).ToList())).Should().Contain("Anna Meier").And.NotContain("Tom Ott");
+        (await factory.Services.Read(db => db.Leads.Select(l => l.Name).ToList())).Should().Contain("Lena Keller").And.NotContain("Fritz Huber");
+    }
+
+    [Fact]
     public async Task AContactAnEmailWentToOrIsGoingToStays_OneWhoseEmailNeverWentDoesNot()
     {
         await using var factory = new CustomWebApplicationFactory();

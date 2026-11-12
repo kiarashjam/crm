@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Wine,
   Plus,
@@ -33,7 +33,6 @@ import {
   SelectValue,
 } from '@/app/components/ui/select';
 import {
-  getTabs,
   openTab,
   addItemToTab,
   removeItemFromTab,
@@ -45,8 +44,9 @@ import {
   type OpenTab,
   type TabVenue,
 } from '@/app/api/tabs';
-import { getMembers, type Member } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { ClubReadState } from '@/app/components/ClubReadState';
+import { NONE, useClubCatalog, useClubMembers, useClubReads, useClubTabs } from '@/app/hooks/queries';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import {
@@ -71,10 +71,16 @@ function errorText(err: unknown, fallback: string): string {
 
 export default function Tabs() {
   const { format: formatCurrency } = useClubMoney();
-  const [tabs, setTabs] = useState<OpenTab[]>([]);
-  const [members, setMembers] = useState<Member[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Read through the app's cache: a failed read says so with a way to try again, rather
+  // than looking like no tab is open.
+  const tabsQuery = useClubTabs();
+  const membersQuery = useClubMembers();
+  const reads = useClubReads(tabsQuery, membersQuery);
+  const tabs: OpenTab[] = tabsQuery.data ?? NONE;
+  const members = membersQuery.data ?? NONE;
+  const loading = reads.loading;
   usePageLoading(loading);
+  const load = reads.reload;
   const [openDialog, setOpenDialog] = useState(false);
   const [addingTo, setAddingTo] = useState<string | null>(null);
 
@@ -83,24 +89,23 @@ export default function Tabs() {
     venue: 'Bar' as TabVenue,
     serverName: '',
   });
-  const [itemForm, setItemForm] = useState({ name: '', quantity: '1', unitPrice: '' });
+  const [itemForm, setItemForm] = useState({ name: '', quantity: '1', unitPrice: '', catalogItemId: '' });
+  // The menu items and products on sale: picked, the server rings one up at its catalogue
+  // price and VAT rate, rather than at whatever was typed.
+  const catalogQuery = useClubCatalog();
+  const menu = useMemo(
+    () => (catalogQuery.data ?? NONE).filter((i) => (i.kind === 'MenuItem' || i.kind === 'Product') && i.isActive),
+    [catalogQuery.data],
+  );
+  const pickMenuItem = (id: string) => {
+    const item = menu.find((i) => i.id === id);
+    setItemForm(item
+      ? { ...itemForm, name: item.name, unitPrice: String(item.price), catalogItemId: item.id }
+      : { ...itemForm, catalogItemId: '' });
+  };
   const [busy, setBusy] = useState(false);
   // The tab being closed or voided, so a second press cannot send it twice.
   const [actingOn, setActingOn] = useState<string | null>(null);
-
-  const load = async () => {
-    try {
-      const [t, m] = await Promise.all([getTabs(), getMembers()]);
-      setTabs(t);
-      setMembers(m);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void load();
-  }, []);
 
   const stats = useMemo(() => computeTabStats(tabs), [tabs]);
   const openTabs = useMemo(() => tabs.filter((t) => t.status === 'Open'), [tabs]);
@@ -143,7 +148,8 @@ export default function Tabs() {
       return;
     }
     const price = Number(itemForm.unitPrice);
-    if (!price || price <= 0) {
+    // An item from the menu has the catalogue's price; one typed in needs one.
+    if (!itemForm.catalogItemId && (!price || price <= 0)) {
       toast.error('Price is required');
       return;
     }
@@ -154,8 +160,9 @@ export default function Tabs() {
         name: itemForm.name.trim(),
         quantity: qty,
         unitPrice: price,
+        catalogItemId: itemForm.catalogItemId || undefined,
       });
-      setItemForm({ name: '', quantity: '1', unitPrice: '' });
+      setItemForm({ name: '', quantity: '1', unitPrice: '', catalogItemId: '' });
       await load();
     } catch (err) {
       toast.error(errorText(err, 'Could not add the item'));
@@ -251,11 +258,28 @@ export default function Tabs() {
   /** The form that adds an item to the tab being edited. */
   const itemEditor = () => (
     <div className="space-y-2">
+      {menu.length > 0 && (
+        <Select value={itemForm.catalogItemId || 'typed'} onValueChange={(v) => pickMenuItem(v === 'typed' ? '' : v)}>
+          <SelectTrigger aria-label="From the menu" className="h-9">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="typed">Not on the menu: type it in</SelectItem>
+            {menu.map((i) => (
+              <SelectItem key={i.id} value={i.id}>
+                {i.category ? `${i.category}: ` : ''}{i.name} — {formatCurrency(i.price)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
       <div className="grid grid-cols-2 gap-2">
+        {/* Changing the name or price of a menu item makes it one typed in, at what was typed. */}
         <Input
           placeholder="Item name"
+          aria-label="Item name"
           value={itemForm.name}
-          onChange={(e) => setItemForm({ ...itemForm, name: e.target.value })}
+          onChange={(e) => setItemForm({ ...itemForm, name: e.target.value, catalogItemId: '' })}
         />
         <div className="flex gap-2">
           <Input
@@ -268,11 +292,12 @@ export default function Tabs() {
           />
           <Input
             placeholder="Price"
+            aria-label="Price"
             type="number"
             min="0"
             step="0.01"
             value={itemForm.unitPrice}
-            onChange={(e) => setItemForm({ ...itemForm, unitPrice: e.target.value })}
+            onChange={(e) => setItemForm({ ...itemForm, unitPrice: e.target.value, catalogItemId: '' })}
           />
         </div>
       </div>
@@ -373,6 +398,7 @@ export default function Tabs() {
             ]}
           />
 
+          <ClubReadState reads={reads} what="Tabs">
           {loading ? (
             <div className="flex items-center justify-center py-20 text-slate-500">
               <Loader2 className="h-6 w-6 animate-spin" />
@@ -510,6 +536,7 @@ export default function Tabs() {
               </div>
             </section>
           )}
+          </ClubReadState>
         </main>
       </PageTransition>
 

@@ -211,7 +211,7 @@ describe('what the merged record looks like', () => {
 describe('households', () => {
   it('match by head of household or name, and the preview lists everyone once', async () => {
     const { duplicateHouseholdGroups, HOUSEHOLD_MERGE_FIELDS } = await import('./dedupe');
-    const h = (id: string, over: Record<string, unknown>) => ({ id, name: 'The Hartwells', primaryMemberId: 'm1', createdAtUtc: '', memberNames: [] as string[], ...over });
+    const h = (id: string, over: Record<string, unknown>) => ({ id, name: 'The Hartwells', primaryMemberId: 'm1', createdAtUtc: '', people: [], members: 0, memberNames: [] as string[], ...over });
     expect(duplicateHouseholdGroups([h('1', {}), h('2', { name: 'Hartwell family' })])).toHaveLength(1);
     expect(duplicateHouseholdGroups([h('1', {}), h('2', { primaryMemberId: 'm2' })])[0]?.reason).toBe('Same name');
     expect(duplicateHouseholdGroups([h('1', {}), h('2', { name: 'Okafors', primaryMemberId: 'm2' })])).toEqual([]);

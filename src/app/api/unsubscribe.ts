@@ -12,10 +12,16 @@ export class UnsubscribeError extends Error {
   }
 }
 
-/** Whose email the link stops, and to which address. */
+/** Whose email the link stops, to which address, and how much of it. */
 export interface UnsubscribeTarget {
   workspaceName: string;
   email: string;
+  /**
+   * "all": every email the workspace sends the address (the link in sales outreach).
+   * "marketing": a club member's news and offers; their statements and booking
+   * confirmations still come.
+   */
+  scope?: 'all' | 'marketing';
 }
 
 async function call(token: string, method: 'GET' | 'POST'): Promise<UnsubscribeTarget> {

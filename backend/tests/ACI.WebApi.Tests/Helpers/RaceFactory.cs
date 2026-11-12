@@ -1,8 +1,4 @@
-using ACI.Application.Common;
-using ACI.Application.Interfaces;
-using ACI.Domain.Entities;
-using ACI.Infrastructure.Persistence;
-using ACI.Infrastructure.Repositories;
+using ACI.Application.Services;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
@@ -16,22 +12,22 @@ namespace ACI.WebApi.Tests.Helpers;
 /// <remarks>
 /// Without this the two requests usually run one after the other: the in-memory database
 /// answers at once, so neither waits long enough for the other to catch up, and a test of
-/// "two redeems at once" would pass whether or not the code is safe.
+/// "two redeems at once" would pass whether or not the code is safe. The money ledger tells
+/// <see cref="ILedgerReadObserver"/> when it has read what it is about to change; here that
+/// waits at the gate.
 /// </remarks>
 public sealed class RaceFactory : CustomWebApplicationFactory
 {
-    /// <summary>Holds reads of <see cref="Kind"/> until <see cref="Readers"/> requests have made one. Off until armed.</summary>
+    /// <summary>Holds reads of <see cref="ReadGate.Kind"/> until <see cref="ReadGate.Readers"/> requests have made one. Off until armed.</summary>
     public ReadGate Gate { get; } = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         base.ConfigureWebHost(builder);
-        builder.ConfigureTestServices(services =>
-            services.AddScoped<IClubDocumentRepository>(sp =>
-                new HeldReads(new ClubDocumentRepository(sp.GetRequiredService<AppDbContext>()), Gate)));
+        builder.ConfigureTestServices(services => services.AddSingleton<ILedgerReadObserver>(Gate));
     }
 
-    public sealed class ReadGate
+    public sealed class ReadGate : ILedgerReadObserver
     {
         private readonly TaskCompletionSource _open = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _arrived;
@@ -46,35 +42,11 @@ public sealed class RaceFactory : CustomWebApplicationFactory
             Readers = readers;
         }
 
-        public async Task PassAsync(string kind)
+        public async Task ReadAsync(string kind, CancellationToken ct = default)
         {
             if (Kind != kind) return;
             if (Interlocked.Increment(ref _arrived) >= Readers) _open.TrySetResult();
-            await _open.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await _open.Task.WaitAsync(TimeSpan.FromSeconds(10), ct);
         }
-    }
-
-    private sealed class HeldReads : IClubDocumentRepository
-    {
-        private readonly IClubDocumentRepository _inner;
-        private readonly ReadGate _gate;
-
-        public HeldReads(IClubDocumentRepository inner, ReadGate gate)
-        {
-            _inner = inner;
-            _gate = gate;
-        }
-
-        public async Task<ClubDocument?> GetAsync(Guid id, Guid? organizationId, string kind, CancellationToken ct = default)
-        {
-            var row = await _inner.GetAsync(id, organizationId, kind, ct);
-            await _gate.PassAsync(kind);
-            return row;
-        }
-
-        public Task<IReadOnlyList<ClubDocument>> ListAsync(Guid? organizationId, string kind, CancellationToken ct = default) => _inner.ListAsync(organizationId, kind, ct);
-        public Task SaveAsync(ClubDocument document, CancellationToken ct = default) => _inner.SaveAsync(document, ct);
-        public Task<bool> DeleteAsync(Guid id, Guid? organizationId, string kind, CancellationToken ct = default) => _inner.DeleteAsync(id, organizationId, kind, ct);
-        public Task<Result<T>> InTransactionAsync<T>(Func<Task<Result<T>>> work, CancellationToken ct = default) => _inner.InTransactionAsync(work, ct);
     }
 }

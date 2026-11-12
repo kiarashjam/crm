@@ -547,6 +547,7 @@ public sealed class ContactRepository : IContactRepository
             foreach (var lead in await _db.Leads.Where(l => l.ReferredByContactId == dropId).ToListAsync(ct))
                 lead.ReferredByContactId = keepId;
             await MoveRelationshipsAsync(keepId, dropId, ct);
+            await MoveClubLinksAsync(keepId, dropId, ct);
             await RecordMerge.MoveEnrollmentsAsync(_db, "contact", keepId, dropId, ct);
             // The dropped record is archived rather than deleted, so its files and
             // custom fields would otherwise stay on a contact nobody sees.
@@ -687,6 +688,26 @@ public sealed class ContactRepository : IContactRepository
             }
             hasCouple |= couple;
         }
+    }
+
+    /// <summary>
+    /// The member, applications and household place of the dropped record are the kept person's.
+    /// A person is in one household: when the kept record already has one (as a contact, or
+    /// through a member linked to it), the dropped record's place in another is removed.
+    /// </summary>
+    private async Task MoveClubLinksAsync(Guid keepId, Guid dropId, CancellationToken ct)
+    {
+        foreach (var member in await _db.ClubMembers.Where(m => m.ContactId == dropId).ToListAsync(ct))
+            member.ContactId = keepId;
+        foreach (var application in await _db.ClubApplications.Where(a => a.ContactId == dropId).ToListAsync(ct))
+            application.ContactId = keepId;
+        var dropLink = await _db.ClubHouseholdMembers.FirstOrDefaultAsync(l => l.ContactId == dropId, ct);
+        if (dropLink == null) return;
+        var keepMembers = await _db.ClubMembers.Where(m => m.ContactId == keepId || m.ContactId == dropId).Select(m => (Guid?)m.Id).ToListAsync(ct);
+        var keepInHousehold = await _db.ClubHouseholdMembers.AnyAsync(l => l.Id != dropLink.Id
+            && (l.ContactId == keepId || (l.MemberId != null && keepMembers.Contains(l.MemberId))), ct);
+        if (keepInHousehold && !dropLink.IsPrimary) _db.ClubHouseholdMembers.Remove(dropLink);
+        else if (!keepInHousehold) dropLink.ContactId = keepId;
     }
 
     private async Task RememberContactOnLeadAsync(Lead lead, Guid contactId, CancellationToken ct)

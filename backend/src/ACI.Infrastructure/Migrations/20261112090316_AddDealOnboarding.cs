@@ -11,11 +11,13 @@ namespace ACI.Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<Guid>(
-                name: "ContactId",
-                table: "ClubMembers",
-                type: "uniqueidentifier",
-                nullable: true);
+            // ClubMembers.ContactId is made by two migrations: AddMembershipBridgeAndHouseholds
+            // (the club's link from a member to their contact) and AddDealOnboarding (the
+            // contact a member joined through). Both mean the same link, so whichever runs first
+            // makes it and the other finds it there: a database made from scratch runs the
+            // bridge first, while one that already had AddDealOnboarding (it shipped first)
+            // gets the bridge after it.
+            migrationBuilder.Sql("IF COL_LENGTH(N'dbo.ClubMembers', N'ContactId') IS NULL ALTER TABLE [ClubMembers] ADD [ContactId] uniqueidentifier NULL;");
 
             migrationBuilder.AddColumn<Guid>(
                 name: "DealId",
@@ -111,10 +113,7 @@ namespace ACI.Infrastructure.Migrations
             migrationBuilder.DropTable(
                 name: "OnboardingSettings");
 
-            migrationBuilder.DropColumn(
-                name: "ContactId",
-                table: "ClubMembers");
-
+            // ContactId stays: AddMembershipBridgeAndHouseholds uses it too, and drops it in its own Down.
             migrationBuilder.DropColumn(
                 name: "DealId",
                 table: "ClubMembers");

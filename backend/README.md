@@ -259,6 +259,54 @@ an email whose lead or contact is deleted while it waits is cancelled, not sent.
 | `POST` | `/api/public/email/inbound/{secret}` | SendGrid Inbound Parse: a reply, matched to its message by reply+token address or In-Reply-To/References, written on the timeline; the person's sequences stop (not for an automatic reply such as an out-of-office). 404 without `Email:InboundParseSecret` |
 | `POST` | `/api/public/email/events/{secret}` | SendGrid Event Webhook (or `/events` with a signature checked against `Email:EventWebhookVerificationKey`): bounces, drops, spam reports and unsubscribes suppress the address and stop sequences; deliveries and opens are recorded |
 
+### Club campaigns, member messages and consent
+
+Every email to a club member goes through the same outbox, one message per member, and
+each says what came of it: `queued`, `sent`, `delivered`, `opened` (where open tracking is
+on), `bounced`, or not sent and why (`suppressed`: no consent to marketing, an unsubscribe,
+do not contact; `skipped`: no usable address, or another member at the same address gets
+this campaign, the one who joined first). A message says what it is for. **Marketing** goes only to members whose
+latest answer for marketing by email is yes and carries an unsubscribe link (with
+`List-Unsubscribe` and `List-Unsubscribe-Post` headers); **service** (statements,
+bookings, their application) goes whatever they said about marketing.
+
+A campaign is sent once. Sending, whether someone pressed Send or the scheduler found it
+due (it looks every 30 seconds), starts with one conditional update from Draft or
+Scheduled to Sending, so a double click, a retry or two instances send it once; from then
+on it cannot be edited, rescheduled, sent again or deleted. A sending that stops part-way
+is taken up again once its claim runs out (10 minutes), and the unique index on
+(campaign, member) means nobody is emailed twice. "Send a test to me" emails the signed-in
+person alone, marked as a test, and counts in none of the figures. SMS and push are
+refused: there is no provider behind them.
+
+Consent is kept per channel (`email`, `sms`, `post`) and purpose (`marketing`, `service`)
+with its source (`form`, `import`, `staff`, `member`, `unsubscribe`), who recorded it and
+when; every answer is kept and the latest stands. The rows name their subject
+(`SubjectType`, `SubjectId`) so leads can carry consent later, and export and erasure can
+find everything about one person. Merging two members moves the duplicate's consent and
+messages to the kept member.
+
+Reading needs a workspace member; writing needs `club.members` (and `records.delete` to
+delete).
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/campaigns` | Campaigns, newest first, each with its totals |
+| `GET` | `/api/campaigns/audience?purpose=&tiers=&statuses=` | Who a campaign for that segment would reach now: matching, with an address, agreed to marketing, emails it makes |
+| `GET` | `/api/campaigns/{id}/recipients` | Every member it was for and where their message stands |
+| `POST` | `/api/campaigns` | A draft, or a scheduled campaign with `scheduledAtUtc` |
+| `PUT` | `/api/campaigns/{id}` | Change a draft or scheduled one (merge-patch; `scheduledAtUtc: null` unschedules); 409 once it has started sending or changed meanwhile |
+| `DELETE` | `/api/campaigns/{id}` | Delete a draft or scheduled one; 409 once it has started sending |
+| `POST` | `/api/campaigns/{id}/send` | Send it now, once (`If-Match` with its version); 409 when it is being sent or has been |
+| `POST` | `/api/campaigns/{id}/test` | A copy marked as a test to the signed-in person |
+| `GET` | `/api/communications?memberId=` | The communications log, the club's or one member's |
+| `POST` | `/api/communications/send` | Email one member: `{ memberId, category, purpose, subject, body }`; a refusal comes back as a `suppressed` message with its reason |
+| `POST` | `/api/communications` | Log a message sent another way (a text, a letter); it reads `logged` |
+| `DELETE` | `/api/communications/{id}` | Delete a logged message; what was sent, or refused, is kept (409) |
+| `GET` | `/api/members/{id}/consent` | Where each channel and purpose stands, and the history |
+| `POST` | `/api/members/{id}/consent` | Record an answer: `{ channel, purpose, granted, source, detail }` (`form`, `member` or `staff`) |
+| `GET`/`POST` | `/api/public/unsubscribe/{token}` | The unsubscribe page's read and its button; a member's link withdraws marketing by email (source `unsubscribe`) for every member at that address, and marketing already queued to them is stopped as it goes; their service messages still come |
+| `POST` | `/api/public/unsubscribe/{token}/one-click` | RFC 8058 one-click, from a mail app's own Unsubscribe button; a `GET` there goes to the page instead and changes nothing |
 Every outbound webhook with a secret is signed twice: `X-Cadence-Signature` (hex HMAC-SHA256
 of the body, as it always was) and `X-Cadence-Timestamp` (Unix seconds) with
 `X-Cadence-Signature-256: sha256=<hex HMAC-SHA256 of "{timestamp}.{body}">`, which lets a

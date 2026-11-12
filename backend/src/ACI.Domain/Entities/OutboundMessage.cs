@@ -92,8 +92,26 @@ public class OutboundMessage : Common.BaseEntity
     /// <summary>The HTML part exactly as sent.</summary>
     public string? HtmlBody { get; set; }
 
-    /// <summary>For the List-Unsubscribe header, when the message is for one address.</summary>
+    /// <summary>
+    /// For the List-Unsubscribe header, when the message is for one address: the one-click
+    /// address of RFC 8058 when this API has a public https address
+    /// (<see cref="OneClickUnsubscribe"/>), otherwise the unsubscribe page.
+    /// </summary>
     public string? UnsubscribeUrl { get; set; }
+
+    /// <summary>
+    /// Whether <see cref="UnsubscribeUrl"/> takes the one-click POST a mail app sends for its
+    /// own Unsubscribe button, so the message also says List-Unsubscribe-Post.
+    /// </summary>
+    public bool OneClickUnsubscribe { get; set; }
+
+    /// <summary>
+    /// What a message to a club member is for (<see cref="ConsentPurposes"/>): marketing goes
+    /// only to a member who agreed to it by email and has not withdrawn; a service message
+    /// (a statement, a booking, a receipt) goes whatever they said. Null for the sales
+    /// outreach the outbox carried before, whose rules are unchanged.
+    /// </summary>
+    public string? Purpose { get; set; }
 
     /// <summary>
     /// The Message-ID header, angle brackets included. A reply names it in In-Reply-To
@@ -185,12 +203,49 @@ public static class OutboundSources
     public const string Assistant = "assistant";
     public const string Sequence = "sequence";
     public const string Automation = "automation";
-    /// <summary>A club mailing. Nothing queues these yet; the outbox carries them when campaigns send.</summary>
+    /// <summary>A campaign's email to one of its members; <see cref="OutboundMessage.SourceId"/> is the campaign.</summary>
     public const string Campaign = "campaign";
+    /// <summary>
+    /// A campaign sent to the person who pressed "Send a test to me", marked as a test and
+    /// counted in none of the campaign's figures.
+    /// </summary>
+    public const string CampaignTest = "campaign_test";
+    /// <summary>A message staff wrote to one member, from the Communications page or the member's own.</summary>
+    public const string Member = "member";
+    /// <summary>A member's statement, as a PDF: emailed on request or by the monthly run.</summary>
+    public const string Statement = "statement";
+    /// <summary>A reminder of charges a member has not paid by their due date, from the billing run.</summary>
+    public const string PaymentReminder = "reminder";
+    /// <summary>
+    /// An event's email to someone on its list: a seat that came free for them, or the event
+    /// cancelled; <see cref="OutboundMessage.SourceId"/> is their registration.
+    /// </summary>
+    public const string Event = "event";
+    /// <summary>The welcome to a new member, queued when their application is approved; <see cref="OutboundMessage.SourceId"/> is the application.</summary>
+    public const string Welcome = "welcome";
+    /// <summary>A link for a member to pay their account online or save a card, sent by staff.</summary>
+    public const string PaymentLink = "payment_link";
     public const string Webhook = "webhook";
     /// <summary>
     /// A new customer handed to the workspace's onboarding address (see DealOnboarding),
     /// posted there rather than to its events address, with SourceId the handoff.
     /// </summary>
     public const string Onboarding = "onboarding";
+}
+
+/// <summary>
+/// A file that goes with an outbox email, such as a statement's PDF: kept with the message
+/// so every attempt, and a retry hours later, sends the same file.
+/// </summary>
+public class OutboundAttachment : Common.BaseEntity
+{
+    public Guid? OrganizationId { get; set; }
+    public Guid OutboundMessageId { get; set; }
+
+    /// <summary>What the recipient sees and saves.</summary>
+    public string FileName { get; set; } = string.Empty;
+
+    public string ContentType { get; set; } = "application/octet-stream";
+    public byte[] Content { get; set; } = [];
+    public DateTime CreatedAtUtc { get; set; }
 }

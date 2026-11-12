@@ -85,9 +85,18 @@ internal static partial class AuditTrail
         public HashSet<Guid> UserIds { get; } = new();
         public HashSet<Guid> StageIds { get; } = new();
         public HashSet<Guid> StatusIds { get; } = new();
+        public HashSet<Guid> ChargeIds { get; } = new();
+        public HashSet<Guid> CardIds { get; } = new();
+        public HashSet<Guid> TabIds { get; } = new();
         public Dictionary<Guid, string> Users { get; set; } = new();
         public Dictionary<Guid, string> Stages { get; set; } = new();
         public Dictionary<Guid, string> Statuses { get; set; } = new();
+        public Dictionary<Guid, ChargeFacts> Charges { get; } = new();
+        public Dictionary<Guid, CardFacts> Cards { get; } = new();
+        public Dictionary<Guid, TabFacts> Tabs { get; } = new();
+        /// <summary>What this save's allocations add to each charge's paid amount, and its transactions to each card.</summary>
+        public Dictionary<Guid, decimal> AddedAllocations { get; } = new();
+        public Dictionary<Guid, decimal> AddedCardValue { get; } = new();
 
         public string? User(Guid? id) => id is { } g && Users.TryGetValue(g, out var n) ? n : null;
         public string? Stage(Guid? id) => id is { } g && Stages.TryGetValue(g, out var n) ? n : null;
@@ -95,7 +104,10 @@ internal static partial class AuditTrail
     }
 
     /// <summary>An event whose summary may need names resolved first.</summary>
-    private sealed record Pending(EntityEntry Entry, Spec Spec, string Action, Func<Lookups, string> Summary);
+    /// <param name="EntityId">The record the line is about, when it is not the row saved: a void's original, an allocation's charge.</param>
+    /// <param name="Label">That record's label, when it is not the row saved's.</param>
+    private sealed record Pending(EntityEntry Entry, Spec Spec, string Action, Func<Lookups, string> Summary,
+        Guid? EntityId = null, Func<Lookups, string?>? Label = null);
 
     public static async Task<IReadOnlyList<AuditEvent>> CaptureAsync(AppDbContext db, ICurrentUserService? currentUser, CancellationToken ct)
     {
@@ -110,6 +122,7 @@ internal static partial class AuditTrail
         if (lookups.StatusIds.Count > 0)
             lookups.Statuses = await db.LeadStatuses.AsNoTracking().Where(s => lookups.StatusIds.Contains(s.Id))
                 .ToDictionaryAsync(s => s.Id, s => s.Name, ct);
+        await FillLedgerAsync(db, lookups, ct);
         return Build(pending, lookups, currentUser);
     }
 
@@ -123,6 +136,7 @@ internal static partial class AuditTrail
             lookups.Stages = db.DealStages.AsNoTracking().Where(s => lookups.StageIds.Contains(s.Id)).ToDictionary(s => s.Id, s => s.Name);
         if (lookups.StatusIds.Count > 0)
             lookups.Statuses = db.LeadStatuses.AsNoTracking().Where(s => lookups.StatusIds.Contains(s.Id)).ToDictionary(s => s.Id, s => s.Name);
+        FillLedger(db, lookups);
         return Build(pending, lookups, currentUser);
     }
 
@@ -134,12 +148,10 @@ internal static partial class AuditTrail
 
         foreach (var entry in db.ChangeTracker.Entries())
         {
-            // A club record's kind decides what it is; its fields live in its JSON.
-            if (entry.Entity is ClubDocument)
-            {
-                CollectClubMoney(entry, pending);
-                continue;
-            }
+            // Club money is in the typed ledger now (AuditTrail.ClubMoney.cs). The documents
+            // that remain hold events, reservations and the like, which write no lines.
+            if (entry.Entity is ClubDocument) continue;
+            if (CollectLedger(entry, pending, lookups)) continue;
             if (!Specs.TryGetValue(entry.Metadata.ClrType, out var spec)) continue;
             switch (entry.State)
             {
@@ -274,8 +286,10 @@ internal static partial class AuditTrail
             OrganizationId = p.Entry.Property("OrganizationId").CurrentValue as Guid?,
             OwnerUserId = Owner(p.Entry),
             EntityType = p.Spec.EntityType,
-            EntityId = p.Entry.Property("Id").CurrentValue as Guid?,
-            EntityLabel = Truncate(p.Spec.Label != null ? p.Spec.Label(p.Entry) : Text(p.Entry.Property(p.Spec.LabelProperty).CurrentValue), 200),
+            EntityId = p.EntityId ?? p.Entry.Property("Id").CurrentValue as Guid?,
+            EntityLabel = Truncate(p.Label != null ? p.Label(lookups)
+                : p.Spec.Label != null ? p.Spec.Label(p.Entry)
+                : Text(p.Entry.Property(p.Spec.LabelProperty).CurrentValue), 200),
             Action = p.Action,
             Summary = Truncate(p.Summary(lookups), 500) ?? string.Empty,
             ActorUserId = actorId,

@@ -127,15 +127,17 @@ export default function MemberPortal() {
     () => charges.filter((c) => c.memberId === selectedId),
     [charges, selectedId],
   );
+  // A booking names its member by id; matching by email missed every booking made
+  // without one, or with it in another case.
   const memberReservations = useMemo(
     () =>
       reservations.filter(
         (r) =>
-          r.memberEmail === member?.email &&
+          r.memberId === selectedId &&
           Date.parse(r.startAtUtc) > Date.now() &&
           r.status !== 'Cancelled',
       ),
-    [reservations, member?.email],
+    [reservations, selectedId],
   );
   const memberLedger = useMemo(
     () => ledger.filter((l) => l.memberId === selectedId),
@@ -325,7 +327,8 @@ export default function MemberPortal() {
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     {upcomingEvents.map((e, index) => {
-                      const available = e.capacity - e.registeredCount;
+                      // The server says how many seats are free; an event with no limit has no figure.
+                      const available = e.seatsLeft ?? (e.capacity > 0 ? e.capacity - e.registeredCount : Infinity);
                       return (
                         <StaggerItem key={e.id} index={index}>
                           <Link
@@ -340,7 +343,7 @@ export default function MemberPortal() {
                                 <span className="font-medium text-pink-600">
                                   {formatCurrency(e.memberPrice)}
                                 </span>{' '}
-                                · {available > 0 ? `${available} spots` : 'Waitlist'}
+                                · {available === Infinity ? 'Open to all' : available > 0 ? `${available} spots` : 'Waitlist'}
                               </p>
                             </div>
                           </Link>
