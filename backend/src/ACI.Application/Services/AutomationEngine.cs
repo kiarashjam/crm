@@ -177,20 +177,22 @@ public sealed partial class AutomationEngine : IAutomationEngine
         // A rule with no conditions fires for every record, as rules always did. Conditions are
         // checked on the record as the event left it, read once before any rule runs, so what
         // one rule does to the record does not decide whether the next one fires.
+        var key = Clip(evt.SourceKey, 80) ?? "";
         AutomationRecordView? view = null;
-        if (rules.Any(r => !AutomationConditions.IsEmpty(AutomationConditions.Parse(r.ConditionsJson)))
-            && !await AllFiredAsync(rules, Clip(evt.SourceKey, 80) ?? "", ct))
+        if (rules.Any(r => !AutomationConditions.IsEmpty(AutomationConditions.Parse(r.ConditionsJson))))
         {
+            // Inside the catch, the lookups too: the save that set the rules off has been
+            // committed by the time they are dispatched, and a rule that cannot be looked at
+            // must not turn that save into an error for whoever made it.
             try
             {
-                view = await _records.ReadAsync(subject, ct);
+                if (!await AllFiredAsync(rules, key, ct)) view = await _records.ReadAsync(subject, ct);
             }
             catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
             {
                 _logger.LogWarning(ex, "Could not read the record for {Trigger} {Source}; rules with conditions did not run", trigger, evt.SourceKey);
             }
         }
-        var key = Clip(evt.SourceKey, 80) ?? "";
         foreach (var rule in rules)
         {
             try
