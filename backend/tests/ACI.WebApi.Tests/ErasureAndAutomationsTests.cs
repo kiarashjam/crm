@@ -15,8 +15,9 @@ namespace ACI.WebApi.Tests;
 /// </summary>
 /// <remarks>
 /// The erasure knew the marks that stop a rule firing twice, but not the runs: after it, the
-/// rules page went on listing "Anna Keller" and "Queued the email … to anna.keller@…", and
-/// the export left the runs out.
+/// rules page went on listing "Anna Keller" and "Queued the email … to anna.keller@…", the
+/// export left the runs out, and a run about the member account it keeps for the books made
+/// tasks about "Erased member 1".
 /// </remarks>
 public class ErasureAndAutomationsTests
 {
@@ -126,5 +127,32 @@ public class ErasureAndAutomationsTests
         await app.RunDueAsync();
         var sent = await app.Services.Read(db => db.OutboundMessages.Where(m => m.Source == OutboundSources.Automation).ToList());
         sent.Should().ContainSingle().Which.Subject.Should().Be("Still interested, Bob?");
+    }
+
+    [Fact]
+    public async Task ARunSetOffForAMemberWhoseDataWasErasedStops_AndMakesNoTaskAboutThem()
+    {
+        await using var app = new App();
+        var (owner, _) = await ClubAsync(app);
+        await RuleAsync(owner, new { name = "New booking", trigger = "reservation.created", actions = new object[] { Task("Prepare the table") } });
+        var jean = (await Json(await owner.PostAsync("/api/members", Body(new
+        {
+            firstName = "Jean", lastName = "Dupont", email = "jean@example.ch", tier = "Gold", status = "Active",
+        })), "Jean joins")).GetProperty("id").GetGuid();
+        var jeanRecords = await EverythingFoundAsync(owner, new { memberId = jean });
+        jeanRecords["confirm"] = "ERASE";
+        await Json(await owner.PostAsync("/api/privacy/erasure", Body(jeanRecords)), "erase Jean");
+
+        // The member row stays for the books, under the pseudonym, and can still be picked: a
+        // booking made for it by mistake sets the rule off.
+        var court = (await Json(await owner.PostAsync("/api/resources", Body(new { name = "Court", kind = "Court", capacity = 4 })), "add a court")).GetProperty("id").GetString();
+        var start = DateTime.UtcNow.AddDays(2);
+        await Json(await owner.PostAsync("/api/reservations", Body(new { resourceId = court, memberId = jean, startAtUtc = start, endAtUtc = start.AddHours(1) })), "a booking for the erased member");
+
+        (await app.Services.Read(db => db.TaskItems.Count(t => t.Title == "Prepare the table"))).Should().Be(0,
+            "a task about someone the club no longer holds would be work about nobody");
+        var run = await app.Services.Read(db => db.AutomationRuns.Single());
+        run.Status.Should().Be(AutomationRunStatuses.Cancelled);
+        run.LastError.Should().Contain("erased");
     }
 }

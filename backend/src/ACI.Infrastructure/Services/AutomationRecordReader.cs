@@ -143,6 +143,15 @@ public sealed class AutomationRecordReader : IAutomationRecordReader
 
     private static string NameOf(ClubMember member) => $"{member.FirstName} {member.LastName}".Trim();
 
+    /// <summary>
+    /// Why a run about a record of this member's stops: their personal data was erased, at their
+    /// request or by the retention settings. The member row stays for the books under a pseudonym,
+    /// so it is still found, but a task "about Erased member 3", or a notice linking to them, would
+    /// be work about someone the club no longer holds. Null for anyone else.
+    /// </summary>
+    private static string? Erased(ClubMember? member) =>
+        member?.ErasedAtUtc != null ? "Stopped: the member's personal data was erased." : null;
+
     /// <summary>The member's facts and dates, added to a club record's own.</summary>
     private static void AddMember(ClubMember? member, Dictionary<string, FactValue> facts, Dictionary<string, DateTime> dates)
     {
@@ -171,6 +180,7 @@ public sealed class AutomationRecordReader : IAutomationRecordReader
     {
         var member = await MemberAsync(id, ct);
         if (member == null) return Gone("Stopped: the member was deleted.");
+        if (Erased(member) is { } erased) return Gone(erased);
         var facts = new Dictionary<string, FactValue>(StringComparer.Ordinal);
         var dates = new Dictionary<string, DateTime>(StringComparer.Ordinal);
         AddMember(member, facts, dates);
@@ -188,6 +198,7 @@ public sealed class AutomationRecordReader : IAutomationRecordReader
             return Gone($"Stopped: the subscription was {subscription.Status.ToLowerInvariant()}.");
         var member = await MemberAsync(subscription.MemberId, ct);
         if (member == null) return Gone("Stopped: the member was deleted.");
+        if (Erased(member) is { } erased) return Gone(erased);
         var facts = new Dictionary<string, FactValue>(StringComparer.Ordinal)
         {
             ["subscription"] = FactValue.Of(subscription.Name),
@@ -212,6 +223,7 @@ public sealed class AutomationRecordReader : IAutomationRecordReader
         // about it stops as for one deleted, so its reminder does not reach someone who cancelled.
         if (booking.Status == ReservationStatuses.Cancelled) return Gone("Stopped: the booking was cancelled.");
         var member = await MemberAsync(booking.MemberId, ct);
+        if (Erased(member) is { } erased) return Gone(erased);
         var facts = new Dictionary<string, FactValue>(StringComparer.Ordinal)
         {
             ["resource"] = FactValue.Of(booking.ResourceId.ToString(), booking.ResourceName),
@@ -235,6 +247,7 @@ public sealed class AutomationRecordReader : IAutomationRecordReader
         if (ev.Status == ClubEventStatuses.Cancelled) return Gone("Stopped: the event was cancelled.");
         if (place.Status == RegistrationStatuses.Cancelled) return Gone("Stopped: the place on the event's list was cancelled.");
         var member = await MemberAsync(place.MemberId, ct);
+        if (Erased(member) is { } erased) return Gone(erased);
         var facts = new Dictionary<string, FactValue>(StringComparer.Ordinal)
         {
             ["event"] = FactValue.Of(ev.Id.ToString(), ev.Name),
@@ -253,6 +266,7 @@ public sealed class AutomationRecordReader : IAutomationRecordReader
         var app = id == null ? null : await _db.ClubApplications.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id, ct);
         if (app == null) return Gone("Stopped: the application was deleted.");
         var member = await MemberAsync(app.MemberId, ct);
+        if (Erased(member) is { } erased) return Gone(erased);
         var facts = new Dictionary<string, FactValue>(StringComparer.Ordinal)
         {
             ["appliedThrough"] = FactValue.Of(app.Source),
@@ -269,6 +283,7 @@ public sealed class AutomationRecordReader : IAutomationRecordReader
         var payment = id == null ? null : await _db.ClubOnlinePayments.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id, ct);
         if (payment == null) return Gone("Stopped: the payment was deleted.");
         var member = await MemberAsync(payment.MemberId, ct);
+        if (Erased(member) is { } erased) return Gone(erased);
         var facts = new Dictionary<string, FactValue>(StringComparer.Ordinal)
         {
             ["amount"] = FactValue.OfNumber(payment.Amount),
