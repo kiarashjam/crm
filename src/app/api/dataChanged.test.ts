@@ -341,6 +341,8 @@ describe('what a privacy request changes', () => {
       expect(resourcesChangedBy('POST', path)).toEqual(expect.arrayContaining([
         'leads', 'contacts', 'deals', 'tasks', 'activities', 'sequences', 'members', 'charges', 'payments',
         'reservations', 'events', 'subscriptions', 'households', 'applications', 'communications', 'campaigns', 'privacy',
+        // The automation runs about them go, and the rules page counts and lists runs.
+        'automations',
       ]));
     }
   });

@@ -53,6 +53,40 @@ public class PersonDataOnSqlServerTests
                 db.ClubHouseholds.Add(new ClubHousehold { Id = householdId, OrganizationId = org, Name = "Keller household", CreatedAtUtc = DateTime.UtcNow });
                 db.ClubHouseholdMembers.Add(new ClubHouseholdMember { Id = Guid.NewGuid(), OrganizationId = org, HouseholdId = householdId, MemberId = s.MemberId, Role = HouseholdRoles.Primary, IsPrimary = true, CreatedAtUtc = DateTime.UtcNow.AddMinutes(-2) });
                 db.ClubHouseholdMembers.Add(new ClubHouseholdMember { Id = Guid.NewGuid(), OrganizationId = org, HouseholdId = householdId, MemberId = s.BobMemberId, Role = HouseholdRoles.Other, IsPrimary = false, CreatedAtUtc = DateTime.UtcNow.AddMinutes(-1) });
+                // Automation runs about her lead (still waiting) and her member account (finished),
+                // each with a log that names her, and the mark that stops the lead's rule firing twice.
+                var rule = new AutomationRule
+                {
+                    Id = Guid.NewGuid(), OrganizationId = org, OwnerUserId = ownerId, Name = "Nurture", Trigger = "lead.created", ActionsJson = "[]",
+                    CreatedAtUtc = DateTime.UtcNow, Version = Guid.NewGuid(),
+                };
+                var leadRun = new AutomationRun
+                {
+                    Id = Guid.NewGuid(), OrganizationId = org, RuleId = rule.Id, RuleName = rule.Name, Trigger = rule.Trigger, SourceKey = s.LeadId.ToString(),
+                    Status = AutomationRunStatuses.Waiting, ActorUserId = ownerId, RecordType = "lead", RecordId = s.LeadId, LeadId = s.LeadId, RecordName = "Anna Keller",
+                    Email = "anna.keller@example.ch", StepsJson = "[]", CurrentPath = "1", NextAttemptAtUtc = DateTime.UtcNow.AddDays(2), WaitingFor = "2 days",
+                    StartedAtUtc = DateTime.UtcNow, UpdatedAtUtc = DateTime.UtcNow,
+                };
+                var memberRun = new AutomationRun
+                {
+                    Id = Guid.NewGuid(), OrganizationId = org, RuleId = rule.Id, RuleName = rule.Name, Trigger = "member.created", SourceKey = s.MemberId.ToString(),
+                    Status = AutomationRunStatuses.Completed, ActorUserId = ownerId, RecordType = "member", RecordId = s.MemberId, MemberId = s.MemberId, RecordName = "Anna Keller",
+                    StepsJson = "[]", CurrentPath = "1", StartedAtUtc = DateTime.UtcNow, UpdatedAtUtc = DateTime.UtcNow, FinishedAtUtc = DateTime.UtcNow,
+                };
+                db.AutomationRules.Add(rule);
+                db.AutomationRuns.AddRange(leadRun, memberRun);
+                db.AutomationFires.Add(new AutomationFire { Id = Guid.NewGuid(), RuleId = rule.Id, SourceKey = s.LeadId.ToString(), FiredAtUtc = DateTime.UtcNow });
+                db.AutomationRunSteps.AddRange(
+                    new AutomationRunStep
+                    {
+                        Id = Guid.NewGuid(), OrganizationId = org, RunId = leadRun.Id, Path = "0", StepType = "send_email", Outcome = AutomationStepOutcomes.Done,
+                        Summary = "Queued the email \"Welcome\" to anna.keller@example.ch.", Attempt = 1, AtUtc = DateTime.UtcNow,
+                    },
+                    new AutomationRunStep
+                    {
+                        Id = Guid.NewGuid(), OrganizationId = org, RunId = memberRun.Id, Path = "0", StepType = "create_task", Outcome = AutomationStepOutcomes.Done,
+                        Summary = "Created the task \"Call Anna Keller\".", Attempt = 1, AtUtc = DateTime.UtcNow,
+                    });
                 // Her application as the old documents kept it, before it had a table of its own
                 // (the moved row kept the document's id): the names apart, the phone beside them.
                 db.ClubDocuments.Add(new ClubDocument
@@ -86,6 +120,9 @@ public class PersonDataOnSqlServerTests
             (await Count($"SELECT COUNT(*) FROM [ClubReservations] WHERE [Id] = '{s.FutureReservationId}' AND [Status] = N'Cancelled'")).Should().Be(1);
             (await Count($"SELECT COUNT(*) FROM [EmailSuppressions] WHERE [OrganizationId] = '{org}' AND [Email] LIKE N'erased:%'")).Should().Be(1);
             (await Count($"SELECT COUNT(*) FROM [PersonErasures] WHERE [OrganizationId] = '{org}' AND [Number] = 1")).Should().Be(1);
+            (await Count($"SELECT COUNT(*) FROM [AutomationRuns] WHERE [OrganizationId] = '{org}'")).Should().Be(0, "the runs about her go, the one still waiting too");
+            (await Count($"SELECT COUNT(*) FROM [AutomationRunSteps] WHERE [OrganizationId] = '{org}'")).Should().Be(0, "with their logs");
+            (await Count($"SELECT COUNT(*) FROM [AutomationFires] WHERE [SourceKey] = '{s.LeadId}'")).Should().Be(0);
 
             // Nothing in the workspace's people, mail, history or club records names her any more.
             foreach (var (table, column) in new[]
@@ -94,7 +131,7 @@ public class PersonDataOnSqlServerTests
                 ("Activities", "Body"), ("OutboundMessages", "Body"), ("OutboundMessages", "[To]"), ("Notifications", "Message"),
                 ("ClubCharges", "MemberName"), ("ClubPayments", "MemberName"), ("ClubVisits", "MemberName"), ("ClubReservations", "MemberName"),
                 ("ClubEventRegistrations", "Name"), ("AuditEvents", "EntityLabel"), ("AuditEvents", "Summary"), ("EmailSuppressions", "Email"),
-                ("ClubDocuments", "Payload"),
+                ("ClubDocuments", "Payload"), ("AutomationRuns", "RecordName"), ("AutomationRuns", "Email"), ("AutomationRunSteps", "Summary"),
             })
             {
                 var col = column.StartsWith('[') ? column : $"[{column}]";

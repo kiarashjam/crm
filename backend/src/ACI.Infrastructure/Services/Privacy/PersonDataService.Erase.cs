@@ -216,7 +216,7 @@ public sealed partial class PersonDataService
         Add("Tasks", ErasureActions.Delete, d.Tasks.Count, d.TaskComments.Count > 0 ? $"With {d.TaskComments.Count} {Plural(d.TaskComments.Count, "comment")}." : null);
         Add("Notifications about them", ErasureActions.Delete, d.Notifications.Count);
         Add("Sequence enrolments", ErasureActions.Delete, d.Enrollments.Count);
-        Add("Automation runs", ErasureActions.Delete, d.AutomationFires.Count);
+        Add("Automation runs", ErasureActions.Delete, AutomationRunsOf(d), "With the log of what each step did.");
         Add("Generated copy", ErasureActions.Delete, d.CopyHistory.Count);
         Add("Relationships between contacts", ErasureActions.Delete, d.Relationships.Count);
         Add("Duplicate decisions", ErasureActions.Delete, d.DuplicateDecisions.Count);
@@ -261,6 +261,13 @@ public sealed partial class PersonDataService
             "Put on the suppression list as a fingerprint, so nothing is emailed to them and an import does not bring them back without anyone noticing.");
         return lines;
     }
+
+    /// <summary>
+    /// The times a rule ran for them: each run, and each older mark of a rule having fired for
+    /// one of their leads or deals from before runs were kept with a log.
+    /// </summary>
+    private static int AutomationRunsOf(PersonDossier d) =>
+        d.AutomationRuns.Count + d.AutomationFires.Count(f => !d.AutomationRuns.Any(r => r.RuleId == f.RuleId && r.SourceKey == f.SourceKey));
 
     /// <summary>What staff should know before they confirm.</summary>
     private static List<string> Warnings(PersonDossier d, DateTime now)
@@ -319,6 +326,10 @@ public sealed partial class PersonDataService
         _db.LeadStatusEvents.RemoveRange(d.LeadStatusEvents);
         _db.OutreachEnrollments.RemoveRange(d.Enrollments);
         _db.AutomationFires.RemoveRange(d.AutomationFires);
+        // A run names the record and the address it wrote to, and its log what it did to them;
+        // one still waiting would carry on with them after the erasure.
+        _db.AutomationRunSteps.RemoveRange(d.AutomationRunSteps);
+        _db.AutomationRuns.RemoveRange(d.AutomationRuns);
         _db.ContactRelationships.RemoveRange(d.Relationships);
         _db.DuplicateDecisions.RemoveRange(d.DuplicateDecisions);
         _db.CopyHistoryItems.RemoveRange(d.CopyHistory);

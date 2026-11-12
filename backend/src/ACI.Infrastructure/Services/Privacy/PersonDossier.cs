@@ -35,6 +35,9 @@ internal sealed class PersonDossier
     public List<LeadStatusEvent> LeadStatusEvents { get; private set; } = new();
     public List<OutreachEnrollment> Enrollments { get; private set; } = new();
     public List<AutomationFire> AutomationFires { get; private set; } = new();
+    /// <summary>Each time a rule ran about one of their records or to their address, and below, what its steps did.</summary>
+    public List<AutomationRun> AutomationRuns { get; private set; } = new();
+    public List<AutomationRunStep> AutomationRunSteps { get; private set; } = new();
     public List<ContactRelationship> Relationships { get; private set; } = new();
     public List<DuplicateDecision> DuplicateDecisions { get; private set; } = new();
     public List<Lead> LeadsReferredByThem { get; private set; } = new();
@@ -337,6 +340,37 @@ internal sealed class PersonDossier
             .Distinct(StringComparer.Ordinal).ToList();
         documents.AddRange(await MentioningAsync(Q(db.ClubDocuments), documentNeedles, n => x => x.Payload.Contains(n), ct));
         d.Documents = documents.DistinctBy(x => x.Id).ToList();
+
+        // ── Automations: the runs about their records, each with the log of its steps ──
+        // A run keeps the record's name, the address it wrote to and what each step did ("Queued
+        // the email … to anna@…"). It is theirs when it is about one of their leads, deals, tasks,
+        // contracts or member accounts, one of their own bookings, places on an event's list,
+        // subscriptions, payments or applications, or was set off with their address. A place
+        // they booked for a guest is the guest's, and so is its run.
+        var ownPlaces = d.Registrations
+            .Where(r => r.MemberId is Guid m && memberIds.Contains(m) || r.Email != null && addresses.Contains(r.Email.Trim().ToLower()))
+            .Select(r => r.Id);
+        var runRecordIds = applicationIds.Concat(ownPlaces).Concat(d.Reservations.Select(r => r.Id))
+            .Concat(d.Subscriptions.Select(x => x.Id)).Concat(d.OnlinePayments.Select(p => p.Id))
+            .Distinct().ToList();
+        var runTaskIds = d.Tasks.Select(t => t.Id).ToList();
+        var runContractIds = d.Contracts.Select(c => c.Id).ToList();
+        d.AutomationRuns = await Q(db.AutomationRuns).Where(r =>
+                (r.LeadId != null && leadIds.Contains(r.LeadId.Value))
+                || (r.DealId != null && dealIds.Contains(r.DealId.Value))
+                || (r.MemberId != null && memberIds.Contains(r.MemberId.Value))
+                || (r.TaskId != null && runTaskIds.Contains(r.TaskId.Value))
+                || (r.ContractId != null && runContractIds.Contains(r.ContractId.Value))
+                || (r.RecordId != null && runRecordIds.Contains(r.RecordId.Value))
+                || (r.Email != null && addresses.Contains(r.Email.Trim().ToLower())))
+            .OrderBy(r => r.StartedAtUtc).ToListAsync(ct);
+        var runIds = d.AutomationRuns.Select(r => r.Id).ToList();
+        d.AutomationRunSteps = new List<AutomationRunStep>();
+        foreach (var chunk in runIds.Chunk(1000))
+        {
+            var ids = chunk.ToList();
+            d.AutomationRunSteps.AddRange(await Q(db.AutomationRunSteps).Where(x => ids.Contains(x.RunId)).OrderBy(x => x.AtUtc).ToListAsync(ct));
+        }
 
         // ── The audit trail: lines about any of their records, their deals, tasks and money ──
         var audited = recordIds.Concat(d.MoneyRecordIds).Concat(d.Tasks.Select(t => t.Id)).ToList();

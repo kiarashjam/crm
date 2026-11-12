@@ -105,10 +105,11 @@ const MEMBER_MERGE = [
  * and contacts go, the deals and tasks kept lose their name, their timeline, enrolments and
  * messages go, their member account is anonymised with the money on it kept under a
  * pseudonym, their bookings and places on event lists are cancelled, their subscriptions
- * stopped, their household left, and the erasure is logged.
+ * stopped, their household left, the automation runs about them go with their logs, and
+ * the erasure is logged.
  */
 const PERSON_ERASURE = [...new Set([
-  ...LINKED, ...MEMBER_MERGE, 'contracts', 'activities', 'communications', 'campaigns', 'privacy',
+  ...LINKED, ...MEMBER_MERGE, 'contracts', 'activities', 'communications', 'campaigns', 'automations', 'privacy',
 ])];
 
 /**

@@ -88,6 +88,7 @@ public sealed partial class PersonDataService
         var linesBySale = d.SaleLines.GroupBy(l => l.SaleId).ToDictionary(g => g.Key, g => g.OrderBy(l => l.SortOrder).ToList());
         var transactionsByCard = d.GiftCardTransactions.GroupBy(t => t.GiftCardId).ToDictionary(g => g.Key, g => g.OrderBy(t => t.AtUtc).ToList());
         var eventsByContract = d.ContractEvents.GroupBy(e => e.ContractId).ToDictionary(g => g.Key, g => g.ToList());
+        var stepsByRun = d.AutomationRunSteps.GroupBy(x => x.RunId).ToDictionary(g => g.Key, g => g.OrderBy(x => x.AtUtc).ToList());
 
         return
         [
@@ -112,7 +113,11 @@ public sealed partial class PersonDataService
             new("mail/received.json", "Replies received from them.", d.Inbound.Select(i => Row(i)).ToList()),
             new("mail/member-messages.json", "Club messages and campaigns sent to them, with how each went.", d.MemberMessages.Select(m => Row(m)).ToList()),
             new("outreach/sequence-enrolments.json", "Email sequences they were enrolled in.", d.Enrollments.Select(e => Row(e)).ToList()),
-            new("outreach/automation-runs.json", "Automation rules that ran because of their records.", d.AutomationFires.Select(f => Row(f)).ToList()),
+            new("outreach/automation-runs.json", "Automation rules that ran because of their records, with what each step did.",
+                d.AutomationRuns.Select(r => With(Row(r, nameof(AutomationRun.StepsJson), nameof(AutomationRun.ClaimCount), nameof(AutomationRun.CurrentPath)),
+                    "log", RowsOf(stepsByRun.GetValueOrDefault(r.Id)))).ToList()),
+            new("outreach/automation-fired.json", "When a rule was set off by one of their leads or deals before runs were kept with a log: the rule and the time.",
+                d.AutomationFires.Where(f => !d.AutomationRuns.Any(r => r.RuleId == f.RuleId && r.SourceKey == f.SourceKey)).Select(f => (object)Row(f)).ToList()),
             new("outreach/generated-copy.json", "Text the AI writer generated for messages to them.", d.CopyHistory.Select(c => Row(c)).ToList()),
             new("consent/consent-records.json", "Every answer they gave about being contacted, by channel and purpose, with where it came from.", d.Consent.Select(c => Row(c)).ToList()),
             new("consent/suppression-list.json", "Their addresses on the workspace's suppression list.", d.Suppressions.Select(x => Row(x)).ToList()),
