@@ -11,8 +11,9 @@ namespace ACI.Application.Services;
 /// "marketing": a club member's news and offers; their statements and booking confirmations still come.
 /// </param>
 /// <param name="Language">
-/// The language the page reads in unless the visitor picks another: a member's own, else the
-/// workspace's (en, de, fr).
+/// For a club member's link, the language the club writes to them in (en, de, fr), which the
+/// page reads in unless the visitor picks another. Null otherwise (no member, or none set on
+/// them): the page then follows the visitor's browser.
 /// </param>
 public sealed record UnsubscribeDto(string WorkspaceName, string Email, string Scope = UnsubscribeScopes.All, string? Language = null);
 

@@ -319,7 +319,9 @@ public class PublicApplicationsController : ControllerBase
 
     public PublicApplicationsController(IClubApplications applications) => _applications = applications;
 
+    /// <param name="token">The form's link.</param>
     /// <param name="lang">The language the form is read in (en, de, fr): the standard words it shows are in it.</param>
+    /// <param name="ct">Cancels the read when the visitor leaves.</param>
     [HttpGet("{token}")]
     public async Task<ActionResult<PublicApplicationFormDto>> Form(string token, [FromQuery] string? lang, CancellationToken ct)
     {

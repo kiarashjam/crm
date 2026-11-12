@@ -745,7 +745,6 @@ public sealed partial class ClubEventService : IClubEvents
         return RegionalSettings.ZoneOf(zone);
     }
 
-    /// <summary>A moment as the club reads it, in its own time zone: "Friday 13 November 2026 at 19:00".</summary>
     /// <summary>The workspace's number format, or the default one when its locale is not known here.</summary>
     private static CultureInfo NumberCulture(string? locale)
     {
@@ -759,6 +758,7 @@ public sealed partial class ClubEventService : IClubEvents
         }
     }
 
+    /// <summary>A moment as the club reads it, in its own time zone: "Friday 13 November 2026 at 19:00".</summary>
     private static string When(DateTime utc, TimeZoneInfo zone) =>
         TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), zone).ToString("dddd d MMMM yyyy 'at' HH:mm", Words);
 

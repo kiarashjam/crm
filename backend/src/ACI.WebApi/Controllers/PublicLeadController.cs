@@ -27,7 +27,9 @@ public class PublicLeadController : ControllerBase
 
     public PublicLeadController(ILeadOpsService ops) => _ops = ops;
 
+    /// <param name="token">The form's link.</param>
     /// <param name="lang">The language the form is read in (en, de, fr): the standard words it shows are in it.</param>
+    /// <param name="ct">Cancels the read when the visitor leaves.</param>
     [HttpGet("capture/{token}")]
     public async Task<ActionResult<PublicCaptureFormDto>> Form(string token, [FromQuery] string? lang, CancellationToken ct)
     {
