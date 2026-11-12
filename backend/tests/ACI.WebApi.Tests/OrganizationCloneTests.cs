@@ -314,6 +314,24 @@ public class OrganizationCloneTests
                 Id = Guid.NewGuid(), OrganizationId = org.Id, Enabled = true, RefreshTokenProtected = "protected-refresh", AccessTokenProtected = "protected-access",
                 AccessTokenExpiresAtUtc = now.AddHours(1), ConnectedAtUtc = now, LocationId = "46100001", DefaultVenue = "Bar", CreatedAtUtc = now,
             });
+        // Privacy: the workspace's settings, an erasure in its log and a retention run. The copy
+        // holds the original's records, erasures and all, so it keeps their log and its periods.
+        db.AddRange(
+            new PrivacySettings
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, ControllerName = name, MarketingConsent = MarketingConsentModes.Required,
+                LeadRetentionMonths = 24, CreatedAtUtc = now, Version = Guid.NewGuid(),
+            },
+            new PersonErasure
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, Number = 1, Trigger = PersonErasureTriggers.Request, ErasedAtUtc = now,
+                ErasedByUserId = owner, ErasedByName = "Owner", Reference = "Letter of 3 May", SummaryJson = "{\"Leads\":1}",
+            },
+            new RetentionRun
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, Trigger = RetentionRunTriggers.Schedule, ScheduledFor = DateOnly.FromDateTime(now),
+                Status = RetentionRunStatuses.Succeeded, StartedAtUtc = now, FinishedAtUtc = now, LeadsDeleted = 1,
+            });
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
         return new Seeded(org.Id, owner, manager, rep, lead.Id, deal.Id, contact.Id, member.Id, rule.Id, sequence.Id);
