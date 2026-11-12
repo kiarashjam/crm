@@ -396,8 +396,8 @@ click, and flags images that point at a computer or plain http.
 
 A workspace can turn its Sales module (leads, deals, pipelines, outreach, contracts, sales
 reports, the welcome & portal handoff) or its Club module (members, households and
-applications, house accounts and payments, events and bookings, campaigns, the club's
-reports) off. Both are on for every workspace until someone turns one off; nothing is
+applications, house accounts and payments, events and bookings, campaigns, the house-charge
+screen and the POS, the club's reports) off. Both are on for every workspace until someone turns one off; nothing is
 deleted, and turning it on again brings everything back. Contacts, companies, tasks,
 activities, the calendar, the team, automations and settings belong to both.
 

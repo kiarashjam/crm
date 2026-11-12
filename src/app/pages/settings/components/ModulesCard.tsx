@@ -17,7 +17,7 @@ import { servesDemoData } from '@/app/api/apiClient';
 
 const WHAT: Readonly<Record<WorkspaceModule, string>> = {
   sales: 'Leads, deals and pipelines, outreach sequences, contracts and the sales reports.',
-  club: 'Members, households and applications, house accounts and payments, events, bookings, campaigns and the club reports.',
+  club: 'Members, households and applications, house accounts and payments, events, bookings, campaigns, the house-charge screen and the POS, and the club reports.',
 };
 
 export function ModulesCard() {

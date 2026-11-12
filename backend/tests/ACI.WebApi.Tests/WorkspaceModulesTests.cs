@@ -105,6 +105,33 @@ public class WorkspaceModulesTests
     }
 
     [Fact]
+    public async Task TheClubTurnedOff_RefusesTheHouseChargeScreen_ThePosAndMembersCodes_AndComesBackAsItWas()
+    {
+        // The house-charge screen, the POS connection and its tickets, and the codes that name a
+        // member at the POS post to members' house accounts: they are the club's, and answer as
+        // its other endpoints do while it is off.
+        using var app = new CustomWebApplicationFactory();
+        var team = await TeamAsync(app);
+        var anna = (await Json(await team.Owner.PostAsync("/api/members", Body(new { firstName = "Anna", lastName = "Keller", email = "anna@example.ch", tier = "Gold", status = "Active" })), "add Anna"))
+            .GetProperty("id").GetGuid();
+        await Json(await team.Owner.PostAsync($"/api/members/{anna}/codes", Body(new { code = "1042", label = "Member card" })), "give Anna a code");
+
+        await Json(await Set(team, new { club = false }), "turn the club off");
+        await ShouldBeOff(await team.Owner.GetAsync("/api/sales"), "club", "the house-charge screen's sales");
+        await ShouldBeOff(await team.Owner.PostAsync("/api/sales", Body(new { memberId = anna, lines = new[] { new { catalogItemId = Guid.NewGuid(), quantity = 1 } }, tender = "HouseAccount" })),
+            "club", "a sale rung up");
+        await ShouldBeOff(await team.Owner.GetAsync("/api/pos/status"), "club", "the POS");
+        await ShouldBeOff(await team.Owner.GetAsync("/api/pos/tickets"), "club", "the POS tickets");
+        await ShouldBeOff(await team.Owner.PostAsync("/api/pos/import", null), "club", "importing from the POS");
+        await ShouldBeOff(await team.Owner.GetAsync($"/api/members/{anna}/codes"), "club", "a member's codes");
+        await ShouldBeOff(await team.Owner.PostAsync($"/api/members/{anna}/codes", Body(new { code = "2042" })), "club", "giving a member a code");
+
+        await Json(await Set(team, new { club = true }), "turn the club back on");
+        (await Json(await team.Owner.GetAsync($"/api/members/{anna}/codes"), "Anna's codes again")).EnumerateArray()
+            .Select(c => c.GetProperty("code").GetString()).Should().Equal(["1042"], "turning the club off deletes nothing, and gave nobody a code");
+    }
+
+    [Fact]
     public async Task SalesTurnedOff_RefusesLeadsDealsAndTheirReports_LeavesThemOutOfSearch_AndRefusesAFileOfLeads()
     {
         using var app = new CustomWebApplicationFactory();

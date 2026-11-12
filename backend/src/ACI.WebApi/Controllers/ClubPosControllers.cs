@@ -22,6 +22,7 @@ namespace ACI.WebApi.Controllers;
 [WorkspaceRequired]
 [Produces("application/json")]
 [Requires(MemberPermissions.ManageMoney, WritesOnly = true)]
+[InModule(WorkspaceModules.Club)]
 public class PosController : ControllerBase
 {
     private readonly IClubPos _pos;
@@ -151,6 +152,7 @@ public class PosController : ControllerBase
 [WorkspaceRequired]
 [Produces("application/json")]
 [Requires(MemberPermissions.ClubMembers, WritesOnly = true)]
+[InModule(WorkspaceModules.Club)]
 public class MemberCodesController : ControllerBase
 {
     private readonly IClubPos _pos;

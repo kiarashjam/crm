@@ -20,6 +20,7 @@ namespace ACI.WebApi.Controllers;
 [WorkspaceRequired]
 [Produces("application/json")]
 [Requires(MemberPermissions.FrontDesk, WritesOnly = true)]
+[InModule(WorkspaceModules.Club)]
 public class SalesController : ControllerBase
 {
     private readonly IClubLedger _ledger;
