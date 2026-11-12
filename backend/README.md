@@ -298,6 +298,21 @@ for the portal. The callback token is derived from the secret, so making a new s
 retires the tokens of earlier handoffs. A copied organization keeps the template but not the
 portal address or secret.
 
+Images for the welcome email are kept by the workspace and served at public addresses,
+because mail apps show only images they can fetch (most block embedded `data:` images, and
+Pavillon 46 keeps only https ones):
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/email-images` | The workspace's images, newest first, each with its public `url` |
+| `POST` | `/api/email-images` | Multipart `file` (and optionally `width`, `height` in pixels): PNG, JPEG, GIF or WebP, read from its bytes, up to 3 MB; 300 per workspace (Edit records) |
+| `DELETE` | `/api/email-images/{id}` | Removes one; emails already sent with it show it no more (Edit records) |
+| `GET` | `/api/public/email-images/{id}.{ext}` | The image, for any mail app: anonymous, cached for a year, `nosniff` |
+
+The editor in Settings › Welcome & portal (and in the convert dialog's own-email box) adds an
+image at the cursor, takes one pasted or dropped on the HTML, hosts embedded images in one
+click, and flags images that point at a computer or plain http.
+
 `PortalHandoffEndToEndTests` runs the whole round trip against a real portal when
 `CADENCE_E2E_PORTAL` (its handoff address, e.g. a local Pavillon 46 in Development) and
 `CADENCE_E2E_PORTAL_SECRET` (its `CADENCE_ONBOARDING_SECRET`) are set; otherwise it is skipped.

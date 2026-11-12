@@ -301,6 +301,7 @@ try
     builder.Services.AddScoped<IAutomationEngine, AutomationEngine>();
     builder.Services.AddScoped<IClubService, ClubService>();
     builder.Services.AddScoped<IOnboardingService, OnboardingService>();
+    builder.Services.AddScoped<IEmailImageService, EmailImageService>();
     builder.Services.AddScoped<IClubDocumentService, ClubDocumentService>();
     builder.Services.AddScoped<IEventAttendeeService, EventAttendeeService>();
     builder.Services.AddScoped<ITaskService, TaskService>();

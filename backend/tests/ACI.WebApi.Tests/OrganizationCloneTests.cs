@@ -161,6 +161,7 @@ public class OrganizationCloneTests
             new LeadCaptureForm { Id = Guid.NewGuid(), OrganizationId = org.Id, CreatedByUserId = owner, Name = "Website form", PublicToken = Guid.NewGuid().ToString("N"), IsActive = true, CreatedAtUtc = now },
             new LeadOpsSettings { Id = Guid.NewGuid(), OrganizationId = org.Id, SlaHours = 4 },
             new OnboardingSettings { Id = Guid.NewGuid(), OrganizationId = org.Id, WebhookUrl = $"https://portal.{name}.ch/onboarding", WebhookSecret = "s3cret", UpdatedAtUtc = now },
+            new EmailImage { Id = Guid.NewGuid(), OrganizationId = org.Id, FileName = "logo.png", ContentType = "image/png", Size = 4, Content = [0x89, 0x50, 0x4E, 0x47], CreatedAtUtc = now, CreatedByUserId = owner },
             new DealOnboarding
             {
                 Id = Guid.NewGuid(), OrganizationId = org.Id, DealId = deal.Id, ContactId = contact.Id, ClubMemberId = member.Id, Name = "Jean Dupont",

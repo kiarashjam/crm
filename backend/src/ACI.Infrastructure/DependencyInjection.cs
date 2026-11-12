@@ -55,6 +55,7 @@ public static class DependencyInjection
         services.AddScoped<IProductRepository, ProductRepository>();
         services.AddScoped<IOutboxRepository, OutboxRepository>();
         services.AddScoped<IOnboardingRepository, OnboardingRepository>();
+        services.AddScoped<IEmailImageRepository, EmailImageRepository>();
         services.AddScoped<IAutomationRepository, AutomationRepository>();
         services.AddScoped<IClubRepository, ClubRepository>();
         services.AddScoped<IClubDocumentRepository, ClubDocumentRepository>();
