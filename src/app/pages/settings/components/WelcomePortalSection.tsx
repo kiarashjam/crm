@@ -18,6 +18,7 @@ import { cn } from '@/app/components/ui/utils';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import { useOrgMembers } from '@/app/hooks/queries/records';
 import { EmailPreviewFrame, PlaceholderChips, insertAt } from '@/app/components/onboarding';
+import { EmailImageTools } from '@/app/components/onboarding/EmailImageTools';
 
 const STARTER = `<div style="font-family:Georgia,serif;max-width:560px;margin:0 auto;padding:32px;background:#ffffff;color:#0f172a">
   <h1 style="font-weight:normal;margin:0 0 16px">Bienvenue, {{firstName}}</h1>
@@ -343,9 +344,10 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
               rows={16}
               spellCheck={false}
               disabled={!canEdit}
-              className="bg-slate-950 font-mono text-xs text-emerald-200 placeholder:text-slate-500"
+              className="max-h-[28rem] overflow-y-auto bg-slate-950 font-mono text-xs text-emerald-200 placeholder:text-slate-500"
               aria-label="Welcome email HTML"
             />
+            <EmailImageTools html={html} onChange={setHtml} textareaId="welcome-html" disabled={!canEdit} />
             {canEdit && settings && (
               <>
                 <PlaceholderChips fields={settings.cadenceFields} tone="orange" onPick={(t) => setHtml(insertAt('welcome-html', html, t))} />

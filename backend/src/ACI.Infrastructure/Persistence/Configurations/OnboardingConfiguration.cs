@@ -40,3 +40,17 @@ internal sealed class DealOnboardingConfiguration : IEntityTypeConfiguration<Dea
         builder.HasIndex(e => new { e.OrganizationId, e.DealId, e.CreatedAtUtc }).HasDatabaseName("IX_DealOnboardings_OrganizationId_DealId_CreatedAtUtc");
     }
 }
+
+internal sealed class EmailImageConfiguration : IEntityTypeConfiguration<EmailImage>
+{
+    public void Configure(EntityTypeBuilder<EmailImage> builder)
+    {
+        builder.ToTable("EmailImages");
+        builder.HasKey(e => e.Id);
+        builder.Property(e => e.FileName).HasMaxLength(200).IsRequired();
+        builder.Property(e => e.ContentType).HasMaxLength(50).IsRequired();
+        builder.Property(e => e.Content).IsRequired();
+        // The workspace's library, newest first.
+        builder.HasIndex(e => new { e.OrganizationId, e.CreatedAtUtc }).HasDatabaseName("IX_EmailImages_OrganizationId_CreatedAtUtc");
+    }
+}

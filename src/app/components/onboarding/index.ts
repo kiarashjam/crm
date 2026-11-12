@@ -5,3 +5,4 @@ export { DealWelcomeCard } from './DealWelcomeCard';
 export { OnboardingTimeline, useDealOnboarding } from './OnboardingTimeline';
 export { EmailPreviewFrame } from './EmailPreviewFrame';
 export { draftFrom, toPreviewRequest, toStartRequest, startLabel, type WelcomeDraft } from './welcome';
+export { EmailImageTools, imageSources, imageTag } from './EmailImageTools';

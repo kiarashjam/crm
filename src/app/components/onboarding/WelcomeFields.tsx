@@ -8,6 +8,7 @@ import { Textarea } from '@/app/components/ui/textarea';
 import { cn } from '@/app/components/ui/utils';
 import type { OnboardingSettings } from '@/app/api/onboarding';
 import type { WelcomeDraft } from './welcome';
+import { EmailImageTools } from './EmailImageTools';
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 
@@ -232,8 +233,14 @@ export function WelcomeFields({
                             placeholder="Paste your email's HTML here…"
                             rows={6}
                             spellCheck={false}
-                            className="bg-slate-950 font-mono text-xs text-emerald-200 placeholder:text-slate-500"
+                            className="max-h-64 overflow-y-auto bg-slate-950 font-mono text-xs text-emerald-200 placeholder:text-slate-500"
                             aria-label="Email HTML"
+                          />
+                          <EmailImageTools
+                            html={draft.emailHtml}
+                            onChange={(emailHtml) => set({ emailHtml })}
+                            textareaId={`${idPrefix}-html`}
+                            compact
                           />
                           <PlaceholderChips
                             fields={settings?.cadenceFields ?? []}
