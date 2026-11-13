@@ -685,6 +685,66 @@ Dates are written in the person's language with the workspace's region (`fr-CH` 
 "31 décembre 2026" and 31.12.2026), numbers and money in the workspace's number format, and
 the club's date fields read days in the region's order (31.12.2026 in Switzerland).
 
+### Assistant and morning brief
+
+The chat and the morning brief, behind a provider-neutral model interface
+(`IAssistantModel`, implemented for OpenAI on `OpenAI:ApiKey`). Without a key the assistant
+is "not configured": `POST /api/agent/chat` answers 503 `Assistant.NotConfigured`, the app's
+chat answers from its built-in rules, and the morning brief goes out as a plain list.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/agent/chat` | Ask: `{ message, history[{role,text}], page, language }`. The model calls tools that read the records **as the caller sees them** (the MCP tools run as the caller, plus club reads and `my_brief`), the tools offered following the caller's permissions and the workspace's modules. Record text reaches the model fenced as data with a fresh marker per question. Changes come back as `proposals` (task, activity, deal-stage with the version read, email-draft, booking, charge): nothing is written until the person confirms one in the app, which sends it to the endpoint the app's own form uses. 429 when asked too fast (per person, `assistant` policy), when the team asks too much at once, or when the month's allowance is used up (`Ai.MonthlyLimit`); 502 `Assistant.ModelFailed` when the model did not answer properly |
+| `GET` | `/api/agent/settings` | Whether a model is set up, the month's calls against the limit, the limits, and the workspace's morning-briefs switch (anyone in the workspace) |
+| `PUT` | `/api/agent/settings` | Change the monthly limit (0 up to `Assistant:MaxMonthlyLimit`, or `useDefaultLimit`) and `morningBriefs` (settings.manage, version in body or If-Match; 409 when stale) |
+| `GET` | `/api/agent/brief` | The caller's brief now (sections by role and module) and the one sent this morning |
+
+Every call to the model is counted against the workspace's month (`AiUsage`, one row per
+workspace and month, taken with a conditional UPDATE so racing calls cannot pass the limit):
+each turn of an answer, each brief the model writes, and each AI-writer draft
+(`/api/copy/*`, which had no limit before). Outside any organization a person's AI-writer
+drafts are held to `Assistant:PersonalMonthlyLimit`.
+
+The **morning brief** (`MorningBriefService`, run every 15 minutes by
+`MorningBriefBackgroundService`) goes from 07:00 to noon on each workspace's calendar to each
+member whose workspace has briefs on and who has not turned theirs off: their tasks due and
+overdue, their open deals gone quiet (the board's stale days), and with the Club module on,
+as their role allows, members past due (money or members), today's bookings and events (front
+desk or members) and renewals in the next 14 days (members or money). Erased members are left
+out. One per person, workspace and day (a unique `AssistantBriefs` row is the claim; one left
+half done is taken over after 15 minutes), as a notification linking to `/brief`, and by email
+through the outbox (`Source = brief`, for their own team) to those who turned that on in their
+settings (`morningBriefEnabled`, `morningBriefEmail` on `/api/settings`). With a model set up,
+the model writes a few sentences on top of the plain list while at least half of the month's
+allowance is left: every person's brief is a call every day, so past that point the briefs go
+as plain lists and the rest of the month stays for the people asking the assistant.
+
+```json
+{
+  "OpenAI": { "ApiKey": "", "Model": "gpt-4o-mini" },
+  "Assistant": {
+    "Enabled": true,
+    "Provider": "OpenAI",
+    "Model": null,
+    "MaxOutputTokens": 800,
+    "Temperature": 0.2,
+    "TimeoutSeconds": 30,
+    "DefaultMonthlyLimit": 300,
+    "MaxMonthlyLimit": 3000,
+    "PersonalMonthlyLimit": 100,
+    "UserBurst": 20,
+    "UserPerMinute": 3,
+    "WorkspaceBurst": 60,
+    "WorkspacePerMinute": 30,
+    "MaxTurnsPerQuestion": 5
+  }
+}
+```
+
+`Assistant:Model` falls back to `OpenAI:Model`. `Assistant:Enabled=false` turns the assistant
+off while the AI writer keeps the key. Set `Temperature` to null for models that take only
+their default.
+
 ### Configuration (Owner/Manager only)
 
 | Method | Endpoint | Description |

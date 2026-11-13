@@ -53,12 +53,14 @@ export function touches(change: DataChange, resources: readonly string[]): boole
  * for nothing — the Settings page, for one, POSTs to /api/auth/2fa/setup every time
  * it opens. A privacy lookup, an erasure's dry run and an export are POSTs too (they
  * carry an email address, which does not belong in a URL), and change no record: an
- * export only writes its line in the audit trail.
+ * export only writes its line in the audit trail. Asking the assistant changes nothing
+ * either: a change it proposes is made by the person's confirm, through its own endpoint.
  */
 const NOT_RECORD_WRITES = [
   '/api/auth/', '/api/notifications', '/api/copy', '/api/settings', '/api/lead-ops/',
   '/api/imports/analyze', '/api/imports/preview',
   '/api/privacy/find', '/api/privacy/export', '/api/privacy/erasure/preview',
+  '/api/agent/chat',
 ];
 
 /** …except these, under an excluded prefix, which do change records. */

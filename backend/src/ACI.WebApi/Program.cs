@@ -230,6 +230,24 @@ try
                 AutoReplenishment = true,
                 QueueLimit = 0,
             }));
+        // A question to the assistant may take several calls to the model, each billed on the
+        // server's key: per person, a bucket (Assistant:UserBurst, default 20) that refills a few a
+        // minute (Assistant:UserPerMinute, default 3). The workspace's own throttle and its monthly
+        // allowance are checked after the membership check, in IAiBudget.
+        options.AddPolicy("assistant", context =>
+        {
+            var assistant = context.RequestServices.GetRequiredService<Microsoft.Extensions.Options.IOptions<ACI.Application.Configuration.AssistantOptions>>().Value;
+            return System.Threading.RateLimiting.RateLimitPartition.GetTokenBucketLimiter(
+                "assistant:" + (context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "anonymous"),
+                _ => new System.Threading.RateLimiting.TokenBucketRateLimiterOptions
+                {
+                    TokenLimit = Math.Max(1, assistant.UserBurst),
+                    TokensPerPeriod = Math.Max(1, assistant.UserPerMinute),
+                    ReplenishmentPeriod = TimeSpan.FromMinutes(1),
+                    AutoReplenishment = true,
+                    QueueLimit = 0,
+                });
+        });
         // Sign-up is anonymous, so there is no account to count against: this one goes
         // by the connection's address. If Azure's front end hides the caller's address
         // behind its own, the limit becomes one shared by everyone signing up, which
@@ -457,6 +475,10 @@ try
     builder.Services.AddScoped<IGlobalSearchService, GlobalSearchService>();
     builder.Services.AddScoped<IImportService, ImportService>();
     builder.Services.AddScoped<ACI.WebApi.Mcp.CrmMcpTools>();
+    // The in-app assistant: the model's tools as the signed-in person, and the chat that
+    // runs them a few turns at a time against the workspace's monthly AI allowance.
+    builder.Services.AddScoped<ACI.WebApi.Assistant.AssistantTools>();
+    builder.Services.AddScoped<ACI.WebApi.Assistant.AssistantChat>();
 
     // Background services
     builder.Services.AddHostedService<ACI.WebApi.Services.TaskReminderBackgroundService>();
@@ -469,6 +491,8 @@ try
     builder.Services.AddHostedService<ACI.WebApi.Services.OutboxDispatcherBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.LeadFollowUpBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.WeeklyDigestBackgroundService>();
+    // Each person's morning brief, from 07:00 on their workspace's calendar.
+    builder.Services.AddHostedService<ACI.WebApi.Services.MorningBriefBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.PersonContactBackfillBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.GiftCardExpiryBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.CampaignSchedulerBackgroundService>();

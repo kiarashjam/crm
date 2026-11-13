@@ -103,6 +103,125 @@ namespace ACI.Infrastructure.Migrations
                     b.ToTable("Activities", (string)null);
                 });
 
+            modelBuilder.Entity("ACI.Domain.Entities.AiUsage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Calls")
+                        .HasColumnType("int");
+
+                    b.Property<long>("InputTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateOnly>("Month")
+                        .HasColumnType("date");
+
+                    b.Property<Guid?>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("OutputTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Refused")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId", "UserId", "Month")
+                        .IsUnique();
+
+                    b.ToTable("AiUsage", (string)null);
+                });
+
+            modelBuilder.Entity("ACI.Domain.Entities.AssistantBrief", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date");
+
+                    b.Property<bool>("Emailed")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Items")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("SentAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("WrittenByModel")
+                        .HasColumnType("bit");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status", "CreatedAtUtc");
+
+                    b.HasIndex("OrganizationId", "UserId", "Day")
+                        .IsUnique();
+
+                    b.ToTable("AssistantBriefs", (string)null);
+                });
+
+            modelBuilder.Entity("ACI.Domain.Entities.AssistantSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("MonthlyLimit")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("MorningBriefs")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId")
+                        .IsUnique();
+
+                    b.ToTable("AssistantSettings", (string)null);
+                });
+
             modelBuilder.Entity("ACI.Domain.Entities.Attachment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -7424,6 +7543,12 @@ namespace ACI.Infrastructure.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("nvarchar(10)")
                         .HasDefaultValue("en");
+
+                    b.Property<bool>("MorningBriefEmail")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("MorningBriefOff")
+                        .HasColumnType("bit");
 
                     b.Property<string>("Phone")
                         .HasMaxLength(32)

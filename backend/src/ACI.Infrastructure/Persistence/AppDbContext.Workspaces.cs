@@ -193,6 +193,13 @@ public partial class AppDbContext
         Scope<MemberPortalAccount>(model, e => e.OrganizationId);
         Scope<MemberPortalSession>(model, e => e.OrganizationId);
         Scope<MemberPortalLink>(model, e => e.OrganizationId);
+        // The assistant. A workspace's usage of the language model is its own; outside any
+        // organization, a person's use of the AI writer is counted on a row of their own. The
+        // morning brief job finds who is due across workspaces first (IgnoreQueryFilters, said
+        // where), then acts for each workspace.
+        Scope<AiUsage>(model, e => e.OrganizationId, e => e.UserId);
+        Scope<AssistantSettings>(model, e => e.OrganizationId);
+        Scope<AssistantBrief>(model, e => e.OrganizationId);
 
         // Copy templates follow a person rather than a workspace (TemplateRepository): the
         // system's templates are everyone's, a person's own go with them, and a team's

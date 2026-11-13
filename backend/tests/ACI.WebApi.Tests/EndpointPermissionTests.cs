@@ -50,6 +50,7 @@ public class EndpointPermissionTests
         ["WebhookController.UpdateWebhookPassword"] = "OrganizationService: settings.manage",
         ["WebhookController.UpdateOutbound"] = "OrganizationService: settings.manage",
         ["OnboardingController.Preview"] = "reads only: the welcome email filled as it would go, nothing kept or sent",
+        ["AgentController.Chat"] = "reads only, as the caller sees the records: a change it proposes is made only by the caller's confirm, through the endpoint that makes it and that endpoint's permission",
         // A member signed in to the member portal: no member of the team, so no permission of the
         // team's; the member's token reaches only their own records (MemberPortalService).
         ["MemberPortalController.*"] = "a member's own club account in the member portal, by their own session",

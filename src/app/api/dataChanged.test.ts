@@ -22,6 +22,9 @@ describe('which writes count as a record change', () => {
     expect(changesRecords('POST', 'https://api.example.com/api/auth/login')).toBe(false);
     expect(changesRecords('PUT', '/api/notifications/read-all')).toBe(false);
     expect(changesRecords('POST', '/api/copy/generate')).toBe(false);
+    // Asking the assistant: what it proposes is made by a confirm, through that record's endpoint.
+    expect(changesRecords('POST', '/api/agent/chat')).toBe(false);
+    expect(changesRecords('PUT', '/api/agent/settings')).toBe(true);
     expect(changesRecords('PUT', '/api/settings')).toBe(false);
   });
 

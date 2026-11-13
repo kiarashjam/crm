@@ -236,6 +236,11 @@ public static class OutboundSources
     /// posted there rather than to its events address, with SourceId the handoff.
     /// </summary>
     public const string Onboarding = "onboarding";
+    /// <summary>
+    /// A person's morning brief, to their own address when they asked for it by email;
+    /// <see cref="OutboundMessage.SourceId"/> is the brief (AssistantBrief).
+    /// </summary>
+    public const string Brief = "brief";
 }
 
 /// <summary>

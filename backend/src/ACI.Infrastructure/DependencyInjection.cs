@@ -166,6 +166,28 @@ public static class DependencyInjection
             }
         });
 
+        // The assistant's language model, behind a provider-neutral interface. OpenAI first,
+        // on the AI writer's key; a provider this server does not know leaves the assistant
+        // "not configured", and the app keeps its built-in rules.
+        services.Configure<AssistantOptions>(configuration.GetSection(AssistantOptions.SectionName));
+        services.AddHttpClient(ACI.Infrastructure.Services.Assistant.OpenAIAssistantModel.HttpClientName, (sp, client) =>
+            client.Timeout = TimeSpan.FromSeconds(Math.Clamp(sp.GetRequiredService<IOptions<AssistantOptions>>().Value.TimeoutSeconds, 5, 120)));
+        services.AddSingleton<IAssistantModel>(sp =>
+        {
+            var provider = sp.GetRequiredService<IOptions<AssistantOptions>>().Value.Provider?.Trim() ?? "";
+            return string.Equals(provider, "OpenAI", StringComparison.OrdinalIgnoreCase)
+                ? ActivatorUtilities.CreateInstance<ACI.Infrastructure.Services.Assistant.OpenAIAssistantModel>(sp)
+                : new ACI.Infrastructure.Services.Assistant.UnconfiguredAssistantModel(provider);
+        });
+        // What calls to the model may cost: the month's allowance per workspace (or person,
+        // outside any organization) and the short-term throttle per workspace; and the settings
+        // a manager keeps them by.
+        services.AddSingleton<ACI.Infrastructure.Services.Assistant.AiWorkspaceThrottle>();
+        services.AddScoped<IAiBudget, ACI.Infrastructure.Services.Assistant.AiBudget>();
+        services.AddScoped<IAssistantSettingsService, ACI.Infrastructure.Services.Assistant.AssistantSettingsService>();
+        services.AddScoped<IClubAssistantReads, ACI.Infrastructure.Services.Assistant.ClubAssistantReads>();
+        services.AddScoped<IMorningBrief, ACI.Infrastructure.Services.Assistant.MorningBriefService>();
+
         services.AddDataProtection().SetApplicationName("ACI");
         services.AddSingleton<ISecretProtector, DataProtectionSecretProtector>();
 

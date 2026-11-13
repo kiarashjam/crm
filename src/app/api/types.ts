@@ -489,6 +489,10 @@ export interface UserSettings {
   browserNotificationsEnabled: boolean;
   /** A weekly email of the figures for each workspace this person owns or manages. Off by default. */
   weeklyDigestEnabled?: boolean;
+  /** A morning brief of the day in each workspace, as a notification. On unless turned off. */
+  morningBriefEnabled?: boolean;
+  /** The morning brief by email as well (through the outbox). Off unless turned on. */
+  morningBriefEmail?: boolean;
 
   // Defaults
   defaultPipelineId?: string;
@@ -542,6 +546,8 @@ export interface UpdateUserSettingsRequest {
   inAppSoundEnabled?: boolean;
   browserNotificationsEnabled?: boolean;
   weeklyDigestEnabled?: boolean;
+  morningBriefEnabled?: boolean;
+  morningBriefEmail?: boolean;
 
   // Defaults
   defaultPipelineId?: string;
