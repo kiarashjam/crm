@@ -19,6 +19,8 @@ public class EndpointModuleTests
     private static readonly Dictionary<string, string> InNoModule = new()
     {
         ["AuthController"] = "the caller's own sign-in, password and two-step codes",
+        ["SsoController"] = "the caller's own sign-in with Google or Microsoft",
+        ["PasskeysController"] = "the caller's own passkeys, and signing in with one",
         ["SettingsController"] = "the caller's own preferences",
         ["NotificationsController"] = "the caller's own bell",
         ["OrganizationsController"] = "the workspace itself, where its modules are turned on and off",

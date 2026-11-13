@@ -181,6 +181,13 @@ public sealed class ActsForRouteOrganizationAttribute : Attribute, IAsyncActionF
             && Guid.TryParse(context.RouteData.Values[RouteKey]?.ToString(), out var organizationId)
             && await services.GetRequiredService<IOrganizationRepository>().IsMemberAsync(userId, organizationId, context.HttpContext.RequestAborted))
         {
+            // Its settings, members, keys and invitations are the workspace's too: one that
+            // requires single sign-on refuses them to a session that began another way.
+            if (await SsoGate.RefusalAsync(context.HttpContext, organizationId, context.HttpContext.RequestAborted, knownMember: true) is { } refusal)
+            {
+                context.Result = refusal;
+                return;
+            }
             using (services.GetRequiredService<ITenantContext>().ActFor(organizationId, userId))
                 await next();
             return;

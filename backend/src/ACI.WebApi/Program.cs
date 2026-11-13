@@ -233,6 +233,29 @@ try
                 Window = TimeSpan.FromMinutes(10),
                 QueueLimit = 0,
             }));
+        // Single sign-on and passkey sign-in are anonymous too, so they also go by the address,
+        // each with its own allowance. A sign-on is three requests (start, the provider's
+        // callback, the hand-back) and a passkey sign-in two. 150 per ten minutes is fifty
+        // sign-ons: a whole office behind one address signing in at nine still fits (at 60, the
+        // twenty-first person was turned away), while a script filling the table of sign-ons in
+        // progress stops; the state and the hand-back code are 256-bit secrets, not guessable.
+        // Failed passkeys also count against the account they name (AuthAttemptLimiter).
+        options.AddPolicy("sso", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            "sso:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 150,
+                Window = TimeSpan.FromMinutes(10),
+                QueueLimit = 0,
+            }));
+        options.AddPolicy("passkey", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            "passkey:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 30,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
     });
     builder.Services.AddResponseCompression(options => options.EnableForHttps = true);
     builder.Services.AddEndpointsApiExplorer();
@@ -537,6 +560,9 @@ try
     app.UseRateLimiter();
     app.UseAuthorization();
     app.UseMiddleware<ACI.WebApi.Middleware.OrganizationAccessMiddleware>();
+    // After the header is checked: a workspace that requires single sign-on refuses sessions
+    // that began another way, for the members it applies to.
+    app.UseMiddleware<ACI.WebApi.Middleware.SsoRequirementMiddleware>();
     // Must follow OrganizationAccessMiddleware: the organization header is validated
     // (and stripped when forged) before the read-only role is resolved from it.
     app.UseMiddleware<ACI.WebApi.Middleware.ReadOnlyMemberMiddleware>();

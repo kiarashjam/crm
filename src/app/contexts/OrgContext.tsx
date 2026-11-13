@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -21,6 +22,7 @@ import {
   watchSessionInOtherTabs,
   getAuthToken,
   AUTH_SESSION_CHANGED,
+  SSO_SIGN_IN_NEEDED,
 } from '@/app/lib/auth';
 import { servesDemoData } from '@/app/api/apiClient';
 
@@ -134,6 +136,29 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       window.removeEventListener(AUTH_SESSION_CHANGED, onSessionChanged);
       stopWatching();
     };
+  }, [refreshOrgs]);
+
+  // A workspace began refusing this session because its owner turned single sign-on on
+  // while it was open (the request said Sso.Required): read the workspaces again, so it
+  // says why and offers the way in rather than failing every request. Not when the list
+  // says so already, and once in ten seconds per workspace at most: a page that reads the
+  // list again would otherwise be refused, ask again, and so on.
+  const organizationsRef = useRef(organizations);
+  useEffect(() => {
+    organizationsRef.current = organizations;
+  }, [organizations]);
+  useEffect(() => {
+    const lastAsked = new Map<string, number>();
+    const onSsoSignInNeeded = (event: Event) => {
+      const orgId = (event as CustomEvent<{ organizationId?: string }>).detail?.organizationId;
+      if (!orgId || organizationsRef.current.find((o) => o.id === orgId)?.ssoSignInNeeded) return;
+      const now = Date.now();
+      if (now - (lastAsked.get(orgId) ?? -Infinity) < 10_000) return;
+      lastAsked.set(orgId, now);
+      void refreshOrgs();
+    };
+    window.addEventListener(SSO_SIGN_IN_NEEDED, onSsoSignInNeeded);
+    return () => window.removeEventListener(SSO_SIGN_IN_NEEDED, onSsoSignInNeeded);
   }, [refreshOrgs]);
 
   // A tab opened from this one (a deal opened in a new tab, a middle-clicked link)

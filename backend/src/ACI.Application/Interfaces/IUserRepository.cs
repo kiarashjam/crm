@@ -17,6 +17,12 @@ public interface IUserRepository
     Task<string?> GetSecurityStampAsync(Guid userId, CancellationToken ct = default);
     Task<User> AddAsync(User user, CancellationToken ct = default);
     Task UpdateAsync(User user, CancellationToken ct = default);
+
+    /// <summary>
+    /// Removes every passkey the user has added, and saves. Changes made to the user's
+    /// tracked row in the same request are saved with it.
+    /// </summary>
+    Task RemovePasskeysAsync(Guid userId, CancellationToken ct = default);
     Task<UserSettings?> GetSettingsAsync(Guid userId, CancellationToken ct = default);
     Task<UserSettings> UpsertSettingsAsync(UserSettings settings, CancellationToken ct = default);
 }

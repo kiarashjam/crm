@@ -1,5 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   ArrowLeft, ArrowRight, Sparkles, Play, Mail, Lock, User as UserIcon,
   Eye, EyeOff, Loader2, AlertCircle, ShieldCheck, Workflow, BarChart3, Bot,
@@ -19,6 +20,11 @@ import { invitationToResume } from '@/app/lib/inviteLink';
 import { BrandName } from '@/app/components/BrandName';
 import { useT, type Language, type MessageKey } from '@/app/i18n';
 import { LanguageSwitcher } from '@/app/i18n/LanguageSwitcher';
+import { AlternativeSignIn } from '@/app/components/auth/AlternativeSignIn';
+import {
+  getSignInOptions, keepWorkspaceFor, passkeySecondFactor, passkeysSupported, safeReturnTo, type KeptWorkspace,
+} from '@/app/api/signIn';
+import type { LoginResponse } from '@/app/api/auth';
 
 const HIGHLIGHTS: { icon: typeof Bot; title: MessageKey; body: MessageKey }[] = [
   { icon: Bot, title: 'login.highlight1Title', body: 'login.highlight1Body' },
@@ -40,6 +46,13 @@ export default function Login() {
   };
   // An invitation link opened while signed out: go back to it, token and all.
   const resumeInvitation = invitationToResume(location.state);
+  // Back from single sign-on with two-factor sign-in on: the code (or a passkey) is next.
+  const fromSso = location.state as { twoFactorToken?: string; returnTo?: string | null; kept?: KeptWorkspace | null } | null;
+  const afterSignIn = resumeInvitation ?? safeReturnTo(fromSso?.returnTo);
+  // A passkey in place of the code only where the server takes passkeys (the same answer
+  // the other ways in below read) and this browser can use one.
+  const signInOptions = useQuery({ queryKey: ['sign-in-options'], queryFn: getSignInOptions, staleTime: 5 * 60_000, retry: 1 });
+  const passkeyInsteadOfCode = Boolean(signInOptions.data?.passkeys) && passkeysSupported();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -47,8 +60,8 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const [requires2fa, setRequires2fa] = useState(false);
-  const [twoFactorToken, setTwoFactorToken] = useState<string | null>(null);
+  const [requires2fa, setRequires2fa] = useState(Boolean(fromSso?.twoFactorToken));
+  const [twoFactorToken, setTwoFactorToken] = useState<string | null>(fromSso?.twoFactorToken ?? null);
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [errorModal, setErrorModal] = useState<{ message: string; was2fa: boolean } | null>(null);
@@ -70,8 +83,9 @@ export default function Login() {
         if (!res.token || !res.user) throw new Error('Login failed');
         setSession(res.token, res.user);
         keepPickedLanguage();
+        keepWorkspaceFor(res.user, fromSso?.kept);
         toast.success(messages.auth.signedIn);
-        navigate(resumeInvitation ?? '/dashboard', { replace: true });
+        navigate(afterSignIn ?? '/dashboard', { replace: true });
         return;
       }
 
@@ -97,6 +111,37 @@ export default function Login() {
       setError(msg);
       // Surface a detailed, explained failure dialog (what happened + why).
       setErrorModal({ message: msg, was2fa: requires2fa });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  /** A sign-in another way (a passkey, or a passkey in place of the code) handed back a session or the 2FA step. */
+  const signedInAnotherWay = (res: LoginResponse) => {
+    if (res.requiresTwoFactor && res.twoFactorToken) {
+      setRequires2fa(true);
+      setTwoFactorToken(res.twoFactorToken);
+      toast.message(messages.auth.twoFactorCodeRequired);
+      return;
+    }
+    if (!res.token || !res.user) {
+      setError(messages.errors.generic);
+      return;
+    }
+    setSession(res.token, res.user);
+    keepWorkspaceFor(res.user, fromSso?.kept);
+    toast.success(messages.auth.signedIn);
+    navigate(afterSignIn ?? (isUsingRealApi() ? '/organizations' : '/dashboard'), { replace: true });
+  };
+
+  const answerWithPasskey = async () => {
+    if (!twoFactorToken || submitting) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      signedInAnotherWay(await passkeySecondFactor(twoFactorToken));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : messages.errors.generic);
     } finally {
       setSubmitting(false);
     }
@@ -301,6 +346,13 @@ export default function Login() {
                     <div className="h-px flex-1 bg-slate-200" />
                   </div>
 
+                  <AlternativeSignIn
+                    onSignedIn={signedInAnotherWay}
+                    onError={setError}
+                    withPasskey={mode === 'login'}
+                    returnTo={afterSignIn}
+                  />
+
                   <button
                     type="button"
                     onClick={startDemo}
@@ -337,6 +389,17 @@ export default function Login() {
                   >
                     {submitting ? <><Loader2 className="h-4 w-4 animate-spin" /> {t('login.verifying')}</> : t('login.verify')}
                   </button>
+
+                  {passkeyInsteadOfCode && (
+                    <button
+                      type="button"
+                      onClick={() => void answerWithPasskey()}
+                      disabled={submitting}
+                      className="h-11 w-full rounded-xl border border-slate-200 font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60"
+                    >
+                      Use a passkey instead
+                    </button>
+                  )}
 
                   <button
                     type="button"

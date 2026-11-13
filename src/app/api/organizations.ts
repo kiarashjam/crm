@@ -26,6 +26,10 @@ export interface Organization {
   clubEnabled?: boolean;
   /** Whether CSV exports split columns by a semicolon (Excel set up for Switzerland) rather than a comma. */
   csvSemicolon?: boolean;
+  /** Whether the owner requires the team to sign in with Google or Microsoft here. */
+  ssoRequired?: boolean;
+  /** Whether this workspace refuses the current session (it began with a password or a passkey): sign in with SSO to open it. */
+  ssoSignInNeeded?: boolean;
 }
 
 /**

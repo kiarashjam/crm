@@ -92,6 +92,9 @@ public static class PersonDataInventory
     {
         [typeof(User)] = "Staff accounts: a person's own account, not a record the workspace keeps about someone.",
         [typeof(UserSettings)] = "A staff member's own preferences.",
+        [typeof(UserExternalLogin)] = "A staff member's own Google or Microsoft sign-in: the provider's account id and the address it vouched for.",
+        [typeof(UserPasskey)] = "A staff member's own passkeys: public keys and the names they gave them.",
+        [typeof(AuthChallenge)] = "Sign-in steps in progress, deleted when used or a few minutes after they expire.",
         [typeof(Organization)] = "The workspace itself.",
         [typeof(OrganizationMember)] = "Staff membership of the workspace.",
         [typeof(OrgSettings)] = "The workspace's settings.",

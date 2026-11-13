@@ -21,7 +21,9 @@ public record OrganizationDto(
     IReadOnlyList<string>? Permissions = null,
     bool SalesEnabled = true,
     bool ClubEnabled = true,
-    bool CsvSemicolon = false);
+    bool CsvSemicolon = false,
+    bool SsoRequired = false,
+    bool SsoSignInNeeded = false);
 
 /// <summary>
 /// What a workspace works in. Each field left out keeps its current value.

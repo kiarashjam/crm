@@ -22,6 +22,8 @@ public class EndpointPermissionTests
     private static readonly Dictionary<string, string> NoPermissionNeeded = new()
     {
         ["AuthController.*"] = "the caller's own sign-in, password and two-step codes",
+        ["SsoController.*"] = "the caller's own sign-in with Google or Microsoft",
+        ["PasskeysController.*"] = "the caller's own passkeys, and signing in with one",
         ["SettingsController.*"] = "the caller's own preferences",
         ["NotificationsController.*"] = "the caller's own bell",
         ["OrganizationsController.Create"] = "a new organization of their own",
@@ -31,6 +33,7 @@ public class EndpointPermissionTests
         // checks the caller's permissions in it (OrganizationService and friends).
         ["OrganizationsController.UpdateSettings"] = "OrganizationService: settings.manage",
         ["OrganizationsController.UpdateModules"] = "WorkspaceModuleService: settings.manage",
+        ["OrganizationsController.UpdateSso"] = "OrganizationSsoService: the owner alone",
         ["OrganizationsController.UpdateEmailSending"] = "EmailSendingService: settings.manage",
         ["OrganizationsController.LiftEmailSuppression"] = "EmailSendingService: settings.manage",
         ["OrganizationsController.AddMember"] = "OrganizationService: members.manage, and no more than the caller holds",
