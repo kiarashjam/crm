@@ -63,7 +63,7 @@ describe('the club client calls', () => {
 
     await downloadClientStatementPdf('company', 'acme', '2026-11-01T00:00:00.000Z', '2026-12-01T00:00:00.000Z');
 
-    expect(requests[0].search).toBe(`?from=${encodeURIComponent('2026-11-01T00:00:00.000Z')}&to=${encodeURIComponent('2026-12-01T00:00:00.000Z')}`);
+    expect(requests[0]!.search).toBe(`?from=${encodeURIComponent('2026-11-01T00:00:00.000Z')}&to=${encodeURIComponent('2026-12-01T00:00:00.000Z')}`);
     expect(saved.files).toEqual([{ name: 'Company statement Acme AG.pdf', type: 'application/pdf' }]);
   });
 
@@ -86,7 +86,7 @@ describe('the club client calls', () => {
     await renewCorporateMembership('cm-1', 'v7');
 
     expect(requests[0]).toMatchObject({ method: 'PUT', ifMatch: '"v1"' });
-    expect(JSON.parse(requests[0].body)).toEqual({ guestCount: 30, version: 'v1' });
+    expect(JSON.parse(requests[0]!.body)).toEqual({ guestCount: 30, version: 'v1' });
     expect(requests[1]).toMatchObject({ method: 'POST', path: '/api/corporate-memberships/cm-1/renew', ifMatch: '"v7"' });
   });
 
@@ -100,7 +100,7 @@ describe('the club client calls', () => {
     await checkInPrivateEventGuest('pe-1', 'g-1');
     await checkInPrivateEventGuest('pe-1', 'g-1', true);
 
-    expect(JSON.parse(requests[0].body)).toEqual({ reason: 'Acme postponed', deposit: 'release' });
+    expect(JSON.parse(requests[0]!.body)).toEqual({ reason: 'Acme postponed', deposit: 'release' });
     expect(requests.slice(1).map((r) => r.path)).toEqual(['/api/private-events/pe-1/guests/g-1/check-in', '/api/private-events/pe-1/guests/g-1/undo-check-in']);
   });
 
@@ -116,7 +116,7 @@ describe('the club client calls', () => {
     );
 
     expect(await getPrivateEvents({ fromUtc: '2026-11-13T00:00:00Z', companyId: 'acme' })).toHaveLength(1);
-    expect(requests[0].search).toBe('?from=2026-11-13T00%3A00%3A00Z&companyId=acme');
+    expect(requests[0]!.search).toBe('?from=2026-11-13T00%3A00%3A00Z&companyId=acme');
     await expect(createPrivateEvent({ title: 'Party', companyId: 'acme' })).rejects.toThrow(/Terrace is already booked/);
     await expect(addNominee('cm-1', 'ben')).rejects.toMatchObject({ status: 409, code: 'CorporateMembership.SeatsFull.Conflict' });
   });
