@@ -12,7 +12,7 @@ namespace ACI.WebApi.Controllers;
 
 /// <summary>
 /// The assistant: whether a language model is set up, the workspace's settings for it (its
-/// monthly limit and morning briefs), and the chat.
+/// monthly limit and morning briefs), the chat, and the caller's morning brief.
 /// </summary>
 /// <remarks>
 /// In no module of its own: it answers about the Sales module's records and the Club module's,
@@ -28,12 +28,14 @@ public class AgentController : ControllerBase
     private readonly IAssistantSettingsService _settings;
     private readonly ICurrentUserService _currentUser;
     private readonly AssistantChat _chat;
+    private readonly IMorningBrief _brief;
 
-    public AgentController(IAssistantSettingsService settings, ICurrentUserService currentUser, AssistantChat chat)
+    public AgentController(IAssistantSettingsService settings, ICurrentUserService currentUser, AssistantChat chat, IMorningBrief brief)
     {
         _settings = settings;
         _currentUser = currentUser;
         _chat = chat;
+        _brief = brief;
     }
 
     /// <summary>
@@ -54,6 +56,20 @@ public class AgentController : ControllerBase
         if (_currentUser.CurrentOrganizationId is not Guid org || _currentUser.UserId is not Guid user) return Unauthorized();
         var result = await _chat.AskAsync(org, user, _currentUser.UserName, request, ct);
         return result.IsSuccess ? Ok(result.Value) : result.Error.ToProblemResult();
+    }
+
+    /// <summary>
+    /// The caller's morning brief: their day in this workspace worked out now (tasks due, deals
+    /// gone quiet, and as their role allows the club's day), and the brief that went out this
+    /// morning, as it was written, when one did. Built from the records as the caller may see
+    /// them; it calls no language model.
+    /// </summary>
+    [HttpGet("brief")]
+    [ProducesResponseType(typeof(MorningBriefView), StatusCodes.Status200OK)]
+    public async Task<ActionResult<object>> Brief(CancellationToken ct)
+    {
+        if (_currentUser.CurrentOrganizationId is not Guid org || _currentUser.UserId is not Guid user) return Unauthorized();
+        return Ok(await _brief.TodayAsync(org, user, ct));
     }
 
     /// <summary>

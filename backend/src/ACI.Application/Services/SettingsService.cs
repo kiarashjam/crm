@@ -85,6 +85,9 @@ public class SettingsService : ISettingsService
         if (request.InAppSoundEnabled.HasValue) settings.InAppSoundEnabled = request.InAppSoundEnabled.Value;
         if (request.BrowserNotificationsEnabled.HasValue) settings.BrowserNotificationsEnabled = request.BrowserNotificationsEnabled.Value;
         if (request.WeeklyDigestEnabled.HasValue) settings.WeeklyDigestEnabled = request.WeeklyDigestEnabled.Value;
+        // Stored as "off", so everyone who never chose gets the brief: a new column defaults to false.
+        if (request.MorningBriefEnabled.HasValue) settings.MorningBriefOff = !request.MorningBriefEnabled.Value;
+        if (request.MorningBriefEmail.HasValue) settings.MorningBriefEmail = request.MorningBriefEmail.Value;
 
         // Defaults
         if (request.DefaultPipelineId != null) settings.DefaultPipelineId = request.DefaultPipelineId;
@@ -200,6 +203,8 @@ public class SettingsService : ISettingsService
         InAppSoundEnabled = s.InAppSoundEnabled,
         BrowserNotificationsEnabled = s.BrowserNotificationsEnabled,
         WeeklyDigestEnabled = s.WeeklyDigestEnabled,
+        MorningBriefEnabled = !s.MorningBriefOff,
+        MorningBriefEmail = s.MorningBriefEmail,
 
         // Defaults
         DefaultPipelineId = s.DefaultPipelineId,

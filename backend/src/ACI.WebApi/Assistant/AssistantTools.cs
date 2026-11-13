@@ -53,6 +53,7 @@ public sealed class AssistantTools
     private readonly IDealService _deals;
     private readonly IContactService _contacts;
     private readonly IDealStageService _stages;
+    private readonly IMorningBrief _brief;
     private readonly ILogger<AssistantTools> _logger;
 
     public AssistantTools(
@@ -62,6 +63,7 @@ public sealed class AssistantTools
         IDealService deals,
         IContactService contacts,
         IDealStageService stages,
+        IMorningBrief brief,
         ILogger<AssistantTools> logger)
     {
         _crm = crm;
@@ -70,6 +72,7 @@ public sealed class AssistantTools
         _deals = deals;
         _contacts = contacts;
         _stages = stages;
+        _brief = brief;
         _logger = logger;
     }
 
@@ -86,6 +89,10 @@ public sealed class AssistantTools
             if (!scope.SalesOn && !SharedCrmTools.Contains(name)) continue;
             tools.Add(new AssistantTool(name, definition["description"]!.GetValue<string>(), (JsonObject)definition["inputSchema"]!.DeepClone()));
         }
+
+        // The person's own day, as the morning brief puts it: what their role lets them see.
+        tools.Add(Tool("my_brief", "The person's day today, as their morning brief puts it: their tasks due and overdue, their deals gone quiet, and as their role allows members past due, today's bookings and events, and renewals coming up.",
+            Props()));
 
         if (scope.ClubOn)
         {
@@ -189,6 +196,7 @@ public sealed class AssistantTools
             {
                 "search_members" => await _club.SearchMembersAsync(org, Text(args, "query", 100), Int(args, "limit") ?? 10, ct),
                 "get_member" => Id(args, "id") is Guid id ? await _club.MemberAsync(org, id, ct) ?? "Error: no such member in this club." : "Error: id must be a member's GUID.",
+                "my_brief" => _brief.PlainText(await _brief.BuildAsync(org, scope.Actor.UserId, scope.NowUtc, ct)),
                 "club_today" => await _club.TodayAsync(org, ct),
                 "renewals_due" => await _club.RenewalsDueAsync(org, Int(args, "days") ?? 30, ct),
                 "upcoming_events" => await _club.UpcomingEventsAsync(org, Int(args, "days") ?? 14, ct),

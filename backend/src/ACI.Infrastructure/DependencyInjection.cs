@@ -186,6 +186,7 @@ public static class DependencyInjection
         services.AddScoped<IAiBudget, ACI.Infrastructure.Services.Assistant.AiBudget>();
         services.AddScoped<IAssistantSettingsService, ACI.Infrastructure.Services.Assistant.AssistantSettingsService>();
         services.AddScoped<IClubAssistantReads, ACI.Infrastructure.Services.Assistant.ClubAssistantReads>();
+        services.AddScoped<IMorningBrief, ACI.Infrastructure.Services.Assistant.MorningBriefService>();
 
         services.AddDataProtection().SetApplicationName("ACI");
         services.AddSingleton<ISecretProtector, DataProtectionSecretProtector>();

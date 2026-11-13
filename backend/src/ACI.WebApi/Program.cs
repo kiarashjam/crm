@@ -491,6 +491,8 @@ try
     builder.Services.AddHostedService<ACI.WebApi.Services.OutboxDispatcherBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.LeadFollowUpBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.WeeklyDigestBackgroundService>();
+    // Each person's morning brief, from 07:00 on their workspace's calendar.
+    builder.Services.AddHostedService<ACI.WebApi.Services.MorningBriefBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.PersonContactBackfillBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.GiftCardExpiryBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.CampaignSchedulerBackgroundService>();
