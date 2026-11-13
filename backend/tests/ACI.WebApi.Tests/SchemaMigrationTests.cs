@@ -75,15 +75,27 @@ public class SchemaMigrationTests
     }
 
     /// <summary>
-    /// The upgrade the release with the module switches and the POS makes: a database that has
-    /// every migration of the release before (up to AddOnboardingSender) takes the three this
-    /// release adds. Two of them (AddWorkspaceModuleSwitches, AddClubSalesAndPosTickets) are
-    /// dated before the welcome migrations it already has, so there they run after them, while
-    /// a new database runs them before; two groups made them side by side and they met only in
-    /// the merge. The database must end up as a new one is.
+    /// The migrations after the baseline that the release before this one had, which production
+    /// has run: main's, up to AddOnboardingSender, then AddLeadKinds (kiarashjam/crm#91).
+    /// </summary>
+    private static readonly string[] ReleaseBefore =
+    [
+        "AddMemberConsentRecords", "AddOutboundMessagePurpose", "AddClubMoneyLedger", "MoveCampaignsAndMessagesToTables",
+        "MoveEventsAndReservationsToTables", "AddClubCatalogAndBilling", "AddClubPaymentsAndAccounting",
+        "AddMembershipBridgeAndHouseholds", "RememberWhetherAnApplicantWasAMemberBefore",
+        "AddDealOnboarding", "AddEmailImages", "AddOnboardingSender", "AddLeadKinds",
+    ];
+
+    /// <summary>
+    /// The upgrade this release makes: a database with every migration of the release before
+    /// (main's, ending with AddLeadKinds) takes every one this release adds. Four of them
+    /// (AddWorkspaceModuleSwitches, AddClubSalesAndPosTickets, AddCampaignSendAttempts,
+    /// AddAutomationRunsAndConditions) are dated before migrations it already has, so there
+    /// they run after them, while a new database runs them before; the groups made them side by
+    /// side and they met only in a merge. The database must end up as a new one is.
     /// </summary>
     [SqlServerFact]
-    public async Task ADatabaseAtTheReleaseBeforeTakesTheModuleAndPosMigrationsDatedBeforeOnesItHas()
+    public async Task ADatabaseAtTheReleaseBeforeTakesThisReleasesMigrations_EvenThoseDatedBeforeOnesItHas()
     {
         await SqlServerApp.WaitForServerAsync();
         var database = await SqlServerApp.NewDatabaseAsync();
@@ -94,22 +106,21 @@ public class SchemaMigrationTests
             await using (var db = SqlServerSchema.Context(database))
             {
                 var ids = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
-                added = ids.Where(id => id.EndsWith("_AddWorkspaceModuleSwitches", StringComparison.Ordinal)
-                        || id.EndsWith("_AddClubSalesAndPosTickets", StringComparison.Ordinal)
-                        || id.EndsWith("_AddCampaignSendAttempts", StringComparison.Ordinal))
-                    .ToArray();
-                added.Should().HaveCount(3);
-                ids.Should().Contain(id => id.EndsWith("_AddOnboardingSender", StringComparison.Ordinal)
-                    && string.CompareOrdinal(id, added[0]) > 0, "the release before had migrations dated after two of these");
+                var after = ids.Where(id => string.CompareOrdinal(id, SchemaBaseline.MigrationId) > 0).ToList();
+                var shipped = after.Where(id => ReleaseBefore.Any(name => id.EndsWith("_" + name, StringComparison.Ordinal))).ToArray();
+                shipped.Should().HaveCount(ReleaseBefore.Length, "every migration the release before had is in this one too, unchanged");
+                added = after.Except(shipped).ToArray();
+                added.Where(id => string.CompareOrdinal(id, shipped[^1]) < 0).Should().HaveCount(4,
+                    "the release before had a migration dated after four of this release's");
 
                 // As the release before left it: the baseline, then every later migration it had, in order.
                 await db.GetService<IMigrator>().MigrateAsync(SchemaBaseline.MigrationId);
-                foreach (var id in ids.Where(id => string.CompareOrdinal(id, SchemaBaseline.MigrationId) > 0 && !added.Contains(id)))
+                foreach (var id in shipped)
                     await RunAloneAsync(db, id);
             }
             (await SqlServerSchema.HistoryAsync(database)).Should().NotContain(added);
 
-            // This release starts on it, and runs the three it lacks.
+            // This release starts on it, and runs the ones it lacks.
             using (var app = SqlServerApp.Start(database))
                 await ShouldWorkAsync(app);
 
