@@ -209,6 +209,10 @@ public sealed class CustomFieldService : ICustomFieldService
         var type = Blank(request.EntityType);
         if (type == null || !Carries(type, organizationId))
             return Result.Failure(DomainErrors.CustomField.InvalidEntityType);
+        // A member's values are club work (club.members), any other record's records.edit.
+        if (organizationId is Guid org
+            && !await _organizations.HasPermissionAsync(userId, org, RecordChangePermission.For(type), ct))
+            return Result.Failure(DomainErrors.Permission.Missing(RecordChangePermission.For(type)));
         if (!await _records.ExistsAsync(type, request.RecordId, userId, organizationId, ct))
             return Result.Failure(DomainErrors.CustomField.RecordNotFound);
 

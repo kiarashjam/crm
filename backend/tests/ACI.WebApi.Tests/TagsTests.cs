@@ -136,6 +136,51 @@ public class TagsTests
     }
 
     [Fact]
+    public async Task AMembersTagsAndValuesAreClubWork_AnyOtherRecordsTakeRecordEditing()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (owner, _, org) = await WorkspaceAsync(factory);
+        async Task<HttpClient> Staff(string email, string? preset, string? stored)
+        {
+            var (client, id) = await SignInAsync(factory, email);
+            await AddMemberAsync(factory, org, id, OrgMemberRole.Member);
+            using (var scope = factory.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ACI.Infrastructure.Persistence.AppDbContext>();
+                var membership = db.OrganizationMembers.Single(m => m.UserId == id && m.OrganizationId == org);
+                membership.PermissionPreset = preset;
+                membership.Permissions = stored;
+                await db.SaveChangesAsync();
+            }
+            return client.In(org);
+        }
+        var clubOnly = await Staff("club@example.ch", null, ",club.members,");
+        var rep = await Staff("rep@example.ch", "sales_rep", null);
+        await Ok(await owner.PostAsync("/api/custom-fields", Body(new { entityType = "member", label = "Handicap", type = "number" })), "a member field");
+        await Ok(await owner.PostAsync("/api/custom-fields", Body(new { entityType = "contact", label = "Tier", type = "text" })), "a contact field");
+        var vip = await TagAsync(owner, "VIP");
+        var member = (await Ok(await owner.PostAsync("/api/members", Body(new { firstName = "Ana", lastName = "Silva", email = "ana@example.ch", tier = "Gold", status = "Active" })), "a member"))
+            .GetProperty("id").GetGuid();
+        var contact = await ContactAsync(owner, "Bruno");
+
+        object Tagging(string type, Guid id) => new { entityType = type, recordId = id, tagIds = new[] { vip } };
+        object Values(string type, Guid id, object values) => new { entityType = type, recordId = id, values };
+        (await clubOnly.PutAsync("/api/tags/records", Body(Tagging("member", member)))).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await clubOnly.PutAsync("/api/custom-fields/values", Body(Values("member", member, new { handicap = 12 })))).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await clubOnly.PutAsync("/api/tags/records", Body(Tagging("contact", contact)))).StatusCode.Should().Be(HttpStatusCode.Forbidden, "a contact is not club work");
+        (await clubOnly.PutAsync("/api/custom-fields/values", Body(Values("contact", contact, new { tier = "Gold" })))).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await clubOnly.PostAsync("/api/tags/bulk", Body(new { entityType = "contact", recordIds = new[] { contact }, add = new[] { vip } })))
+            .StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        (await rep.PutAsync("/api/tags/records", Body(Tagging("contact", contact)))).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await rep.PutAsync("/api/custom-fields/values", Body(Values("contact", contact, new { tier = "Gold" })))).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        var refused = await rep.PutAsync("/api/tags/records", Body(Tagging("member", member)));
+        refused.StatusCode.Should().Be(HttpStatusCode.Forbidden, "a sales rep does not manage club members");
+        (await refused.Content.ReadAsStringAsync()).Should().Contain("manage club members");
+        (await rep.PutAsync("/api/custom-fields/values", Body(Values("member", member, new { handicap = 3 })))).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
     public async Task MembersCarryTags_AndTheMembersListFiltersByThem()
     {
         using var factory = new CustomWebApplicationFactory();

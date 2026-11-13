@@ -147,7 +147,8 @@ public class CustomFieldsController : ControllerBase
     /// <response code="400">A value does not fit its field, or a required one was emptied.</response>
     /// <response code="404">The record is not in this workspace.</response>
     /// <response code="409">Another save of the same fields got there first.</response>
-    [Requires(MemberPermissions.EditRecords)]
+    // A member's values are club work, any other record's records.edit: the service asks for the one the kind needs.
+    [Requires(MemberPermissions.EditRecords, MemberPermissions.ClubMembers, Any = true)]
     [HttpPut("values")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]

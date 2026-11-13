@@ -120,6 +120,7 @@ public sealed class TagService : ITagService
     {
         var type = Kind(request.EntityType, organizationId);
         if (type == null) return Result.Failure<IReadOnlyList<Guid>>(DomainErrors.Tag.InvalidEntityType);
+        if (await RefusedAsync(userId, organizationId, type, ct) is { } refused) return Result.Failure<IReadOnlyList<Guid>>(refused);
         if (!await _records.ExistsAsync(type, request.RecordId, userId, organizationId, ct))
             return Result.Failure<IReadOnlyList<Guid>>(DomainErrors.Tag.RecordNotFound);
         var wanted = (request.TagIds ?? Array.Empty<Guid>()).Distinct().ToList();
@@ -158,6 +159,7 @@ public sealed class TagService : ITagService
     {
         var type = Kind(request.EntityType, organizationId);
         if (type == null) return Result.Failure<BulkTagResult>(DomainErrors.Tag.InvalidEntityType);
+        if (await RefusedAsync(userId, organizationId, type, ct) is { } refused) return Result.Failure<BulkTagResult>(refused);
         var ids = (request.RecordIds ?? Array.Empty<Guid>()).Distinct().ToList();
         var add = (request.Add ?? Array.Empty<Guid>()).Distinct().ToList();
         var remove = (request.Remove ?? Array.Empty<Guid>()).Distinct().Where(r => !add.Contains(r)).ToList();
@@ -220,6 +222,18 @@ public sealed class TagService : ITagService
         organizationId is not { } org || await _organizations.HasPermissionAsync(userId, org, MemberPermissions.ManageSettings, ct);
 
     /// <summary>The kind of record, when it carries tags here (members only in an organization); null otherwise.</summary>
+    /// <summary>
+    /// Why the caller may not change tags on this kind of record; null when they may. A member's
+    /// tags take club.members, any other record's records.edit (<see cref="RecordChangePermission"/>).
+    /// A personal workspace is its owner's alone.
+    /// </summary>
+    private async Task<Error?> RefusedAsync(Guid userId, Guid? organizationId, string entityType, CancellationToken ct)
+    {
+        if (organizationId is not Guid org) return null;
+        var permission = RecordChangePermission.For(entityType);
+        return await _organizations.HasPermissionAsync(userId, org, permission, ct) ? null : DomainErrors.Permission.Missing(permission);
+    }
+
     private static string? Kind(string? entityType, Guid? organizationId)
     {
         var type = entityType?.Trim().ToLowerInvariant();

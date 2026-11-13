@@ -99,7 +99,8 @@ public class TagsController : ControllerBase
     /// <summary>Sets every tag one record carries: those left out are taken off.</summary>
     /// <response code="200">The record's tag ids.</response>
     /// <response code="404">Not a record the caller can see, or a tag not of this workspace.</response>
-    [Requires(MemberPermissions.EditRecords)]
+    // A member's tags are club work, any other record's records.edit: the service asks for the one the kind needs.
+    [Requires(MemberPermissions.EditRecords, MemberPermissions.ClubMembers, Any = true)]
     [HttpPut("records")]
     [ProducesResponseType(typeof(IReadOnlyList<Guid>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -127,7 +128,7 @@ public class TagsController : ControllerBase
     /// <response code="200">What changed.</response>
     /// <response code="400">Too many records or tags, or not a kind of record that carries tags.</response>
     /// <response code="404">A tag not of this workspace.</response>
-    [Requires(MemberPermissions.EditRecords)]
+    [Requires(MemberPermissions.EditRecords, MemberPermissions.ClubMembers, Any = true)]
     [HttpPost("bulk")]
     [ProducesResponseType(typeof(BulkTagResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
