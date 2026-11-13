@@ -126,7 +126,8 @@ export function AssistantSection() {
         <p className="text-sm text-slate-700">
           {s.usage.limit === 0
             ? 'The AI is off for this workspace: its monthly limit is 0.'
-            : `${s.usage.used} of ${s.usage.limit} calls to the language model used; the count starts again on ${f.date(s.usage.resetsOn, 'long')}.`}
+            // A calendar day from the server (yyyy-MM-dd), read at noon so no time zone moves it to the day before.
+            : `${s.usage.used} of ${s.usage.limit} calls to the language model used; the count starts again on ${f.date(`${s.usage.resetsOn}T12:00:00`, 'long')}.`}
           {s.usage.refused > 0 && ` ${s.usage.refused} refused because the month's calls were used up.`}
         </p>
         {s.usage.limit > 0 && (

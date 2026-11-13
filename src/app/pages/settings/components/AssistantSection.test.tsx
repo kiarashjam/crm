@@ -49,6 +49,20 @@ describe('Settings › Assistant', () => {
     expect(screen.getByText(/uses the server's default: 300 calls a month/)).toBeInTheDocument();
   });
 
+  it('names the day the count starts again as the server gives it, wherever the browser is', async () => {
+    const zone = process.env.TZ;
+    process.env.TZ = 'America/New_York';
+    try {
+      api.getAssistantSettings.mockResolvedValue(settings());
+      render(withQueries(<AssistantSection />));
+      const line = (await screen.findByText(/the count starts again on/)).textContent ?? '';
+      expect(line).toMatch(/Dec/i);
+      expect(line).not.toMatch(/Nov/i);
+    } finally {
+      process.env.TZ = zone;
+    }
+  });
+
   it('says plainly when no model is set up', async () => {
     api.getAssistantSettings.mockResolvedValue(settings({ configured: false, model: '' }));
     render(withQueries(<AssistantSection />));
