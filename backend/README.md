@@ -651,9 +651,12 @@ by hand, *at risk* (the score), *contacted* (a message someone at the club wrote
 one the club sends on its own such as a statement or a payment reminder; a call, meeting or
 email logged on their contact; or marked contacted; in the 90 days before the end), else
 *upcoming*. Marking a membership renewed moves its end on a year (or to the date given) once,
-and never back from a date the member's form set. The daily run notes the renewals of the
-next 90 days, so a renewal done elsewhere still shows as renewed; a membership date put right
-by less than four weeks (or moved back) takes its card with it, leaving no card at the old date.
+and never back from a date the member's form set; a member who has left (lapsed, cancelled or
+resigned) is not marked renewed there, but set active on their page first. The daily run notes
+the renewals of the next 90 days, so a renewal done elsewhere still shows as renewed; each
+subscription's renewal is its own record, even when two of a member's end the same day; a
+membership date put right by less than four weeks (or moved back) takes its card with it,
+leaving no card at the old date.
 
 **Referrals and sponsors.** An application names its referrer, proposer and seconder as
 members (not names typed in); the approval carries the referrer onto the new member. With the
