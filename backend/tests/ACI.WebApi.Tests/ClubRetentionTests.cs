@@ -351,6 +351,41 @@ public class ClubRetentionTests
         read.GetArrayLength().Should().Be(1);
     }
 
+    [Fact]
+    public async Task TheDailyRun_SetsTheSaveActionsOff_ForAMemberWhoCrossedSinceTheDayBefore()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (owner, ownerId, org) = await ClubAsync(factory);
+        await Json(await owner.PutAsync("/api/retention/settings", Body(new { saveTask = true, saveEmail = true, saveEmailPurpose = "service" })),
+            "switch the save actions on");
+        var anna = await MemberAsync(owner, "Anna");
+        await HabitAsync(factory, org, anna);
+        var noon = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(DateTime.UtcNow.Date.AddHours(12), DateTimeKind.Unspecified),
+            ACI.Application.Common.RegionalSettings.ZoneOf("Europe/Zurich"));
+        async Task RunAsync(DateTime at)
+        {
+            using var scope = factory.Services.CreateScope();
+            (await scope.ServiceProvider.GetRequiredService<IClubRetention>().RunScheduledAsync(at)).Should().Be(1);
+        }
+
+        // The first morning: her baseline, a steady member.
+        await RunAsync(noon);
+        (await factory.Services.Read(db => db.ClubMemberRisks.Single(r => r.MemberId == anna).Level)).Should().Be(RiskLevels.Low);
+
+        // Her dues go unpaid and she complains; the next morning's run finds her at risk, with
+        // nobody signed in: the task, the email and the run's counts are the job's own.
+        await OverdueDuesAsync(owner, anna, 900m, 80);
+        await Json(await owner.PostAsync($"/api/members/{anna}/concerns", Body(new { kind = "complaint", note = "Unhappy with the new opening hours" })), "a complaint");
+        await RunAsync(noon.AddDays(1));
+
+        var task = await factory.Services.Read(db => db.TaskItems.Single(t => t.OrganizationId == org && t.Title == "Member at risk: Anna Keller"));
+        task.AssigneeId.Should().Be(ownerId);
+        (await factory.Services.Read(db => db.OutboundMessages.Count(m => m.Source == OutboundSources.Retention && m.MemberId == anna))).Should().Be(1);
+        var run = await factory.Services.Read(db => db.ClubScoringRuns.OrderByDescending(r => r.StartedAtUtc).First());
+        (run.Status, run.BecameAtRisk, run.TasksCreated, run.EmailsQueued).Should().Be(("succeeded", 1, 1, 1));
+        (await factory.Services.Read(db => db.ClubMemberRisks.Single(r => r.MemberId == anna).SaveTaskId)).Should().Be(task.Id);
+    }
+
     // ── workspaces ───────────────────────────────────────────────────────────
 
     [Fact]
