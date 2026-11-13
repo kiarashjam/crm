@@ -142,8 +142,12 @@ public sealed class InModuleAttribute : Attribute, IAsyncActionFilter, IOrderedF
     {
         var services = context.HttpContext.RequestServices;
         var user = services.GetRequiredService<ICurrentUserService>();
-        // A member in the member portal names their club in their session token, not a header.
-        var workspace = user.CurrentOrganizationId ?? MemberPortalClaims.Of(context.HttpContext.User)?.OrganizationId;
+        // A member in the member portal names their club in their session token, and a header
+        // they add counts for nothing: OrganizationAccessMiddleware checks the header only for
+        // staff, so when it was read first, a member whose club had turned the module off could
+        // name another workspace (any id at all) and be answered as if the module were on.
+        var member = MemberPortalClaims.Of(context.HttpContext.User);
+        var workspace = member != null ? member.OrganizationId : user.CurrentOrganizationId;
         if (workspace is Guid organizationId
             && !await services.GetRequiredService<IWorkspaceModules>().IsOnAsync(organizationId, Module, context.HttpContext.RequestAborted))
         {

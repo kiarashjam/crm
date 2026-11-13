@@ -265,6 +265,31 @@ public class MemberPortalSignInTests
     }
 
     [Fact]
+    public async Task WithTheClubTurnedOff_AnOrganizationHeaderTheMemberAdds_DoesNotOpenThePortalAgain()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (staff, _, org) = await ClubAsync(factory, "owner@club-off-header.ch");
+        await MemberAsync(staff, "Anna");
+        var key = await OpenPortalAsync(staff);
+        var session = await SignInMemberAsync(factory, key, "anna@example.ch");
+        // Another club, with its club module on.
+        var (_, _, otherOrg) = await ClubAsync(factory, "owner@club-on-header.ch", "Other club");
+
+        await Ok(await staff.PutAsync($"/api/organizations/{org}/modules", Body(new { club = false })), "turn the club off");
+        // The header is checked only for staff (OrganizationAccessMiddleware): a member's session
+        // names their club, and whatever workspace a header names, the answer is their club's.
+        foreach (var named in new[] { otherOrg, Guid.NewGuid() })
+        {
+            session.DefaultRequestHeaders.Remove("X-Organization-Id");
+            session.DefaultRequestHeaders.Add("X-Organization-Id", named.ToString());
+            (await Refused(await session.GetAsync("/api/portal/me"), HttpStatusCode.Forbidden, $"the portal with the club off, naming {named}"))
+                .Should().Contain(DomainErrors.Modules.OffCode);
+            (await Refused(await session.GetAsync("/api/portal/account"), HttpStatusCode.Forbidden, $"the account with the club off, naming {named}"))
+                .Should().Contain(DomainErrors.Modules.OffCode);
+        }
+    }
+
+    [Fact]
     public async Task TurningThePortalOffSignsEveryoneOut_AndClosesTheSignInPage()
     {
         using var factory = new CustomWebApplicationFactory();
