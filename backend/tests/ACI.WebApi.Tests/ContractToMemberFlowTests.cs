@@ -371,6 +371,34 @@ public class ContractToMemberFlowTests
         (await Read(app, db => db.DealOnboardings.IgnoreQueryFilters().Single().DealId)).Should().Be(keep);
     }
 
+    // ── with the member portal ───────────────────────────────────────────────
+
+    [Fact]
+    public async Task AMemberTheContractAdmitted_IsNotSaidToBeHandedToTheClubsOwnPortal_UntilAHandoffNamesThem()
+    {
+        await using var app = new PaymentsApp();
+        var club = await ClubAsync(app);
+        var (lead, _, deal) = await DealAsync(club);
+        var (contract, _) = await SignedOnDealAsync(app, club.Owner, deal, deposit: null);
+        await Json(await CountersignAsync(club.Owner, contract), "countersign");
+        var member = await Read(app, db => db.ClubMembers.IgnoreQueryFilters().Single());
+        member.DealId.Should().Be(deal, "the countersignature links the member to the deal they were sold on");
+
+        // Linked to the deal, but handed to no portal of the club's own: staff are not told they may sign in there.
+        async Task<(bool OnTheirPage, bool InTheList)> HandedOverAsync()
+        {
+            var use = await Json(await club.Owner.GetAsync($"/api/members/{member.Id}/portal"), "their use of the member portal");
+            var usage = await Json(await club.Owner.GetAsync("/api/member-portal/members"), "who uses the member portal");
+            return (use.GetProperty("fromHandoff").GetBoolean(),
+                usage.EnumerateArray().Single(u => u.GetProperty("memberId").GetGuid() == member.Id).GetProperty("fromHandoff").GetBoolean());
+        }
+        (await HandedOverAsync()).Should().Be((false, false));
+
+        // The deal's welcome hand-over names the member the contract admitted: now they may.
+        await HandOverAsync(club, deal, lead);
+        (await HandedOverAsync()).Should().Be((true, true));
+    }
+
     private static async Task HandOverAsync(Club club, Guid deal, Guid lead)
     {
         await Json(await club.Owner.PutAsync("/api/onboarding/settings", Body(new { webhookUrl = "https://portal.example.com/api/integrations/cadence/onboarding", defaultLanguage = "en" })), "set the portal up");

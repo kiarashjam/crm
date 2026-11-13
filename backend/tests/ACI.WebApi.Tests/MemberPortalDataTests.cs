@@ -351,16 +351,24 @@ public class MemberPortalDataTests
     public async Task AMemberAddedByAHandoff_IsInvitedLikeAnyOther_AndSeesWhenTheirMembershipStarts()
     {
         using var factory = new CustomWebApplicationFactory();
-        var (staff, _, _) = await ClubAsync(factory, "owner@handoff-member.ch");
+        var (staff, owner, org) = await ClubAsync(factory, "owner@handoff-member.ch");
         var camille = await MemberAsync(staff, "Camille", status: "Pending");
         using (var scope = factory.Services.CreateScope())
         {
-            // What a welcome hand-over leaves on the member it adds: the deal, and a start still to be decided.
+            // What a welcome hand-over leaves: its own record naming the member it added, and on
+            // the member the deal and a start still to be decided. The record is what says they
+            // were handed over: a countersigned contract links the member it admits to a deal too.
             await using var db = scope.ServiceProvider.EveryWorkspace();
             var row = await db.ClubMembers.SingleAsync(m => m.Id == camille);
             row.DealId = Guid.NewGuid();
             row.StartUndetermined = true;
             row.StartsOnUtc = null;
+            db.DealOnboardings.Add(new DealOnboarding
+            {
+                Id = Guid.NewGuid(), OrganizationId = org, DealId = row.DealId.Value, ClubMemberId = camille, Name = "Camille Muster",
+                Email = "camille@example.ch", Language = "fr", StartUndetermined = true, Status = OnboardingStatuses.Delivered,
+                CreatedAtUtc = DateTime.UtcNow, CreatedByUserId = owner, UpdatedAtUtc = DateTime.UtcNow,
+            });
             await db.SaveChangesAsync();
         }
         var key = await OpenPortalAsync(staff);

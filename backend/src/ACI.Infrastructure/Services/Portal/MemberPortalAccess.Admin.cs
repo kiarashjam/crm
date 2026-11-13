@@ -67,7 +67,12 @@ public sealed partial class MemberPortalAccess
             .GroupBy(s => s.MemberId)
             .Select(g => new { MemberId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(g => g.MemberId, g => g.Count, ct);
-        return members.Select(m => ToUse(m, accounts.GetValueOrDefault(m.Id), open.GetValueOrDefault(m.Id))).ToList();
+        var handedOver = (await _db.DealOnboardings.AsNoTracking()
+                .Where(o => o.OrganizationId == organizationId && o.ClubMemberId != null)
+                .Select(o => o.ClubMemberId!.Value)
+                .ToListAsync(ct))
+            .ToHashSet();
+        return members.Select(m => ToUse(m, accounts.GetValueOrDefault(m.Id), open.GetValueOrDefault(m.Id), handedOver.Contains(m.Id))).ToList();
     }
 
     public async Task<Result<MemberPortalUseDto>> UseAsync(Guid organizationId, Guid memberId, CancellationToken ct = default)
@@ -78,7 +83,8 @@ public sealed partial class MemberPortalAccess
         var now = Now;
         var open = await _db.MemberPortalSessions.CountAsync(
             s => s.OrganizationId == organizationId && s.MemberId == memberId && s.RevokedAtUtc == null && s.ExpiresAtUtc > now, ct);
-        return ToUse(member, account, open);
+        var handedOver = await _db.DealOnboardings.AsNoTracking().AnyAsync(o => o.OrganizationId == organizationId && o.ClubMemberId == memberId, ct);
+        return ToUse(member, account, open, handedOver);
     }
 
     public async Task<Result<MemberPortalUseDto>> InviteAsync(Guid organizationId, Guid userId, Guid memberId, CancellationToken ct = default)
@@ -195,7 +201,13 @@ public sealed partial class MemberPortalAccess
             settings?.Version ?? Guid.Empty);
     }
 
-    private static MemberPortalUseDto ToUse(ClubMember m, MemberPortalAccount? account, int openSessions) => new()
+    /// <summary>
+    /// One member's use of the portal. <paramref name="handedOver"/>: a welcome hand-over named
+    /// them (its ClubMemberId), so they may sign in to the club's own portal too. Not whether the
+    /// member has a deal: a membership contract's countersignature links the member it admits to
+    /// the contract's deal as well, and that hands them to no other portal.
+    /// </summary>
+    private static MemberPortalUseDto ToUse(ClubMember m, MemberPortalAccount? account, int openSessions, bool handedOver) => new()
     {
         MemberId = m.Id,
         Name = NameOf(m),
@@ -207,6 +219,6 @@ public sealed partial class MemberPortalAccess
         LastSeenAtUtc = account?.LastSeenAtUtc,
         ActiveSessions = openSessions,
         CanInvite = m.ErasedAtUtc == null && ValidationHelper.IsValidEmail(m.Email.Trim()),
-        FromHandoff = m.DealId != null,
+        FromHandoff = handedOver,
     };
 }
