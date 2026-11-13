@@ -45,8 +45,9 @@ public class CompaniesController : ControllerBase
     /// <param name="industry">Only companies in this industry, ignoring case.</param>
     /// <param name="hasIndustry">False: only companies with no industry. True: only those with one.</param>
     /// <param name="size">Only companies of this size, as stored ("11-50").</param>
-    /// <param name="sortBy">name (the default), createdAt, contacts or deals.</param>
+    /// <param name="sortBy">name (the default), createdAt, contacts or deals; or cf:&lt;key&gt; to sort by a custom field.</param>
     /// <param name="sortDir">asc (the default) or desc.</param>
+    /// <param name="flex">Tag and custom field conditions: tag, tagMatch, notTag and field (see the README).</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A paginated list of companies.</returns>
     /// <response code="200">Returns the paginated list of companies.</response>

@@ -41,8 +41,9 @@ public class LeadsController : ControllerBase
     /// <param name="status">Filter by status name, or "all".</param>
     /// <param name="source">Filter by source, or "all".</param>
     /// <param name="converted">Filter: "all", "active", or "converted".</param>
-    /// <param name="sortBy">Sort field: name, email, status, createdAt.</param>
+    /// <param name="sortBy">Sort field: name, email, status, createdAt; or cf:&lt;key&gt; to sort by a custom field.</param>
     /// <param name="sortDir">Sort direction: asc or desc.</param>
+    /// <param name="flex">Tag and custom field conditions: tag, tagMatch, notTag and field (see the README).</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A paginated list of leads.</returns>
     /// <response code="200">Returns the paginated list of leads.</response>

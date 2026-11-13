@@ -46,8 +46,9 @@ public class ContactsController : ControllerBase
     /// <param name="status">"active" (the default), "archived" or "all".</param>
     /// <param name="hasCompany">True: only contacts at a company. False: only those at none.</param>
     /// <param name="activity">"recent": activity in the last 30 days. "quiet": none in the last 90 days.</param>
-    /// <param name="sortBy">name (the default), email, lastActivity or createdAt.</param>
+    /// <param name="sortBy">name (the default), email, lastActivity or createdAt; or cf:&lt;key&gt; to sort by a custom field.</param>
     /// <param name="sortDir">asc (the default) or desc.</param>
+    /// <param name="flex">Tag and custom field conditions: tag, tagMatch, notTag and field (see the README).</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A paginated list of contacts.</returns>
     /// <response code="200">Returns the paginated list of contacts.</response>
