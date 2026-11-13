@@ -280,6 +280,11 @@ public class OrganizationCloneTests
             new LeadCaptureForm { Id = Guid.NewGuid(), OrganizationId = org.Id, CreatedByUserId = owner, Name = "Website form", PublicToken = Guid.NewGuid().ToString("N"), IsActive = true, CreatedAtUtc = now },
             new LeadOpsSettings { Id = Guid.NewGuid(), OrganizationId = org.Id, SlaHours = 4 },
             new OnboardingSettings { Id = Guid.NewGuid(), OrganizationId = org.Id, WebhookUrl = $"https://portal.{name}.ch/onboarding", WebhookSecret = "s3cret", UpdatedAtUtc = now },
+            // The member portal: on, at an address of its own, with the member signed in once.
+            new MemberPortalSettings { Id = Guid.NewGuid(), OrganizationId = org.Id, Enabled = true, PortalKey = $"key-{name}", MemberCancelHours = 12, UpdatedAtUtc = now },
+            new MemberPortalAccount { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, InvitedAtUtc = now, InvitationsSent = 1, FirstSignInAtUtc = now, CreatedAtUtc = now },
+            new MemberPortalSession { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, CreatedAtUtc = now, ExpiresAtUtc = now.AddDays(30), LastSeenAtUtc = now },
+            new MemberPortalLink { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, TokenHash = $"hash-{name}", CreatedAtUtc = now, ExpiresAtUtc = now.AddDays(3) },
             new EmailImage { Id = Guid.NewGuid(), OrganizationId = org.Id, FileName = "logo.png", ContentType = "image/png", Size = 4, Content = [0x89, 0x50, 0x4E, 0x47], CreatedAtUtc = now, CreatedByUserId = owner },
             new DealOnboarding
             {
@@ -574,6 +579,17 @@ public class OrganizationCloneTests
         new[] { portal.WebhookUrl, portal.WebhookSecret }.Should().OnlyContain(v => v == null,
             "a customer won in the copy is never handed to the original's portal, signed as the original");
         (await db.OnboardingSettings.IgnoreQueryFilters().SingleAsync(p => p.OrganizationId == original.Org)).WebhookSecret.Should().Be("s3cret");
+        // The same members, so the copy opens no second member portal to them until it is turned on
+        // there, at an address of its own; nobody is signed in to it, and no link signs in to it.
+        var memberPortal = await db.MemberPortalSettings.IgnoreQueryFilters().SingleAsync(p => p.OrganizationId == report.CopyId);
+        memberPortal.Enabled.Should().BeFalse();
+        memberPortal.MemberCancelHours.Should().Be(12, "the club's rules come along");
+        memberPortal.PortalKey.Should().NotBe("key-Pavillon46").And.NotBeNullOrWhiteSpace();
+        (await db.MemberPortalSettings.IgnoreQueryFilters().SingleAsync(p => p.OrganizationId == original.Org)).Enabled.Should().BeTrue();
+        (await db.MemberPortalSessions.IgnoreQueryFilters().CountAsync(x => x.OrganizationId == report.CopyId)).Should().Be(0);
+        (await db.MemberPortalLinks.IgnoreQueryFilters().CountAsync(x => x.OrganizationId == report.CopyId)).Should().Be(0);
+        (await db.MemberPortalAccounts.IgnoreQueryFilters().CountAsync(x => x.OrganizationId == report.CopyId)).Should().Be(0);
+        report.Adjustments.Keys.Should().Contain("The member portal starts off in the copy, at an address of its own");
         (await db.OutreachEnrollments.IgnoreQueryFilters().Where(e => e.OrganizationId == report.CopyId).Select(e => e.Status).ToListAsync())
             .Should().BeEquivalentTo(["paused", "stopped"]);
         var contract = await db.Set<Contract>().IgnoreQueryFilters().SingleAsync(c => c.OrganizationId == report.CopyId);

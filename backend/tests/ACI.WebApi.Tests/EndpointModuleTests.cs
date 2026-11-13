@@ -58,6 +58,7 @@ public class EndpointModuleTests
         ["PublicOnboardingController"] = "a member portal reporting on a handoff already made: its report is kept, so the deal's timeline is right when Sales is on again",
         ["EmailImagesController"] = "images in the workspace's emails, which go to contacts of both modules",
         ["PublicEmailImagesController"] = "an image in an email already sent: mail apps fetch it every time the email is opened",
+        ["PublicMemberPortalController"] = "members signing in to the member portal, who are not on the team; with the club off the service itself refuses (Module.Off)",
     };
 
     private static IEnumerable<Type> Controllers() =>
