@@ -744,6 +744,99 @@ erasure deletes the score, renewals and concerns and keeps the bonuses with the 
 merged member's concerns, renewals and referrals move to the member kept; a deleted member
 leaves none behind, and nobody named as referred or sponsored by them.
 
+### Companies and private clients: house accounts, corporate memberships, private events
+
+**House accounts for companies and private clients.** A CRM company, or a CRM contact as a
+private client, can hold a house account on the club's ledger like a member's: charges,
+payments, credit, voids and statements go through the same ledger (`IClubLedger`). The
+account's key is the company's or contact's id, so `POST /api/charges` and `POST /api/payments`
+take it as `memberId`, and every entry says whose account it is on (`accountType`: `company` or
+`contact`; left out for a member's). An account is opened by whoever handles the money
+(`money.manage`); a contact who is a member is billed on their member account instead, so
+opening a separate one for them is refused. The company's statement (PDF, in the membership's
+language, with the Swiss QR-bill when the club's bank is set) lists who ran up each charge when
+it pays its nominees' charges.
+
+**Corporate memberships.** A membership held by a company: a number of seats, filled by
+members as its nominees (Active or Pending members; one seat per member at a time, which a
+filtered unique index enforces; never more nominees than seats, decided against the
+membership's row so two seats taken at once are one after the other). Nominees are seated,
+swapped (one step, the old nominee kept in the history with who took over) and removed by
+whoever runs the members (`club.members`). The nominee rule decides whose account a nominee's
+own charges go on while the membership is active: `company` (the company's account, each charge
+saying which nominee ran it up) or `nominee` (their own). A nominee's own dues are never moved;
+the card says when they still run beside the company's, for the club to stop. The company's
+dues are a subscription on the company's own account (`money.manage`), billed by the daily
+billing run like any other. Renewal is on the company: *due* within 60 days of the renewal date,
+*overdue* after it, *not renewing* when marked so; renewing moves the date on by the term (12
+months by default). Ending a membership frees its seats and stops its dues (which takes
+`money.manage` while they run). Nominees leave the members' own renewals board, since the
+company renews for them.
+
+**Private events.** A client's hire of the club's spaces: linked to a company, a contact or
+both, and to the deal it was sold through. Its spaces are held as bookings of the club's
+resources for its time, taking each resource's whole capacity: a member cannot book the room
+under the party, and a booking in the way refuses the event (409, saying what is in the way).
+The diary cannot move or delete a hold; it follows the event when it moves, is confirmed with
+it, and is released when it is cancelled or completed. The event's row and its holds are saved
+in one transaction, so a clash leaves the event as it was. Its menu and services come from the
+price catalogue (price and VAT copied, as a charge would take them) or are typed in. The deposit
+is a charge on the client's account (the company's, else the contact's member account, else
+the contact's own); once money is on an account, the client cannot change. The final invoice
+posts one charge per VAT rate, and the deposit is set against it: its charge is taken back and
+what was paid on it pays the invoice. Cancelling asks whether a deposit is kept or given back
+as credit (giving it back takes `money.manage`, as asking the deposit and invoicing do). The
+contract is drafted on the deal from a private event template (spaces, menu, total, deposit);
+countersigning it confirms the event and admits nobody, even when the deal's contact has
+applied to join. With Sales turned off no contract is drafted. The guest list is kept on the
+event; the front desk (`club.frontdesk`) adds walk-ins and checks guests in, once.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/club-accounts/{companies\|contacts}/{id}` | The client's account (not open until opened): balance, owed, credit, open charges |
+| `POST` | `/api/club-accounts/{companies\|contacts}/{id}` | Opens it (`money.manage`) |
+| `GET` | `/api/club-accounts/{companies\|contacts}/{id}/statement?from=&to=` | The statement as data |
+| `GET` | `/api/club-accounts/{companies\|contacts}/{id}/statement.pdf?from=&to=&language=&email=` | The statement as a PDF |
+| `GET` | `/api/corporate-memberships?companyId=&status=&renewingWithinDays=` | The workspace's corporate memberships, with seats, nominees, dues, renewal and the company's account |
+| `GET/POST` | `/api/corporate-memberships`, `/api/corporate-memberships/{id}` | Reads one; makes one (and opens the company's account); dues sent with it take `money.manage` (`club.members`) |
+| `PUT` | `/api/corporate-memberships/{id}` | Changes its details against `version` (or `If-Match`) (`club.members`) |
+| `PUT` | `/api/corporate-memberships/{id}/dues` | Starts or changes the company's dues (`money.manage`) |
+| `POST` | `/api/corporate-memberships/{id}/nominees` | Seats a member (`club.members`) |
+| `POST` | `/api/corporate-memberships/{id}/nominees/{nomineeId}/swap` | Gives the seat to another member (`club.members`) |
+| `POST` | `/api/corporate-memberships/{id}/nominees/{nomineeId}/remove` | Takes the nominee off, with a reason (`club.members`) |
+| `POST` | `/api/corporate-memberships/{id}/renew` | Renews for another term, against `version` (`club.members`) |
+| `POST` | `/api/corporate-memberships/{id}/not-renewing` | Marks it not renewing, with why (`club.members`) |
+| `POST` | `/api/corporate-memberships/{id}/end` | Ends it: seats freed, dues stopped (`club.members`; `money.manage` while dues run) |
+| `GET` | `/api/corporate-memberships/{id}/statement.pdf?from=&to=` | The company's statement, its nominees' charges included |
+| `GET` | `/api/members/{id}/corporate` | The seat the member holds (204 when none) |
+| `GET` | `/api/private-events?from=&to=&status=&companyId=&contactId=` | Private events, soonest first |
+| `GET/POST` | `/api/private-events`, `/api/private-events/{id}` | Reads one; makes one and holds its spaces (`club.members`) |
+| `PUT` | `/api/private-events/{id}` | Changes its details, time or spaces against `version` (or `If-Match`) (`club.members`) |
+| `POST/PUT/DELETE` | `/api/private-events/{id}/lines[/{lineId}]` | Its menu and services (`club.members`); nothing changes once invoiced |
+| `POST` | `/api/private-events/{id}/confirm`, `/complete` | Confirms it (its holds with it), or marks it completed (holds released) (`club.members`) |
+| `POST` | `/api/private-events/{id}/cancel` | Cancels it with a reason and `deposit: keep\|release` when one was asked (`club.members`; release takes `money.manage`) |
+| `POST` | `/api/private-events/{id}/deposit` | Asks the deposit on the client's account (`money.manage`) |
+| `POST` | `/api/private-events/{id}/invoice` | Posts the final invoice, the deposit set against it (`money.manage`) |
+| `POST` | `/api/private-events/{id}/contract` | Drafts its contract on its deal (`club.members` and `records.edit`; Sales on) |
+| `POST/DELETE` | `/api/private-events/{id}/guests[/{guestId}]` | Adds a guest (`club.members` or `club.frontdesk`); removing takes `club.members` |
+| `POST` | `/api/private-events/{id}/guests/{guestId}/check-in`, `/undo-check-in` | The door's check-in, once (`club.members` or `club.frontdesk`) |
+
+A company is not deleted while it has a corporate membership, money on its house account or a
+private event still to come (409): merge it into the company it duplicates instead, which moves
+its memberships, events and account with every entry on it. A contact is kept the same way for
+money on their account or an event to come, and merged likewise. A merged member's seat moves to
+the member kept (when both hold one, the duplicate's ends), and their guest list places move; a
+deleted member's seat is freed. A person's export includes the private events they hired as a
+private client and the guest lists they are on; their erasure takes them off guest lists and
+keeps the events they hired for the books, without the link to them and with their names out of
+the title, notes and the diary's holds. A company's corporate membership stays when the person it
+names as its billing contact or address is erased; they are taken off it.
+
+Not done yet: monthly statements, reminders and the lapse after the grace period run for
+members' accounts only (a company's statement is made on demand); a bank transfer the import
+could not match is allocated to members only, and online payment links are for members only;
+corporate renewals and private events have no automation triggers of their own.
+
 ### Languages and Swiss formats
 
 The app is written in English, German (Swiss spelling, "ss" for the sharp s) and French (as
