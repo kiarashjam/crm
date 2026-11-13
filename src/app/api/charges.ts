@@ -332,10 +332,19 @@ export interface ChargeInput {
   catalogItemId?: string;
 }
 
-export async function createCharge(input: ChargeInput): Promise<Charge | null> {
+/**
+ * Posts a charge. `idempotencyKey` makes a retry safe: the server gives the first charge back
+ * for a second request with the same key (a confirm pressed twice, a request sent again after
+ * a dropped connection) instead of charging the member twice.
+ */
+export async function createCharge(input: ChargeInput, options: { idempotencyKey?: string } = {}): Promise<Charge | null> {
   // The server moves the member's balance itself; the demo does it below.
   return apiWithFallback(
-    () => authFetchJson<Charge>('/api/charges', { method: 'POST', body: JSON.stringify(input) }),
+    () => authFetchJson<Charge>('/api/charges', {
+      method: 'POST',
+      body: JSON.stringify(input),
+      headers: options.idempotencyKey ? { 'Idempotency-Key': options.idempotencyKey } : undefined,
+    }),
     async () => {
       await delay(140);
       const charge = chargeStore.add({

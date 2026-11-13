@@ -1,25 +1,33 @@
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { ArrowUp, ChevronUp, Maximize2, Minimize2, RotateCcw, ShieldCheck, X } from 'lucide-react';
-import { createActivity } from '@/app/api/activities';
+import { createActivity, type CreateActivityParams } from '@/app/api/activities';
+import { ApiError } from '@/app/api/apiClient';
+import { askAssistant, type AssistantProposal, type AssistantReply as ModelReply, type AssistantTurn } from '@/app/api/assistant';
+import { createCharge, type ChargeInput } from '@/app/api/charges';
+import { createReservation, type ReservationInput } from '@/app/api/reservations';
 import { createContact } from '@/app/api/contacts';
 import { mergeCompanies, mergeContacts } from '@/app/api/dedupe';
 import { createDeal, updateDeal } from '@/app/api/deals';
 import { assignLead, convertLead } from '@/app/api/leads';
 import { enrollInSequence } from '@/app/api/sequences';
-import { addTaskComment, createTask } from '@/app/api/tasks';
+import { addTaskComment, createTask, type CreateTaskParams } from '@/app/api/tasks';
 import { sendEmail } from '@/app/api/email';
 import { getUserSettings, saveUserSettings } from '@/app/api/settings';
 import { getCurrentOrganizationId, getCurrentUser } from '@/app/lib/auth';
+import { currentLanguage } from '@/app/i18n/current';
 import { askAgent, type AgentAction, type AgentReply, type AgentWorld } from './brain/answer';
 import { emptyMemory, remember, rowFor, type AgentMemory } from './brain/reason';
 import { amountText } from './brain/workflows';
 import { useMotionPreference } from '@/app/hooks/useMotionPreference';
 import { cn } from '@/app/components/ui/utils';
-import { ActionChip, AgentBubble, AiOrb, EASE, SuggestionChips, ThinkingBubble, UserBubble } from './AgentChatParts';
+import { ActionChip, AgentBubble, AiOrb, EASE, ProposalCard, SuggestionChips, ThinkingBubble, UserBubble, type ProposalState } from './AgentChatParts';
 import { followUpSuggestions, starterSuggestions } from './chatSuggestions';
 import { CHAT_OPEN_KEY, takeChatFocusRequest, useStoredFlag } from './panelPrefs';
+
+// Only opened when the assistant proposes an email, so it is not loaded with every page.
+const EmailComposerDialog = lazy(() => import('@/app/components/EmailComposerDialog'));
 
 const FOCUS_BASE = 'cadence.agent.focus';
 const TURNS_BASE = 'cadence.agent.turns';
@@ -53,6 +61,10 @@ interface Turn {
   fresh?: boolean;
   /** A confirmation that a change was saved. */
   saved?: boolean;
+  /** Changes the language model proposed with this answer. Never stored: whether one was confirmed is not kept. */
+  proposals?: AssistantProposal[];
+  /** The lookups the language model made for this answer, so the person can see what it read. */
+  lookedUp?: string[];
 }
 
 let turnCount = 0;
@@ -163,33 +175,61 @@ function reason(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim() ? `${fallback} ${error.message.trim()}` : fallback;
 }
 
-/** How long the agent "thinks" before answering. Long enough to read as work, short enough not to wait on. */
-const THINKING_MS = 650;
+/** Questions to start with in a workspace that has only the Club module: the built-in rules know the sales records only. */
+const CLUB_STARTERS = ['What is on at the club today?', 'Who is past due on their account?', 'Which memberships renew this month?', 'My morning brief'];
+
+/** Why the language model did not answer, for the line above the box. */
+function whyNoModel(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 503) return 'The assistant is not set up on the server.';
+    if (error.status === 429) return error.message || 'The assistant is busy. Try again in a moment.';
+    if (error.status === 502) return error.message ? `The assistant could not answer: ${error.message}` : 'The assistant could not answer.';
+    if (error.status === 403) return error.message || 'You may not ask the assistant here.';
+  }
+  return 'The assistant could not be reached.';
+}
+
+/** A tool's name as the person reads it: list_leads, list leads. */
+function lookupName(tool: string): string {
+  return tool.replace(/_/g, ' ');
+}
 
 /**
- * The conversation on top of the rules, as a chat. A task or a note is written only from
- * a button, and only once. A draft only opens the sales writer.
+ * The conversation as a chat. Without a language model it answers from the built-in rules,
+ * at once; with one, the question goes to the server, whose model reads the records as this
+ * person sees them and proposes changes as cards. A task, a note or any other change is
+ * written only from a button (a proposal's Confirm), and only once. A draft only opens the
+ * sales writer, and a proposed email only the composer.
  */
-export function AgentDesk({ world, readOnly, accountKey, thinkingMs = THINKING_MS, initialOpen = false }: {
+export function AgentDesk({ world, readOnly, accountKey, initialOpen = false, modelReady = false, clubOnly = false }: {
   world: AgentWorld;
   readOnly: boolean;
   accountKey: string;
-  /** Pause before an answer appears. Zero answers at once (tests, and reduced motion). */
-  thinkingMs?: number;
   /** Open or closed when this browser has no saved choice yet. Closed: the chat opens when asked for. */
   initialOpen?: boolean;
+  /** A language model is set up on the server: questions go to it, and it is called the AI. */
+  modelReady?: boolean;
+  /**
+   * The workspace has only the Club module: the built-in rules, which know the sales records,
+   * have nothing to answer from, so a question the model cannot take is not answered by them.
+   */
+  clubOnly?: boolean;
 }) {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const reduce = useMotionPreference();
   const [question, setQuestion] = useState('');
   const [turns, setTurns] = useState<Turn[]>(() => readTurns(accountKey));
   const [busy, setBusy] = useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
+  /** Waiting for the language model's answer: a real wait, never a staged one. */
   const [thinking, setThinking] = useState(false);
+  const [proposalStates, setProposalStates] = useState<Record<string, ProposalState>>({});
+  const [composer, setComposer] = useState<{ proposal: AssistantProposal; to: string; subject: string; body: string; context: { leadId?: string; contactId?: string; dealId?: string } } | null>(null);
+  const asking = useRef<AbortController | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [lastQuestion, setLastQuestion] = useState<string | null>(null);
-  const thinkTimer = useRef<number | null>(null);
   const scroller = useRef<HTMLDivElement | null>(null);
   const field = useRef<HTMLTextAreaElement | null>(null);
   const [chatOpen, setChatOpen] = useStoredFlag(CHAT_OPEN_KEY, initialOpen);
@@ -235,9 +275,8 @@ export function AgentDesk({ world, readOnly, accountKey, thinkingMs = THINKING_M
     return () => window.clearTimeout(handle);
   }, [turns, accountKey]);
 
-  useEffect(() => () => {
-    if (thinkTimer.current) window.clearTimeout(thinkTimer.current);
-  }, []);
+  // A question still with the model when the chat goes away is dropped: its answer has nowhere to go.
+  useEffect(() => () => asking.current?.abort(), []);
 
   // Keep the newest message in view as the conversation grows, and when the chat opens.
   useEffect(() => {
@@ -269,8 +308,8 @@ export function AgentDesk({ world, readOnly, accountKey, thinkingMs = THINKING_M
     box.style.height = `${Math.min(box.scrollHeight, 132)}px`;
   }, [question]);
 
-  function push(role: Turn['role'], text: string, actions: AgentAction[] = []) {
-    setTurns((current) => [...current, { id: turnId(), role, text, actions, fresh: true }].slice(-12));
+  function push(role: Turn['role'], text: string, actions: AgentAction[] = [], extra: Pick<Turn, 'proposals' | 'lookedUp'> = {}) {
+    setTurns((current) => [...current, { id: turnId(), role, text, actions, fresh: true, ...extra }].slice(-12));
   }
 
   function ask(text: string) {
@@ -285,25 +324,54 @@ export function AgentDesk({ world, readOnly, accountKey, thinkingMs = THINKING_M
     push('agent', reply.text, actions);
   }
 
-  /** Ask one question: it shows at once, and the answer follows after a short think. */
+  /** The model's answer, with what it proposes as cards under it. */
+  function answered(reply: ModelReply) {
+    const text = reply.reply.trim() || (reply.proposals.length > 0 ? 'Here is what I propose.' : 'I have no answer to that.');
+    push('agent', text, [], { proposals: reply.proposals, lookedUp: reply.lookedUp });
+  }
+
+  /** The question to the language model. When it cannot answer, the built-in rules do, and the line above the box says why. */
+  async function askModel(text: string, history: AssistantTurn[]) {
+    asking.current?.abort();
+    const controller = new AbortController();
+    asking.current = controller;
+    setThinking(true);
+    try {
+      const reply = await askAssistant({ message: text, history, page: pathname, language: currentLanguage() }, { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      answered(reply);
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      const why = whyNoModel(error);
+      if (clubOnly) {
+        setNotice(why);
+      } else {
+        setNotice(`${why} This answer is from Cadence's built-in rules.`);
+        ask(text);
+      }
+    } finally {
+      if (asking.current === controller) {
+        asking.current = null;
+        setThinking(false);
+      }
+    }
+  }
+
+  /** Ask one question: it shows at once, and so does the rules' answer. The model's comes when it comes. */
   function send(raw: string) {
     const text = raw.trim();
     if (!text || busy || thinking) return;
     setQuestion('');
     setNotice(null);
     setLastQuestion(text);
+    // What was said before, for the model to follow the thread: the last few turns, as shown.
+    const history: AssistantTurn[] = turns.slice(-8).map((turn) => ({ role: turn.role === 'you' ? 'user' : 'assistant', text: turn.text }));
     push('you', text);
-    const wait = reduce ? 0 : thinkingMs;
-    if (wait <= 0) {
-      ask(text);
+    if (modelReady) {
+      void askModel(text, history);
       return;
     }
-    setThinking(true);
-    thinkTimer.current = window.setTimeout(() => {
-      thinkTimer.current = null;
-      setThinking(false);
-      ask(text);
-    }, wait);
+    ask(text);
   }
 
   function onSubmit(event: FormEvent) {
@@ -320,8 +388,8 @@ export function AgentDesk({ world, readOnly, accountKey, thinkingMs = THINKING_M
   }
 
   function clearConversation() {
-    if (thinkTimer.current) window.clearTimeout(thinkTimer.current);
-    thinkTimer.current = null;
+    asking.current?.abort();
+    asking.current = null;
     setThinking(false);
     setTurns([]);
     setNotice(null);
@@ -455,6 +523,93 @@ export function AgentDesk({ world, readOnly, accountKey, thinkingMs = THINKING_M
     return null;
   }
 
+  /** Sends one confirmed proposal to the endpoint the app's own form uses. Returns the line to show. */
+  async function make(proposal: AssistantProposal): Promise<string> {
+    const p = proposal.payload;
+    const text = (key: string) => (typeof p[key] === 'string' ? (p[key] as string) : undefined);
+    switch (proposal.kind) {
+      case 'task': {
+        const created = await createTask(p as unknown as CreateTaskParams);
+        return created ? `Task saved: ${created.title}.` : 'The task was not saved.';
+      }
+      case 'activity': {
+        const created = await createActivity(p as unknown as CreateActivityParams);
+        return created ? 'Logged on the record.' : 'It was not logged.';
+      }
+      case 'deal-stage': {
+        const dealId = text('dealId');
+        const dealStageId = text('dealStageId');
+        if (!dealId || !dealStageId) throw new Error('The proposal does not say which deal and stage.');
+        const saved = await updateDeal(dealId, { dealStageId, ...(text('version') ? { version: text('version') } : {}) });
+        return saved ? `${saved.name} moved to ${saved.stage ?? 'its new stage'}.` : 'The deal was not moved.';
+      }
+      case 'booking': {
+        const saved = await createReservation(p as unknown as ReservationInput);
+        return saved ? `Booked: ${saved.resourceName} for ${saved.memberName}.` : 'The booking was not made.';
+      }
+      case 'charge': {
+        // The proposal's id is the request's Idempotency-Key: a second confirm cannot charge twice.
+        const saved = await createCharge(p as unknown as ChargeInput, { idempotencyKey: proposal.id });
+        return saved ? `Charged to ${saved.memberName}: ${saved.description}, ${saved.amount}.` : 'The charge was not posted.';
+      }
+      default:
+        throw new Error('That kind of change cannot be made from here.');
+    }
+  }
+
+  function settle(proposal: AssistantProposal, state: ProposalState) {
+    setProposalStates((current) => ({ ...current, [proposal.id]: state }));
+  }
+
+  async function confirm(proposal: AssistantProposal) {
+    setNotice(null);
+    if (savedActions.current.has(proposal.id) || inflight.current.has(proposal.id)) return;
+    if (readOnly) {
+      setNotice('This workspace is read-only for you, so nothing was saved.');
+      return;
+    }
+    if (!sameWorkspace()) {
+      setNotice('The workspace or account changed in another tab. Nothing was saved. Reload this page to continue here.');
+      return;
+    }
+    if (proposal.kind === 'email-draft') {
+      const p = proposal.payload;
+      const id = (key: string) => (typeof p[key] === 'string' ? (p[key] as string) : undefined);
+      setComposer({
+        proposal,
+        to: id('to') ?? '',
+        subject: id('subject') ?? '',
+        body: id('body') ?? '',
+        context: { leadId: id('leadId'), contactId: id('contactId'), dealId: id('dealId') },
+      });
+      return;
+    }
+    inflight.current.add(proposal.id);
+    setBusy(true);
+    settle(proposal, 'saving');
+    try {
+      const line = await make(proposal);
+      savedActions.current.add(proposal.id);
+      settle(proposal, 'done');
+      setTurns((current) => [...current, { id: turnId(), role: 'agent' as const, text: line, actions: [], fresh: true, saved: true }].slice(-12));
+    } catch (error) {
+      settle(proposal, 'open');
+      if (error instanceof ApiError && error.status === 409 && proposal.kind === 'deal-stage') {
+        setNotice('The deal was changed after the assistant read it, so it was not moved. Ask again to see it as it is now.');
+      } else {
+        setNotice(reason(error, 'That could not be saved.'));
+      }
+    } finally {
+      inflight.current.delete(proposal.id);
+      setBusy(false);
+    }
+  }
+
+  function dismiss(proposal: AssistantProposal) {
+    savedActions.current.add(proposal.id);
+    settle(proposal, 'dismissed');
+  }
+
   async function run(action: AgentAction) {
     setNotice(null);
     if (savedActions.current.has(action.id) || inflight.current.has(action.id)) {
@@ -508,11 +663,13 @@ export function AgentDesk({ world, readOnly, accountKey, thinkingMs = THINKING_M
   const empty = turns.length === 0 && !thinking;
   const lastTurn = turns[turns.length - 1];
   const suggestions = empty
-    ? starterSuggestions(world)
-    : !thinking && !busy && lastTurn?.role === 'agent'
+    ? (clubOnly ? CLUB_STARTERS : starterSuggestions(world))
+    : !thinking && !busy && lastTurn?.role === 'agent' && !clubOnly
       ? followUpSuggestions(world, memory.current, lastQuestion)
       : [];
-  const status = thinking ? 'Thinking…' : busy ? 'Saving…' : 'Ready';
+  const status = thinking ? 'Asking the assistant…' : busy ? 'Saving…' : 'Ready';
+  // Called the AI only when a language model answers; the built-in rules are no AI.
+  const name = modelReady ? 'Ask Cadence AI' : 'Ask Cadence';
 
   const messageCount = turns.length;
   return (
@@ -540,16 +697,16 @@ export function AgentDesk({ world, readOnly, accountKey, thinkingMs = THINKING_M
               transition={{ duration: 1.8, repeat: Infinity, repeatDelay: 5, ease: 'easeInOut' }}
             />
           )}
-          <AiOrb size={34} reduce={reduce} />
+          <AiOrb size={34} reduce={reduce} ai={modelReady} />
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white">
-              Ask CadenceE
-              <span className="rounded-full bg-gradient-to-r from-orange-500 to-fuchsia-500 px-1.5 py-px text-[10px] font-bold uppercase tracking-wider text-white">AI</span>
+              {name}
+              {modelReady && <span className="rounded-full bg-gradient-to-r from-orange-500 to-fuchsia-500 px-1.5 py-px text-[10px] font-bold uppercase tracking-wider text-white">AI</span>}
             </span>
             <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
               {messageCount > 0
                 ? `Continue the conversation · ${messageCount} message${messageCount === 1 ? '' : 's'}`
-                : 'Ask what to do next, or about a lead, deal, or contact'}
+                : clubOnly ? 'Ask about members, bookings, events or money' : 'Ask what to do next, or about a lead, deal, or contact'}
             </span>
           </span>
           <ChevronUp className="h-4 w-4 shrink-0 text-fuchsia-500 transition-transform motion-safe:group-hover:-translate-y-0.5" aria-hidden="true" />
@@ -584,11 +741,11 @@ export function AgentDesk({ world, readOnly, accountKey, thinkingMs = THINKING_M
       )}
 
       <header className="relative flex items-center gap-3 border-b border-fuchsia-100/80 px-4 py-3 dark:border-fuchsia-900/40">
-        <AiOrb size={36} thinking={thinking} reduce={reduce} />
+        <AiOrb size={36} thinking={thinking} reduce={reduce} ai={modelReady} />
         <div className="min-w-0 flex-1">
           <h3 id="agent-chat-heading" className="flex items-center gap-2 whitespace-nowrap text-sm font-semibold text-slate-900 dark:text-white">
-            Ask CadenceE
-            <span className="rounded-full bg-gradient-to-r from-orange-500 to-fuchsia-500 px-1.5 py-px text-[10px] font-bold uppercase tracking-wider text-white">AI</span>
+            {name}
+            {modelReady && <span className="rounded-full bg-gradient-to-r from-orange-500 to-fuchsia-500 px-1.5 py-px text-[10px] font-bold uppercase tracking-wider text-white">AI</span>}
           </h3>
           <p className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
             <span className="relative flex h-2 w-2" aria-hidden="true">
@@ -596,7 +753,9 @@ export function AgentDesk({ world, readOnly, accountKey, thinkingMs = THINKING_M
               <span className={cn('relative inline-flex h-2 w-2 rounded-full', thinking || busy ? 'bg-fuchsia-500' : 'bg-emerald-500')} />
             </span>
             <span>{status}</span>
-            <span className="hidden sm:inline">· answers from this workspace&apos;s records</span>
+            <span className="hidden sm:inline">
+              {modelReady ? '· reads this workspace’s records as you see them' : '· built-in answers from this workspace’s records'}
+            </span>
           </p>
         </div>
         {turns.length > 0 && (
@@ -652,10 +811,19 @@ export function AgentDesk({ world, readOnly, accountKey, thinkingMs = THINKING_M
             transition={{ duration: 0.4, ease: EASE }}
             className="flex items-start gap-2.5"
           >
-            <AiOrb size={28} reduce={reduce} className="mt-0.5" />
+            <AiOrb size={28} reduce={reduce} className="mt-0.5" ai={modelReady} />
             <div className="rounded-2xl rounded-tl-md border border-slate-200/80 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
-              <p className="font-medium text-slate-900 dark:text-white">Hi, I know this workspace&apos;s leads, deals, contacts, and tasks.</p>
-              <p className="mt-1">Ask what to do next, who went quiet, or about a record by name. Nothing changes until you press a button.</p>
+              {modelReady ? (
+                <>
+                  <p className="font-medium text-slate-900 dark:text-white">Hi, I read this workspace&apos;s records as you can see them.</p>
+                  <p className="mt-1">Ask about a record by name, what to do next, or your day. I only propose changes: nothing is saved until you confirm it.</p>
+                </>
+              ) : (
+                <>
+                  <p className="font-medium text-slate-900 dark:text-white">Hi, I know this workspace&apos;s leads, deals, contacts, and tasks.</p>
+                  <p className="mt-1">Ask what to do next, who went quiet, or about a record by name. Nothing changes until you press a button.</p>
+                </>
+              )}
             </div>
           </motion.div>
         ) : (
@@ -667,7 +835,7 @@ export function AgentDesk({ world, readOnly, accountKey, thinkingMs = THINKING_M
                   {turn.role === 'you' ? (
                     <UserBubble text={turn.text} fresh={!!turn.fresh} reduce={reduce} />
                   ) : (
-                    <AgentBubble text={turn.text} saved={turn.saved} fresh={!!turn.fresh} reduce={reduce}>
+                    <AgentBubble text={turn.text} saved={turn.saved} fresh={!!turn.fresh} reduce={reduce} ai={modelReady && !!turn.lookedUp}>
                       {actions.length > 0 && actions.map((action, index) => (
                         <ActionChip
                           key={action.id}
@@ -679,6 +847,21 @@ export function AgentDesk({ world, readOnly, accountKey, thinkingMs = THINKING_M
                           onRun={(chosen) => void run(chosen)}
                         />
                       ))}
+                      {turn.proposals?.map((proposal) => (
+                        <ProposalCard
+                          key={proposal.id}
+                          proposal={proposal}
+                          state={proposalStates[proposal.id] ?? 'open'}
+                          readOnly={readOnly}
+                          busy={busy}
+                          reduce={reduce}
+                          onConfirm={(chosen) => void confirm(chosen)}
+                          onDismiss={dismiss}
+                        />
+                      ))}
+                      {turn.lookedUp && turn.lookedUp.length > 0 && (
+                        <p className="w-full text-[11px] text-slate-500 dark:text-slate-400">Looked up: {turn.lookedUp.map(lookupName).join(', ')}</p>
+                      )}
                     </AgentBubble>
                   )}
                 </li>
@@ -735,7 +918,7 @@ export function AgentDesk({ world, readOnly, accountKey, thinkingMs = THINKING_M
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
               onKeyDown={onKeyDown}
-              placeholder="Ask CadenceE anything…"
+              placeholder={modelReady ? 'Ask Cadence AI anything…' : 'Ask Cadence about your records…'}
               className="max-h-[132px] min-h-[40px] flex-1 resize-none bg-transparent py-2.5 text-sm leading-5 text-slate-900 shadow-none outline-none ring-0 placeholder:text-slate-400 focus:outline-none focus:ring-0 focus-visible:outline-none dark:text-slate-100"
             />
             <motion.button
@@ -755,6 +938,23 @@ export function AgentDesk({ world, readOnly, accountKey, thinkingMs = THINKING_M
           Enter to send, Shift+Enter for a new line. A change runs only when you press its button, and only once.
         </p>
       </div>
+      {composer && (
+        <Suspense fallback={null}>
+          <EmailComposerDialog
+            open
+            onOpenChange={(open) => { if (!open) setComposer(null); }}
+            to={composer.to}
+            defaultSubject={composer.subject}
+            defaultBody={composer.body}
+            context={composer.context}
+            onSent={() => {
+              savedActions.current.add(composer.proposal.id);
+              settle(composer.proposal, 'done');
+              setComposer(null);
+            }}
+          />
+        </Suspense>
+      )}
     </motion.section>
       )}
     </AnimatePresence>

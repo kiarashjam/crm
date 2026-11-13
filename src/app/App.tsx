@@ -91,6 +91,7 @@ const HospitalitySettings = lazy(() => import('@/app/pages/HospitalitySettings')
 const HospitalityDashboard = lazy(() => import('@/app/pages/HospitalityDashboard'));
 const MemberImport = lazy(() => import('@/app/pages/MemberImport'));
 const SsoCallback = lazy(() => import('@/app/pages/SsoCallback'));
+const MorningBrief = lazy(() => import('@/app/pages/MorningBrief'));
 
 function ProtectedLayout() {
   return (
@@ -249,6 +250,8 @@ export default function App() {
                     <Route path="/companies/:id" element={<CompanyDetail />} />
                     <Route path="/team" element={<Team />} />
                     <Route path="/calendar" element={<Calendar />} />
+                    {/* The morning brief: everyone's own day, in either module. */}
+                    <Route path="/brief" element={<MorningBrief />} />
                     {/* The Club module's pages. */}
                     <Route element={<ModuleOutlet module="club" />}>
                       <Route path="/members" element={<Members />} />

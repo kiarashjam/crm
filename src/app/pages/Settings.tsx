@@ -5,7 +5,7 @@ import {
   User, Palette, Bell, Shield,
   ChevronRight,
   Settings2, Sparkles,
-  Link2, Bot, MessageSquareHeart,
+  Link2, Bot, MessageSquareHeart, MessagesSquare,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -64,9 +64,10 @@ import { IntegrationsSection } from './settings/components/IntegrationsSection';
 import { WelcomePortalSection } from './settings/components/WelcomePortalSection';
 import { MemberPortalSettingsCard } from './settings/components/MemberPortalSettingsCard';
 import { ClaudeSection } from './McpSetup';
+import { AssistantSection } from './settings/components/AssistantSection';
 import PageHero from '@/app/components/PageHero';
 
-type SettingsTab = 'profile' | 'brand' | 'appearance' | 'notifications' | 'integrations' | 'welcome' | 'claude' | 'organization' | 'pipelines' | 'customFields' | 'security' | 'account';
+type SettingsTab = 'profile' | 'brand' | 'appearance' | 'notifications' | 'assistant' | 'integrations' | 'welcome' | 'claude' | 'organization' | 'pipelines' | 'customFields' | 'security' | 'account';
 
 /** The tabs of the Sales module, left out while the workspace has it turned off. */
 const SALES_TABS: readonly SettingsTab[] = ['pipelines'];
@@ -76,6 +77,7 @@ const TAB_CONFIG: { id: SettingsTab; label: string; icon: React.ElementType; des
   { id: 'brand', label: 'Brand & AI', icon: Sparkles, description: 'Brand voice and AI copy settings' },
   { id: 'appearance', label: 'Appearance', icon: Palette, description: 'Theme, layout, and display options' },
   { id: 'notifications', label: 'Notifications', icon: Bell, description: 'Email and in-app notifications' },
+  { id: 'assistant', label: 'Assistant', icon: MessagesSquare, description: 'The chat, morning briefs and the monthly AI limit' },
   { id: 'integrations', label: 'Integrations', icon: Link2, description: 'Inbound webhooks and URLs' },
   { id: 'welcome', label: 'Welcome & portal', icon: MessageSquareHeart, description: 'Your member portal, and handing new customers to one' },
   { id: 'claude', label: 'Claude', icon: Bot, description: 'Read this organization in Claude' },
@@ -577,6 +579,8 @@ export default function Settings() {
         return <AppearanceSection settings={settings} updateSettings={updateSettings} />;
       case 'notifications':
         return <NotificationsSection settings={settings} updateSettings={updateSettings} />;
+      case 'assistant':
+        return <AssistantSection />;
       case 'integrations':
         return <IntegrationsSection currentOrg={currentOrg} />;
       case 'welcome':
