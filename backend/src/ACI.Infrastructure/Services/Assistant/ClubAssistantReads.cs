@@ -4,6 +4,7 @@ using ACI.Application.Common;
 using ACI.Application.Services;
 using ACI.Domain.Entities;
 using ACI.Infrastructure.Persistence;
+using ACI.Infrastructure.Services.Retention;
 using Microsoft.EntityFrameworkCore;
 
 namespace ACI.Infrastructure.Services.Assistant;
@@ -117,14 +118,22 @@ public sealed class ClubAssistantReads : IClubAssistantReads
     {
         var window = Math.Clamp(days, 1, 120);
         var now = DateTime.UtcNow;
-        var due = Live(organizationId).Where(m => m.Status == "Active" && m.RenewsAtUtc >= now && m.RenewsAtUtc < now.AddDays(window));
+        var ending = Live(organizationId).Where(m => m.Status == "Active" && m.RenewsAtUtc >= now && m.RenewsAtUtc < now.AddDays(window));
+        // A membership staff marked "not renewing" on the renewals board is not renewing, as the
+        // morning brief says too; the model is told how many were left out, so it can say so.
+        var due = ending.NotMarkedNotRenewing(_db);
         var total = await due.CountAsync(ct);
+        var notRenewing = await ending.CountAsync(ct) - total;
+        var marked = notRenewing <= 0 ? "" : notRenewing == 1
+            ? " 1 more ending then is marked not renewing on the renewals board."
+            : $" {notRenewing} more ending then are marked not renewing on the renewals board.";
         var rows = await due.OrderBy(m => m.RenewsAtUtc).Take(MaxRows)
             .Select(m => new { m.Id, m.FirstName, m.LastName, m.Tier, m.RenewsAtUtc, m.DuesAmount, m.DuesFrequency }).ToListAsync(ct);
-        if (rows.Count == 0) return $"No active memberships renew in the next {window} days.";
+        if (rows.Count == 0) return $"No active memberships renew in the next {window} days.{marked}";
         var (currency, zone) = await WorkspaceAsync(organizationId, ct);
         var lines = new List<string> { $"Memberships renewing in the next {window} days ({rows.Count} of {total}):" };
         lines.AddRange(rows.Select(m => $"- {Name(m.FirstName, m.LastName)} · {m.Tier} · renews {Day(m.RenewsAtUtc, zone)} · dues {Money(m.DuesAmount, currency)} {m.DuesFrequency.ToLowerInvariant()} · id {m.Id}"));
+        if (marked.Length > 0) lines.Add(marked.Trim());
         return string.Join('\n', lines);
     }
 

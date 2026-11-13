@@ -370,6 +370,33 @@ public class AssistantChatTests
     }
 
     [Fact]
+    public async Task TheRenewalsTool_LeavesOutAMembershipMarkedNotRenewingOnTheRenewalsBoard_AndSaysSo()
+    {
+        // The assistant's renewals tool and the renewals board were built side by side. A member
+        // staff marked "not renewing" on the board was still listed to the model as renewing.
+        using var factory = new AssistantFactory();
+        var (owner, ownerId, org) = await WorkspaceAsync(factory, "pavillon");
+        await SaveAsync(factory, NewMember(org, ownerId, "Anna", "Keller"));
+        var ben = await SaveAsync(factory, NewMember(org, ownerId, "Ben", "Frei"));
+        var board = await Json(await owner.GetAsync("/api/renewals"), "read the board");
+        var card = board.GetProperty("columns").EnumerateArray().SelectMany(c => c.GetProperty("cards").EnumerateArray())
+            .Single(c => c.GetProperty("memberId").GetGuid() == ben.Id);
+        await Json(await owner.PostAsync("/api/renewals/stage", Body(new
+        {
+            memberId = ben.Id, source = "membership", endsAtUtc = card.GetProperty("endsAtUtc").GetString(), stage = "lapsed",
+        })), "mark Ben not renewing");
+        factory.Model.Answer = (_, n) => n == 1
+            ? ScriptedModel.Call("renewals_due", Args(new { days = 30 }))
+            : ScriptedModel.Say("Anna renews soon.");
+
+        await Json(await Ask(owner, "Who renews this month?"), "ask");
+
+        var renewals = factory.Model.ToolResultsInLastRequest().Single();
+        renewals.Should().Contain("Anna Keller").And.NotContain("Ben Frei", "the club knows he is not renewing")
+            .And.Contain("1 more ending then is marked not renewing on the renewals board.");
+    }
+
+    [Fact]
     public async Task ABookingThatTakesADepositSaysSoOnItsCard_BecauseConfirmingItChargesTheMember()
     {
         using var factory = new AssistantFactory();

@@ -8,6 +8,7 @@ using ACI.Application.Services;
 using ACI.Domain.Common;
 using ACI.Domain.Entities;
 using ACI.Infrastructure.Persistence;
+using ACI.Infrastructure.Services.Retention;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -263,14 +264,12 @@ public sealed class MorningBriefService : IMorningBrief
 
     private async Task<MorningBriefSection?> RenewalsAsync(Guid org, DateTime nowUtc, TimeZoneInfo zone, CancellationToken ct)
     {
-        // A membership staff marked "not renewing" on the renewals board (that stage set by hand
-        // on its end) is no renewal coming up: the brief would say it renews on a date the club
-        // knows it will not. One marked renewed has moved the member's date on already.
+        // A membership staff marked "not renewing" on the renewals board is no renewal coming up:
+        // the brief would say it renews on a date the club knows it will not.
         var due = _db.ClubMembers.AsNoTracking()
             .Where(m => m.OrganizationId == org && m.ErasedAtUtc == null && m.Status == "Active"
-                && m.RenewsAtUtc >= nowUtc && m.RenewsAtUtc < nowUtc.AddDays(RenewalDays)
-                && !_db.ClubRenewals.Any(r => r.OrganizationId == org && r.MemberId == m.Id && r.Source == RenewalSources.Membership
-                    && r.SubscriptionId == null && r.EndsAtUtc == m.RenewsAtUtc && r.Stage == RenewalStages.Lapsed));
+                && m.RenewsAtUtc >= nowUtc && m.RenewsAtUtc < nowUtc.AddDays(RenewalDays))
+            .NotMarkedNotRenewing(_db);
         var count = await due.CountAsync(ct);
         if (count == 0) return null;
         var rows = await due.OrderBy(m => m.RenewsAtUtc).Take(LinesShown)
