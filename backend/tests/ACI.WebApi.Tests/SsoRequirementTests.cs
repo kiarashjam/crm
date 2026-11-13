@@ -110,6 +110,27 @@ public class SsoRequirementTests
     }
 
     [Fact]
+    public async Task AMemberItHolds_StillReadsAndSetsTheirOwnLanguage_WithTheWorkspaceInTheHeader()
+    {
+        // The app asks for the person's language as every session starts, with the tab's
+        // workspace in the header, and saves one picked on the sign-in page right after. The
+        // language is the person's own account, like /api/auth/me: refused here, a held member's
+        // app would not know their language, and the screen saying how to get back in would not
+        // be in it.
+        var club = await ClubAsync();
+        await using var _ = club.App;
+        await RequireAsync(club, true, "pavillon46.ch");
+
+        var anna = await PasswordSessionAsync(club.App, "anna@pavillon46.ch");
+        await ShouldBeRefusedAsync(await anna.In(club.Org).GetAsync("/api/contacts"), club.Org);
+
+        var set = await anna.In(club.Org).PutAsync("/api/settings/language", Body(new { language = "fr" }));
+        set.StatusCode.Should().Be(HttpStatusCode.OK, await set.Content.ReadAsStringAsync());
+        using var read = JsonDocument.Parse(await anna.In(club.Org).GetStringAsync("/api/settings/language"));
+        read.RootElement.GetProperty("language").GetString().Should().Be("fr");
+    }
+
+    [Fact]
     public async Task SigningInWithSingleSignOn_OpensTheWorkspace()
     {
         var club = await ClubAsync();
