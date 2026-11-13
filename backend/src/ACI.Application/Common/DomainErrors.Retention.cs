@@ -80,6 +80,9 @@ public static partial class DomainErrors
         public static readonly Error NoBonus = new(
             "ReferralBonus.Off", "The club gives no referral bonus. Set one under Club settings, Retention and referrals.");
 
+        public static readonly Error BonusBeingGiven = new(
+            "ReferralBonus.BeingGiven.Conflict", "Someone is giving this referral bonus at this moment. Reload the member to see it.");
+
         public static readonly Error BonusGiven = new(
             "ReferralBonus.Given.Conflict", "The referral bonus for this member was given already: a member earns their referrer one bonus.");
 

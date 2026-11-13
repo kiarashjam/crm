@@ -42,9 +42,13 @@ public sealed class ClubReferralService : IClubReferrals
         public ReferralPersonDto Dto => new(Id, Name, Status, Tier, JoinedAtUtc);
     }
 
-    private IQueryable<Person> People(Guid organizationId) =>
-        _db.ClubMembers.AsNoTracking().Where(m => m.OrganizationId == organizationId)
-            .Select(m => new Person(m.Id, m.FirstName, m.LastName, m.Status, m.Tier, m.JoinedAtUtc, m.StartsOnUtc, m.ReferredByMemberId, m.ErasedAtUtc));
+    private IQueryable<ClubMember> Members(Guid organizationId) =>
+        _db.ClubMembers.AsNoTracking().Where(m => m.OrganizationId == organizationId);
+
+    // Applied last: SQL Server cannot filter or sort on what a constructor made (the in-memory
+    // provider can), so every Where and OrderBy is on the member before this.
+    private static readonly System.Linq.Expressions.Expression<Func<ClubMember, Person>> AsPerson =
+        m => new Person(m.Id, m.FirstName, m.LastName, m.Status, m.Tier, m.JoinedAtUtc, m.StartsOnUtc, m.ReferredByMemberId, m.ErasedAtUtc);
 
     // ── good standing ────────────────────────────────────────────────────────
 
@@ -59,7 +63,7 @@ public sealed class ClubReferralService : IClubReferrals
     {
         var ids = memberIds.Distinct().ToList();
         if (ids.Count == 0) return [];
-        var people = await People(organizationId).Where(p => ids.Contains(p.Id)).ToListAsync(ct);
+        var people = await Members(organizationId).Where(m => ids.Contains(m.Id)).Select(AsPerson).ToListAsync(ct);
         var now = DateTime.UtcNow;
         var overdue = settings.SponsorNoOverdue
             ? (await ClubOverdue.ListAsync(_db, organizationId, now, ids, ct)).GroupBy(c => c.MemberId)
@@ -87,7 +91,7 @@ public sealed class ClubReferralService : IClubReferrals
     {
         var named = new[] { referrerId, proposerId, seconderId }.OfType<Guid>().Distinct().ToList();
         var known = named.Count == 0 ? new HashSet<Guid>()
-            : (await People(organizationId).Where(p => named.Contains(p.Id) && p.ErasedAtUtc == null).Select(p => p.Id).ToListAsync(ct)).ToHashSet();
+            : (await Members(organizationId).Where(m => named.Contains(m.Id) && m.ErasedAtUtc == null).Select(m => m.Id).ToListAsync(ct)).ToHashSet();
         if (referrerId is Guid r && !known.Contains(r)) return DomainErrors.Referral.ReferrerNotFound;
         if (proposerId is Guid p && !known.Contains(p)) return DomainErrors.Referral.ProposerNotFound;
         if (seconderId is Guid s && !known.Contains(s)) return DomainErrors.Referral.SeconderNotFound;
@@ -137,13 +141,13 @@ public sealed class ClubReferralService : IClubReferrals
             .Where(a => a.Id == applicationId && a.OrganizationId == organizationId)
             .Select(a => new { a.MemberId, a.ReferredByMemberId }).FirstOrDefaultAsync(ct);
         if (app?.MemberId is not Guid memberId || app.ReferredByMemberId is not Guid referrerId) return null;
-        var (_, sentence) = await AwardCoreAsync(organizationId, memberId, referrerId, applicationId, userId, mayHandleMoney, requireActiveReferrer: true, ct);
-        return sentence;
+        var award = await AwardCoreAsync(organizationId, memberId, referrerId, applicationId, userId, mayHandleMoney, requireActiveReferrer: true, ct);
+        return award.Sentence;
     }
 
     public async Task<Result<ReferralBonusDto>> AwardAsync(Guid organizationId, Guid referredMemberId, Guid userId, CancellationToken ct = default)
     {
-        var member = await People(organizationId).FirstOrDefaultAsync(p => p.Id == referredMemberId && p.ErasedAtUtc == null, ct);
+        var member = await Members(organizationId).Where(m => m.Id == referredMemberId && m.ErasedAtUtc == null).Select(AsPerson).FirstOrDefaultAsync(ct);
         if (member == null) return DomainErrors.Club.MemberNotFound;
         if (member.ReferredByMemberId is not Guid referrerId) return DomainErrors.Referral.NoReferrer;
         var settings = await RetentionRules.ReadAsync(_db, organizationId, ct);
@@ -158,7 +162,10 @@ public sealed class ClubReferralService : IClubReferrals
             .Where(a => a.OrganizationId == organizationId && a.MemberId == referredMemberId && a.Status == ApplicationStatuses.Approved)
             .OrderByDescending(a => a.ApprovedAtUtc).Select(a => (Guid?)a.Id).FirstOrDefaultAsync(ct);
         // Given by a person, who decided: the referrer need not still be active, only in the club's records.
-        var (row, sentence) = await AwardCoreAsync(organizationId, referredMemberId, referrerId, applicationId, userId, mayHandleMoney, requireActiveReferrer: false, ct);
+        var (row, sentence, another) = await AwardCoreAsync(organizationId, referredMemberId, referrerId, applicationId, userId, mayHandleMoney,
+            requireActiveReferrer: false, ct);
+        // Someone gave it at the same moment: theirs stands, given or on its way to the ledger.
+        if (another) return row?.Status == ReferralBonusStatuses.Awarded ? DomainErrors.Referral.BonusGiven : DomainErrors.Referral.BonusBeingGiven;
         if (row == null) return new Error("ReferralBonus.NotGiven", sentence ?? "The referral bonus could not be given.");
         if (row.Status != ReferralBonusStatuses.Awarded)
             return new Error("ReferralBonus.NotGiven", row.Reason ?? sentence ?? "The referral bonus could not be given.");
@@ -170,18 +177,20 @@ public sealed class ClubReferralService : IClubReferrals
     /// member brought in), the points entry is saved with it, and a credit goes through the
     /// ledger with a key of its own, so a retry finds what was given and gives nothing again.
     /// </summary>
-    private async Task<(ClubReferralBonus? Row, string? Sentence)> AwardCoreAsync(Guid organizationId, Guid referredId, Guid referrerId, Guid? applicationId,
+    private sealed record Award(ClubReferralBonus? Row, string? Sentence, bool GivenByAnother = false);
+
+    private async Task<Award> AwardCoreAsync(Guid organizationId, Guid referredId, Guid referrerId, Guid? applicationId,
         Guid userId, bool mayHandleMoney, bool requireActiveReferrer, CancellationToken ct)
     {
         var settings = await RetentionRules.ReadAsync(_db, organizationId, ct);
-        if (settings.ReferralBonus == ReferralBonusKinds.None || referrerId == referredId) return (null, null);
+        if (settings.ReferralBonus == ReferralBonusKinds.None || referrerId == referredId) return new(null, null);
         var row = await _db.ClubReferralBonuses.FirstOrDefaultAsync(b => b.OrganizationId == organizationId && b.ReferredMemberId == referredId, ct);
-        if (row?.Status == ReferralBonusStatuses.Awarded) return (row, null);
+        if (row?.Status == ReferralBonusStatuses.Awarded) return new(row, null);
 
-        var people = await People(organizationId).Where(p => p.Id == referrerId || p.Id == referredId).ToListAsync(ct);
+        var people = await Members(organizationId).Where(m => m.Id == referrerId || m.Id == referredId).Select(AsPerson).ToListAsync(ct);
         var referrer = people.FirstOrDefault(p => p.Id == referrerId);
         var referred = people.FirstOrDefault(p => p.Id == referredId);
-        if (referred == null) return (null, null);
+        if (referred == null) return new(null, null);
         var (currency, culture, _, _, _, _) = await RetentionRules.WorkspaceAsync(_db, organizationId, ct);
         var now = DateTime.UtcNow;
         if (row == null)
@@ -241,9 +250,9 @@ public sealed class ClubReferralService : IClubReferrals
         {
             // Another approval or press gave it at the same moment: theirs stands.
             var theirs = await _db.ClubReferralBonuses.AsNoTracking().FirstOrDefaultAsync(b => b.OrganizationId == organizationId && b.ReferredMemberId == referredId, ct);
-            return (theirs, null);
+            return new(theirs, null, GivenByAnother: true);
         }
-        if (row.Kind != ReferralBonusKinds.Credit || row.Status != ReferralBonusStatuses.Pending || !mayHandleMoney || referrer == null) return (row, sentence);
+        if (row.Kind != ReferralBonusKinds.Credit || row.Status != ReferralBonusStatuses.Pending || !mayHandleMoney || referrer == null) return new(row, sentence);
 
         var credited = await _ledger.CreditAsync(organizationId, referrer.Id, settings.ReferralBonusAmount, $"Referral bonus for introducing {referred.Name}",
             $"referral:{referredId}", ct);
@@ -264,7 +273,7 @@ public sealed class ClubReferralService : IClubReferrals
         // The ledger may have let go of what this context tracked when its own save lost a race.
         if (_db.Entry(row).State == EntityState.Detached) _db.ClubReferralBonuses.Attach(row).State = EntityState.Modified;
         await _db.SaveChangesAsync(ct);
-        return (row, sentence);
+        return new(row, sentence);
     }
 
     /// <summary>Saves the bonus row; false when another request saved the member's first (the unique index on SQL Server).</summary>
@@ -287,14 +296,15 @@ public sealed class ClubReferralService : IClubReferrals
 
     public async Task<Result<MemberReferralsDto>> MemberAsync(Guid organizationId, Guid memberId, CancellationToken ct = default)
     {
-        var member = await People(organizationId).FirstOrDefaultAsync(p => p.Id == memberId && p.ErasedAtUtc == null, ct);
+        var member = await Members(organizationId).Where(m => m.Id == memberId && m.ErasedAtUtc == null).Select(AsPerson).FirstOrDefaultAsync(ct);
         if (member == null) return DomainErrors.Club.MemberNotFound;
         var settings = await RetentionRules.ReadAsync(_db, organizationId, ct);
         var application = await _db.ClubApplications.AsNoTracking()
             .Where(a => a.OrganizationId == organizationId && a.MemberId == memberId && a.Status == ApplicationStatuses.Approved)
             .OrderByDescending(a => a.ApprovedAtUtc)
             .Select(a => new { a.Id, a.ProposerMemberId, a.SeconderMemberId }).FirstOrDefaultAsync(ct);
-        var referred = await People(organizationId).Where(p => p.ReferredByMemberId == memberId).OrderByDescending(p => p.JoinedAtUtc).ToListAsync(ct);
+        var referred = await Members(organizationId).Where(m => m.ReferredByMemberId == memberId).OrderByDescending(m => m.JoinedAtUtc).Select(AsPerson)
+            .ToListAsync(ct);
         var sponsored = await _db.ClubApplications.AsNoTracking()
             .Where(a => a.OrganizationId == organizationId && (a.ProposerMemberId == memberId || a.SeconderMemberId == memberId))
             .OrderByDescending(a => a.SubmittedAtUtc)
@@ -305,7 +315,7 @@ public sealed class ClubReferralService : IClubReferrals
             .OrderByDescending(b => b.CreatedAtUtc).ToListAsync(ct);
         var bonusDtos = await BonusDtosAsync(organizationId, bonuses, ct);
         var named = new[] { member.ReferredByMemberId, application?.ProposerMemberId, application?.SeconderMemberId }.OfType<Guid>().Distinct().ToList();
-        var people = await People(organizationId).Where(p => named.Contains(p.Id)).ToDictionaryAsync(p => p.Id, ct);
+        var people = (await Members(organizationId).Where(m => named.Contains(m.Id)).Select(AsPerson).ToListAsync(ct)).ToDictionary(p => p.Id);
         // An erased member shows under the pseudonym erasure gave them, as everywhere else.
         ReferralPersonDto? Person(Guid? id) => id is Guid known && people.TryGetValue(known, out var p) ? p.Dto : null;
         var forThem = bonusDtos.FirstOrDefault(b => b.ReferredMemberId == memberId);
@@ -364,7 +374,7 @@ public sealed class ClubReferralService : IClubReferrals
         if (to <= from || to - from > LongestPeriod) return new Error("ReferralReport.PeriodInvalid", "The period ends after it starts and is at most three years long.");
         var (currency, _, _, _, _, _) = await RetentionRules.WorkspaceAsync(_db, organizationId, ct);
 
-        var people = await People(organizationId).ToListAsync(ct);
+        var people = await Members(organizationId).Select(AsPerson).ToListAsync(ct);
         var byId = people.ToDictionary(p => p.Id);
         var referredBy = people.Where(p => p.ReferredByMemberId != null).ToLookup(p => p.ReferredByMemberId!.Value);
         var referredIds = people.Where(p => p.ReferredByMemberId != null).Select(p => p.Id).ToHashSet();
