@@ -365,7 +365,7 @@ export function ContractPanel({ leadId, dealId, leadName, readOnly, onLeadChange
                 </div>
 
                 {c.deposit ? (
-                  <DepositLine deposit={c.deposit} className="mt-3" />
+                  <DepositLine deposit={c.deposit} withdrawn={c.status === 'voided' || c.status === 'declined'} className="mt-3" />
                 ) : c.depositAmount ? (
                   <p className="mt-3 text-xs text-slate-600">
                     Asks a deposit of {c.depositCurrency} {c.depositAmount.toFixed(2)} on signing, paid once it is sent and signed.

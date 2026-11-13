@@ -114,8 +114,12 @@ function methodOf(deposit: ContractDeposit): string | null {
   }
 }
 
-/** Where a contract's deposit is: asked for, paid, on whose account. */
-export function DepositLine({ deposit, className }: { deposit: ContractDeposit; className?: string }) {
+/**
+ * Where a contract's deposit is: asked for, paid, on whose account. `withdrawn` is a contract
+ * that was voided or declined: what was paid on it is the signer's to get back, and the server
+ * never puts it on an account, so the line must not say it will.
+ */
+export function DepositLine({ deposit, withdrawn = false, className }: { deposit: ContractDeposit; withdrawn?: boolean; className?: string }) {
   const money = useMoney();
   const amount = money.format(deposit.amountPaid ?? deposit.amount, deposit.currency, 'always');
   const method = methodOf(deposit);
@@ -138,6 +142,9 @@ export function DepositLine({ deposit, className }: { deposit: ContractDeposit; 
           {deposit.reference ? ` QR reference ${deposit.reference}.` : ''}
         </p>
       )}
+      {deposit.status === 'processing' && withdrawn && (
+        <p className="mt-1">The contract was withdrawn: once the payment arrives, pay it back.</p>
+      )}
       {deposit.status === 'paid' && (
         deposit.memberId && deposit.ledgerPaymentId ? (
           <p className="mt-1">
@@ -146,6 +153,11 @@ export function DepositLine({ deposit, className }: { deposit: ContractDeposit; 
               {deposit.memberName ?? 'the member'} <ArrowUpRight className="h-3 w-3" aria-hidden />
             </Link>
             , paying their first charges.
+          </p>
+        ) : withdrawn ? (
+          <p className="mt-1">
+            The contract was withdrawn, so this goes on nobody&apos;s account: pay it back
+            {deposit.provider === 'stripe' ? ' in Stripe' : ' by bank transfer'}.
           </p>
         ) : (
           <p className="mt-1">Kept until the club admits them, then put on their account.</p>

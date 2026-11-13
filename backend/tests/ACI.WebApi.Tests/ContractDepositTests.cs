@@ -321,6 +321,60 @@ public class ContractDepositTests
     }
 
     [Fact]
+    public async Task ADepositPaidOnAContractTheClubThenVoided_IsNotPutOnAnAccount_WhenTheSignerIsAdmittedAnotherWay()
+    {
+        await using var app = new PaymentsApp();
+        var club = await StripeClubAsync(app);
+        var (_, contract, token) = await SentWithDepositAsync(club.Owner);
+        using var anon = app.CreateClient();
+        await Json(await SignAsync(anon, token), "sign");
+        await Json(await anon.PostAsync($"/api/public/contracts/{token}/deposit/checkout", null), "press Pay");
+        var metadata = MetadataOf(app.Stripe.Sent("POST", "/v1/checkout/sessions").Single());
+        await Json(await anon.SendAsync(FakeStripe.Webhook(club.Webhook, Secret,
+            IntentEvent("evt_v1", "payment_intent.succeeded", "pi_withdrawn", "succeeded", 50000, metadata))), "paid");
+
+        // Withdrawn after it was paid: no agreement stands behind the money any more.
+        await Json(await club.Owner.PostAsync($"/api/contracts/{contract}/void", Body(new { reason = "Wrong tier" })), "void");
+        // And the signer is admitted all the same, by a reviewer approving their lead's application.
+        var application = await Read(app, db => db.ClubApplications.IgnoreQueryFilters().Single());
+        await Json(await club.Owner.PostAsync($"/api/applications/{application.Id}/approve", Body(new { })), "a reviewer approves");
+
+        var member = await Read(app, db => db.ClubMembers.IgnoreQueryFilters().Single());
+        (await Read(app, db => db.ClubPayments.IgnoreQueryFilters().Count(p => p.MemberId == member.Id && p.Provider == "stripe")))
+            .Should().Be(0, "money paid on a withdrawn contract is paid back, never put on an account by itself");
+        var deposit = await Read(app, db => db.ContractDeposits.IgnoreQueryFilters().Single());
+        (deposit.Status, deposit.LedgerPaymentId).Should().Be((ContractDepositStatuses.Paid, (Guid?)null));
+        (await Json(await club.Owner.GetAsync($"/api/contracts/{contract}"), "the contract")).GetProperty("events").EnumerateArray()
+            .Select(e => e.GetProperty("type").GetString()).Should().Contain("deposit_to_refund", "staff are told to pay it back");
+    }
+
+    [Fact]
+    public async Task APaymentArrivingAfterTheContractWasVoided_IsKeptAsPaid_AndStaffAreToldToPayItBack()
+    {
+        await using var app = new PaymentsApp();
+        var club = await StripeClubAsync(app);
+        var (_, contract, token) = await SentWithDepositAsync(club.Owner);
+        using var anon = app.CreateClient();
+        await Json(await SignAsync(anon, token), "sign");
+        await Json(await anon.PostAsync($"/api/public/contracts/{token}/deposit/checkout", null), "press Pay");
+        var metadata = MetadataOf(app.Stripe.Sent("POST", "/v1/checkout/sessions").Single());
+        // The applicant is admitted by a reviewer meanwhile, and the contract voided while Stripe's page is still open.
+        var application = await Read(app, db => db.ClubApplications.IgnoreQueryFilters().Single());
+        await Json(await club.Owner.PostAsync($"/api/applications/{application.Id}/approve", Body(new { })), "a reviewer approves");
+        await Json(await club.Owner.PostAsync($"/api/contracts/{contract}/void", Body(new { reason = "Sent by mistake" })), "void");
+
+        await Json(await anon.SendAsync(FakeStripe.Webhook(club.Webhook, Secret,
+            IntentEvent("evt_late", "payment_intent.succeeded", "pi_after_void", "succeeded", 50000, metadata))), "the signer pays on the open page");
+
+        var deposit = await Read(app, db => db.ContractDeposits.IgnoreQueryFilters().Single());
+        (deposit.Status, deposit.ProviderPaymentId, deposit.LedgerPaymentId)
+            .Should().Be((ContractDepositStatuses.Paid, "pi_after_void", (Guid?)null), "the money came in, and it is the signer's to get back");
+        (await Read(app, db => db.ClubPayments.IgnoreQueryFilters().Count(p => p.Provider == "stripe"))).Should().Be(0);
+        (await Json(await club.Owner.GetAsync($"/api/contracts/{contract}"), "the contract")).GetProperty("events").EnumerateArray()
+            .Select(e => e.GetProperty("type").GetString()).Should().Contain("deposit_to_refund");
+    }
+
+    [Fact]
     public async Task ADepositPaidBackInStripeBeforeTheMemberWasAdmitted_IsNotPutOnTheirAccount()
     {
         await using var app = new PaymentsApp();

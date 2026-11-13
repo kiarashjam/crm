@@ -99,7 +99,7 @@ function ContractsList({ contracts, linkTo }: { contracts: MemberContract[]; lin
                   {STATUS_LABELS[c.status] ?? c.status}{c.membershipTier ? ` · ${c.membershipTier}` : ''}
                 </span>
               </span>
-              {c.deposit && <DepositLine deposit={c.deposit} className="mt-1.5" />}
+              {c.deposit && <DepositLine deposit={c.deposit} withdrawn={c.status === 'voided' || c.status === 'declined'} className="mt-1.5" />}
             </li>
           );
         })}

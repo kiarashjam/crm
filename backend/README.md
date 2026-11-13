@@ -481,7 +481,9 @@ matched to it. A paid deposit admits nobody: it is held until the club admits th
 recorded on the new member's account once (keyed by Stripe's payment intent or the bank
 reference), paying the initiation fee and first dues first. Duplicate or late events change
 nothing; a deposit paid back in Stripe before the admission is not recorded; voiding or
-declining the contract cancels one not paid.
+declining the contract cancels one not paid. One paid on a contract that was then voided (or
+paid on Stripe's page after the void) is never put on anyone's account: it stays paid, and the
+contract's trail (`deposit_to_refund`) tells staff to pay it back.
 
 **Countersigning** a contract (`POST /api/contracts/{id}/countersign`) now also marks its deal
 won through the deal service (won stage, stage history, `deal.won` rules and webhooks; a deal the

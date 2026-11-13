@@ -104,6 +104,18 @@ describe('the contract panel on a deal', () => {
     expect(screen.getByTestId('deposit-line')).toHaveTextContent(/by bank transfer/);
   });
 
+  it('tells staff to pay back a deposit paid on a contract that was then voided, rather than that it is kept', async () => {
+    api.forDeal = [contract({
+      status: 'voided',
+      deposit: { amount: 500, currency: 'CHF', status: 'paid', amountPaid: 500, amountRefunded: 0, provider: 'stripe', methodType: 'card' },
+    })];
+    show();
+
+    const line = await screen.findByTestId('deposit-line');
+    expect(line).toHaveTextContent(/pay it back in Stripe/i);
+    expect(line).not.toHaveTextContent(/kept until the club admits them/i);
+  });
+
   it('drafts on the deal, at the tier chosen, asking the deposit typed, without asking the fee', async () => {
     api.draft.mockResolvedValue(contract({ status: 'draft', membershipTier: 'Gold', depositAmount: 500, depositCurrency: 'CHF' }));
     show();

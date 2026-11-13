@@ -28,8 +28,10 @@ namespace ACI.Application.Services;
 /// <para>
 /// <b>Putting it on the account</b> (<see cref="SettleAsync"/>): when the deposit is paid and
 /// the signer has been admitted through the club's approval (the countersignature, or a
-/// reviewer's approve), in either order. A paid deposit never admits anyone on its own. The
-/// approval's dues and initiation fee, left pending when whoever approved may not charge
+/// reviewer's approve), in either order, while the contract stands. A deposit paid on a contract
+/// that was voided or declined is the signer's to get back: it is never put on an account by
+/// itself, and the contract's trail tells staff to pay it back. A paid deposit never admits
+/// anyone on its own. The approval's dues and initiation fee, left pending when whoever approved may not charge
 /// accounts, are finished through the deposit hook (IClubApplications.AdmitForDepositAsync),
 /// because the applicant has paid for them; the deposit is then recorded on the ledger under
 /// the provider's id, paying the initiation fee and the first dues first, and what is left
@@ -48,7 +50,10 @@ public interface IContractDeposits
     /// <summary>The deposit's row, made when a contract asking for one is sent (once, however often it is sent).</summary>
     Task OpenAsync(Contract contract, CancellationToken ct = default);
 
-    /// <summary>A declined or voided contract: a deposit not paid yet can no longer be paid. One already paid stays, to be refunded.</summary>
+    /// <summary>
+    /// A declined or voided contract: a deposit not paid yet can no longer be paid. One already
+    /// paid stays, to be refunded, and the contract's trail says so.
+    /// </summary>
     Task CloseAsync(Contract contract, CancellationToken ct = default);
 
     /// <summary>The deposits of these contracts, by contract id, as staff see them.</summary>
@@ -86,9 +91,9 @@ public interface IContractDeposits
 
     /// <summary>
     /// Puts the contract's paid deposit on the account of the member its approval admitted, once
-    /// (see the remarks on this interface). Nothing when it is not paid, already recorded, or
-    /// nobody has been admitted yet. Never throws for what it cannot do: it says so on the
-    /// contract's trail and leaves the deposit to be put on the account later.
+    /// (see the remarks on this interface). Nothing when it is not paid, already recorded, the
+    /// contract was withdrawn, or nobody has been admitted yet. Never throws for what it cannot
+    /// do: it says so on the contract's trail and leaves the deposit to be put on the account later.
     /// </summary>
     /// <param name="userId">Who is acting (the countersigner, a reviewer), or null for a payment arriving.</param>
     Task<DepositSettlement?> SettleAsync(Guid organizationId, Guid contractId, Guid? userId, CancellationToken ct = default);

@@ -115,6 +115,14 @@ public sealed class ContractDepositService : IContractDeposits
         for (var attempt = 0; attempt < 3; attempt++)
         {
             var deposit = await TrackedAsync(contract.OrganizationId, contract.Id, ct);
+            if (deposit is { Status: ContractDepositStatuses.Paid, LedgerPaymentId: null })
+            {
+                // Paid already, and no agreement stands behind it now: it is never put on an
+                // account by itself (SettleAsync), so whoever looks at the contract is told.
+                await LogEventAsync(contract.Id, "deposit_to_refund",
+                    $"The deposit of {Money(deposit.AmountPaid ?? deposit.Amount, deposit.Currency)} was paid ({deposit.ProviderPaymentId}) before the contract was withdrawn. Pay it back{RefundWhere(deposit)}.", ct);
+                return;
+            }
             if (deposit is not { Status: ContractDepositStatuses.Awaiting }) return;
             deposit.Status = ContractDepositStatuses.Cancelled;
             deposit.CheckoutUrl = null;
@@ -354,6 +362,15 @@ public sealed class ContractDepositService : IContractDeposits
             if (settle)
             {
                 await LogEventAsync(deposit.ContractId, "deposit_paid", $"Deposit of {Money(deposit.AmountPaid ?? deposit.Amount, deposit.Currency)} paid through Stripe", ct);
+                // Paid on Stripe's page after the contract was withdrawn (the page lives on at
+                // Stripe): the money is real, so it is kept as paid, and staff are told to pay it
+                // back rather than it going on anyone's account.
+                if (await WithdrawnAsync(organizationId, deposit.ContractId, ct))
+                {
+                    await LogEventAsync(deposit.ContractId, "deposit_to_refund",
+                        $"A payment of {Money(deposit.AmountPaid ?? deposit.Amount, deposit.Currency)} came in for the deposit ({deposit.ProviderPaymentId}) after the contract was withdrawn. Pay it back in Stripe.", ct);
+                    return "deposit paid on a withdrawn contract";
+                }
                 await SettleAsync(organizationId, deposit.ContractId, null, ct);
             }
             return note;
@@ -396,7 +413,11 @@ public sealed class ContractDepositService : IContractDeposits
                 return new DepositTransferOutcome(false, null, null, null,
                     "The reference is a contract's deposit that was paid already: say whose this second transfer is, or pay it back.");
             }
-            if (deposit.Status is ContractDepositStatuses.Cancelled or ContractDepositStatuses.Refunded)
+            // A deposit that could still be paid when its contract was withdrawn (a payment was on
+            // its way) is no longer one either: the transfer waits for staff, as one quoting no
+            // reference would.
+            if (deposit.Status is ContractDepositStatuses.Cancelled or ContractDepositStatuses.Refunded
+                || await WithdrawnAsync(organizationId, contractId, ct))
                 return new DepositTransferOutcome(false, null, null, null,
                     "The reference is the deposit of a contract that was declined or withdrawn: say whose this transfer is, or pay it back.");
             if (!string.Equals(transfer.Currency, deposit.Currency, StringComparison.OrdinalIgnoreCase))
@@ -426,6 +447,12 @@ public sealed class ContractDepositService : IContractDeposits
         if (amount <= 0) return null;
         var contract = await _db.Contracts.AsNoTracking().FirstOrDefaultAsync(c => c.Id == contractId && c.OrganizationId == organizationId, ct);
         if (contract == null) return null;
+        // Paid on a contract withdrawn or declined since: no agreement stands behind the money, so
+        // it is the signer's to get back (the contract's trail says so), and whoever the club
+        // admits later, by another contract or a reviewer's approval of the same lead, does not
+        // get it as credit. Put there by itself, a deposit staff had already paid back by bank
+        // would be paid out twice.
+        if (Withdrawn(contract.Status)) return null;
 
         // The member the club's approval admitted for this contract, or for its lead. Nobody
         // admitted yet: the deposit waits, paid, until someone is.
@@ -497,7 +524,7 @@ public sealed class ContractDepositService : IContractDeposits
             }, ct);
             if (!paid.IsSuccess)
             {
-                await LogEventAsync(contractId, "deposit_not_recorded", Clip($"The deposit could not be put on {Name(member)}'s account: {paid.Error.Description}", 1000), ct);
+                await LogEventAsync(contractId, "deposit_not_recorded", $"The deposit could not be put on {Name(member)}'s account: {paid.Error.Description}", ct);
                 return null;
             }
 
@@ -559,6 +586,17 @@ public sealed class ContractDepositService : IContractDeposits
 
     private Task<ContractDeposit?> TrackedAsync(Guid organizationId, Guid contractId, CancellationToken ct) =>
         _db.ContractDeposits.FirstOrDefaultAsync(d => d.OrganizationId == organizationId && d.ContractId == contractId, ct);
+
+    /// <summary>A contract the club voided or the signer declined: what was paid on it is paid back, never put on an account.</summary>
+    private static bool Withdrawn(string status) => status is ContractStatuses.Voided or ContractStatuses.Declined;
+
+    private async Task<bool> WithdrawnAsync(Guid organizationId, Guid contractId, CancellationToken ct) =>
+        Withdrawn(await _db.Contracts.AsNoTracking().Where(c => c.Id == contractId && c.OrganizationId == organizationId)
+            .Select(c => c.Status).FirstOrDefaultAsync(ct) ?? "");
+
+    /// <summary>Where a paid deposit is paid back: in Stripe, or by a transfer from the club's bank.</summary>
+    private static string RefundWhere(ContractDeposit deposit) =>
+        deposit.Provider == PaymentProviders.Stripe ? " in Stripe" : " by bank transfer";
 
     /// <summary>Saves the deposit, or lets go of it when someone else saved it first (the caller reads it again).</summary>
     private async Task<bool> TrySaveAsync(ContractDeposit deposit, CancellationToken ct)
