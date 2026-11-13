@@ -157,6 +157,33 @@ public class MemberPortalSignInTests
     }
 
     [Fact]
+    public async Task ThirtyMembersSigningUpOnTheClubsWifi_FitFromOneAddress_AndAScriptIsStillStopped()
+    {
+        // Every request in the test host comes from one (unknown) address, as members on the
+        // club's own Wi-Fi at an event do: each opens the sign-in page, asks for a link, opens
+        // the link's page and uses it.
+        using var factory = new CustomWebApplicationFactory();
+        var (staff, _, _) = await ClubAsync(factory, "owner@wifi.ch");
+        for (var i = 0; i < 30; i++) await MemberAsync(staff, $"Guest{i}", $"guest{i}@example.ch");
+        var key = await OpenPortalAsync(staff);
+        var visitor = factory.CreateClient();
+
+        for (var i = 0; i < 30; i++)
+        {
+            await Ok(await visitor.GetAsync($"/api/public/portal/{key}"), $"member {i + 1} opens the sign-in page");
+            (await AskForLinkAsync(factory, key, $"guest{i}@example.ch")).StatusCode.Should().Be(HttpStatusCode.Accepted, $"member {i + 1} asks for a link");
+            await Ok(await visitor.GetAsync($"/api/public/portal/{key}"), $"member {i + 1} opens the link's page");
+            await Ok(await RedeemAsync(factory, key, await LinkTokenAsync(factory, $"guest{i}@example.ch")), $"member {i + 1} signs in");
+        }
+
+        // One machine asking for links to address after address is still stopped.
+        var refused = 0;
+        for (var i = 0; i < 25 && refused == 0; i++)
+            if ((await AskForLinkAsync(factory, key, $"stranger{i}@example.ch")).StatusCode == HttpStatusCode.TooManyRequests) refused = i + 1;
+        refused.Should().Be(21, "fifty links an address may ask for in ten minutes, and thirty went to the members");
+    }
+
+    [Fact]
     public async Task AStaffTokenNeverReachesThePortal_AndAMemberTokenReachesNothingElse()
     {
         using var factory = new CustomWebApplicationFactory();

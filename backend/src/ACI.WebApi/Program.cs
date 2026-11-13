@@ -258,14 +258,20 @@ try
             }));
         // The member portal's sign-in is anonymous too, so it goes by the address as well. Asking
         // for a link is also limited per club and address in the service (three in a quarter of
-        // an hour); this stops one machine asking for links to address after address. Using a
-        // link, and the club's portal asking for one, each a little more freely: a link is a
-        // 256-bit secret, so trying them gets nowhere either way.
+        // an hour), which is what keeps one inbox from being flooded; this stops one machine
+        // asking for links to address after address. Using a link, and the club's portal asking
+        // for one, each more freely: a link is a 256-bit secret, so trying them gets nowhere
+        // either way. Both are sized, like single sign-on's, for many people behind one address:
+        // members signing up on the club's own Wi-Fi at an event, where each sign-in takes three
+        // to five of these requests (the sign-in page, which is read again on coming back from
+        // the mail app, then the link's page and using it). At 60, somewhere between the
+        // thirteenth and the twenty-first member in ten minutes was turned away; at 20 links,
+        // the twenty-first.
         options.AddPolicy("portal-link", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
             "portal-link:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
             _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
             {
-                PermitLimit = 20,
+                PermitLimit = 50,
                 Window = TimeSpan.FromMinutes(10),
                 QueueLimit = 0,
             }));
@@ -273,7 +279,7 @@ try
             "portal-sign-in:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
             _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
             {
-                PermitLimit = 60,
+                PermitLimit = 150,
                 Window = TimeSpan.FromMinutes(10),
                 QueueLimit = 0,
             }));
