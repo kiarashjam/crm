@@ -404,6 +404,45 @@ public class ContractDepositTests
     }
 
     [Fact]
+    public async Task ADepositPaidBackInPartBeforeTheAdmission_IsOnTheAccountNetOfIt_AndALaterRefundTakesOffOnlyWhatIsNew()
+    {
+        await using var app = new PaymentsApp();
+        var club = await StripeClubAsync(app);
+        var (_, contract, token) = await SentWithDepositAsync(club.Owner);
+        using var anon = app.CreateClient();
+        await Json(await SignAsync(anon, token), "sign");
+        await Json(await anon.PostAsync($"/api/public/contracts/{token}/deposit/checkout", null), "press Pay");
+        var metadata = MetadataOf(app.Stripe.Sent("POST", "/v1/checkout/sessions").Single());
+        await Json(await anon.SendAsync(FakeStripe.Webhook(club.Webhook, Secret, IntentEvent("evt_part", "payment_intent.succeeded", "pi_part", "succeeded", 50000, metadata))), "paid");
+        object Refunds(params (string Id, long Minor)[] refunds) => new
+        {
+            @object = "list",
+            data = refunds.Select(r => new { id = r.Id, @object = "refund", status = "succeeded", amount = r.Minor, currency = "chf", payment_intent = "pi_part" }).ToArray(),
+            has_more = false,
+        };
+        object Refunded(string eventId, long refundedMinor) => new
+        {
+            id = eventId, @object = "event", type = "charge.refunded",
+            data = new { @object = new { id = "ch_pi_part", @object = "charge", payment_intent = "pi_part", currency = "chf", amount = 50000, amount_refunded = refundedMinor, refunded = false } },
+        };
+
+        // CHF 100 paid back in Stripe's dashboard before the club has admitted anyone.
+        app.Stripe.On("GET", "/v1/refunds", Refunds(("re_before", 10000)));
+        await Json(await anon.SendAsync(FakeStripe.Webhook(club.Webhook, Secret, Refunded("evt_re_1", 10000))), "a part paid back");
+        await Json(await club.Owner.PostAsync($"/api/contracts/{contract}/countersign", Body(new { signatureName = "Club Secretary", agreed = true })), "countersign");
+        var member = await Read(app, db => db.ClubMembers.IgnoreQueryFilters().Single());
+        (await Read(app, db => db.ClubPayments.IgnoreQueryFilters().Where(p => p.MemberId == member.Id).Sum(p => p.Amount)))
+            .Should().Be(400m, "the account holds what was paid less what was paid back");
+
+        // CHF 50 more paid back once she is a member: the account loses those 50, not the first 100 again.
+        app.Stripe.On("GET", "/v1/refunds", Refunds(("re_after", 5000), ("re_before", 10000)));
+        await Json(await anon.SendAsync(FakeStripe.Webhook(club.Webhook, Secret, Refunded("evt_re_2", 15000))), "another part paid back");
+
+        (await Read(app, db => db.ClubPayments.IgnoreQueryFilters().Where(p => p.MemberId == member.Id).Sum(p => p.Amount)))
+            .Should().Be(350m, "500 paid, 150 paid back");
+    }
+
+    [Fact]
     public async Task AnotherWorkspacesWebhook_CannotPayThisWorkspacesDeposit()
     {
         await using var app = new PaymentsApp();

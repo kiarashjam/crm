@@ -515,10 +515,30 @@ public sealed class ContractDepositService : IContractDeposits
                     .OrderBy(c => c.BillingPeriodStartUtc).Select(c => c.Id).ToListAsync(ct));
             }
 
+            // Paid back in part in Stripe before anyone was admitted: the payment goes on the ledger
+            // whole, with each of Stripe's refunds against it under its own id, as a payment
+            // refunded in Stripe always is. Put there net of them, a refund Stripe reported later
+            // listed the earlier ones as well, and the ledger took them off a second time.
+            IReadOnlyList<ProviderRefund> refundedBefore = [];
+            var recorded = amount;
+            if (deposit.AmountRefunded > 0 && deposit.Provider == PaymentProviders.Stripe && deposit.ProviderPaymentId is { } intentId)
+            {
+                var config = await _settings.ConfigAsync(organizationId, ct);
+                var listed = config.StripeKey == null ? null : await Stripe.ListRefundsAsync(config.StripeKey, intentId, ct);
+                if (listed?.Value == null)
+                {
+                    await LogEventAsync(contractId, "deposit_not_recorded",
+                        $"The deposit was paid back in part, and Stripe could not say by which refunds: it goes on {Name(member)}'s account when Stripe next says something about the payment.", ct);
+                    return null;
+                }
+                refundedBefore = listed.Value.Where(r => r.Status is "succeeded" or "pending").ToList();
+                recorded = deposit.AmountPaid ?? deposit.Amount;
+            }
+
             var paid = await _ledger.RecordReceivedPaymentAsync(organizationId, new ReceivedPaymentRequest
             {
                 MemberId = member.Id,
-                Amount = amount,
+                Amount = recorded,
                 Currency = deposit.Currency,
                 Method = MethodFor(deposit.MethodType),
                 ReceivedAtUtc = deposit.PaidAtUtc ?? DateTime.UtcNow,
@@ -535,6 +555,15 @@ public sealed class ContractDepositService : IContractDeposits
                 await LogEventAsync(contractId, "deposit_not_recorded", $"The deposit could not be put on {Name(member)}'s account: {paid.Error.Description}", ct);
                 return null;
             }
+            // Each keyed by Stripe's refund id: a retry, or Stripe's word on a later refund, finds it there.
+            foreach (var refund in refundedBefore)
+            {
+                var back = await _ledger.RecordProviderRefundAsync(organizationId, paid.Value.Id,
+                    new ProviderRefundEntry(refund.Amount, "Refunded in Stripe", PaymentProviders.Stripe, refund.Id, "Stripe"), ct);
+                // The deposit is marked recorded only once its refunds are too, so the next settle finishes them.
+                if (!back.IsSuccess) throw new InvalidOperationException($"The refund {refund.Id} could not be recorded against the deposit: {back.Error.Description}");
+            }
+            amount = recorded - refundedBefore.Sum(r => r.Amount);
 
             for (var attempt = 0; attempt < 5; attempt++)
             {

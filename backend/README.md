@@ -480,7 +480,9 @@ webhook as every other payment; a bank file's transfer quoting the deposit's QR 
 matched to it. A paid deposit admits nobody: it is held until the club admits the signer, then
 recorded on the new member's account once (keyed by Stripe's payment intent or the bank
 reference), paying the initiation fee and first dues first. Duplicate or late events change
-nothing; a deposit paid back in Stripe before the admission is not recorded; voiding or
+nothing; a deposit paid back in full in Stripe before the admission is not recorded, and one
+paid back in part goes on the account whole with each of Stripe's refunds against it (keyed by
+the refund's id, so a later refund takes off only what is new); voiding or
 declining the contract cancels one not paid. One paid on a contract that was then voided (or
 paid on Stripe's page after the void) is never put on anyone's account: it stays paid, and the
 contract's trail (`deposit_to_refund`) tells staff to pay it back.
