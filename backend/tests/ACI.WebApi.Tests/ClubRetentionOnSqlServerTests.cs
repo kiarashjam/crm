@@ -209,13 +209,15 @@ public class ClubRetentionOnSqlServerTests
             await Json(await owner.PutAsync($"/api/members/{carl}/referrer", Body(new { referredByMemberId = anna })), "and Carl");
 
             await Json(await owner.PutAsync("/api/retention/settings", Body(new { referralBonus = "points", referralBonusPoints = 300 })), "points");
-            var points = await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => owner.PostAsync($"/api/members/{ben}/referral-bonus", Body(new { }))));
+            // Enough presses that some look before the first is saved and read the bonus after:
+            // they gave nothing, so they are answered 409 like the others, never 200.
+            var points = await Task.WhenAll(Enumerable.Range(0, 10).Select(_ => owner.PostAsync($"/api/members/{ben}/referral-bonus", Body(new { }))));
             points.Count(r => r.StatusCode == HttpStatusCode.OK).Should().Be(1);
             points.Where(r => r.StatusCode != HttpStatusCode.OK).Should().OnlyContain(r => r.StatusCode == HttpStatusCode.Conflict);
             (await SqlServerApp.ScalarAsync(database, $"SELECT COUNT(*) FROM [LoyaltyLedger] WHERE [MemberId] = '{anna}'")).Should().Be(1);
 
             await Json(await owner.PutAsync("/api/retention/settings", Body(new { referralBonus = "credit", referralBonusAmount = 50m })), "a credit");
-            var credits = await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => owner.PostAsync($"/api/members/{carl}/referral-bonus", Body(new { }))));
+            var credits = await Task.WhenAll(Enumerable.Range(0, 10).Select(_ => owner.PostAsync($"/api/members/{carl}/referral-bonus", Body(new { }))));
             credits.Count(r => r.StatusCode == HttpStatusCode.OK).Should().Be(1);
             credits.Where(r => r.StatusCode != HttpStatusCode.OK).Should().OnlyContain(r => r.StatusCode == HttpStatusCode.Conflict);
             (await SqlServerApp.ScalarAsync(database, $"SELECT COUNT(*) FROM [ClubPayments] WHERE [OrganizationId] = '{org}' AND [IdempotencyKey] = N'referral:{carl}'"))

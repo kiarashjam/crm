@@ -197,7 +197,9 @@ public sealed class ClubReferralService : IClubReferrals
         var settings = await RetentionRules.ReadAsync(_db, organizationId, ct);
         if (settings.ReferralBonus == ReferralBonusKinds.None || referrerId == referredId) return new(null, null);
         var row = await _db.ClubReferralBonuses.FirstOrDefaultAsync(b => b.OrganizationId == organizationId && b.ReferredMemberId == referredId, ct);
-        if (row?.Status == ReferralBonusStatuses.Awarded) return new(row, null);
+        // Given already, by another request (or an approval) that finished after the caller
+        // looked: theirs stands, and this call gave nothing.
+        if (row?.Status == ReferralBonusStatuses.Awarded) return new(row, null, GivenByAnother: true);
 
         var people = await Members(organizationId).Where(m => m.Id == referrerId || m.Id == referredId).Select(AsPerson).ToListAsync(ct);
         var referrer = people.FirstOrDefault(p => p.Id == referrerId);
