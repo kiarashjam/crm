@@ -306,8 +306,17 @@ What follows from it:
   which kinds the workspace takes (`leadKinds`). For an establishment, the name and email
   are the person filling it in, who becomes the contact person, and `establishmentName` is
   the place. Its own website comes as `businessWebsite`, because `website` is the honeypot.
+  Where the form asks for marketing consent, the answer is the contact person's, recorded
+  on the place's lead.
 - **Import.** A lead import in an establishment workspace offers the establishment's
-  columns, and matches a place by its name and city.
+  columns, and matches a place by its name and city. A row whose contact person's address
+  belongs to someone erased at their request is skipped, as a row with such an email is.
+- **Privacy requests.** The person behind an establishment is its contact person. Finding
+  someone never offers a place as one of their records, unless staff start from it. Their
+  export lists what each place holds about them as its contact person. An erasure on request
+  takes them off each place (name, role, email, phone), and the place stays with its history.
+- **Automations.** Rules on the lead triggers can test "Person or establishment", "Type of
+  establishment" and "City".
 
 ### Imports (leads, contacts, companies)
 
