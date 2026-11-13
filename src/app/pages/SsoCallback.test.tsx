@@ -211,6 +211,16 @@ describe('landing from single sign-on with a language picked on the sign-in page
     expect(saved).toEqual([]);
   });
 
+  it('says why in the reader’s language when the provider sends the person back without signing in', async () => {
+    localStorage.setItem('cadence.language', 'de');
+
+    landInTheApp('#error=email_not_verified');
+
+    expect(await screen.findByRole('heading', { name: 'Sie sind nicht angemeldet' })).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Der Anbieter hat nicht bestätigt, dass diese Adresse Ihnen gehört');
+    expect(screen.getByRole('link', { name: 'Zurück zur Anmeldung' })).toBeInTheDocument();
+  });
+
   it('hands it to the sign-in page with the two-factor step', async () => {
     server.use(http.post(`${BASE}/api/auth/sso/complete`, () =>
       HttpResponse.json({ token: null, user: null, requiresTwoFactor: true, twoFactorToken: 'step-token' })));

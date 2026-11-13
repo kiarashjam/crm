@@ -403,7 +403,7 @@ export default function Login() {
                       disabled={submitting}
                       className="h-11 w-full rounded-xl border border-slate-200 font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60"
                     >
-                      Use a passkey instead
+                      {t('login.passkeyInstead')}
                     </button>
                   )}
 

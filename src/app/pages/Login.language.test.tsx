@@ -212,6 +212,33 @@ describe('the language picked here, whichever way in the person takes', () => {
     expect(startSso).toHaveBeenCalledWith('google', null, 'de');
   });
 
+  it('offers the other ways in, and says why a passkey did not sign in, in the language picked', async () => {
+    server.use(
+      http.get(`${BASE}/api/auth/sign-in-options`, () =>
+        HttpResponse.json({ sso: [{ id: 'microsoft', name: 'Microsoft' }], passkeys: true })),
+      http.post(`${BASE}/api/auth/passkeys/sign-in/options`, () =>
+        HttpResponse.json({ ceremonyId: 'ceremony-1', options: { challenge: 'CQk', allowCredentials: [] } })),
+    );
+    offerPasskeys();
+    (navigator.credentials.get as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new DOMException('cancelled', 'NotAllowedError'));
+    const user = userEvent.setup();
+    renderLogin();
+
+    await user.selectOptions(screen.getByLabelText('Language'), 'de');
+    expect(await screen.findByRole('button', { name: 'Weiter mit Microsoft' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Mit einem Passkey anmelden' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Die Passkey-Abfrage wurde geschlossen, bevor sie fertig war.');
+  });
+
+  it('offers a passkey in place of the code in the language picked', async () => {
+    localStorage.setItem('cadence.language', 'fr');
+    server.use(http.get(`${BASE}/api/auth/sign-in-options`, () => HttpResponse.json({ sso: [], passkeys: true })));
+    offerPasskeys();
+    renderLogin({ twoFactorToken: 'step-from-sso' });
+
+    expect(await screen.findByRole('button', { name: 'Utiliser plutôt une clé d’accès' })).toBeInTheDocument();
+  });
+
   it('keeps one picked before single sign-on once the two-factor code is in', async () => {
     // Picked here and kept in this browser; then off to the provider, which sends the person
     // back here for the code because the account has two-factor sign-in on.

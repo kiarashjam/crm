@@ -19,7 +19,7 @@ import { useT } from '@/app/i18n';
 
 export default function SsoCallback() {
   const navigate = useNavigate();
-  const { choose } = useT();
+  const { t, choose } = useT();
   const [failure, setFailure] = useState<string | null>(null);
   // The code works once: a second run (React's development double effect) must not spend it again.
   const started = useRef(false);
@@ -57,20 +57,20 @@ export default function SsoCallback() {
         {failure ? (
           <>
             <AlertCircle className="mx-auto h-8 w-8 text-red-500" aria-hidden />
-            <h1 className="mt-3 text-lg font-semibold text-slate-900">You are not signed in</h1>
+            <h1 className="mt-3 text-lg font-semibold text-slate-900">{t('login.sso.notSignedIn')}</h1>
             <p className="mt-2 text-sm text-slate-600" role="alert">{failure}</p>
             <Link
               to="/login"
               replace
               className="mt-6 inline-flex h-10 items-center justify-center rounded-lg bg-gradient-to-r from-orange-600 to-orange-500 px-4 text-sm font-semibold text-white hover:from-orange-500 hover:to-orange-400"
             >
-              Back to sign in
+              {t('login.sso.backToSignIn')}
             </Link>
           </>
         ) : (
           <>
             <Loader2 className="mx-auto h-8 w-8 animate-spin text-orange-600" aria-hidden />
-            <h1 className="mt-3 text-lg font-semibold text-slate-900">Signing you in…</h1>
+            <h1 className="mt-3 text-lg font-semibold text-slate-900">{t('login.sso.signingIn')}</h1>
           </>
         )}
       </div>

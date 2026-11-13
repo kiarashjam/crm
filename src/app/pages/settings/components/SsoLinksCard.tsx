@@ -8,10 +8,14 @@ import { getSignInOptions, getSsoLinks, unlinkSso, type SsoLink } from '@/app/ap
 import { servesDemoData } from '@/app/api/apiClient';
 import { getCurrentUser } from '@/app/lib/auth';
 import { LoadFailed } from '@/app/components/LoadFailed';
+import { useT } from '@/app/i18n';
 
 const PROVIDER_NAMES: Record<string, string> = { google: 'Google', microsoft: 'Microsoft' };
 
 export function SsoLinksCard() {
+  // Only the buttons this card names are in the reader's language: they are quoted as the
+  // sign-in page shows them, so they can be found there. The rest of Settings is English.
+  const { t } = useT();
   const client = useQueryClient();
   const userId = getCurrentUser()?.id ?? 'signed-out';
   const key = ['account', userId, 'sso-links'] as const;
@@ -49,7 +53,8 @@ export function SsoLinksCard() {
       ) : links.data.length === 0 ? (
         <p className="text-sm text-slate-600">
           None yet. To add one, sign out and choose{' '}
-          {(options.data?.sso.length ? options.data.sso : [{ id: 'google', name: 'Google' }]).map((p) => `“Continue with ${p.name}”`).join(' or ')}
+          {(options.data?.sso.length ? options.data.sso : [{ id: 'google', name: 'Google' }])
+            .map((p) => `“${t('login.continueWith', { provider: p.name })}”`).join(' or ')}
           {' '}on the sign-in page.
         </p>
       ) : (

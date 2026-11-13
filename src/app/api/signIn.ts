@@ -14,6 +14,8 @@ import { authFetchJson, getApiBaseUrl, servesDemoData } from './apiClient';
 import type { LoginResponse } from './auth';
 import { getCurrentOrganizationId, getCurrentUser, setCurrentOrganizationId } from '@/app/lib/auth';
 import { asLanguage, type Language } from '@/app/i18n/languages';
+import { translate } from '@/app/i18n/current';
+import type { MessageKey } from '@/app/i18n/catalog';
 
 export type SsoProvider = { id: string; name: string };
 export type SignInOptions = { sso: SsoProvider[]; passkeys: boolean };
@@ -87,7 +89,7 @@ export async function pkceChallenge(verifier: string): Promise<string> {
  */
 export async function ssoStartUrl(provider: string, returnTo?: string | null, language?: Language | null): Promise<string> {
   const base = getApiBaseUrl();
-  if (!base) throw new Error('Single sign-on needs the server.');
+  if (!base) throw new Error(translate('login.sso.error.noServer'));
   const verifier = bufferToBase64Url(crypto.getRandomValues(new Uint8Array(32)));
   const orgId = getCurrentOrganizationId();
   const userId = getCurrentUser()?.id;
@@ -125,7 +127,7 @@ export async function completeSso(code: string): Promise<{
   }
   sessionStorage.removeItem(SSO_KEY);
   if (!pending?.verifier) {
-    throw new Error('This sign-in was started in another browser or tab. Start it again here.');
+    throw new Error(translate('login.sso.error.otherTab'));
   }
   const response = await authFetchJson<LoginResponse>('/api/auth/sso/complete', {
     method: 'POST',
@@ -144,22 +146,25 @@ export function keepWorkspaceFor(user: { id: string } | null | undefined, kept: 
   if (kept?.orgId && user?.id && kept.userId === user.id) setCurrentOrganizationId(kept.orgId);
 }
 
-/** Why a single sign-on came back without signing in, in words. */
-export const SSO_ERRORS = {
-  cancelled: 'Signing in was cancelled at the provider. Nothing changed.',
-  expired: 'That sign-in took too long or was already used. Start it again.',
-  email_not_verified: 'The provider did not confirm that this address is yours, so it cannot sign you in. Use an account whose address is verified, or sign in another way.',
-  invalid_token: 'The provider’s answer could not be checked, so it was refused. Try again, or sign in another way.',
-  provider_error: 'The provider could not complete the sign-in. Try again in a moment.',
-  provider_unavailable: 'The provider did not answer. Try again in a moment.',
-  not_configured: 'Signing in that way is not set up on this server.',
-  bad_request: 'The sign-in could not start. Reload the page and try again.',
-  server_error: 'Something went wrong while signing you in. Try again.',
-} as const satisfies Record<string, string>;
+/**
+ * Why a single sign-on came back without signing in: the reason the API puts in the
+ * address, and the catalogue's words for it (the sign-in page's, in its language).
+ */
+const SSO_ERRORS = {
+  cancelled: 'login.sso.error.cancelled',
+  expired: 'login.sso.error.expired',
+  email_not_verified: 'login.sso.error.email_not_verified',
+  invalid_token: 'login.sso.error.invalid_token',
+  provider_error: 'login.sso.error.provider_error',
+  provider_unavailable: 'login.sso.error.provider_unavailable',
+  not_configured: 'login.sso.error.not_configured',
+  bad_request: 'login.sso.error.bad_request',
+  server_error: 'login.sso.error.server_error',
+} as const satisfies Record<string, MessageKey>;
 
 /** The words for the reason the API gave, or a general one for a reason it does not know. */
 export function ssoErrorMessage(reason: string | null | undefined): string {
-  return (reason && Object.prototype.hasOwnProperty.call(SSO_ERRORS, reason)
+  return translate(reason && Object.prototype.hasOwnProperty.call(SSO_ERRORS, reason)
     ? SSO_ERRORS[reason as keyof typeof SSO_ERRORS]
     : SSO_ERRORS.server_error);
 }
@@ -274,10 +279,10 @@ export function credentialToJson(credential: PublicKeyCredential): Record<string
 /** What a passkey prompt that did not finish means, in words. */
 export function passkeyPromptError(err: unknown): Error {
   const name = err instanceof DOMException || err instanceof Error ? err.name : '';
-  if (name === 'NotAllowedError' || name === 'AbortError') return new Error('The passkey prompt was closed before it finished. Try again.');
-  if (name === 'InvalidStateError') return new Error('This device already holds a passkey for your account.');
-  if (name === 'SecurityError') return new Error('Passkeys cannot be used on this address. Ask whoever runs Cadence to check its passkey settings.');
-  return err instanceof Error ? err : new Error('The passkey prompt failed.');
+  if (name === 'NotAllowedError' || name === 'AbortError') return new Error(translate('login.passkeyError.closed'));
+  if (name === 'InvalidStateError') return new Error(translate('login.passkeyError.alreadyAdded'));
+  if (name === 'SecurityError') return new Error(translate('login.passkeyError.notHere'));
+  return err instanceof Error ? err : new Error(translate('login.passkeyError.failed'));
 }
 
 async function ask<T extends Credential>(run: () => Promise<Credential | null>): Promise<T> {
@@ -287,7 +292,7 @@ async function ask<T extends Credential>(run: () => Promise<Credential | null>):
   } catch (err) {
     throw passkeyPromptError(err);
   }
-  if (!credential) throw new Error('No passkey was chosen.');
+  if (!credential) throw new Error(translate('login.passkeyError.noneChosen'));
   return credential as T;
 }
 

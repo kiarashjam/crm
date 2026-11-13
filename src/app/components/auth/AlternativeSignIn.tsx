@@ -9,6 +9,7 @@ import { KeyRound, Loader2 } from 'lucide-react';
 import { getSignInOptions, passkeysSupported, signInWithPasskey, startSso, type SsoProvider } from '@/app/api/signIn';
 import type { LoginResponse } from '@/app/api/auth';
 import type { Language } from '@/app/i18n/languages';
+import { useT } from '@/app/i18n';
 
 /** The providers' own marks, drawn small and plain so they read as theirs. */
 function ProviderMark({ id }: { id: string }) {
@@ -44,6 +45,7 @@ export function SsoButtons({ providers, returnTo, language, onError }: {
   language?: Language | null;
   onError?: (message: string) => void;
 }) {
+  const { t } = useT();
   const [leaving, setLeaving] = useState<string | null>(null);
   if (providers.length === 0) return null;
 
@@ -53,7 +55,7 @@ export function SsoButtons({ providers, returnTo, language, onError }: {
       await startSso(provider.id, returnTo, language);
     } catch (err) {
       setLeaving(null);
-      onError?.(err instanceof Error ? err.message : 'Single sign-on could not start.');
+      onError?.(err instanceof Error ? err.message : t('login.ssoCouldNotStart'));
     }
   };
 
@@ -62,7 +64,7 @@ export function SsoButtons({ providers, returnTo, language, onError }: {
       {providers.map((provider) => (
         <button key={provider.id} type="button" className={buttonCls} disabled={leaving !== null} onClick={() => void go(provider)}>
           {leaving === provider.id ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <ProviderMark id={provider.id} />}
-          Continue with {provider.name}
+          {t('login.continueWith', { provider: provider.name })}
         </button>
       ))}
     </div>
@@ -81,6 +83,7 @@ export interface AlternativeSignInProps {
 }
 
 export function AlternativeSignIn({ onSignedIn, onError, withPasskey = true, returnTo, language }: AlternativeSignInProps) {
+  const { t } = useT();
   const options = useQuery({ queryKey: ['sign-in-options'], queryFn: getSignInOptions, staleTime: 5 * 60_000, retry: 1 });
   const [busy, setBusy] = useState(false);
 
@@ -94,19 +97,19 @@ export function AlternativeSignIn({ onSignedIn, onError, withPasskey = true, ret
     try {
       onSignedIn(await signInWithPasskey());
     } catch (err) {
-      onError(err instanceof Error ? err.message : 'The passkey did not sign you in.');
+      onError(err instanceof Error ? err.message : t('login.passkeyFailed'));
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="space-y-2" aria-label="Other ways to sign in">
+    <div className="space-y-2" aria-label={t('login.otherWays')}>
       <SsoButtons providers={sso} returnTo={returnTo} language={language} onError={onError} />
       {passkey && (
         <button type="button" className={buttonCls} disabled={busy} onClick={() => void withKey()}>
           {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <KeyRound className="h-4 w-4" aria-hidden />}
-          Sign in with a passkey
+          {t('login.passkey')}
         </button>
       )}
     </div>
