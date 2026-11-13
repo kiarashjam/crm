@@ -277,6 +277,9 @@ public static partial class MemberTexts
         ["pdf.colOwed"] = new("Owed", "Offen", "Dû"),
         ["pdf.formerHouseholdMember"] = new("A former member of the household", "Ein früheres Mitglied des Haushalts", "Un ancien membre du ménage"),
         ["pdf.noLongerInHousehold"] = new("No longer in the household", "Nicht mehr im Haushalt", "Ne fait plus partie du ménage"),
+        // A company's statement: its own charges and those its nominees ran up on its account.
+        ["pdf.companyTitle"] = new("Company statement", "Firmenauszug", "Relevé de l’entreprise"),
+        ["pdf.formerNominee"] = new("A former nominee", "Eine frühere nominierte Person", "Une ancienne personne désignée"),
 
         ["line.balanceBroughtOver"] = new("Balance brought over", "Übertragener Saldo", "Solde repris"),
         ["line.correction"] = new("Correction", "Korrektur", "Correction"),
@@ -379,6 +382,9 @@ public static partial class MemberTexts
         ["role:Parent"] = new("Parent", "Elternteil", "Parent"),
         ["role:Sibling"] = new("Sibling", "Geschwister", "Frère ou sœur"),
         ["role:Other"] = new("Other", "Andere", "Autre"),
+        // On a company's statement: the company's own charges, and each nominee's.
+        ["role:Company"] = new("Company", "Firma", "Entreprise"),
+        ["role:Nominee"] = new("Nominee", "Nominierte Person", "Personne désignée"),
     };
 
     [GeneratedRegex(@"\{(\w+)\}")]

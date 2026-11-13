@@ -172,10 +172,11 @@ public sealed partial class ClubLedgerService
         var member = await MemberAsync(organizationId, tab.MemberId, ct);
         if (total > 0 && member == null) return DomainErrors.Club.MemberNotFound;
         // The tab is the member's (and so are its points), but its charge goes on the household
-        // primary's account when the member's bills roll up to them.
-        ClubMember? billTo = null;
+        // primary's account when the member's bills roll up to them, or their company's when it
+        // pays its nominees' charges.
+        Holder? billTo = null;
         ClubMember? rolledUpFrom = null;
-        if (member != null) (billTo, rolledUpFrom) = await BillToAsync(organizationId, member, ct);
+        if (member != null) (billTo, rolledUpFrom) = await BillToAsync(organizationId, member, forDues: false, ct);
         var account = billTo != null ? await AccountAsync(organizationId, billTo.Id, ct) : null;
         await _reads.ReadAsync("tabs", ct);
 
@@ -251,7 +252,7 @@ public sealed partial class ClubLedgerService
             if (charges.Count > 0)
             {
                 _db.ClubCharges.AddRange(charges);
-                await StageBalanceAsync(organizationId, billTo, -total, ct);
+                await StageBalanceAsync(organizationId, billTo!, -total, ct);
             }
             if (earned != null) _db.LoyaltyLedger.Add(earned);
         });

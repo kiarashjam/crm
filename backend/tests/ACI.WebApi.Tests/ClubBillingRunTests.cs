@@ -318,6 +318,8 @@ public class ClubBillingRunTests
             public Task<ACI.Application.Common.Result<StatementFile>> HouseholdStatementPdfAsync(Guid organizationId, Guid primaryMemberId, string householdName,
                 IReadOnlyList<HouseholdStatementMember> others, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default) => throw new NotSupportedException();
             public Task<ACI.Application.Common.Result<InvoiceFile>> ChargeInvoicePdfAsync(Guid organizationId, Guid chargeId, CancellationToken ct = default) => throw new NotSupportedException();
+            public Task<ACI.Application.Common.Result<StatementFile>> ClientStatementPdfAsync(Guid organizationId, Guid accountId, DateTime fromUtc, DateTime toUtc,
+                string? language, string? email, CancellationToken ct = default) => throw new NotSupportedException();
         }
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)

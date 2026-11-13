@@ -170,8 +170,9 @@ public sealed partial class ClubLedgerService
             var member = await MemberAsync(organizationId, request.MemberId, ct);
             if (member == null) return DomainErrors.Club.MemberNotFound;
             // The sale and its points are the buyer's; its charges go on the household primary's
-            // account when the buyer's bills roll up to them.
-            var (billTo, rolledUpFrom) = await BillToAsync(organizationId, member, ct);
+            // account when the buyer's bills roll up to them, or their company's when it pays
+            // its nominees' charges.
+            var (billTo, rolledUpFrom) = await BillToAsync(organizationId, member, forDues: false, ct);
             var account = await AccountAsync(organizationId, billTo.Id, ct);
             foreach (var line in lines)
                 if (line.Currency != null && !string.Equals(line.Currency, account.Currency, StringComparison.OrdinalIgnoreCase))
@@ -256,7 +257,7 @@ public sealed partial class ClubLedgerService
                     Id = Guid.NewGuid(),
                     OrganizationId = organizationId,
                     MemberId = billTo.Id,
-                    MemberName = NameOf(billTo),
+                    MemberName = billTo.Name,
                     EntryType = ClubEntryTypes.Payment,
                     Method = method,
                     Amount = amount,

@@ -675,6 +675,57 @@ public sealed class ClubBillingService : IClubBilling
         return new StatementFile(fileName, bytes, statement, amountDue);
     }
 
+    /// <remarks>
+    /// A company that pays its nominees' charges has them on its own account, each saying who ran
+    /// it up (the ledger puts them there at posting), so its statement is the membership's whole
+    /// bill. The table under it adds up what each nominee ran up, and what the company was charged
+    /// for itself (its dues, its private events), as the household statement does for a family.
+    /// </remarks>
+    public async Task<Result<StatementFile>> ClientStatementPdfAsync(Guid organizationId, Guid accountId, DateTime fromUtc, DateTime toUtc,
+        string? language, string? email, CancellationToken ct = default)
+    {
+        var read = await _ledger.StatementAsync(organizationId, accountId, fromUtc, toUtc, ct);
+        if (!read.IsSuccess) return read.Error;
+        var statement = read.Value;
+        var workspace = await WorkspaceAsync(organizationId, ct);
+        var words = AppLanguages.ForMember(language);
+        var lines = statement.Lines.Select(l => new StatementPdfLine(l.AtUtc, Describe(l, words), Detail(l, words), l.Debit, l.Credit, Owed(l.Balance), l.VatRate)).ToList();
+
+        // Who ran up what: the account itself, then each person whose charges it carries.
+        List<StatementPdfHouseholdLine>? people = null;
+        var charged = statement.Lines.Where(l => l.Side == "charge").GroupBy(l => l.IncurredByMemberId).ToList();
+        if (charged.Any(g => g.Key != null))
+        {
+            people = [new(statement.MemberName, "Company", charged.Where(g => g.Key == null).Sum(g => g.Sum(l => l.Debit - l.Credit)), null)];
+            foreach (var person in charged.Where(g => g.Key != null).OrderBy(g => g.First().IncurredByName, StringComparer.OrdinalIgnoreCase))
+                people.Add(new(person.First().IncurredByName ?? MemberTexts.T(words, "pdf.formerNominee"), "Nominee", person.Sum(l => l.Debit - l.Credit), null));
+        }
+
+        var amountDue = Math.Max(0, Owed(statement.ClosingBalance));
+        var slip = await _qrBills.ForStatementAsync(organizationId, accountId, statement.FromUtc, statement.ToUtc, amountDue, statement.Currency, words, ct);
+        var bytes = StatementPdf.Render(new StatementPdfRequest(
+            workspace.Name,
+            statement.MemberName,
+            ValidationHelper.IsValidEmail((email ?? "").Trim()) ? email!.Trim() : null,
+            null,
+            statement.FromUtc,
+            statement.ToUtc,
+            statement.Currency,
+            workspace.Locale,
+            workspace.TimeZone,
+            Owed(statement.OpeningBalance),
+            statement.TotalDebits,
+            statement.TotalCredits,
+            Owed(statement.ClosingBalance),
+            lines,
+            DateTime.UtcNow,
+            PaymentSlip: slip,
+            Title: people != null ? MemberTexts.T(words, "pdf.companyTitle") : null,
+            Household: people,
+            Language: words));
+        return new StatementFile(FileName(statement, workspace), bytes, statement, amountDue);
+    }
+
     public async Task<Result<InvoiceFile>> ChargeInvoicePdfAsync(Guid organizationId, Guid chargeId, CancellationToken ct = default)
     {
         // The charge as the ledger sees it now: what has been paid on it, whether it was voided.

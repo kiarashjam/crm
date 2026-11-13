@@ -21,6 +21,9 @@ internal sealed class ClubHouseAccountConfiguration : IEntityTypeConfiguration<C
         builder.Property(e => e.Version).IsConcurrencyToken();
         builder.HasIndex(e => e.MemberId).IsUnique();
         builder.HasIndex(e => e.OrganizationId);
+        // A company's or a contact's account: found from its company's or contact's page.
+        builder.HasIndex(e => new { e.OrganizationId, e.CompanyId }).HasFilter("[CompanyId] IS NOT NULL");
+        builder.HasIndex(e => new { e.OrganizationId, e.ContactId }).HasFilter("[ContactId] IS NOT NULL");
     }
 }
 

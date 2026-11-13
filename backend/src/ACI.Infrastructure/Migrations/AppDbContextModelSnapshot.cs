@@ -1955,6 +1955,12 @@ namespace ACI.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("CompanyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ContactId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("Currency")
                         .IsRequired()
                         .HasMaxLength(3)
@@ -1982,6 +1988,12 @@ namespace ACI.Infrastructure.Migrations
                         .IsUnique();
 
                     b.HasIndex("OrganizationId");
+
+                    b.HasIndex("OrganizationId", "CompanyId")
+                        .HasFilter("[CompanyId] IS NOT NULL");
+
+                    b.HasIndex("OrganizationId", "ContactId")
+                        .HasFilter("[ContactId] IS NOT NULL");
 
                     b.ToTable("ClubHouseAccounts", (string)null);
                 });

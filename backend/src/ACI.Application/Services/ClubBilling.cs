@@ -73,6 +73,18 @@ public interface IClubBilling
     /// </summary>
     Task<Result<StatementFile>> HouseholdStatementPdfAsync(Guid organizationId, Guid primaryMemberId, string householdName,
         IReadOnlyList<HouseholdStatementMember> others, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default);
+
+    /// <summary>
+    /// A company's or a private client's statement for [fromUtc, toUtc) as a PDF, from their
+    /// house account. On a company's, the charges its nominees ran up on it say whose they were,
+    /// and a table says what each ran up in the period, so the company has one statement for the
+    /// whole membership. It carries the QR-bill for what is due when the club's bank details are
+    /// set, as a member's does, and a transfer quoting it pays the company's account.
+    /// </summary>
+    /// <param name="language">en, de or fr; English when none is given.</param>
+    /// <param name="email">The address the statement is for (the corporate membership's billing address), printed under the name.</param>
+    Task<Result<StatementFile>> ClientStatementPdfAsync(Guid organizationId, Guid accountId, DateTime fromUtc, DateTime toUtc,
+        string? language, string? email, CancellationToken ct = default);
 }
 
 /// <summary>A member of a household other than its primary, for the household statement.</summary>
