@@ -45,7 +45,7 @@ public sealed partial class PersonDataService : IPersonData
         var members = new Dictionary<Guid, ClubMember>();
         var applications = new Dictionary<Guid, ClubApplication>();
 
-        void AddLead(Lead l, string why) { if (leads.TryAdd(l.Id, l)) found[(PersonRecordKinds.Lead, l.Id)] = new(PersonRecordKinds.Lead, l.Id, l.Name, NullIfEmpty(l.Email), l.IsConverted ? "Converted" : l.Status, why); }
+        void AddLead(Lead l, string why) { if (leads.TryAdd(l.Id, l)) found[(PersonRecordKinds.Lead, l.Id)] = new(PersonRecordKinds.Lead, l.Id, l.Name, LeadKindRules.PersonOf(l).Email, l.IsConverted ? "Converted" : l.Status, why); }
         void AddContact(Contact c, string why) { if (contacts.TryAdd(c.Id, c)) found[(PersonRecordKinds.Contact, c.Id)] = new(PersonRecordKinds.Contact, c.Id, c.Name, NullIfEmpty(c.Email), c.IsArchived ? "Archived" : null, why); }
         void AddMember(ClubMember m, string why) { if (members.TryAdd(m.Id, m)) found[(PersonRecordKinds.Member, m.Id)] = new(PersonRecordKinds.Member, m.Id, $"{m.FirstName} {m.LastName}".Trim(), NullIfEmpty(m.Email), m.ErasedAtUtc != null ? "Erased" : $"{m.Tier}, {m.Status}", why); }
         void AddApplication(ClubApplication a, string why) { if (applications.TryAdd(a.Id, a)) found[(PersonRecordKinds.Application, a.Id)] = new(PersonRecordKinds.Application, a.Id, $"{a.FirstName} {a.LastName}".Trim(), NullIfEmpty(a.Email), a.Status, why); }
@@ -61,7 +61,9 @@ public sealed partial class PersonDataService : IPersonData
         {
             if (await _db.Leads.AsNoTracking().FirstOrDefaultAsync(l => l.Id == leadId && l.OrganizationId == organizationId, ct) is not { } lead)
                 return DomainErrors.Privacy.RecordNotFound;
-            AddLead(lead, start);
+            AddLead(lead, lead.Kind == LeadKinds.Establishment
+                ? $"{start}, an establishment. Untick it to keep the place and take only its contact person off it"
+                : start);
         }
         if (lookup.ContactId is Guid contactId)
         {
@@ -82,7 +84,9 @@ public sealed partial class PersonDataService : IPersonData
         for (var round = 0; round < 4 && found.Count < MaxRecords; round++)
         {
             var before = found.Count;
-            foreach (var r in leads.Values.Select(l => l.Email).Concat(contacts.Values.Select(c => c.Email))
+            // A lead's address is its person's: an establishment's contact person's. The place's
+            // own general address is the business's, and would gather whoever else writes from it.
+            foreach (var r in leads.Values.Select(l => LeadKindRules.PersonOf(l).Email).Concat(contacts.Values.Select(c => c.Email))
                          .Concat(members.Values.Select(m => m.Email)).Concat(applications.Values.Select(a => a.Email)))
             {
                 var a = ErasedAddresses.Normalize(r);
@@ -90,7 +94,11 @@ public sealed partial class PersonDataService : IPersonData
             }
             var list = addresses.ToList();
             const string sameAddress = "Same email address";
-            foreach (var l in await _db.Leads.AsNoTracking().Where(l => l.OrganizationId == organizationId && list.Contains(l.Email.Trim().ToLower())).Take(MaxRecords).ToListAsync(ct))
+            // Not an establishment: its address is the business's, and the person it names is its
+            // contact person, whom an erasure takes off it while the place stays.
+            foreach (var l in await _db.Leads.AsNoTracking()
+                         .Where(l => l.OrganizationId == organizationId && l.Kind != LeadKinds.Establishment && list.Contains(l.Email.Trim().ToLower()))
+                         .Take(MaxRecords).ToListAsync(ct))
                 AddLead(l, sameAddress);
             foreach (var c in await _db.Contacts.AsNoTracking().Where(c => c.OrganizationId == organizationId && list.Contains(c.Email.Trim().ToLower())).Take(MaxRecords).ToListAsync(ct))
                 AddContact(c, sameAddress);
@@ -113,8 +121,12 @@ public sealed partial class PersonDataService : IPersonData
             var linkedLeadIds = contacts.Values.Where(c => c.ConvertedFromLeadId != null).Select(c => c.ConvertedFromLeadId!.Value)
                 .Concat(members.Values.Where(m => m.LeadId != null).Select(m => m.LeadId!.Value))
                 .Concat(applications.Values.Where(a => a.LeadId != null).Select(a => a.LeadId!.Value)).Distinct().ToList();
+            // An establishment linked to their contact is a business they speak for, not a record
+            // of theirs: ticked here, it would be erased with all its history. Left out, an
+            // erasure takes only its contact person off it (PersonDossier.EstablishmentsTheySpeakFor).
             foreach (var l in await _db.Leads.AsNoTracking()
-                         .Where(l => l.OrganizationId == organizationId && (linkedLeadIds.Contains(l.Id) || (l.ConvertedToContactId != null && contactIds.Contains(l.ConvertedToContactId.Value))))
+                         .Where(l => l.OrganizationId == organizationId && l.Kind != LeadKinds.Establishment
+                             && (linkedLeadIds.Contains(l.Id) || (l.ConvertedToContactId != null && contactIds.Contains(l.ConvertedToContactId.Value))))
                          .Take(MaxRecords).ToListAsync(ct))
                 AddLead(l, LinkedTo(l.ConvertedToContactId is Guid to && contacts.TryGetValue(to, out var c) ? $"the contact {c.Name}" : "another of their records"));
             var linkedMemberIds = applications.Values.Where(a => a.MemberId != null).Select(a => a.MemberId!.Value).ToList();
@@ -175,8 +187,9 @@ public sealed partial class PersonDataService : IPersonData
         if (leads.Count != leadIds.Count || contacts.Count != contactIds.Count || members.Count != memberIds.Count || applications.Count != applicationIds.Count)
             return DomainErrors.Privacy.RecordNotFound;
 
+        // A lead's address is its person's: an establishment's contact person's, not the place's own.
         var all = asked
-            .Concat(leads.Select(l => l.Email)).Concat(contacts.Select(c => c.Email))
+            .Concat(leads.Select(l => LeadKindRules.PersonOf(l).Email)).Concat(contacts.Select(c => c.Email))
             .Concat(members.Select(m => m.Email)).Concat(applications.Select(a => a.Email))
             .Select(ErasedAddresses.Normalize).Where(a => a.Length > 0).ToHashSet(StringComparer.Ordinal);
 

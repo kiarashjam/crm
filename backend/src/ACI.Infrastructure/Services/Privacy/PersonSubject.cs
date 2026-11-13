@@ -52,9 +52,13 @@ internal sealed class PersonSubject
 
     public int RecordCount => Leads.Count + Contacts.Count + Members.Count + Applications.Count;
 
-    /// <summary>The person's names as their records give them, longest first.</summary>
+    /// <summary>
+    /// The person's names as their records give them, longest first. An establishment's lead
+    /// gives its contact person's name: the place's own name is not theirs, and replacing it
+    /// everywhere it is mentioned would take the business out of every note about it.
+    /// </summary>
     public IReadOnlyList<string> Names =>
-        Leads.Select(l => l.Name)
+        Leads.Select(l => LeadKindRules.PersonOf(l).Name)
             .Concat(Contacts.Select(c => c.Name))
             .Concat(Members.Where(m => m.ErasedAtUtc == null).Select(m => $"{m.FirstName} {m.LastName}"))
             .Concat(Applications.Select(a => $"{a.FirstName} {a.LastName}"))

@@ -222,6 +222,8 @@ public sealed partial class PersonDataService
         Add("Relationships between contacts", ErasureActions.Delete, d.Relationships.Count);
         Add("Duplicate decisions", ErasureActions.Delete, d.DuplicateDecisions.Count);
         Add("Leads they referred", ErasureActions.Anonymise, d.LeadsReferredByThem.Count, "The leads stay; only the link to them as referrer goes.");
+        Add("Establishments they are the contact person of", ErasureActions.Anonymise, d.EstablishmentsTheySpeakFor.Count,
+            "The establishments stay, with their history; their name, role, email and phone as the contact person are removed.");
         Add("Contracts not sent", ErasureActions.Delete, d.Contracts.Count(c => c.Status == ContractStatuses.Draft));
         Add("Contracts out for signature", ErasureActions.Cancel, d.Contracts.Count(c => c.Status == ContractStatuses.Sent),
             "Voided: the signing link stops working, and the text and their details are removed.");
@@ -354,6 +356,15 @@ public sealed partial class PersonDataService
         {
             lead.ConvertedToContactId = null;
             lead.PersonContactRemovedAtUtc ??= now;
+        }
+        // A business they spoke for is not theirs and stays; they are taken off it as its
+        // contact person, so nothing writes to them through it or makes them a contact again.
+        foreach (var place in d.EstablishmentsTheySpeakFor)
+        {
+            place.ContactPersonName = null;
+            place.ContactPersonRole = null;
+            place.ContactPersonEmail = null;
+            place.ContactPersonPhone = null;
         }
 
         foreach (var deal in s.Deals)

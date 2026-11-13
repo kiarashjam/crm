@@ -95,6 +95,17 @@ public sealed partial class PersonDataService
             new("records/members.json", "Their club member records.", s.Members.Select(m => Row(m)).ToList()),
             new("records/contacts.json", "Their contact records.", s.Contacts.Select(c => Row(c, nameof(Contact.PhoneKey), nameof(Contact.NameKey))).ToList()),
             new("records/leads.json", "Their lead records, with the progress through the sales pipeline.", s.Leads.Select(l => Row(l)).ToList()),
+            // The business itself is not theirs: only what it holds about them as its contact person.
+            new("records/establishments-as-contact-person.json", "Establishments that name them as the person to speak to, with what each holds about them.",
+                d.EstablishmentsTheySpeakFor.Select(l => (object)new
+                {
+                    establishmentId = l.Id,
+                    establishment = l.Name,
+                    contactPersonName = l.ContactPersonName,
+                    contactPersonRole = l.ContactPersonRole,
+                    contactPersonEmail = l.ContactPersonEmail,
+                    contactPersonPhone = l.ContactPersonPhone,
+                }).ToList()),
             new("records/applications.json", "Their membership applications.", s.Applications.Select(a => Row(a)).ToList()),
             new("records/deals.json", "Deals made for them.", s.Deals.Select(x => Row(x)).ToList()),
             new("records/custom-fields.json", "Values of the workspace's own fields on their records.", d.CustomFieldValues.Select(v => Row(v)).ToList()),

@@ -27,7 +27,7 @@ public static class PersonDataInventory
     /// <summary>Tables holding data about a person, and what an erasure does with each.</summary>
     public static readonly IReadOnlyDictionary<Type, string> AboutPeople = new Dictionary<Type, string>
     {
-        [typeof(Lead)] = "Deleted, with its status history, files and custom fields.",
+        [typeof(Lead)] = "Deleted, with its status history, files and custom fields. An establishment they are only the contact person of stays, without their name, role, email and phone.",
         [typeof(Contact)] = "Deleted, with its files, custom fields and relationships.",
         [typeof(ClubMember)] = "Anonymised: the row stays for the books under the pseudonym; email, phone, notes and links go; the membership is cancelled.",
         [typeof(ClubApplication)] = "Deleted.",

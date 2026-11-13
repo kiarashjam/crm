@@ -47,6 +47,13 @@ internal sealed class PersonDossier
     public List<Contact> ContactsFromTheirLeads { get; private set; } = new();
     /// <summary>Leads whose person contact is one of theirs, left out of the selection: they stay, and get no new contact.</summary>
     public List<Lead> LeadsOfTheirContacts { get; private set; } = new();
+    /// <summary>
+    /// Establishments, left out of the selection, whose contact person has one of their own
+    /// addresses. A business is not theirs and stays; what it holds about them as its contact
+    /// person is theirs. Matched by the address alone: a place whose contact person has changed
+    /// since their contact was made for it names someone else now.
+    /// </summary>
+    public List<Lead> EstablishmentsTheySpeakFor { get; private set; } = new();
     public List<Contract> Contracts { get; private set; } = new();
     public List<ContractEvent> ContractEvents { get; private set; } = new();
     public List<ContractDeposit> ContractDeposits { get; private set; } = new();
@@ -175,6 +182,14 @@ internal sealed class PersonDossier
         d.LeadsOfTheirContacts = await Q(db.Leads)
             .Where(l => l.ConvertedToContactId != null && contactIds.Contains(l.ConvertedToContactId.Value) && !leadIds.Contains(l.Id))
             .ToListAsync(ct);
+        // Like a mention, a place naming them is read for a request and an export, not by the
+        // retention job: a stale lead's address on a place still in touch is that place's
+        // contact person, not someone nobody has heard from.
+        if (mentions)
+            d.EstablishmentsTheySpeakFor = await Q(db.Leads)
+                .Where(l => l.Kind == LeadKinds.Establishment && !leadIds.Contains(l.Id)
+                    && l.ContactPersonEmail != null && addresses.Contains(l.ContactPersonEmail.Trim().ToLower()))
+                .ToListAsync(ct);
         d.Contracts = await Q(db.Contracts).Where(c =>
                 (c.LeadId != null && leadIds.Contains(c.LeadId.Value))
                 || (c.DealId != null && dealIds.Contains(c.DealId.Value))
