@@ -33,6 +33,7 @@ import { Input } from '@/app/components/ui/input';
 import { cn } from '@/app/components/ui/utils';
 import { ContractProgress } from './ContractProgress';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { LoadFailed } from '@/app/components/LoadFailed';
 import { currentDateLocale } from '@/app/i18n/current';
 
 /** Fields the seeded template asks for that the CRM cannot know. */
@@ -159,6 +160,9 @@ interface Props {
 export function ContractPanel({ leadId, dealId, leadName, readOnly, onLeadChanged }: Props) {
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [loading, setLoading] = useState(true);
+  // Why the list could not be read, when it could not. Not an empty list: an empty one offers
+  // a fresh draft, and a second membership contract, deposit and all, went out beside the first.
+  const [loadError, setLoadError] = useState<unknown>(null);
   usePageLoading(loading);
   const [busy, setBusy] = useState<string | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
@@ -182,8 +186,9 @@ export function ContractPanel({ leadId, dealId, leadName, readOnly, onLeadChange
     setLoading(true);
     try {
       setContracts(dealId ? await listContractsForDeal(dealId) : leadId ? await listContractsForLead(leadId) : []);
-    } catch {
-      setContracts([]);
+      setLoadError(null);
+    } catch (e) {
+      setLoadError(e);
     } finally {
       setLoading(false);
     }
@@ -304,6 +309,8 @@ export function ContractPanel({ leadId, dealId, leadName, readOnly, onLeadChange
         <div className="flex items-center gap-2 py-6 text-sm text-slate-500" role="status">
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Loading contracts…
         </div>
+      ) : loadError ? (
+        <LoadFailed what="The contracts" error={loadError} onRetry={() => void reload()} />
       ) : contracts.length === 0 ? (
         <div>
           <p className="text-sm leading-relaxed text-slate-600">

@@ -17,6 +17,8 @@ vi.mock('@/app/api/apiClient', async () => {
 
 const api = {
   forDeal: [] as Contract[],
+  /** How many reads of the deal's contracts fail before one answers. */
+  forDealFails: 0,
   forLead: vi.fn(),
   draft: vi.fn(),
 };
@@ -24,7 +26,7 @@ vi.mock('@/app/api/contracts', async () => {
   const actual = await vi.importActual<typeof import('@/app/api/contracts')>('@/app/api/contracts');
   return {
     ...actual,
-    listContractsForDeal: () => Promise.resolve(api.forDeal),
+    listContractsForDeal: () => (api.forDealFails-- > 0 ? Promise.reject(new Error('Failed to fetch')) : Promise.resolve(api.forDeal)),
     listContractsForLead: (...args: unknown[]) => api.forLead(...args),
     createContractDraft: (...args: unknown[]) => api.draft(...args),
   };
@@ -69,6 +71,7 @@ const show = () => render(
 
 beforeEach(() => {
   api.forDeal = [];
+  api.forDealFails = 0;
   api.forLead.mockReset();
   api.draft.mockReset();
   mayTakePayments = true;
@@ -132,6 +135,19 @@ describe('the contract panel on a deal', () => {
     expect(args).toMatchObject({ dealId: 'd1', membershipTier: 'Gold', depositAmount: 500 });
     expect(args).not.toHaveProperty('leadId');
     expect(Object.keys(args.values as object)).not.toContain('contract.fee');
+  });
+
+  it('says the contracts could not be read, with a retry, rather than offering a fresh draft beside them', async () => {
+    api.forDealFails = 1;
+    api.forDeal = [contract({ status: 'sent', allowedActions: [] })];
+    show();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/the contracts could not be loaded/i);
+    expect(screen.queryByRole('button', { name: /generate the draft contract/i })).toBeNull();
+
+    await userEvent.setup().click(screen.getByRole('button', { name: /try again/i }));
+    expect(await screen.findByText('Membership Agreement — Anna Muster')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('offers no deposit to someone who may not take payments', async () => {
