@@ -96,6 +96,8 @@ public static class DependencyInjection
         // score with the save actions it sets off, and referrals, sponsors and their bonus.
         services.AddScoped<IClubRenewals, ACI.Infrastructure.Services.Retention.ClubRenewalService>();
         services.AddScoped<ICorporateMemberships, CorporateMembershipService>();
+        services.AddScoped<IPrivateEvents, PrivateEventService>();
+        services.AddScoped<IPrivateEventContracts, PrivateEventContracts>();
         services.AddScoped<IClubRetention, ACI.Infrastructure.Services.Retention.ClubRetentionService>();
         services.AddScoped<IClubReferrals, ACI.Infrastructure.Services.Retention.ClubReferralService>();
         // Money from outside the club: payment settings, QR-bills, bank files, Stripe and the

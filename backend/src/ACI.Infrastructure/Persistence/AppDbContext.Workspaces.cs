@@ -212,6 +212,10 @@ public partial class AppDbContext
         // Corporate memberships and their nominees: an organization's alone.
         Scope<ClubCorporateMembership>(model, e => e.OrganizationId);
         Scope<ClubCorporateNominee>(model, e => e.OrganizationId);
+        // Private events, their lines and their guests: an organization's alone.
+        Scope<ClubPrivateEvent>(model, e => e.OrganizationId);
+        Scope<ClubPrivateEventLine>(model, e => e.OrganizationId);
+        Scope<ClubPrivateEventGuest>(model, e => e.OrganizationId);
 
         // Copy templates follow a person rather than a workspace (TemplateRepository): the
         // system's templates are everyone's, a person's own go with them, and a team's

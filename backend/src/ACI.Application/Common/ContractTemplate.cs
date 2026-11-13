@@ -64,7 +64,7 @@ public static class ContractTemplate
     /// paid on signing, or nothing for a contract that asks for none.
     /// </remarks>
     public static readonly IReadOnlySet<string> OptionalFields =
-        new HashSet<string>(StringComparer.Ordinal) { "lead.phoneClause", "contract.depositClause" };
+        new HashSet<string>(StringComparer.Ordinal) { "lead.phoneClause", "contract.depositClause", "event.depositClause" };
 
     /// <summary>
     /// Substitutes every field present in <paramref name="values"/>.
@@ -270,6 +270,55 @@ public static class ContractTemplate
         7. GOVERNING LAW
         ----------------
         This agreement is governed by the laws of {{contract.jurisdiction}}.
+
+
+        ------------------------------------------------------------------
+        By signing below, both parties agree to be bound by this agreement.
+        """;
+
+    /// <summary>
+    /// The private event template: a hire of the club's spaces, drafted on the event's deal
+    /// (IPrivateEvents.DraftContractAsync) with the event's date, spaces, guests, menu and
+    /// services, and totals filled in.
+    /// </summary>
+    /// <remarks>
+    /// Plain text for the same reasons as <see cref="DealTemplate"/>, and a skeleton in the same
+    /// way: the cancellation clause comes filled with a sentence pointing to the club's own terms,
+    /// which the club replaces in the draft before sending when its terms say more.
+    /// </remarks>
+    public const string PrivateEventTemplate = """
+        PRIVATE EVENT AGREEMENT
+        =======================
+
+        Between:   {{org.name}} ("the Club")
+        And:       {{lead.name}} ("the Client")
+        Date:      {{today}}
+
+
+        1. THE EVENT
+        ------------
+        {{event.title}}
+        When:      {{event.when}}
+        Spaces:    {{event.spaces}}
+        Guests:    {{event.guests}} expected
+
+
+        2. MENU AND SERVICES
+        --------------------
+        {{event.lines}}
+
+        The Client agrees to pay {{event.total}}.{{event.depositClause}}
+
+
+        3. CANCELLATION
+        ---------------
+        {{contract.cancellationTerms}}
+
+
+        4. CLUB RULES
+        -------------
+        The Client and their guests agree to observe the Club's rules while on its
+        premises. The Client is responsible for their guests' conduct.
 
 
         ------------------------------------------------------------------

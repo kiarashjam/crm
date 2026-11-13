@@ -99,5 +99,7 @@ internal sealed class ClubReservationConfiguration : IEntityTypeConfiguration<Cl
         // What a conflict check reads: one resource's bookings around a time.
         builder.HasIndex(e => new { e.OrganizationId, e.ResourceId, e.StartAtUtc });
         builder.HasIndex(e => new { e.OrganizationId, e.MemberId });
+        // The spaces a private event holds.
+        builder.HasIndex(e => new { e.OrganizationId, e.PrivateEventId }).HasFilter("[PrivateEventId] IS NOT NULL");
     }
 }

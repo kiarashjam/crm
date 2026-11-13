@@ -166,6 +166,11 @@ public partial class AppDbContext : DbContext
     public DbSet<ClubCorporateMembership> ClubCorporateMemberships => Set<ClubCorporateMembership>();
     public DbSet<ClubCorporateNominee> ClubCorporateNominees => Set<ClubCorporateNominee>();
 
+    // Private events: the club's spaces hired by a client, their menu and services, and their guests.
+    public DbSet<ClubPrivateEvent> ClubPrivateEvents => Set<ClubPrivateEvent>();
+    public DbSet<ClubPrivateEventLine> ClubPrivateEventLines => Set<ClubPrivateEventLine>();
+    public DbSet<ClubPrivateEventGuest> ClubPrivateEventGuests => Set<ClubPrivateEventGuest>();
+
     /// <summary>
     /// Whether saving writes audit lines. Off only while an organization is copied: its
     /// history is copied with it, and each copied record would otherwise get a new

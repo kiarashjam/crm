@@ -58,8 +58,10 @@ public class ContractService : IContractService
         IClubCatalog? catalog = null,
         IWorkspaceModules? modules = null,
         IContractDeposits? deposits = null,
-        IDealService? dealService = null)
+        IDealService? dealService = null,
+        IPrivateEventContracts? privateEvents = null)
     {
+        _privateEvents = privateEvents;
         _deposits = deposits;
         _dealService = dealService;
         _deals = deals;
@@ -88,6 +90,7 @@ public class ContractService : IContractService
     private readonly IWorkspaceModules? _modules;
     private readonly IContractDeposits? _deposits;
     private readonly IDealService? _dealService;
+    private readonly IPrivateEventContracts? _privateEvents;
 
     /// <summary>
     /// The workspace's rules for a signature, as the contract's lead or deal. A contract is
@@ -590,6 +593,7 @@ public class ContractService : IContractService
         await ApplyPipelineEffectAsync(contract, userId, organizationId, userId, ct);
         await WinDealAsync(contract, userId, organizationId, ct);
         await AdmitMemberAsync(contract, userId, ct);
+        await ConfirmPrivateEventAsync(contract, ct);
         // The deposit the signer paid goes on the account of the member just admitted (once:
         // the ledger holds it under the provider's id). One not paid yet goes on it when it is.
         await SettleDepositAsync(contract, userId, ct);
@@ -669,6 +673,9 @@ public class ContractService : IContractService
         if (_admissions == null) return;
         try
         {
+            // A private event's contract hires the club's spaces; it is not a membership, so it
+            // admits nobody, even when the deal's contact has a membership application open.
+            if (_privateEvents != null && await _privateEvents.IsPrivateEventContractAsync(contract.OrganizationId, contract.Id, ct)) return;
             var admitted = await _admissions.AdmitForContractAsync(contract.OrganizationId, contract.Id, contract.LeadId, contract.DealId, userId, ct);
             foreach (var result in admitted)
                 await LogEventAsync(contract.Id, "member_admitted",
@@ -677,6 +684,24 @@ public class ContractService : IContractService
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "Contract {ContractId} was countersigned but its membership application could not be approved", contract.Id);
+        }
+    }
+
+    /// <summary>
+    /// A countersigned private event contract confirms its event (IPrivateEventContracts). The
+    /// contract is executed whatever happens here: a failure is logged, and staff confirm the
+    /// event by hand.
+    /// </summary>
+    private async Task ConfirmPrivateEventAsync(Contract contract, CancellationToken ct)
+    {
+        if (_privateEvents == null) return;
+        try
+        {
+            await _privateEvents.ContractCountersignedAsync(contract.OrganizationId, contract.Id, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "Contract {ContractId} was countersigned, but its private event could not be confirmed", contract.Id);
         }
     }
 

@@ -76,4 +76,68 @@ public static partial class DomainErrors
 
         public static Error TooLong(string what, int max) => new("CorporateMembership.TooLong", $"{what} can be at most {max} characters.");
     }
+
+    public static class PrivateEvent
+    {
+        public static readonly Error NotFound = new("PrivateEvent.NotFound", "That private event was not found.");
+
+        public static readonly Error Changed = new(
+            "PrivateEvent.Changed.Conflict", "Someone else changed this private event at the same moment. Reload it and try again.");
+
+        public static readonly Error HoldIsTheEvents = new(
+            "PrivateEvent.HoldIsTheEvents.Conflict",
+            "This booking holds the space for a private event. Change the event's time or spaces on the private event instead.");
+
+        public static readonly Error TitleRequired = new("PrivateEvent.TitleRequired", "Give the private event a title.");
+
+        public static readonly Error TimesInvalid = new(
+            "PrivateEvent.TimesInvalid", "A private event needs a start and an end after it, at most 14 days apart.");
+
+        public static readonly Error GuestCountInvalid = new("PrivateEvent.GuestCountInvalid", "The number of guests is 0 to 10,000.");
+
+        public static readonly Error ClientRequired = new(
+            "PrivateEvent.ClientRequired", "Say who the event is for: link a company or a contact.");
+
+        public static readonly Error CompanyNotFound = new("PrivateEvent.Company.NotFound", "That company was not found.");
+        public static readonly Error ContactNotFound = new("PrivateEvent.Contact.NotFound", "That contact was not found.");
+        public static readonly Error DealNotFound = new("PrivateEvent.Deal.NotFound", "That deal was not found.");
+        public static readonly Error LineNotFound = new("PrivateEvent.Line.NotFound", "That line was not found on this event.");
+        public static readonly Error GuestNotFound = new("PrivateEvent.Guest.NotFound", "That guest was not found on this event's list.");
+        public static readonly Error MemberNotFound = new("PrivateEvent.Member.NotFound", "That member was not found in this club.");
+
+        public static Error NotWhileStatus(string status) => new(
+            "PrivateEvent.NotWhile.Conflict", $"This private event is {status.ToLowerInvariant()}: that cannot be done now.");
+
+        public static readonly Error Invoiced = new(
+            "PrivateEvent.Invoiced.Conflict", "The final invoice has been posted: its menu, services and client can no longer change. Void the invoice's charges first to change them.");
+
+        public static readonly Error ClientHasMoney = new(
+            "PrivateEvent.ClientHasMoney.Conflict",
+            "Money for this event is already on the client's house account, so who the client is can no longer change.");
+
+        public static readonly Error DepositAsked = new(
+            "PrivateEvent.DepositAsked.Conflict", "A deposit has already been asked for this event.");
+
+        public static readonly Error AmountInvalid = new("PrivateEvent.AmountInvalid", "An amount must be more than 0 and less than 1,000,000.");
+
+        public static readonly Error QuantityInvalid = new("PrivateEvent.QuantityInvalid", "A quantity is more than 0 and at most 10,000, to the hundredth.");
+
+        public static readonly Error VatInvalid = new("PrivateEvent.VatInvalid", "A VAT rate is a percentage from 0 to 100.");
+
+        public static readonly Error NothingToInvoice = new(
+            "PrivateEvent.NothingToInvoice", "The event has no menu or services to invoice. Add them first.");
+
+        public static readonly Error DealRequiredForContract = new(
+            "PrivateEvent.DealRequiredForContract", "Link the event to its deal first: the contract is drafted on the deal, with its contact as the signer.");
+
+        public static readonly Error ContractExists = new(
+            "PrivateEvent.ContractExists.Conflict", "A contract has already been drafted for this event. Void it first to draft another.");
+
+        public static readonly Error DepositChoiceRequired = new(
+            "PrivateEvent.DepositChoiceRequired", "Say what happens to the deposit: keep it, or give it back as house credit.");
+
+        public static readonly Error ReasonRequired = new("PrivateEvent.ReasonRequired", "Say why, in a few words (up to 500 characters).");
+
+        public static Error TooLong(string what, int max) => new("PrivateEvent.TooLong", $"{what} can be at most {max} characters.");
+    }
 }

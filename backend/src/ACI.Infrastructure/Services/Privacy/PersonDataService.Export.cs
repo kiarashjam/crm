@@ -191,6 +191,10 @@ public sealed partial class PersonDataService
                 d.CorporateSeats.Select(n => Row(n)).ToList()),
             new("club/corporate-billing.json", "Companies' corporate memberships that name them as the contact or address their statements go to.",
                 d.CorporateBilling.Select(m => new { m.Id, m.CompanyName, m.Name, m.BillingContactId, m.BillingEmail }).ToList()),
+            new("club/private-events.json", "Private events they hired from the club as a private client.", d.PrivateEvents.Select(e => Row(e)).ToList()),
+            new("club/private-event-guest-lists.json", "Private events' guest lists they are on, and when they were checked in.",
+                d.PrivateEventGuests.Select(g => With(Row(g), "event",
+                    d.GuestListEvents.TryGetValue(g.PrivateEventId, out var pe) ? new { pe.Title, pe.StartAtUtc, pe.EndAtUtc } : null)).ToList()),
             new("club/old-documents.json", "Club records kept read-only from before the club's records had tables of their own, that name them.", d.Documents.Select(x => Row(x)).ToList()),
             new("audit/audit-trail.json", "The history of changes to their records: who changed what, and when.", d.Audit.Select(a => Row(a)).ToList()),
         ];

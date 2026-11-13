@@ -269,6 +269,9 @@ public sealed partial class PersonDataService
             "A seat they hold is given up; the company's statements keep the charges under their pseudonym.");
         Add("Corporate memberships billed to them", ErasureActions.Anonymise, d.CorporateBilling.Count,
             "The membership stays the company's; their contact and address are taken off it.");
+        Add("Private events they hired", ErasureActions.Anonymise, d.PrivateEvents.Count,
+            "Kept for the books, its money under their pseudonym; the link to them goes, and their names come out of its title and notes.");
+        Add("Places on private events' guest lists", ErasureActions.Delete, d.PrivateEventGuests.Count);
         Add("Older club records kept read-only", ErasureActions.Anonymise, d.Documents.Count);
         Add("Lines of the audit trail", ErasureActions.Anonymise, d.Audit.Count, "Their name is replaced by the pseudonym; who did what and when stays.");
         Add("Addresses", ErasureActions.Delete, s.Addresses.Count,
@@ -603,6 +606,23 @@ public sealed partial class PersonDataService
             if (m.BillingEmail != null && s.Addresses.Contains(m.BillingEmail.Trim().ToLowerInvariant())) m.BillingEmail = null;
             m.UpdatedAtUtc = now;
         }
+        // A private event they hired is the club's business record, its money on the ledger: it
+        // stays, without the link to their contact and with their names out of its words and out
+        // of the diary's holds of its spaces. A guest list place is about them alone and goes.
+        foreach (var e in d.PrivateEvents)
+        {
+            if (e.ContactId is Guid client && contactIds.Contains(client)) e.ContactId = null;
+            e.Title = Scrub(e.Title) ?? "";
+            e.Notes = Scrub(e.Notes);
+            e.CancelReason = Scrub(e.CancelReason);
+            e.UpdatedAtUtc = now;
+        }
+        foreach (var hold in d.PrivateEventHolds)
+        {
+            hold.MemberName = Scrub(hold.MemberName) ?? "";
+            hold.Notes = Scrub(hold.Notes);
+        }
+        _db.ClubPrivateEventGuests.RemoveRange(d.PrivateEventGuests);
         foreach (var c in d.Charges)
         {
             if (memberIds.Contains(c.MemberId) || contactIds.Contains(c.MemberId)) c.MemberName = pseudonym;

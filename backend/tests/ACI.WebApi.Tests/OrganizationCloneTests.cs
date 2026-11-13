@@ -425,6 +425,22 @@ public class OrganizationCloneTests
                 Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = company.Id, MemberName = "Acme", Kind = "Bar", Description = "Negroni", Amount = 18m,
                 Currency = "CHF", PostedAtUtc = now, IncurredByMemberId = member.Id, IncurredByName = "Ana Silva", CreatedAtUtc = now,
             });
+        // A private event for the company, sold through the deal, holding the court, with a line
+        // from the catalogue and a member on its guest list.
+        var privateEvent = new ClubPrivateEvent
+        {
+            Id = Guid.NewGuid(), OrganizationId = org.Id, Title = "Acme summer party", CompanyId = company.Id, ContactId = contact.Id, DealId = deal.Id,
+            StartAtUtc = now.AddDays(20), EndAtUtc = now.AddDays(20).AddHours(4), GuestCount = 40, Status = PrivateEventStatuses.Enquiry,
+            BillToAccountId = company.Id, CreatedAtUtc = now, UpdatedAtUtc = now, EditVersion = Guid.NewGuid(),
+        };
+        db.AddRange(privateEvent,
+            new ClubPrivateEventLine { Id = Guid.NewGuid(), OrganizationId = org.Id, PrivateEventId = privateEvent.Id, CatalogItemId = goldTier.Id, Name = "Aperitif", Quantity = 40, UnitPrice = 25, VatRate = 8.1m, CreatedAtUtc = now },
+            new ClubPrivateEventGuest { Id = Guid.NewGuid(), OrganizationId = org.Id, PrivateEventId = privateEvent.Id, Name = "Ana Silva", MemberId = member.Id, AddedAtUtc = now },
+            new ClubReservation
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, ResourceId = court.Id, ResourceName = "Court", MemberName = "Private event: Acme summer party", PartySize = 4,
+                StartAtUtc = privateEvent.StartAtUtc, EndAtUtc = privateEvent.EndAtUtc, Status = "Pending", PrivateEventId = privateEvent.Id, CreatedAtUtc = now, UpdatedAtUtc = now,
+            });
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
         return new Seeded(org.Id, owner, manager, rep, lead.Id, deal.Id, contact.Id, member.Id, rule.Id, sequence.Id);
@@ -608,6 +624,16 @@ public class OrganizationCloneTests
         (await db.DealLineItems.IgnoreQueryFilters().SingleAsync(i => i.DealId == deal.Id)).UnitPrice.Should().Be(12000);
         (await db.Attachments.IgnoreQueryFilters().SingleAsync(a => a.OrganizationId == report.CopyId)).RecordId.Should().Be(deal.Id);
         (await db.Attachments.IgnoreQueryFilters().SingleAsync(a => a.OrganizationId == report.CopyId)).Content.Should().Equal("%PDF"u8.ToArray());
+        // The company's house account (keyed by the company's id), its corporate membership and
+        // its private event name the copied company, deal and contact; the event's hold, the copied event.
+        var company = await db.Companies.IgnoreQueryFilters().SingleAsync(c => c.OrganizationId == report.CopyId);
+        (await db.ClubHouseAccounts.IgnoreQueryFilters().SingleAsync(a => a.OrganizationId == report.CopyId && a.CompanyId != null))
+            .Should().Match<ClubHouseAccount>(a => a.MemberId == company.Id && a.CompanyId == company.Id);
+        (await db.ClubCorporateMemberships.IgnoreQueryFilters().SingleAsync(m => m.OrganizationId == report.CopyId)).CompanyId.Should().Be(company.Id);
+        var hire = await db.ClubPrivateEvents.IgnoreQueryFilters().SingleAsync(e => e.OrganizationId == report.CopyId);
+        (hire.CompanyId, hire.ContactId, hire.DealId, hire.BillToAccountId).Should().Be((company.Id, contact.Id, deal.Id, company.Id));
+        (await db.ClubReservations.IgnoreQueryFilters().SingleAsync(r => r.OrganizationId == report.CopyId && r.PrivateEventId != null))
+            .PrivateEventId.Should().Be(hire.Id);
 
         var member = await db.ClubMembers.IgnoreQueryFilters().SingleAsync(m => m.OrganizationId == report.CopyId && m.FirstName == "Ana");
         // The member she brought in names the copied her, and so does the bonus it earned her.

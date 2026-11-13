@@ -118,6 +118,14 @@ internal sealed class PersonDossier
     public List<ClubCorporateNominee> CorporateSeats { get; private set; } = new();
     /// <summary>Corporate memberships that name them as the company's billing contact or address.</summary>
     public List<ClubCorporateMembership> CorporateBilling { get; private set; } = new();
+    /// <summary>Private events hired by them as a private client (their contact is the client).</summary>
+    public List<ClubPrivateEvent> PrivateEvents { get; private set; } = new();
+    /// <summary>Their places on private events' guest lists, as a member or by their address.</summary>
+    public List<ClubPrivateEventGuest> PrivateEventGuests { get; private set; } = new();
+    /// <summary>The diary's holds of the club's spaces for the private events they hired (labelled with the event's title).</summary>
+    public List<ClubReservation> PrivateEventHolds { get; private set; } = new();
+    /// <summary>The private events whose guest lists they are on, for the export.</summary>
+    public Dictionary<Guid, ClubPrivateEvent> GuestListEvents { get; private set; } = new();
 
     /// <summary>The ids of every money record of the person's, for the audit lines written about them.</summary>
     public HashSet<Guid> MoneyRecordIds =>
@@ -369,6 +377,17 @@ internal sealed class PersonDossier
                 (m.BillingContactId != null && contactIds.Contains(m.BillingContactId.Value))
                 || (m.BillingEmail != null && addresses.Contains(m.BillingEmail.Trim().ToLower())))
             .ToListAsync(ct);
+        // Private events they hired as a private client, and the guest lists they are on.
+        d.PrivateEvents = await Q(db.ClubPrivateEvents).Where(e => e.ContactId != null && contactIds.Contains(e.ContactId.Value))
+            .OrderBy(e => e.StartAtUtc).ToListAsync(ct);
+        d.PrivateEventGuests = await Q(db.ClubPrivateEventGuests).Where(g =>
+                (g.MemberId != null && memberIds.Contains(g.MemberId.Value))
+                || (g.Email != null && addresses.Contains(g.Email.Trim().ToLower())))
+            .ToListAsync(ct);
+        var hiredIds = d.PrivateEvents.Select(e => e.Id).ToList();
+        d.PrivateEventHolds = await Q(db.ClubReservations).Where(r => r.PrivateEventId != null && hiredIds.Contains(r.PrivateEventId.Value)).ToListAsync(ct);
+        var guestListIds = d.PrivateEventGuests.Select(g => g.PrivateEventId).Distinct().ToList();
+        d.GuestListEvents = await db.ClubPrivateEvents.AsNoTracking().Where(e => guestListIds.Contains(e.Id)).ToDictionaryAsync(e => e.Id, ct);
         // The JSON documents kept read-only from before the club's records had tables of their
         // own: the old copies of their records (a record moved to its table kept its document's
         // id), any that name a member's id, and any that mention the person, as written or as

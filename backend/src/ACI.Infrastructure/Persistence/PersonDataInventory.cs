@@ -95,6 +95,8 @@ public static class PersonDataInventory
         [typeof(ClubReferralBonus)] = "Kept with the books: points or a credit between two members' ids, naming nobody (the credit is on the ledger).",
         [typeof(ClubCorporateNominee)] = "Deleted: the seats they held on companies' corporate memberships (a seat they hold is given up).",
         [typeof(ClubCorporateMembership)] = "The company's: kept. Their contact and address are taken off it where it names them as its billing contact or address.",
+        [typeof(ClubPrivateEvent)] = "A private event for them (their contact): kept for the books, the link to them removed and their names taken out of its title and notes.",
+        [typeof(ClubPrivateEventGuest)] = "Deleted from private events' guest lists (found by their member record or address).",
     };
 
     /// <summary>Tables that hold nothing about the people a workspace keeps records of, and why.</summary>
@@ -153,5 +155,6 @@ public static class PersonDataInventory
         [typeof(AssistantBrief)] = "When a staff member's morning brief went out, and how many things it listed. Its words are in the notification and the email it became, which an erasure handles.",
         [typeof(ClubRetentionSettings)] = "Settings: how members' at-risk scores are worked out, the save actions, the referral bonus and the sponsor rule.",
         [typeof(ClubScoringRun)] = "What a scoring run found and did, in counts.",
+        [typeof(ClubPrivateEventLine)] = "A private event's menu and services: what, how many and the price.",
     };
 }

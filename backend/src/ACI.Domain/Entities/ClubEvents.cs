@@ -114,6 +114,9 @@ public static class ReservationStatuses
 
     /// <summary>Whether a booking in this status holds its resource for its time.</summary>
     public static bool HoldsResource(string status) => status is Pending or Confirmed or CheckedIn;
+
+    /// <summary>The statuses that hold a resource, for a query to match on.</summary>
+    public static readonly string[] Holding = [Pending, Confirmed, CheckedIn];
 }
 
 /// <summary>A club event: a dinner, a tasting, a class, a gala.</summary>
@@ -342,6 +345,14 @@ public class ClubReservation : Common.BaseEntity, Common.IVersioned
 
     public DateTime? CancelledAtUtc { get; set; }
     public string? CancelledByName { get; set; }
+
+    /// <summary>
+    /// For a space a private event holds: the event (ClubPrivateEvent). Such a booking takes the
+    /// whole resource for the event's time, and it is moved, released and kept by the event, not
+    /// changed from the bookings page.
+    /// </summary>
+    public Guid? PrivateEventId { get; set; }
+
     public DateTime CreatedAtUtc { get; set; }
     public Guid? CreatedByUserId { get; set; }
     public string? CreatedByName { get; set; }
