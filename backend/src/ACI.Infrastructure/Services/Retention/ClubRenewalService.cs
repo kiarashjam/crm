@@ -28,6 +28,12 @@ public sealed class ClubRenewalService : IClubRenewals
     /// <summary>Activities on a member's contact that are someone talking to them.</summary>
     private static readonly string[] ContactTypes = ["call", "meeting", "email", "video", "demo"];
 
+    /// <summary>
+    /// A member who has left the club, as the privacy settings count former members: their
+    /// renewal is lapsed whatever else the records say, and it is not marked renewed here.
+    /// </summary>
+    private static readonly string[] LeftStatuses = ["Lapsed", "Cancelled", "Resigned"];
+
     private static readonly IReadOnlyDictionary<string, string> Labels = new Dictionary<string, string>
     {
         [RenewalStages.Upcoming] = "Upcoming",
@@ -208,7 +214,7 @@ public sealed class ClubRenewalService : IClubRenewals
     private static (string Stage, string Reason) StageOf(Candidate c, MemberRow member, SubscriptionRow? subscription, ClubRenewal? row,
         (int Score, string Level)? risk, (DateTime At, string Kind)? contact, IReadOnlySet<(Guid, DateTime)> paidPeriods, DateTime now)
     {
-        if (member.Status is "Lapsed" or "Cancelled")
+        if (LeftStatuses.Contains(member.Status))
             return (RenewalStages.Lapsed, $"The member is {member.Status.ToLowerInvariant()}");
         if (c.Source == RenewalSources.Membership && member.RenewsAtUtc - c.EndsAtUtc >= RenewedIfMovedBy)
             return (RenewalStages.Renewed, row?.RenewedAtUtc != null ? $"Renewed by {row.StageSetByName ?? "staff"}" : "The renewal date has moved on");
@@ -335,6 +341,12 @@ public sealed class ClubRenewalService : IClubRenewals
 
         var member = await _db.ClubMembers.FirstOrDefaultAsync(m => m.Id == request.MemberId && m.OrganizationId == organizationId && m.ErasedAtUtc == null, ct);
         if (member == null) return DomainErrors.Club.MemberNotFound;
+        // A member who has left stays lapsed on the board (their status outranks a mark), so
+        // "renewed" would only have moved their renewal date a year on while they stayed lapsed.
+        // Setting them active on their page (or the payment that puts back a member the billing
+        // lapsed) is what renews them; the board then shows it.
+        if (stage == RenewalStages.Renewed && LeftStatuses.Contains(member.Status))
+            return DomainErrors.Renewal.MemberLeft($"{member.FirstName} {member.LastName}".Trim(), member.Status);
         Guid? subscriptionId = null;
         if (source == RenewalSources.Subscription)
         {

@@ -58,6 +58,12 @@ const MOVES: { stage: RenewalStageChoice; label: string; icon: typeof CheckCircl
 
 const WINDOWS = [30, 60, 90, 180, 365];
 
+/**
+ * A member who has left the club: the server refuses to mark their renewal renewed (their card
+ * stays lapsed while they are), so the move is not offered; they are set active on their page.
+ */
+const LEFT_STATUSES = ['Lapsed', 'Cancelled', 'Resigned'];
+
 export default function Renewals() {
   const scope = useWorkspaceScope();
   const client = useQueryClient();
@@ -203,7 +209,7 @@ export default function Renewals() {
                         {card.note && <p className="mt-1 text-xs text-slate-700">“{card.note}”</p>}
                         {canMove && (
                           <div className="mt-2 flex flex-wrap gap-1">
-                            {MOVES.filter((m) => m.stage !== card.stage).map((m) => (
+                            {MOVES.filter((m) => m.stage !== card.stage && !(m.stage === 'renewed' && LEFT_STATUSES.includes(card.memberStatus))).map((m) => (
                               <Button key={m.stage} type="button" size="sm" variant="outline" className="h-7 px-2 text-[11px]"
                                 disabled={move.isPending}
                                 onClick={() => {

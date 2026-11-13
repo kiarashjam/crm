@@ -184,6 +184,40 @@ public class ClubRenewalsTests
     }
 
     [Fact]
+    public async Task AMemberWhoHasLeft_IsNotMarkedRenewed_SoTheirDateStaysWhereItWas()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (owner, _, _) = await ClubAsync(factory);
+        var lena = await MemberAsync(owner, "Lena", 20, status: "Lapsed");
+        var rolf = await MemberAsync(owner, "Rolf", 25, status: "Resigned");
+        var board = await BoardAsync(owner);
+        var card = Card(board, lena);
+        (card.GetProperty("stage").GetString(), card.GetProperty("stageReason").GetString()).Should().Be((RenewalStages.Lapsed, "The member is lapsed"));
+        (Card(board, rolf).GetProperty("stage").GetString(), Card(board, rolf).GetProperty("stageReason").GetString())
+            .Should().Be((RenewalStages.Lapsed, "The member is resigned"), "a member who resigned has left the club as one who cancelled has");
+        var endsAt = card.GetProperty("endsAtUtc").GetDateTime();
+
+        // Marked renewed, her card would still say lapsed (her status outranks the mark) while her
+        // renewal date moved a year on: she is set active on her page first.
+        var refused = await owner.PostAsync("/api/renewals/stage", Body(new
+        {
+            memberId = lena, source = "membership", endsAtUtc = card.GetProperty("endsAtUtc").GetString(), stage = "renewed",
+        }));
+        var body = await refused.Content.ReadAsStringAsync();
+        refused.StatusCode.Should().Be(HttpStatusCode.BadRequest, body);
+        body.Should().Contain("Lena Keller is lapsed");
+        (await factory.Services.Read(db => db.ClubMembers.Single(m => m.Id == lena).RenewsAtUtc)).Should().Be(endsAt, "nothing was renewed");
+        (await factory.Services.Read(db => db.ClubRenewals.Count())).Should().Be(0);
+
+        // Getting in touch to win her back is still worth noting.
+        var contacted = await Json(await owner.PostAsync("/api/renewals/stage", Body(new
+        {
+            memberId = lena, source = "membership", endsAtUtc = card.GetProperty("endsAtUtc").GetString(), stage = "contacted",
+        })), "mark her contacted");
+        contacted.GetProperty("stage").GetString().Should().Be(RenewalStages.Lapsed);
+    }
+
+    [Fact]
     public async Task AStageSetByHand_OutranksTheRecords_UntilItIsGivenBackToThem()
     {
         using var factory = new CustomWebApplicationFactory();

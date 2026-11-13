@@ -107,6 +107,18 @@ describe('the renewals board', () => {
       expect.objectContaining({ action: expect.objectContaining({ label: 'Reload' }) })));
   });
 
+  it("does not offer to mark a lapsed member's membership renewed, which the server refuses", async () => {
+    const lena: RenewalCard = { ...ANNA, memberId: 'm-lena', name: 'Lena Keller', memberStatus: 'Lapsed', stage: 'lapsed', stageReason: 'The member is lapsed' };
+    api.board.mockResolvedValue(board([lena, ANNA]));
+
+    show();
+
+    const lapsed = await screen.findByRole('region', { name: 'Lapsed' });
+    expect(within(lapsed).getByRole('button', { name: /Contacted/ })).toBeInTheDocument();
+    expect(within(lapsed).queryByRole('button', { name: /Renewed/ })).not.toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'Upcoming' })).getByRole('button', { name: /Renewed/ })).toBeInTheDocument();
+  });
+
   it('offers no moves to someone who may not manage members', async () => {
     as([PERMISSION.FrontDesk]);
     api.board.mockResolvedValue(board([ANNA]));

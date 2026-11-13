@@ -51,6 +51,10 @@ public static partial class DomainErrors
 
         public static readonly Error NotFound = new(
             "Renewal.NotFound", "That renewal is not on the board any more: the date it ends on has changed. Reload the board to see where it stands.");
+
+        public static Error MemberLeft(string name, string status) => new(
+            "Renewal.MemberLeft",
+            $"{name} is {status.ToLowerInvariant()}, so their membership is not marked renewed here: set them active on their page first, and the board shows the renewal.");
     }
 
     public static class Referral

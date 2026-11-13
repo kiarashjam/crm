@@ -18,7 +18,7 @@ namespace ACI.Application.Services;
 /// <para>
 /// Stages are worked out from the records where they can be, and staff can set one by hand:
 /// <list type="bullet">
-/// <item><b>Lapsed</b>: the member is Lapsed or Cancelled; or staff said they are not renewing; or
+/// <item><b>Lapsed</b>: the member is Lapsed, Cancelled or Resigned; or staff said they are not renewing; or
 /// the membership ended and nobody renewed it.</item>
 /// <item><b>Renewed</b>: the membership's end has moved on (renewed from the board, which moves it
 /// on a year, or on the member's form); the subscription's next period is billed and paid; or
@@ -40,7 +40,8 @@ public interface IClubRenewals
     /// <summary>
     /// Puts a renewal in a stage by hand, or back to automatic. Renewed, for a membership, moves
     /// the member's renewal date on (to <see cref="RenewalStageRequest.RenewUntilUtc"/>, else a
-    /// year after the end), once: a second press finds it moved already.
+    /// year after the end), once: a second press finds it moved already. A member who has left
+    /// (lapsed, cancelled, resigned) is not marked renewed: they are set active first.
     /// </summary>
     Task<Result<RenewalCardDto>> SetStageAsync(Guid organizationId, Guid userId, RenewalStageRequest request, CancellationToken ct = default);
 
