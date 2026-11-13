@@ -10,8 +10,9 @@ namespace ACI.Application.Services;
 /// <para>
 /// A daily job sends it from 07:00 on the workspace's calendar as a notification, and by email
 /// through the outbox to those who asked for that, once per person, workspace and day. When a
-/// language model is set up (and the workspace's monthly AI allowance has room) the model writes
-/// a few sentences on top of the list; the list is always there, so every fact can be checked.
+/// language model is set up (and at least half the workspace's monthly AI allowance is left, the
+/// rest being kept for people asking) the model writes a few sentences on top of the list; the
+/// list is always there, so every fact can be checked.
 /// </para>
 /// <para>
 /// The same brief, worked out at that moment, is what the brief page and the assistant's

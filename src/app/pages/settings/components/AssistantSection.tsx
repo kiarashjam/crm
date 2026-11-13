@@ -135,7 +135,9 @@ export function AssistantSection() {
             <div className={`h-full rounded-full ${usedShare >= 90 ? 'bg-rose-500' : 'bg-orange-500'}`} style={{ width: `${usedShare}%` }} />
           </div>
         )}
-        <p className="text-xs text-slate-500">Each step of an answer, each morning brief written by the model and each draft from the AI writer counts as a call.</p>
+        <p className="text-xs text-slate-500">
+          Each step of an answer, each morning brief written by the model and each draft from the AI writer counts as a call. Morning briefs are written by the model only while at least half of the month&apos;s calls are left; after that they go as plain lists, so the rest stays for questions.
+        </p>
       </section>
 
       <section aria-labelledby="assistant-limit" className="space-y-3">

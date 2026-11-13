@@ -319,6 +319,31 @@ public class MorningBriefTests
     }
 
     [Fact]
+    public async Task BriefsLeaveHalfTheMonthsAllowanceForPeopleAsking()
+    {
+        using var factory = new AssistantFactory(new() { ["Assistant:DefaultMonthlyLimit"] = "4" });
+        factory.Model.Answer = (_, _) => ScriptedModel.Say("Start with Ada.");
+        var club = await WorkspaceAsync(factory, "pavillon");
+        var rep = await MemberAsync(factory, club.Org, "rep", "sales_rep");
+        await SaveAsync(factory, NewTask(club.Org, club.OwnerId, "Call Ada", At(17)), NewTask(club.Org, rep, "Call Bea", At(17)));
+        // The team has asked once already this month.
+        await SaveAsync(factory, new AiUsage
+        {
+            Id = Guid.NewGuid(), OrganizationId = club.Org, Month = AiBudget.MonthOf(DateTime.UtcNow).Month, Calls = 1, UpdatedAtUtc = DateTime.UtcNow,
+        });
+
+        (await SendDueAsync(factory, Morning)).Should().Be(2, "both briefs go out, whatever the allowance");
+
+        // The first brief's summary takes the month to 2 of 4: the second goes as the plain list,
+        // so the other half stays for the people asking the assistant.
+        factory.Model.Requests.Should().ContainSingle();
+        await using var db = factory.Services.EveryWorkspace();
+        (await db.AiUsage.SingleAsync(u => u.OrganizationId == club.Org)).Calls.Should().Be(2);
+        (await db.AssistantBriefs.CountAsync(b => b.WrittenByModel)).Should().Be(1);
+        (await db.AssistantBriefs.CountAsync(b => !b.WrittenByModel && b.Status == AssistantBriefStatuses.Sent)).Should().Be(1);
+    }
+
+    [Fact]
     public async Task ABriefLeftHalfDoneIsTakenOverAfterAQuarterOfAnHour_AndNotBefore()
     {
         using var factory = new AssistantFactory();

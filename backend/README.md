@@ -668,8 +668,10 @@ desk or members) and renewals in the next 14 days (members or money). Erased mem
 out. One per person, workspace and day (a unique `AssistantBriefs` row is the claim; one left
 half done is taken over after 15 minutes), as a notification linking to `/brief`, and by email
 through the outbox (`Source = brief`, for their own team) to those who turned that on in their
-settings (`morningBriefEnabled`, `morningBriefEmail` on `/api/settings`). With a model set up
-and the month's allowance left, the model writes a few sentences on top of the plain list.
+settings (`morningBriefEnabled`, `morningBriefEmail` on `/api/settings`). With a model set up,
+the model writes a few sentences on top of the plain list while at least half of the month's
+allowance is left: every person's brief is a call every day, so past that point the briefs go
+as plain lists and the rest of the month stays for the people asking the assistant.
 
 ```json
 {

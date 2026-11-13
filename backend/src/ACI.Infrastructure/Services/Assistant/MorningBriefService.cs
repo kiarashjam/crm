@@ -432,10 +432,19 @@ public sealed class MorningBriefService : IMorningBrief
         }
     }
 
-    /// <summary>A few sentences from the language model on top of the list, when one is set up and the month allows; else none.</summary>
+    /// <summary>
+    /// A few sentences from the language model on top of the list, when one is set up and at
+    /// least half the month's allowance is left; else none.
+    /// </summary>
     private async Task<string?> SummaryAsync(Guid organizationId, Guid userId, string? name, string language, MorningBriefDto brief, CancellationToken ct)
     {
         if (!_model.IsConfigured) return null;
+        // Nobody asked for this call, and every person's brief makes one every day: a team of ten
+        // spends the default 300 a month on briefs alone. So the summary is written only while at
+        // least half the month is left, and the rest stays for the people asking the assistant;
+        // past that the brief goes as the plain list, which says everything the summary would.
+        var month = await _budget.AllowanceAsync(organizationId, userId, ct);
+        if (month.Used * 2 >= month.Limit) return null;
         // Counted like a question asked: the brief is one call against the workspace's month.
         var allowed = await _budget.TakeAsync(organizationId, userId, personWaiting: false, ct);
         if (allowed.IsFailure) return null;
