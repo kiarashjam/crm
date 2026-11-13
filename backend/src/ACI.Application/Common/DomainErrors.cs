@@ -241,6 +241,9 @@ public static partial class DomainErrors
         public static readonly Error ResourceInactive = new(
             "Resource.Inactive.Conflict", "This resource is not taking bookings. Make it bookable again first, or pick another.");
 
+        public static readonly Error MemberBookingInvalid = new(
+            "Reservation.MemberBooking", "Members book it in the portal: off, request (staff confirm it) or instant.");
+
         public static Error TooBig(string resource, int capacity, int party) => new(
             "Reservation.Capacity.Conflict", $"{resource} holds {capacity}, so a party of {party} can't be booked into it.");
 

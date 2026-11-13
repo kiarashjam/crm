@@ -100,6 +100,12 @@ public static class ResultExtensions
 
         // The workspace has turned that module off (DomainErrors.Modules.Off)
         DomainErrors.Modules.OffCode => StatusCodes.Status403Forbidden,
+
+        // The member portal: closed by the club, something a member may not do themselves,
+        // and too many sign-in links asked for one address (DomainErrors.Portal).
+        DomainErrors.Portal.OffCode => StatusCodes.Status403Forbidden,
+        DomainErrors.Portal.NotAllowedCode => StatusCodes.Status403Forbidden,
+        DomainErrors.Portal.TooManyLinksCode => StatusCodes.Status429TooManyRequests,
         
         // Unauthorized/Authentication errors
         "Auth.InvalidCredentials" => StatusCodes.Status401Unauthorized,

@@ -256,6 +256,37 @@ try
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
             }));
+        // The member portal's sign-in is anonymous too, so it goes by the address as well. Asking
+        // for a link is also limited per club and address in the service (three in a quarter of
+        // an hour); this stops one machine asking for links to address after address. Using a
+        // link, and the club's portal asking for one, each a little more freely: a link is a
+        // 256-bit secret, so trying them gets nowhere either way.
+        options.AddPolicy("portal-link", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            "portal-link:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 20,
+                Window = TimeSpan.FromMinutes(10),
+                QueueLimit = 0,
+            }));
+        options.AddPolicy("portal-sign-in", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            "portal-sign-in:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 60,
+                Window = TimeSpan.FromMinutes(10),
+                QueueLimit = 0,
+            }));
+        // A signed-in member, per session's member: plenty for a person using the portal, and a
+        // script looping on it stops.
+        options.AddPolicy("portal-member", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            "portal-member:" + (ACI.Application.Common.MemberPortalClaims.Of(context.User)?.MemberId.ToString() ?? "anonymous"),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 240,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
     });
     builder.Services.AddResponseCompression(options => options.EnableForHttps = true);
     builder.Services.AddEndpointsApiExplorer();
@@ -467,6 +498,11 @@ try
                 ValidateLifetime = true,
                 ClockSkew = TimeSpan.Zero,
             };
+            // The member portal's endpoints are signed into by members, never staff: on them the
+            // member scheme below answers instead, so a staff token is refused there, and a
+            // member's is refused everywhere else (it fails this scheme's key and audience).
+            options.ForwardDefaultSelector = context =>
+                context.Request.Path.StartsWithSegments("/api/portal") ? ACI.Application.Common.MemberPortalClaims.Scheme : null;
             options.Events = new JwtBearerEvents
             {
                 // Claude sends the organization API key as Authorization: Bearer aci_….
@@ -507,6 +543,36 @@ try
                         .AcceptsAsync(userId, carried, services.GetRequiredService<IUserRepository>(), context.HttpContext.RequestAborted);
                     if (!live)
                         context.Fail("This session was signed out.");
+                },
+            };
+        })
+        // A member signed in to the member portal: a token of the portal's own (its own key and
+        // audience, MemberPortalTokens) naming the club, the member and a session, which must
+        // still stand (not signed out, not ended by staff, not run out, member not erased).
+        .AddJwtBearer(ACI.Application.Common.MemberPortalClaims.Scheme, options =>
+        {
+            options.MapInboundClaims = false;
+            options.TokenValidationParameters = ACI.Infrastructure.Services.Portal.MemberPortalTokens.Validation(jwtIssuer, jwtSecret);
+            options.Events = new JwtBearerEvents
+            {
+                OnTokenValidated = async context =>
+                {
+                    if (ACI.Application.Common.MemberPortalClaims.Of(context.Principal) is not { } member)
+                    {
+                        context.Fail("The token names no member.");
+                        return;
+                    }
+                    var check = await context.HttpContext.RequestServices.GetRequiredService<ACI.Application.Services.IMemberPortalSignIn>()
+                        .CheckSessionAsync(member, context.HttpContext.RequestAborted);
+                    if (check == null)
+                    {
+                        context.Fail("This session was signed out.");
+                        return;
+                    }
+                    // What staff read beside what the member does (who registered, booked, changed
+                    // their phone): their name, and that it was them, in the portal.
+                    if (context.Principal?.Identity is System.Security.Claims.ClaimsIdentity identity)
+                        identity.AddClaim(new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Name, $"{check.MemberName} (member portal)"));
                 },
             };
         });

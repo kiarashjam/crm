@@ -89,6 +89,9 @@ internal sealed class PersonDossier
     public List<ClubStatementDelivery> StatementDeliveries { get; private set; } = new();
     public List<ClubPaymentReminder> PaymentReminders { get; private set; } = new();
     public List<ClubMemberCode> MemberCodes { get; private set; } = new();
+    public List<MemberPortalAccount> PortalAccounts { get; private set; } = new();
+    public List<MemberPortalSession> PortalSessions { get; private set; } = new();
+    public List<MemberPortalLink> PortalLinks { get; private set; } = new();
     public List<ClubEventRegistration> Registrations { get; private set; } = new();
     public Dictionary<Guid, ClubEvent> Events { get; private set; } = new();
     public List<ClubReservation> Reservations { get; private set; } = new();
@@ -303,6 +306,9 @@ internal sealed class PersonDossier
         d.StatementDeliveries = await Q(db.ClubStatementDeliveries).Where(s => memberIds.Contains(s.MemberId)).ToListAsync(ct);
         d.PaymentReminders = await Q(db.ClubPaymentReminders).Where(r => memberIds.Contains(r.MemberId)).ToListAsync(ct);
         d.MemberCodes = await Q(db.ClubMemberCodes).Where(c => memberIds.Contains(c.MemberId)).ToListAsync(ct);
+        d.PortalAccounts = await Q(db.MemberPortalAccounts).Where(a => memberIds.Contains(a.MemberId)).ToListAsync(ct);
+        d.PortalSessions = await Q(db.MemberPortalSessions).Where(x => memberIds.Contains(x.MemberId)).ToListAsync(ct);
+        d.PortalLinks = await Q(db.MemberPortalLinks).Where(l => memberIds.Contains(l.MemberId)).ToListAsync(ct);
         d.Registrations = await Q(db.ClubEventRegistrations).Where(r =>
                 (r.MemberId != null && memberIds.Contains(r.MemberId.Value))
                 || (r.HostMemberId != null && memberIds.Contains(r.HostMemberId.Value))

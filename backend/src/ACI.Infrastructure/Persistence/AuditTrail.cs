@@ -274,8 +274,10 @@ internal static partial class AuditTrail
     private static List<AuditEvent> Build(List<Pending> pending, Lookups lookups, ICurrentUserService? currentUser)
     {
         var actorId = currentUser?.UserId;
+        // Nobody on the team: a job (the system), or a member in the member portal, who has a
+        // name on their session (their own, marked as the portal) and no user id.
         var actorName = actorId == null
-            ? AuditVocabulary.SystemActor
+            ? !string.IsNullOrWhiteSpace(currentUser?.UserName) ? currentUser!.UserName! : AuditVocabulary.SystemActor
             : !string.IsNullOrWhiteSpace(currentUser!.UserName) ? currentUser.UserName! : lookups.User(actorId) ?? "Someone";
         var now = DateTime.UtcNow;
 

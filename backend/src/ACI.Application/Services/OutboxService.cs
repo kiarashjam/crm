@@ -86,6 +86,22 @@ public sealed record OutboundEmailRequest
     /// sends the same ones.
     /// </summary>
     public IReadOnlyList<EmailAttachment> Attachments { get; init; } = [];
+
+    /// <summary>
+    /// The name it is from, when not the workspace's: the member portal's invitations and
+    /// sign-in links go under the sender name set in Welcome &amp; portal.
+    /// </summary>
+    public string? FromName { get; init; }
+
+    /// <summary>
+    /// The address it is from, when not the workspace's own. Used only on a domain the mail
+    /// service has verified for this workspace, as its own sending address is; any other is
+    /// left out, and the email goes from the usual address under <see cref="FromName"/>.
+    /// </summary>
+    public string? FromAddress { get; init; }
+
+    /// <summary>Where replies go, when not to the person behind it (or the workspace's owner).</summary>
+    public string? ReplyTo { get; init; }
 }
 
 /// <summary>How an attempt at a message ended.</summary>
@@ -287,7 +303,14 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
         var replyDomain = _settings.CapturesReplies ? _settings.ReplyDomain() : null;
         var token = replyDomain == null ? null : NewReplyToken();
         var replyTo = new List<string>();
-        if (sender.ReplyTo != null) replyTo.Add(sender.ReplyTo);
+        // A sender the request names (the member portal's, from Welcome & portal) stands in for
+        // the workspace's usual one: its from address only on a domain verified for the
+        // workspace, so no workspace sends as a domain that is not its own.
+        var fromAddress = VerifiedFromAddress(request.FromAddress, organizationId) ?? sender.FromAddress;
+        var fromName = string.IsNullOrWhiteSpace(request.FromName) ? sender.WorkspaceName : OneLine(request.FromName);
+        var ownReplyTo = request.ReplyTo?.Trim() is { Length: > 0 } asked && ValidationHelper.IsValidEmail(asked) ? asked : null;
+        if (ownReplyTo != null) replyTo.Add(ownReplyTo);
+        else if (sender.ReplyTo != null) replyTo.Add(sender.ReplyTo);
         // With reply capture on, a second Reply-To brings the answer into the CRM as well,
         // while the first still puts it in the person's own inbox.
         if (token != null) replyTo.Add($"reply+{token}@{replyDomain}");
@@ -311,8 +334,8 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
             CreatedByUserId = request.CreatedByUserId,
             // A workspace's name may be 256 characters and the column holds 200: unclipped,
             // every email of a workspace with a longer name failed to queue.
-            FromName = Clip(sender.WorkspaceName, MaxFromName),
-            FromAddress = sender.FromAddress,
+            FromName = Clip(fromName, MaxFromName),
+            FromAddress = fromAddress,
             ReplyTo = replyTo.Count == 0 ? null : string.Join(", ", replyTo),
             To = string.Join(", ", to),
             Cc = cc.Count == 0 ? null : string.Join(", ", cc),
@@ -325,7 +348,7 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
             UnsubscribeUrl = mail.UnsubscribeUrl,
             OneClickUnsubscribe = mail.OneClick,
             Purpose = purpose,
-            MessageIdHeader = $"<{id:N}@{MessageIdDomain(sender.FromAddress)}>",
+            MessageIdHeader = $"<{id:N}@{MessageIdDomain(fromAddress)}>",
             ReplyToken = token,
             CountsAsResponse = request.CountsAsResponse,
             LeadId = request.LeadId,
@@ -931,6 +954,14 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
         string.IsNullOrWhiteSpace(list) ? [] : list.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
     /// <summary>A line break in a subject would start a new header line, so a subject stays one line.</summary>
+    /// <summary>A from address a request names, when the mail service has verified its domain for this workspace; else null.</summary>
+    private string? VerifiedFromAddress(string? address, Guid organizationId)
+    {
+        var value = (address ?? "").Trim();
+        if (value.Length == 0 || !ValidationHelper.IsValidEmail(value)) return null;
+        return _settings.IsVerifiedSendingDomain(value[(value.LastIndexOf('@') + 1)..], organizationId) ? value.ToLowerInvariant() : null;
+    }
+
     internal static string OneLine(string? text) =>
         string.Join(' ', (text ?? "").Split('\r', '\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)).Trim();
 

@@ -177,6 +177,29 @@ public static partial class MemberTexts
             "Sie können {amount} online mit {methods} auf der sicheren Seite von Stripe bezahlen.",
             "Vous pouvez payer {amount} en ligne, par {methods}, sur la page sécurisée de Stripe."),
         ["payLink.validUntil"] = new("The link works until {date}.", "Der Link ist gültig bis {date}.", "Le lien est valable jusqu’au {date}."),
+        // ── the member portal ──────────────────────────────────────────────────
+        ["portal.inviteSubject"] = new("{club}: your member account", "{club}: Ihr Mitgliederkonto", $"{{club}}{Nb}: votre espace membre"),
+        ["portal.inviteIntro"] = new(
+            "{club} has a member portal: see your statements and pay them, sign up for events, book, and choose what you hear from the club.",
+            "{club} hat ein Mitgliederportal: Dort sehen und bezahlen Sie Ihre Kontoauszüge, melden sich für Anlässe an, reservieren und bestimmen, was Sie vom Club erhalten.",
+            $"{{club}} a un espace membre{Nb}: consultez et réglez vos relevés, inscrivez-vous aux événements, réservez et choisissez ce que vous recevez du club."),
+        ["portal.inviteOpen"] = new("Open your account:", "Öffnen Sie Ihr Konto:", $"Ouvrir votre espace{Nb}:"),
+        ["portal.inviteOpenFor"] = new("Open the account of {name}:", "Konto von {name} öffnen:", $"Ouvrir l’espace de {{name}}{Nb}:"),
+        ["portal.inviteValid"] = new(
+            "Each link works once, until {date}. After that, ask for a new one on the portal's page: {portal}",
+            "Jeder Link funktioniert einmal, bis am {date}. Danach können Sie auf der Seite des Portals einen neuen anfordern: {portal}",
+            $"Chaque lien fonctionne une fois, jusqu’au {{date}}. Ensuite, demandez-en un nouveau sur la page de l’espace{Nb}: {{portal}}"),
+        ["portal.signInSubject"] = new("Your sign-in link for {club}", "Ihr Anmeldelink für {club}", "Votre lien de connexion pour {club}"),
+        ["portal.signInIntro"] = new(
+            "Here is your link to sign in to the member portal of {club}:",
+            "Hier ist Ihr Link für die Anmeldung im Mitgliederportal von {club}:",
+            $"Voici votre lien pour vous connecter à l’espace membre de {{club}}{Nb}:"),
+        ["portal.signInAs"] = new("Sign in as {name}:", "Als {name} anmelden:", $"Se connecter en tant que {{name}}{Nb}:"),
+        ["portal.signInValid"] = new(
+            "Each link works once, for {minutes} minutes. If you did not ask for it, you can ignore this email: nobody can sign in without the link.",
+            "Jeder Link funktioniert einmal, während {minutes} Minuten. Falls Sie ihn nicht angefordert haben, können Sie diese E-Mail ignorieren: Ohne den Link kann sich niemand anmelden.",
+            $"Chaque lien fonctionne une fois, pendant {{minutes}} minutes. Si vous ne l’avez pas demandé, ignorez cet e-mail{Nb}: personne ne peut se connecter sans le lien."),
+
         ["method.card"] = new("card", "Karte", "carte"),
         ["method.twint"] = new("TWINT", "TWINT", "TWINT"),
         ["method.sepa"] = new("SEPA direct debit", "SEPA-Lastschrift", "prélèvement SEPA"),

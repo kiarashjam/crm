@@ -154,6 +154,12 @@ public sealed partial class PersonDataService
                 reminders = d.PaymentReminders.Select(x => Row(x)).ToList(),
             }]),
             new("club/member-codes.json", "Their member numbers, cards and QR codes at the till.", d.MemberCodes.Select(c => Row(c)).ToList()),
+            new("club/member-portal.json", "When they were invited to the member portal and used it, and their sessions there (no sign-in secret is kept).", [new
+            {
+                use = d.PortalAccounts.Select(a => Row(a)).ToList(),
+                sessions = d.PortalSessions.Select(x => Row(x)).ToList(),
+                linksNotYetUsed = d.PortalLinks.Select(l => new { l.Purpose, l.CreatedAtUtc, l.ExpiresAtUtc }).ToList(),
+            }]),
             new("club/events.json", "Events they registered for or brought guests to.", d.Registrations.Select(r => With(Row(r), "event",
                 d.Events.TryGetValue(r.EventId, out var e) ? new { e.Name, e.StartAtUtc, e.EndAtUtc, e.Location } : null)).ToList()),
             new("club/reservations.json", "Tables and rooms they booked.", d.Reservations.Select(r => Row(r)).ToList()),

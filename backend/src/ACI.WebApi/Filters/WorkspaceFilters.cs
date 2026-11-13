@@ -142,7 +142,9 @@ public sealed class InModuleAttribute : Attribute, IAsyncActionFilter, IOrderedF
     {
         var services = context.HttpContext.RequestServices;
         var user = services.GetRequiredService<ICurrentUserService>();
-        if (user.CurrentOrganizationId is Guid organizationId
+        // A member in the member portal names their club in their session token, not a header.
+        var workspace = user.CurrentOrganizationId ?? MemberPortalClaims.Of(context.HttpContext.User)?.OrganizationId;
+        if (workspace is Guid organizationId
             && !await services.GetRequiredService<IWorkspaceModules>().IsOnAsync(organizationId, Module, context.HttpContext.RequestAborted))
         {
             var refusal = ACI.WebApi.Extensions.ResultExtensions.ToProblemResult(DomainErrors.Modules.Off(Module));

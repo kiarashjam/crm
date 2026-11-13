@@ -245,6 +245,8 @@ public sealed partial class PersonDataService
         Add("Gift cards", ErasureActions.Anonymise, d.GiftCards.Count, "Their names and address are removed; the card's code and balance stay.");
         Add("Saved cards", ErasureActions.Delete, d.PaymentProfiles.Count, "Nothing more is charged to a card they saved.");
         Add("Member codes at the till", ErasureActions.Delete, d.MemberCodes.Count);
+        Add("Member portal sign-ins", ErasureActions.Delete, d.PortalSessions.Count + d.PortalLinks.Count + d.PortalAccounts.Count,
+            "Their member portal sessions end, and their sign-in links stop working.");
         Add("Household places", ErasureActions.Delete, d.HouseholdLinks.Count(l => l.MemberId is Guid m && s.MemberIds.Contains(m) || l.ContactId is Guid c && s.ContactIds.Contains(c)));
         var upcomingRegistrations = cancelledAhead?.Registrations ?? UpcomingRegistrations(d, now).Count();
         var upcomingReservations = cancelledAhead?.Reservations ?? UpcomingReservations(d, now).Count();
@@ -635,6 +637,10 @@ public sealed partial class PersonDataService
         }
         _db.ClubPaymentProfiles.RemoveRange(d.PaymentProfiles);
         _db.ClubMemberCodes.RemoveRange(d.MemberCodes);
+        // Their way into the member portal goes with them: every session ends, every link stops.
+        _db.MemberPortalSessions.RemoveRange(d.PortalSessions);
+        _db.MemberPortalLinks.RemoveRange(d.PortalLinks);
+        _db.MemberPortalAccounts.RemoveRange(d.PortalAccounts);
         foreach (var r in d.Registrations)
         {
             if (r.MemberId is Guid m && memberIds.Contains(m) || r.Email != null && s.Addresses.Contains(ErasedAddresses.Normalize(r.Email)))

@@ -233,6 +233,13 @@ public sealed class ClubReservationService : IClubReservations
             resource.NoShowFee = fee;
         }
         if (request.Active is { } active) resource.Active = active;
+        if (request.MemberBooking != null)
+        {
+            // Whether members book it themselves in the member portal, and whether staff confirm it.
+            var booking = request.MemberBooking.Trim().ToLowerInvariant();
+            if (!MemberBookingModes.All.Contains(booking)) return DomainErrors.Reservation.MemberBookingInvalid;
+            resource.MemberBooking = booking;
+        }
         if (request.SortOrder is { } sort) resource.SortOrder = Math.Clamp(sort, 0, 10_000);
         return null;
     }
@@ -650,6 +657,7 @@ public sealed class ClubReservationService : IClubReservations
         NoShowFee = r.NoShowFee,
         Currency = r.Currency,
         Active = r.Active,
+        MemberBooking = r.MemberBooking,
         SortOrder = r.SortOrder,
         Version = r.EditVersion,
     };

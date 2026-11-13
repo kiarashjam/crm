@@ -116,6 +116,12 @@ public static class DependencyInjection
         // The workspace's privacy settings, the public privacy page, and the retention run.
         services.AddScoped<IPrivacySettings, ACI.Infrastructure.Services.Privacy.PrivacySettingsService>();
         services.AddScoped<IRetention, ACI.Infrastructure.Services.Privacy.RetentionService>();
+        // The member portal: members sign in with emailed links into sessions of their own, and
+        // see their own club account; staff turn it on, invite members and end sessions.
+        services.AddScoped<ACI.Infrastructure.Services.Portal.MemberPortalAccess>();
+        services.AddScoped<IMemberPortalSignIn>(sp => sp.GetRequiredService<ACI.Infrastructure.Services.Portal.MemberPortalAccess>());
+        services.AddScoped<IMemberPortalAdmin>(sp => sp.GetRequiredService<ACI.Infrastructure.Services.Portal.MemberPortalAccess>());
+        services.AddScoped<IMemberPortal, ACI.Infrastructure.Services.Portal.MemberPortalService>();
         services.AddScoped<IConsentRepository, ConsentRepository>();
         services.AddScoped<ICampaignRepository, CampaignRepository>();
         services.AddScoped<IImportRepository, ImportRepository>();
@@ -165,6 +171,8 @@ public static class DependencyInjection
         var jwtAudience = configuration["Jwt:Audience"] ?? "ACI";
         var jwtExpiry = int.TryParse(configuration["Jwt:ExpiryMinutes"], out var exp) ? exp : 1440;
         services.AddSingleton<ITokenService>(_ => new JwtTokenService(jwtIssuer, jwtAudience, jwtSecret, jwtExpiry));
+        // Member portal sessions: signed with a key of their own, derived from the same secret.
+        services.AddSingleton(_ => new ACI.Infrastructure.Services.Portal.MemberPortalTokens(jwtIssuer, jwtSecret));
 
         return services;
     }

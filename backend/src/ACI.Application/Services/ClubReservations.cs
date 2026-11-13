@@ -88,6 +88,10 @@ public sealed class ResourceWriteRequest
     public decimal? DepositAmount { get; set; }
     public decimal? NoShowFee { get; set; }
     public bool? Active { get; set; }
+
+    /// <summary>off, request (members ask, staff confirm) or instant: whether members book it in the member portal.</summary>
+    public string? MemberBooking { get; set; }
+
     public int? SortOrder { get; set; }
     public Guid? Version { get; set; }
 }
@@ -141,6 +145,10 @@ public sealed record ClubResourceDto
     public decimal NoShowFee { get; init; }
     public string Currency { get; init; } = string.Empty;
     public bool Active { get; init; }
+
+    /// <summary>off, request or instant: whether members book it in the member portal (MemberBookingModes).</summary>
+    public string MemberBooking { get; init; } = "off";
+
     public int SortOrder { get; init; }
 
     /// <summary>The version to edit the resource's settings from (If-Match); a booking does not change it.</summary>
