@@ -60,6 +60,7 @@ public class LeadsController : ControllerBase
         [FromQuery] string? sortBy = null,
         [FromQuery] string? sortDir = null,
         [FromQuery] string? kind = null,
+        [FromQuery] FlexQueryParams? flex = null,
         CancellationToken ct = default)
     {
         var userId = _currentUser.UserId;
@@ -84,6 +85,8 @@ public class LeadsController : ControllerBase
             Kind = kind,
             SortBy = string.IsNullOrWhiteSpace(sortBy) ? "createdAt" : sortBy,
             SortDir = string.IsNullOrWhiteSpace(sortDir) ? "desc" : sortDir,
+            // Tags and custom fields, and a sort by a field ("cf:key").
+            Flex = (flex ?? new FlexQueryParams()).ToFilter(sortBy, sortDir),
         };
 
         var result = await _leadService.GetLeadsPagedAsync(

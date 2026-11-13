@@ -66,6 +66,7 @@ public class ContactsController : ControllerBase
         [FromQuery] string? activity = null,
         [FromQuery] string? sortBy = null,
         [FromQuery] string? sortDir = null,
+        [FromQuery] FlexQueryParams? flex = null,
         CancellationToken ct = default)
     {
         var userId = _currentUser.UserId;
@@ -78,7 +79,7 @@ public class ContactsController : ControllerBase
             _currentUser.CurrentOrganizationId,
             page,
             pageSize,
-            Options(search, includeArchived, companyId, status, hasCompany, activity, sortBy, sortDir),
+            Options(search, includeArchived, companyId, status, hasCompany, activity, sortBy, sortDir, flex),
             ct);
 
         return Ok(result);
@@ -119,6 +120,7 @@ public class ContactsController : ControllerBase
         [FromQuery] string? activity = null,
         [FromQuery] string? sortBy = null,
         [FromQuery] string? sortDir = null,
+        [FromQuery] FlexQueryParams? flex = null,
         CancellationToken ct = default)
     {
         var userId = _currentUser.UserId;
@@ -126,7 +128,7 @@ public class ContactsController : ControllerBase
         var file = await _contactService.ExportAsync(
             userId.Value,
             _currentUser.CurrentOrganizationId,
-            Options(search, includeArchived, companyId, status, hasCompany, activity, sortBy, sortDir),
+            Options(search, includeArchived, companyId, status, hasCompany, activity, sortBy, sortDir, flex),
             await _csv.SeparatorAsync(_currentUser.CurrentOrganizationId, ct),
             ct);
         Response.Headers["X-Total-Count"] = file.Total.ToString(System.Globalization.CultureInfo.InvariantCulture);
@@ -135,8 +137,11 @@ public class ContactsController : ControllerBase
     }
 
     private static ContactQueryOptions Options(
-        string? search, bool includeArchived, Guid? companyId, string? status, bool? hasCompany, string? activity, string? sortBy, string? sortDir) => new()
+        string? search, bool includeArchived, Guid? companyId, string? status, bool? hasCompany, string? activity, string? sortBy, string? sortDir,
+        FlexQueryParams? flex) => new()
     {
+        // Tags and custom fields, and a sort by a field ("cf:key").
+        Flex = (flex ?? new FlexQueryParams()).ToFilter(sortBy, sortDir),
         Search = search,
         // A status, when sent, decides; includeArchived is what older clients send.
         Status = !string.IsNullOrWhiteSpace(status) ? status : includeArchived ? ContactQueryOptions.All : ContactQueryOptions.Active,

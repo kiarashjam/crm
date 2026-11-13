@@ -149,7 +149,8 @@ public interface IClubRepository
 
 public interface IClubService
 {
-    Task<IReadOnlyList<MemberDto>> MembersAsync(Guid userId, Guid? organizationId, CancellationToken ct = default);
+    /// <param name="filter">The members' tags and custom fields the list asks for; null or empty for every member.</param>
+    Task<IReadOnlyList<MemberDto>> MembersAsync(Guid userId, Guid? organizationId, CancellationToken ct = default, FlexFilter? filter = null);
     Task<Result<MemberDto>> CreateMemberAsync(Guid userId, Guid? organizationId, MemberWriteRequest request, CancellationToken ct = default);
     Task<Result<MemberDto>> UpdateMemberAsync(Guid id, Guid? organizationId, MemberWriteRequest request, CancellationToken ct = default);
     Task<Result> DeleteMemberAsync(Guid id, Guid? organizationId, CancellationToken ct = default);
@@ -172,10 +173,13 @@ public sealed class ClubService : IClubService
     private readonly IClubRules _rules;
     private readonly IWorkspaceRecords? _records;
     private readonly IAutomationEngine? _automations;
+    private readonly IRecordFlexQuery? _flex;
 
     public ClubService(IClubRepository club, IClubLedger ledger, IPermissionService permissions, ICurrentUserService user,
-        IClubCatalog catalog, IClubRules rules, IWorkspaceRecords? records = null, IAutomationEngine? automations = null)
+        IClubCatalog catalog, IClubRules rules, IWorkspaceRecords? records = null, IAutomationEngine? automations = null,
+        IRecordFlexQuery? flex = null)
     {
+        _flex = flex;
         _automations = automations;
         _club = club;
         _ledger = ledger;
@@ -201,9 +205,12 @@ public sealed class ClubService : IClubService
     /// The house balance is worked out from the ledger, each member's entries added up, so
     /// the list shows what the statement and the member's account say.
     /// </remarks>
-    public async Task<IReadOnlyList<MemberDto>> MembersAsync(Guid userId, Guid? organizationId, CancellationToken ct = default)
+    public async Task<IReadOnlyList<MemberDto>> MembersAsync(Guid userId, Guid? organizationId, CancellationToken ct = default, FlexFilter? filter = null)
     {
-        var rows = await _club.MembersAsync(organizationId, ct);
+        IEnumerable<ClubMember> rows = await _club.MembersAsync(organizationId, ct);
+        // Narrowed by their tags and custom fields in the database, as the other lists are.
+        if (filter != null && _flex != null && await _flex.MatchingAsync(RecordTypes.Member, filter, ct) is { } matching)
+            rows = rows.Where(m => matching.Contains(m.Id));
         var balances = await _ledger.BalancesAsync(organizationId, null, ct);
         return rows.Select(m => ToDto(m, balances.GetValueOrDefault(m.Id))).OrderBy(m => m.LastName).ToList();
     }

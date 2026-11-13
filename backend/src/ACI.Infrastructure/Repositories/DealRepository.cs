@@ -92,11 +92,14 @@ public sealed class DealRepository : IDealRepository
                 .ToListAsync(ct);
         }
         var q = query.Trim().ToLowerInvariant();
+        // Their custom fields' text and their tags' names are searched too.
+        var flexHits = FlexQueryable.SearchHits(_db, q);
         var matches = IncludeRelated(FilterByUserAndOrg(_db.Deals.AsNoTracking(), userId, organizationId)
             .Where(d => d.Name.ToLower().Contains(q) || d.Value.ToLower().Contains(q)
                 || (d.Company != null && d.Company.Name.ToLower().Contains(q))
                 || (d.Contact != null && d.Contact.Name.ToLower().Contains(q))
-                || (d.Stage != null && d.Stage.ToLower().Contains(q))))
+                || (d.Stage != null && d.Stage.ToLower().Contains(q))
+                || flexHits.Contains(d.Id)))
             .OrderBy(d => d.Name);
         if (take is > 0)
             return await matches.Take(take.Value).ToListAsync(ct);

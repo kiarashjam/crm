@@ -51,6 +51,11 @@ public class EndpointPermissionTests
         ["WebhookController.UpdateOutbound"] = "OrganizationService: settings.manage",
         ["OnboardingController.Preview"] = "reads only: the welcome email filled as it would go, nothing kept or sent",
         ["AgentController.Chat"] = "reads only, as the caller sees the records: a change it proposes is made only by the caller's confirm, through the endpoint that makes it and that endpoint's permission",
+        // A list reads the custom values and tags of its page of records in one POST (the ids
+        // would not fit a query string); nothing is changed and only records the caller sees come back.
+        ["CustomFieldsController.GetValuesBatch"] = "reads only: the custom values of the records the caller can see",
+        ["TagsController.RecordTagsBatch"] = "reads only: the tags of the records the caller can see",
+        ["SavedViewsController.*"] = "the caller's own saved views and defaults; sharing one takes a permission that changes records (SavedViewService.MayShareAsync)",
         // A member signed in to the member portal: no member of the team, so no permission of the
         // team's; the member's token reaches only their own records (MemberPortalService).
         ["MemberPortalController.*"] = "a member's own club account in the member portal, by their own session",

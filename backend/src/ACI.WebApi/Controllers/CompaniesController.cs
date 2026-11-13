@@ -63,6 +63,7 @@ public class CompaniesController : ControllerBase
         [FromQuery] string? size = null,
         [FromQuery] string? sortBy = null,
         [FromQuery] string? sortDir = null,
+        [FromQuery] FlexQueryParams? flex = null,
         CancellationToken ct = default)
     {
         var userId = _currentUser.UserId;
@@ -76,7 +77,7 @@ public class CompaniesController : ControllerBase
             _currentUser.CurrentOrganizationId,
             page,
             pageSize,
-            Options(search, industry, hasIndustry, size, sortBy, sortDir),
+            Options(search, industry, hasIndustry, size, sortBy, sortDir, flex),
             ct);
 
         return Ok(result);
@@ -115,20 +116,24 @@ public class CompaniesController : ControllerBase
         [FromQuery] string? size = null,
         [FromQuery] string? sortBy = null,
         [FromQuery] string? sortDir = null,
+        [FromQuery] FlexQueryParams? flex = null,
         CancellationToken ct = default)
     {
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
         var file = await _companyService.ExportAsync(
-            userId.Value, _currentUser.CurrentOrganizationId, Options(search, industry, hasIndustry, size, sortBy, sortDir),
+            userId.Value, _currentUser.CurrentOrganizationId, Options(search, industry, hasIndustry, size, sortBy, sortDir, flex),
             await _csv.SeparatorAsync(_currentUser.CurrentOrganizationId, ct), ct);
         Response.Headers["X-Total-Count"] = file.Total.ToString(System.Globalization.CultureInfo.InvariantCulture);
         Response.Headers["X-Exported-Count"] = file.Exported.ToString(System.Globalization.CultureInfo.InvariantCulture);
         return File(file.Content, "text/csv; charset=utf-8", file.FileName);
     }
 
-    private static CompanyQueryOptions Options(string? search, string? industry, bool? hasIndustry, string? size, string? sortBy, string? sortDir) => new()
+    private static CompanyQueryOptions Options(
+        string? search, string? industry, bool? hasIndustry, string? size, string? sortBy, string? sortDir, FlexQueryParams? flex) => new()
     {
+        // Tags and custom fields, and a sort by a field ("cf:key").
+        Flex = (flex ?? new FlexQueryParams()).ToFilter(sortBy, sortDir),
         Search = search,
         Industry = industry,
         HasIndustry = hasIndustry,
