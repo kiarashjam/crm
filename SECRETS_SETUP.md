@@ -79,9 +79,13 @@ Add as **Variable** (not Secret): **Settings → Secrets and variables → Actio
 
 ---
 
-## 4. OpenAI API Key (Optional - for Intelligent Sales Writer)
+## 4. OpenAI API Key (Optional - for the assistant and the Intelligent Sales Writer)
 
-The Intelligent Sales Writer works with templates by default. To enable AI-powered generation:
+Without a key, the Intelligent Sales Writer works with templates, the chat ("Ask Cadence")
+answers from its built-in rules, and the morning brief goes out as a plain list. With one, the
+assistant ("Ask Cadence AI") answers from the records as each person may see them and proposes
+changes for them to confirm, the morning brief gets a few sentences written by the model, and
+the writer drafts with AI. To enable it:
 
 ### Local Development
 
@@ -106,6 +110,23 @@ Add to **Azure Portal → Web Apps → \<your-backend\> → Configuration → Ap
 | `OpenAI__Model` | `gpt-4o-mini` (or `gpt-4o` for better quality) |
 
 Or add as GitHub Secret and reference in deployment workflow.
+
+What the model may cost is limited on the server (optional settings; these are the defaults):
+
+| Name | Default | What it does |
+|------|---------|--------------|
+| `Assistant__Enabled` | `true` | `false` turns the assistant off and keeps the key for the writer |
+| `Assistant__Model` | `OpenAI__Model` | The model the assistant asks |
+| `Assistant__DefaultMonthlyLimit` | `300` | Calls to the model a workspace may make each month until a manager sets its own (Settings › Assistant) |
+| `Assistant__MaxMonthlyLimit` | `3000` | The most a workspace may set |
+| `Assistant__PersonalMonthlyLimit` | `100` | A person's AI-writer drafts each month outside any workspace |
+| `Assistant__UserBurst` / `Assistant__UserPerMinute` | `20` / `3` | How fast one person may ask |
+| `Assistant__WorkspaceBurst` / `Assistant__WorkspacePerMinute` | `60` / `30` | How fast a whole team may ask at once |
+| `Assistant__MaxTurnsPerQuestion` | `5` | Steps (each a billed call) the model may take for one question |
+| `Assistant__MaxOutputTokens` / `Assistant__TimeoutSeconds` | `800` / `30` | The length of an answer, and how long to wait for one |
+
+The privacy notice names OpenAI, with what the writer and the assistant send it, once the key
+is set.
 
 ---
 
@@ -407,7 +428,7 @@ before they can work in that workspace; the owner is never held to it.
 - [ ] `AZURE_WEBAPP_PUBLISH_PROFILE` added (full XML)  
 - [ ] `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `AZURE_CLIENT_SECRET` added  
 - [ ] `VITE_API_URL` added as **variable** (optional)
-- [ ] `OpenAI__ApiKey` added (optional, for Intelligent Sales Writer)
+- [ ] `OpenAI__ApiKey` added (optional: the assistant, the morning brief's summary and the Intelligent Sales Writer); the monthly limit reviewed (`Assistant__DefaultMonthlyLimit`, Settings › Assistant)
 - [ ] `Email__SmtpPassword` set in Azure **or** `SENDGRID_API_KEY` added as a GitHub secret, and `info@pavillon46.ch` verified in SendGrid
 - [ ] `Email__FrontendBaseUrl` set to the deployed SPA origin
 - [ ] `Privacy__OperatorName`, `Privacy__OperatorAddress` and `Privacy__OperatorEmail` set, so the privacy notice names who runs the app

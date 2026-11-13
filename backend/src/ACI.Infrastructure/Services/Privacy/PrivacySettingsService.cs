@@ -1,5 +1,6 @@
 using ACI.Application.Common;
 using ACI.Application.Configuration;
+using ACI.Application.Interfaces;
 using ACI.Application.Services;
 using ACI.Domain.Entities;
 using ACI.Infrastructure.Configuration;
@@ -21,13 +22,15 @@ public sealed class PrivacySettingsService : IPrivacySettings
     private readonly IConfiguration _configuration;
     private readonly EmailSettings _email;
     private readonly OpenAISettings _openAi;
+    private readonly IAssistantModel _assistant;
 
-    public PrivacySettingsService(AppDbContext db, IConfiguration configuration, IOptions<EmailSettings> email, IOptions<OpenAISettings> openAi)
+    public PrivacySettingsService(AppDbContext db, IConfiguration configuration, IOptions<EmailSettings> email, IOptions<OpenAISettings> openAi, IAssistantModel assistant)
     {
         _db = db;
         _configuration = configuration;
         _email = email.Value;
         _openAi = openAi.Value;
+        _assistant = assistant;
     }
 
     public async Task<PrivacySettingsDto> GetAsync(Guid organizationId, CancellationToken ct = default) =>
@@ -125,8 +128,14 @@ public sealed class PrivacySettingsService : IPrivacySettings
         else if (mailHost.Length > 0)
             processors.Add(new($"The email relay at {mailHost}", "Sending the email the club sends.", "As its operator says", null));
         if (_openAi.IsConfigured)
-            processors.Add(new("OpenAI", "Drafting the text of an email when staff ask the AI writer: the recipient's name, company, job title, deal stage and value and last activity go with the request; their email address does not.",
-                "United States", "Standard contractual clauses in OpenAI's data processing addendum"));
+        {
+            var purpose = "Drafting the text of an email when staff ask the AI writer: the recipient's name, company, job title, deal stage and value and last activity go with the request; their email address does not.";
+            // The assistant uses the same key when it is on: what staff ask, and the records it
+            // reads for them, go with each request.
+            if (_assistant.IsConfigured && string.Equals(_assistant.Provider, "OpenAI", StringComparison.OrdinalIgnoreCase))
+                purpose += " Answering staff's questions in the assistant and writing the summary of their morning brief: what they ask goes with the request, with the records the assistant looks up for them as they may see them (names, contact details, notes, tasks, deals, amounts owed, bookings).";
+            processors.Add(new("OpenAI", purpose, "United States", "Standard contractual clauses in OpenAI's data processing addendum"));
+        }
         if (organizationId is Guid workspace)
         {
             if (await _db.ClubPaymentSettings.IgnoreQueryFilters().AsNoTracking().AnyAsync(s => s.OrganizationId == workspace && s.StripeSecretKeyProtected != null, ct))

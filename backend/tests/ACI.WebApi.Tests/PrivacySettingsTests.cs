@@ -194,7 +194,16 @@ public class PrivacySettingsTests
             var ai = await Ok(await withAi.CreateClient().GetAsync("/api/public/privacy"), "the page with AI drafting on");
             var openAi = ai.GetProperty("processors").EnumerateArray().Single(p => p.GetProperty("name").GetString() == "OpenAI");
             openAi.GetProperty("location").GetString().Should().Be("United States");
-            openAi.GetProperty("purpose").GetString().Should().Contain("email address does not");
+            openAi.GetProperty("purpose").GetString().Should().Contain("email address does not")
+                .And.Contain("questions in the assistant", "the assistant sends the questions and the records it reads on the same key");
+        }
+        // With the assistant turned off on the server, only the AI writer sends anything.
+        using (var writerOnly = factory.WithWebHostBuilder(b => b.ConfigureAppConfiguration((_, c) =>
+                   c.AddInMemoryCollection(new Dictionary<string, string?> { ["OpenAI:ApiKey"] = "sk-test-not-real", ["Assistant:Enabled"] = "false" }))))
+        {
+            var ai = await Ok(await writerOnly.CreateClient().GetAsync("/api/public/privacy"), "the page with only the AI writer on");
+            ai.GetProperty("processors").EnumerateArray().Single(p => p.GetProperty("name").GetString() == "OpenAI")
+                .GetProperty("purpose").GetString().Should().NotContain("assistant");
         }
         plain.GetProperty("retention").ValueKind.Should().Be(JsonValueKind.Null);
 
