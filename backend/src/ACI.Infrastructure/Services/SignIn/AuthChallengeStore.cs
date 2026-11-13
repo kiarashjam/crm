@@ -3,6 +3,7 @@ using System.Text;
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
 using ACI.Infrastructure.Persistence;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 
 namespace ACI.Infrastructure.Services.SignIn;
@@ -63,6 +64,29 @@ public sealed class AuthChallengeStore : IAuthChallenges
     {
         if (string.IsNullOrEmpty(secret)) return null;
         var hash = Hash(secret);
+
+        // Under load SQL Server can end a race for one step in a deadlock (error 1205)
+        // instead of letting the loser delete nothing: one request's read looks the row up
+        // through the (Purpose, KeyHash) index and then the row itself, while another's
+        // delete holds the row and wants that index entry. The request chosen as the victim
+        // was rolled back and simply tries again; by then the step is gone, or its delete
+        // waits for the winner and removes nothing. Either way it is refused like any other
+        // loser, rather than answering 500. No caller holds a transaction around this, so
+        // trying again is safe.
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await TakeOnceAsync(purpose, hash, ct);
+            }
+            catch (Exception ex) when (attempt < 3 && IsDeadlockVictim(ex))
+            {
+            }
+        }
+    }
+
+    private async Task<AuthChallenge?> TakeOnceAsync(string purpose, string hash, CancellationToken ct)
+    {
         var step = await _db.AuthChallenges.FirstOrDefaultAsync(c => c.Purpose == purpose && c.KeyHash == hash, ct);
         if (step == null) return null;
 
@@ -78,8 +102,22 @@ public sealed class AuthChallengeStore : IAuthChallenges
             _db.Entry(step).State = EntityState.Detached;
             return null;
         }
+        catch (DbUpdateException)
+        {
+            // Leave no pending delete behind for a second try, or for the caller's next save.
+            _db.Entry(step).State = EntityState.Detached;
+            throw;
+        }
 
         return step.ExpiresAtUtc < _clock.GetUtcNow().UtcDateTime ? null : step;
+    }
+
+    /// <summary>SQL Server chose this request as a deadlock victim, whether reading or saving.</summary>
+    private static bool IsDeadlockVictim(Exception ex)
+    {
+        for (var e = ex; e != null; e = e.InnerException)
+            if (e is SqlException { Number: 1205 }) return true;
+        return false;
     }
 
     /// <summary>A random secret for a step, base64url: 256 bits, too many to guess.</summary>

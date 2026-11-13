@@ -130,20 +130,28 @@ public class SignInOnSqlServerTests
     [SqlServerFact]
     public Task ASignInStepIsTakenByOneOfManyRequestsAtOnce() => RunAsync(async (app, _) =>
     {
-        const string secret = "the-secret-only-the-browser-holds-0123456789";
-        using (var scope = app.Services.CreateScope())
-            await scope.ServiceProvider.GetRequiredService<IAuthChallenges>()
-                .CreateAsync(AuthChallengePurposes.SsoHandoff, secret, userId: null, payload: "{}", TimeSpan.FromMinutes(2));
-
-        var takes = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => Task.Run(async () =>
+        // Many rounds, because the race only sometimes ends in a deadlock: the server then
+        // picks one request as the victim, and that request must be refused like any other
+        // loser, not fail. One round alone passed most of the time even before that was so.
+        for (var round = 0; round < Rounds; round++)
         {
-            using var scope = app.Services.CreateScope();
-            return await scope.ServiceProvider.GetRequiredService<IAuthChallenges>().TakeAsync(AuthChallengePurposes.SsoHandoff, secret);
-        })));
+            var secret = $"the-secret-only-the-browser-holds-{round:D4}-0123456789";
+            using (var scope = app.Services.CreateScope())
+                await scope.ServiceProvider.GetRequiredService<IAuthChallenges>()
+                    .CreateAsync(AuthChallengePurposes.SsoHandoff, secret, userId: null, payload: "{}", TimeSpan.FromMinutes(2));
 
-        takes.Count(step => step != null).Should().Be(1, "a step is finished once, by whichever request deletes it");
+            var takes = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => Task.Run(async () =>
+            {
+                using var scope = app.Services.CreateScope();
+                return await scope.ServiceProvider.GetRequiredService<IAuthChallenges>().TakeAsync(AuthChallengePurposes.SsoHandoff, secret);
+            })));
+
+            takes.Count(step => step != null).Should().Be(1, $"a step is finished once, by whichever request deletes it (round {round})");
+        }
         (await app.Services.Read(db => db.AuthChallenges.Count())).Should().Be(0);
     });
+
+    private const int Rounds = 40;
 
     [SqlServerFact]
     public Task TwoSignOnsForOneNewPersonAtOnce_MakeOneAccountWithOneLink() => RunAsync(async (app, provider) =>
