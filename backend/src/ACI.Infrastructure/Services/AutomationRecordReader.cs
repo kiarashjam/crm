@@ -58,6 +58,9 @@ public sealed class AutomationRecordReader : IAutomationRecordReader
         ["country"] = FactValue.Of(lead.Country),
         ["industry"] = FactValue.Of(lead.Industry),
         ["companySize"] = FactValue.Of(lead.CompanySize),
+        ["kind"] = FactValue.Of(lead.Kind),
+        ["establishmentType"] = FactValue.Of(lead.EstablishmentType),
+        ["city"] = FactValue.Of(lead.City),
     };
 
     private async Task<AutomationRecordView> DealAsync(Guid? id, CancellationToken ct)

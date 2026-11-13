@@ -213,6 +213,42 @@ public class AutomationRunsTests
     }
 
     [Fact]
+    public async Task ARuleCanAskWhetherTheLeadIsAPersonOrAnEstablishment_OfWhichTypeAndWhere()
+    {
+        await using var app = new App();
+        var (owner, _, org) = await WorkspaceAsync(app);
+        await Json(await owner.PutAsync($"/api/organizations/{org}/settings", Body(new { leadKinds = "both" })), "people and establishments");
+        await RuleAsync(owner, new
+        {
+            name = "Visit restaurants in Lausanne", trigger = "lead.created",
+            conditions = new
+            {
+                match = "all",
+                conditions = new object[]
+                {
+                    new { field = "kind", op = "is", value = "establishment" },
+                    new { field = "establishmentType", op = "is_any_of", values = new[] { "restaurant", "cafe" } },
+                    new { field = "city", op = "is", value = "Lausanne" },
+                },
+            },
+            actions = new[] { Task("Visit the place") },
+        });
+
+        async Task<Guid> PlaceAsync(string name, string type, string city) =>
+            (await Json(await owner.PostAsync("/api/leads", Body(new { kind = "establishment", name, status = "New", establishmentType = type, city })), $"add {name}"))
+                .GetProperty("id").GetGuid();
+        var trattoria = await PlaceAsync("Trattoria Bella", "restaurant", "Lausanne");
+        var bakery = await PlaceAsync("Boulangerie du Lac", "bakery", "Lausanne");
+        var zurich = await PlaceAsync("Café Odeon", "cafe", "Zürich");
+        var person = await LeadAsync(owner, "Léa Dubois", "lea@example.ch");
+
+        (await TasksAsync(app, trattoria)).Select(t => t.Title).Should().Equal(["Visit the place"]);
+        (await TasksAsync(app, bakery)).Should().BeEmpty("a bakery is not a restaurant or a café");
+        (await TasksAsync(app, zurich)).Should().BeEmpty("it is in Zürich");
+        (await TasksAsync(app, person)).Should().BeEmpty("a person is not an establishment");
+    }
+
+    [Fact]
     public async Task SavingARuleChecksItsConditionsAndStepsAgainstItsTrigger()
     {
         await using var app = new App();

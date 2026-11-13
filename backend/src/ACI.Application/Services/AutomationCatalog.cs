@@ -129,6 +129,12 @@ public static class AutomationCatalog
         new(ApprovalTriggers.Staff, "Approved by staff"), new(ApprovalTriggers.Contract, "A countersigned contract"),
         new(ApprovalTriggers.Deposit, "A paid deposit"),
     ];
+    private static readonly AutomationChoice[] LeadKindChoices =
+    [
+        new(LeadKinds.Person, "Person"), new(LeadKinds.Establishment, "Establishment"),
+    ];
+    private static readonly AutomationChoice[] EstablishmentTypeChoices =
+        LeadKinds.EstablishmentTypes.Select(t => new AutomationChoice(t, LeadKinds.TypeLabel(t))).ToArray();
     private static readonly AutomationChoice[] PaymentKinds =
     [
         new(OnlinePaymentPurposes.Checkout, "Paid through a pay link"), new(OnlinePaymentPurposes.AutoPay, "Dues charged to a saved card"),
@@ -147,6 +153,10 @@ public static class AutomationCatalog
         new("country", "Country", AutomationFieldTypes.Text),
         new("industry", "Industry", AutomationFieldTypes.Text),
         new("companySize", "Company size", AutomationFieldTypes.Text),
+        // What the lead is, where a workspace's leads can be establishments (Organization.LeadKinds).
+        new("kind", "Person or establishment", AutomationFieldTypes.Choice, null, LeadKindChoices),
+        new("establishmentType", "Type of establishment", AutomationFieldTypes.Choice, null, EstablishmentTypeChoices),
+        new("city", "City", AutomationFieldTypes.Text),
     ];
 
     private static readonly AutomationField FromStatus = new("fromStatus", "Previous status", AutomationFieldTypes.Choice, "leadStatus");
