@@ -462,7 +462,12 @@ public sealed class CorporateMembershipService : ICorporateMemberships
             var membership = await _db.ClubCorporateMemberships.FirstOrDefaultAsync(m => m.Id == id && m.OrganizationId == organizationId, ct);
             if (membership == null) return DomainErrors.Corporate.NotFound;
             if (expectedVersion is Guid version && membership.EditVersion != version) return DomainErrors.Corporate.Changed;
+            // Tried again only past a nominee change, which leaves the details' version as it is.
+            // Asked without a version, a renewal pressed twice at once used to be tried again on
+            // what the first had saved and renewed the membership for two terms.
+            expectedVersion ??= membership.EditVersion;
             if (membership.Status == CorporateMembershipStatuses.Ended) return DomainErrors.Corporate.Ended;
+            await _reads.ReadAsync("corporate-details", ct);
             if (change(membership) is { } refused)
             {
                 _db.ChangeTracker.Clear();

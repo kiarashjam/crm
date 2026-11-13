@@ -247,6 +247,26 @@ public class ClubCorporateMembershipsTests
     }
 
     [Fact]
+    public async Task ARenewalPressedTwiceAtOnceWithoutAVersion_RenewsForOneTerm()
+    {
+        using var factory = new RaceFactory();
+        var (client, _, _) = await ClubAsync(factory);
+        var membership = await CorporateAsync(client, await CompanyAsync(client));
+        var renewsAt = membership.GetProperty("renewsAtUtc").GetDateTime();
+        // Both read the membership before either saves its renewal.
+        factory.Gate.Arm("corporate-details");
+
+        var answers = await Task.WhenAll(
+            client.PostAsync($"/api/corporate-memberships/{Id(membership)}/renew", null),
+            client.PostAsync($"/api/corporate-memberships/{Id(membership)}/renew", null));
+
+        answers.Select(a => a.StatusCode).Should().BeEquivalentTo(new[] { HttpStatusCode.OK, HttpStatusCode.Conflict },
+            "the second is saved after the first, and is told the membership changed rather than renewing it again");
+        (await Json(await client.GetAsync($"/api/corporate-memberships/{Id(membership)}"), "read")).GetProperty("renewsAtUtc").GetDateTime()
+            .Should().Be(renewsAt.AddMonths(12), "one term on, not two");
+    }
+
+    [Fact]
     public async Task EndingAMembership_FreesItsSeats_StopsItsDues_AndTakesTheMoneyPermissionWhileTheyRun()
     {
         using var factory = new CustomWebApplicationFactory();
