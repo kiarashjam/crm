@@ -92,6 +92,11 @@ public static class DependencyInjection
         services.AddScoped<IClubHouseholds, ClubHouseholdService>();
         // The club's figures (Club Reports, Today at the Club), summed by the database.
         services.AddScoped<IClubReports, ClubReportService>();
+        // Keeping members and growing through them: the renewals board, each member's at-risk
+        // score with the save actions it sets off, and referrals, sponsors and their bonus.
+        services.AddScoped<IClubRenewals, ACI.Infrastructure.Services.Retention.ClubRenewalService>();
+        services.AddScoped<IClubRetention, ACI.Infrastructure.Services.Retention.ClubRetentionService>();
+        services.AddScoped<IClubReferrals, ACI.Infrastructure.Services.Retention.ClubReferralService>();
         // Money from outside the club: payment settings, QR-bills, bank files, Stripe and the
         // accounting journal. Every payment they take goes through the ledger above.
         services.AddScoped<ACI.Infrastructure.Services.Payments.ClubPaymentSettingsService>();

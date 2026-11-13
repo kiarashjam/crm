@@ -236,6 +236,11 @@ public static class OutboundSources
     /// posted there rather than to its events address, with SourceId the handoff.
     /// </summary>
     public const string Onboarding = "onboarding";
+    /// <summary>
+    /// The email the club's retention rules send a member who has just become at risk;
+    /// <see cref="OutboundMessage.SourceId"/> is the member.
+    /// </summary>
+    public const string Retention = "retention";
 }
 
 /// <summary>

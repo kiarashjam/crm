@@ -96,6 +96,8 @@ public class EndpointModuleTests
         { "MembershipLinksController", WorkspaceModules.Club }, { "BankFilesController", WorkspaceModules.Club },
         { "SalesController", WorkspaceModules.Club }, { "PosController", WorkspaceModules.Club },
         { "MemberCodesController", WorkspaceModules.Club },
+        { "RetentionController", WorkspaceModules.Club }, { "MemberRetentionController", WorkspaceModules.Club },
+        { "RenewalsController", WorkspaceModules.Club }, { "ReferralsController", WorkspaceModules.Club },
         { "LeadsController", WorkspaceModules.Sales }, { "DealsController", WorkspaceModules.Sales },
         { "PipelinesController", WorkspaceModules.Sales }, { "SequencesController", WorkspaceModules.Sales },
         { "ReportingController", WorkspaceModules.Sales }, { "ContractsController", WorkspaceModules.Sales },
