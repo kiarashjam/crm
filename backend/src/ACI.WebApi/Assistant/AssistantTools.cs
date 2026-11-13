@@ -331,7 +331,7 @@ public sealed class AssistantTools
 
         var payload = new JsonObject { ["to"] = record.Email, ["subject"] = subject, ["body"] = body };
         record.AddTo(payload);
-        var details = new List<string> { $"To: {record.Name} <{record.Email}>", $"Subject: {subject}", Clip(body, 300) };
+        var details = new List<string> { $"To: {record.Recipient ?? record.Name} <{record.Email}>", $"Subject: {subject}", Clip(body, 300) };
         return Propose(proposals, AssistantProposalKinds.EmailDraft, "Open an email in the composer", details, payload, record.Link);
     }
 
@@ -429,11 +429,20 @@ public sealed class AssistantTools
         {
             if (!scope.SalesOn) return (null, "Error: leads belong to the Sales module, which is off here.");
             var lead = await _leads.GetByIdAsync(l, user, org, ct);
-            return lead.IsSuccess
-                // A lead has no do-not-contact flag of its own: the outbox refuses an address on the
-                // suppression list (unsubscribed, bounced, erased) when the email is sent.
-                ? (new RecordRef("lead", lead.Value.Name, lead.Value.Email, false, $"/leads/{l}", "leadId", l), null)
-                : (null, "Error: that lead was not found in this workspace.");
+            if (lead.IsFailure) return (null, "Error: that lead was not found in this workspace.");
+            // An establishment is written to through its contact person, else at its own address,
+            // as sequences and automations write to it (LeadKindRules.EmailOf): its own address
+            // may be empty, and is a general inbox when it is not. The card says who it goes to.
+            var to = LeadKindRules.EmailOf(lead.Value.Kind, lead.Value.Email, lead.Value.ContactPersonEmail);
+            var throughContactPerson = lead.Value.Kind == ACI.Domain.Entities.LeadKinds.Establishment && to != null
+                && string.Equals(to, lead.Value.ContactPersonEmail?.Trim(), StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(lead.Value.ContactPersonName);
+            // A lead has no do-not-contact flag of its own: the outbox refuses an address on the
+            // suppression list (unsubscribed, bounced, erased) when the email is sent.
+            return (new RecordRef("lead", lead.Value.Name, to, false, $"/leads/{l}", "leadId", l)
+            {
+                Recipient = throughContactPerson ? $"{lead.Value.ContactPersonName!.Trim()} ({lead.Value.Name})" : null,
+            }, null);
         }
         if (dealId is Guid d)
         {
@@ -457,6 +466,9 @@ public sealed class AssistantTools
 
     private sealed record RecordRef(string Noun, string Name, string? Email, bool DoNotContact, string Link, string Key, Guid Id)
     {
+        /// <summary>Who an email to the record reaches, when that is not the record itself: an establishment's contact person.</summary>
+        public string? Recipient { get; init; }
+
         public void AddTo(JsonObject payload) => payload[Key] = Id.ToString();
     }
 

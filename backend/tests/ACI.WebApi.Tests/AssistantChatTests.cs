@@ -422,6 +422,44 @@ public class AssistantChatTests
     }
 
     [Fact]
+    public async Task AnEmailToAnEstablishment_IsDraftedToItsContactPerson_AsSequencesAndAutomationsWriteToIt()
+    {
+        // The assistant was written before a lead could be an establishment (main's lead kinds):
+        // it drafted to the lead's own address, which for a place is a general inbox or nothing.
+        using var factory = new AssistantFactory();
+        var (owner, ownerId, org) = await WorkspaceAsync(factory, "gastro");
+        await using (var db = factory.Services.EveryWorkspace())
+        {
+            db.Organizations.Single(o => o.Id == org).LeadKinds = LeadKinds.Both;
+            await db.SaveChangesAsync();
+        }
+        Lead Place(string name, string? email, string? person, string? personEmail) => new()
+        {
+            Id = Guid.NewGuid(), UserId = ownerId, OrganizationId = org, Name = name, Kind = LeadKinds.Establishment, Email = email ?? "",
+            ContactPersonName = person, ContactPersonEmail = personEmail, City = "Lausanne", Status = "New", CreatedAtUtc = DateTime.UtcNow,
+        };
+        var trattoria = await SaveAsync(factory, Place("Trattoria Roma", "info@trattoria.ch", "Marco Rossi", "marco@trattoria.ch"));
+        var bakery = await SaveAsync(factory, Place("Boulangerie Dupont", null, "Claire Dupont", "claire@dupont.ch"));
+        var kiosk = await SaveAsync(factory, Place("Kiosk am See", "hallo@kiosk.ch", null, null));
+        factory.Model.Answer = (_, n) => n switch
+        {
+            1 => ScriptedModel.Call("propose_email_draft", Args(new { lead_id = trattoria.Id.ToString(), subject = "Our menu", body = "Dear Marco" })),
+            2 => ScriptedModel.Call("propose_email_draft", Args(new { lead_id = bakery.Id.ToString(), subject = "Bonjour", body = "Chère Claire" }), "call_2"),
+            3 => ScriptedModel.Call("propose_email_draft", Args(new { lead_id = kiosk.Id.ToString(), subject = "Hallo", body = "Grüezi" }), "call_3"),
+            _ => ScriptedModel.Say("Three drafts are ready."),
+        };
+
+        var reply = await Json(await Ask(owner, "Write to the trattoria, the bakery and the kiosk"), "ask");
+
+        var drafts = reply.GetProperty("proposals").EnumerateArray().ToList();
+        drafts.Select(d => d.GetProperty("payload").GetProperty("to").GetString()).Should().Equal(
+            new[] { "marco@trattoria.ch", "claire@dupont.ch", "hallo@kiosk.ch" },
+            "a place is written to through its contact person, and at its own address only when it names nobody");
+        drafts[0].GetProperty("details").EnumerateArray().Select(d => d.GetString()).Should().Contain("To: Marco Rossi (Trattoria Roma) <marco@trattoria.ch>");
+        drafts[2].GetProperty("details").EnumerateArray().Select(d => d.GetString()).Should().Contain("To: Kiosk am See <hallo@kiosk.ch>");
+    }
+
+    [Fact]
     public async Task ADealMoveIsProposedWithTheVersionItWasReadAt_SoAChangeInBetweenIsRefused()
     {
         using var factory = new AssistantFactory();
