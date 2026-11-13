@@ -62,13 +62,14 @@ import type { Pipeline, DealStage } from '@/app/api/types';
 import { BrandSection } from './settings/components/BrandSection';
 import { IntegrationsSection } from './settings/components/IntegrationsSection';
 import { WelcomePortalSection } from './settings/components/WelcomePortalSection';
+import { MemberPortalSettingsCard } from './settings/components/MemberPortalSettingsCard';
 import { ClaudeSection } from './McpSetup';
 import PageHero from '@/app/components/PageHero';
 
 type SettingsTab = 'profile' | 'brand' | 'appearance' | 'notifications' | 'integrations' | 'welcome' | 'claude' | 'organization' | 'pipelines' | 'customFields' | 'security' | 'account';
 
 /** The tabs of the Sales module, left out while the workspace has it turned off. */
-const SALES_TABS: readonly SettingsTab[] = ['pipelines', 'welcome'];
+const SALES_TABS: readonly SettingsTab[] = ['pipelines'];
 
 const TAB_CONFIG: { id: SettingsTab; label: string; icon: React.ElementType; description: string }[] = [
   { id: 'profile', label: 'Profile', icon: User, description: 'Personal information and preferences' },
@@ -76,7 +77,7 @@ const TAB_CONFIG: { id: SettingsTab; label: string; icon: React.ElementType; des
   { id: 'appearance', label: 'Appearance', icon: Palette, description: 'Theme, layout, and display options' },
   { id: 'notifications', label: 'Notifications', icon: Bell, description: 'Email and in-app notifications' },
   { id: 'integrations', label: 'Integrations', icon: Link2, description: 'Inbound webhooks and URLs' },
-  { id: 'welcome', label: 'Welcome & portal', icon: MessageSquareHeart, description: 'Hand new customers to your member portal' },
+  { id: 'welcome', label: 'Welcome & portal', icon: MessageSquareHeart, description: 'Your member portal, and handing new customers to one' },
   { id: 'claude', label: 'Claude', icon: Bot, description: 'Read this organization in Claude' },
   { id: 'organization', label: 'Team', icon: Users, description: 'Organization and team members' },
   { id: 'pipelines', label: 'Pipelines', icon: Kanban, description: 'Sales pipeline stages' },
@@ -89,9 +90,11 @@ export default function Settings() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { organizations, currentOrg, setCurrentOrg, refreshOrgs: _refreshOrgs } = useOrg();
   const themeContext = useTheme();
-  const salesOn = useModules().sales;
-  // Pipelines, and the welcome a deal's contact is handed over with, belong to Sales.
-  const tabsShown = TAB_CONFIG.filter((tab) => salesOn || !SALES_TABS.includes(tab.id));
+  const { sales: salesOn, club: clubOn } = useModules();
+  // Pipelines belong to Sales. Welcome & portal holds the club's member portal (Club) and the
+  // welcome a deal's contact is handed over with (Sales): it shows while either is on.
+  const tabsShown = TAB_CONFIG.filter((tab) =>
+    tab.id === 'welcome' ? salesOn || clubOn : salesOn || !SALES_TABS.includes(tab.id));
 
   // Tab state
   const tabFromUrl = searchParams.get('tab') as SettingsTab | null;
@@ -577,14 +580,22 @@ export default function Settings() {
       case 'integrations':
         return <IntegrationsSection currentOrg={currentOrg} />;
       case 'welcome':
-        if (!salesOn) {
-          return (
-            <div className="p-6 text-sm text-slate-600">
-              Welcome &amp; portal hands a deal&apos;s contact to your member portal, and deals belong to the Sales module, which this workspace has turned off. Turning it on again (Team) brings the settings back as they were.
-            </div>
-          );
-        }
-        return <WelcomePortalSection currentOrg={currentOrg} />;
+        return (
+          <>
+            {clubOn && (
+              <div className="px-6 pt-6">
+                <MemberPortalSettingsCard />
+              </div>
+            )}
+            {salesOn ? (
+              <WelcomePortalSection currentOrg={currentOrg} />
+            ) : (
+              <div className="p-6 text-sm text-slate-600">
+                Handing a deal&apos;s contact to your own portal belongs to the Sales module, which this workspace has turned off. Turning it on again (Team) brings those settings back as they were.
+              </div>
+            )}
+          </>
+        );
       case 'claude':
         return <ClaudeSection />;
       case 'organization':

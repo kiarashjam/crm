@@ -60,6 +60,7 @@ import MemberConsentPanel from '@/app/pages/members/MemberConsentPanel';
 import EmailMemberDialog from '@/app/pages/members/EmailMemberDialog';
 import { MemberPaymentsCard } from '@/app/components/payments/MemberPaymentsCard';
 import { MemberCodesCard } from '@/app/components/pos/MemberCodesCard';
+import { MemberPortalCard } from '@/app/components/portal/MemberPortalCard';
 import { currentDateLocale, currentNumberLocale } from '@/app/i18n/current';
 
 const TIER_BADGE: Record<MemberTier, string> = {
@@ -373,6 +374,9 @@ export default function MemberDetail() {
 
                 {/* What names them on a POS ticket: a member number, their card's code, a POS customer. */}
                 <MemberCodesCard memberId={member.id} />
+
+                {/* Whether they were invited to the member portal and have signed in, and a way to sign them out. */}
+                <MemberPortalCard memberId={member.id} />
 
                 <SectionCard
                   title="Upcoming"

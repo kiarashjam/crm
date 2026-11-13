@@ -238,6 +238,14 @@ describe('what a write changes', () => {
     expect(resourcesChangedBy('POST', '/api/contracts/k-1/send')).not.toContain('members');
   });
 
+  it('inviting members to the member portal logs their invitations, and nothing on their accounts', () => {
+    expect(resourcesChangedBy('POST', '/api/members/m-1/portal/invite')).toEqual(['member-portal', 'communications']);
+    expect(resourcesChangedBy('POST', '/api/members/m-1/portal/revoke')).not.toContain('charges');
+    expect(resourcesChangedBy('POST', '/api/member-portal/invite-all')).toEqual(['member-portal', 'communications']);
+    // Setting up the hand-over to the club's own portal changes what the member portal's settings say.
+    expect(resourcesChangedBy('PUT', '/api/onboarding/settings')).toContain('member-portal');
+  });
+
   it("handing a deal's contact to the portal can add them to the club's members", () => {
     expect(resourcesChangedBy('POST', '/api/deals/d-1/onboarding')).toEqual(expect.arrayContaining(['deals', 'activities', 'contacts', 'members', 'club-reports']));
     expect(resourcesChangedBy('PUT', '/api/deals/d-1')).not.toContain('members');

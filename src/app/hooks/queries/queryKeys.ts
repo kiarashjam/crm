@@ -163,5 +163,9 @@ export const queryKeys = {
     // (api/dataChanged).
     report: (s: WorkspaceScope, range: object) => key(s, 'club-reports', 'report', range),
     today: (s: WorkspaceScope) => key(s, 'club-reports', 'today'),
+    // The member portal: whether it is on, who was invited and has used it.
+    portalSettings: (s: WorkspaceScope) => key(s, 'member-portal', 'settings'),
+    portalUsage: (s: WorkspaceScope) => key(s, 'member-portal', 'members'),
+    portalUse: (s: WorkspaceScope, memberId: string) => key(s, 'member-portal', 'member', memberId),
   },
 } as const;

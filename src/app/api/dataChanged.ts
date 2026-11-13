@@ -228,6 +228,10 @@ const CHANGES: Readonly<Record<string, readonly string[]>> = {
   // decide what the POS screens show. A match also remembers the POS customer as one of the
   // member's codes.
   pos: ['pos', 'sales', 'charges', 'payments', 'members', 'statements', 'loyalty', 'member-codes', 'club-reports'],
+  // Inviting every member to the member portal emails them, each logged in their communications.
+  'member-portal': ['member-portal', 'communications'],
+  // The member portal's settings say whether the workspace also hands members to its own portal.
+  onboarding: ['onboarding', 'member-portal'],
 };
 
 /** Which records an activity is about, from the body it was saved with. */
@@ -266,6 +270,9 @@ export function resourcesChangedBy(method: string | undefined, path: string, bod
   // turned on or off, or the card charged (a payment on the ledger when Stripe answers at once).
   if (base === 'members' && segments.length >= 3) {
     const sub = segments[2];
+    // Inviting a member to the member portal emails them (logged in their communications);
+    // signing them out of it changes nothing else.
+    if (sub === 'portal') return ['member-portal', 'communications'];
     // A member's codes at the POS are theirs alone; matching a ticket remembers one too (under /pos).
     if (sub === 'codes') return ['member-codes'];
     if (sub === 'card' && last === 'charge') return [...SAVED_CARD_CHARGE];
