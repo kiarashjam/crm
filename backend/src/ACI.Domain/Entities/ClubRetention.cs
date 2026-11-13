@@ -300,6 +300,14 @@ public class ClubReferralBonus : Common.BaseEntity
     public DateTime CreatedAtUtc { get; set; }
     public DateTime? AwardedAtUtc { get; set; }
     public Guid? AwardedByUserId { get; set; }
+
+    /// <summary>
+    /// While one request is giving the bonus (a credit is two steps: this row, then the ledger),
+    /// until when it holds it. Another request that finds the row held leaves it to that one, so
+    /// two presses or an approval and a press at the same moment give it once; a hold left by a
+    /// request that stopped part way runs out, and the next one finishes the job.
+    /// </summary>
+    public DateTime? ClaimedUntilUtc { get; set; }
 }
 
 /// <summary>A complaint or concern staff recorded about a member: an open one counts in their at-risk score.</summary>

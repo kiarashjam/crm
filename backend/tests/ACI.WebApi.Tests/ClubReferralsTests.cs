@@ -4,6 +4,7 @@ using System.Text.Json;
 using ACI.Domain.Entities;
 using ACI.Domain.Enums;
 using ACI.WebApi.Tests.Helpers;
+using Microsoft.Extensions.DependencyInjection;
 using static ACI.WebApi.Tests.Helpers.Workspaces;
 
 namespace ACI.WebApi.Tests;
@@ -204,6 +205,41 @@ public class ClubReferralsTests
         credits[0].Description.Should().Be("Referral bonus for introducing Claire Martin");
         var bonus = await factory.Services.Read(db => db.ClubReferralBonuses.Single());
         (bonus.Status, bonus.PaymentId, bonus.Amount).Should().Be((ReferralBonusStatuses.Awarded, credits[0].Id, 100m));
+    }
+
+    [Fact]
+    public async Task ABonusAnotherRequestIsGiving_IsLeftToIt_UntilItsHoldRunsOut()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (owner, _, org) = await ClubAsync(factory);
+        var director = await JoinAsync(factory, owner, org, "director@pavillon46.ch", "membership_director");
+        await Rules(owner, new { referralBonus = "credit", referralBonusAmount = 100m });
+        var ana = await MemberAsync(owner, "Ana");
+        var id = (await ApplyAsync(director, referrer: ana)).GetProperty("id").GetGuid();
+        var claire = (await Json(await director.PostAsync($"/api/applications/{id}/approve", Body(new { })), "the director approves"))
+            .GetProperty("memberId").GetGuid();
+        (await factory.Services.Read(db => db.ClubReferralBonuses.Single().ClaimedUntilUtc)).Should().BeNull("a credit left waiting holds nothing");
+
+        async Task HeldUntil(DateTime until)
+        {
+            using var scope = factory.Services.CreateScope();
+            using var db = scope.ServiceProvider.EveryWorkspace();
+            db.ClubReferralBonuses.Single().ClaimedUntilUtc = until;
+            await db.SaveChangesAsync();
+        }
+
+        // Another request is posting the credit at this moment: this press leaves it to that one.
+        await HeldUntil(DateTime.UtcNow.AddMinutes(1));
+        var refused = await Refused(await owner.PostAsync($"/api/members/{claire}/referral-bonus", Body(new { })), HttpStatusCode.Conflict, "a bonus being given");
+        refused.Should().Contain("Someone is giving this referral bonus at this moment");
+        (await factory.Services.Read(db => db.ClubPayments.Count(p => p.MemberId == ana))).Should().Be(0);
+
+        // That request stopped part way: once its hold runs out, the next press finishes the job.
+        await HeldUntil(DateTime.UtcNow.AddSeconds(-1));
+        var given = await Json(await owner.PostAsync($"/api/members/{claire}/referral-bonus", Body(new { })), "give it once the hold ran out");
+        given.GetProperty("status").GetString().Should().Be(ReferralBonusStatuses.Awarded);
+        (await factory.Services.Read(db => db.ClubPayments.Count(p => p.MemberId == ana))).Should().Be(1);
+        (await factory.Services.Read(db => db.ClubReferralBonuses.Single().ClaimedUntilUtc)).Should().BeNull("the hold is let go with the bonus given");
     }
 
     [Fact]

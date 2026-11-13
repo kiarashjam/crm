@@ -22,6 +22,15 @@ public sealed class ClubReferralService : IClubReferrals
     /// <summary>The longest report period: three years, as Club Reports allows.</summary>
     private static readonly TimeSpan LongestPeriod = TimeSpan.FromDays(3 * 366);
 
+    /// <summary>
+    /// How long a request holds a bonus it is giving: far longer than a credit takes, short enough
+    /// that a hold left by a request that stopped part way does not keep the bonus from being given.
+    /// </summary>
+    private static readonly TimeSpan HoldFor = TimeSpan.FromMinutes(2);
+
+    /// <summary>Where the in-memory provider (tests) takes the hold: it cannot run a conditional update.</summary>
+    private static readonly SemaphoreSlim InMemoryHolds = new(1, 1);
+
     private readonly AppDbContext _db;
     private readonly IClubLedger _ledger;
     private readonly IPermissionService _permissions;
@@ -173,9 +182,12 @@ public sealed class ClubReferralService : IClubReferrals
     }
 
     /// <summary>
-    /// Gives the referrer their bonus for one member, once: the bonus row is the claim (one per
-    /// member brought in), the points entry is saved with it, and a credit goes through the
-    /// ledger with a key of its own, so a retry finds what was given and gives nothing again.
+    /// Gives the referrer their bonus for one member, once. The bonus row is the claim: a new one
+    /// by the unique index (one per member brought in), one already there (skipped, or a credit
+    /// left pending) by a hold taken with one conditional update, so two requests at the same
+    /// moment never both add points or both finish a credit. The points entry is saved with the
+    /// row; a credit goes through the ledger after it, with a key of its own, so a retry finds
+    /// what was given and gives nothing again.
     /// </summary>
     private sealed record Award(ClubReferralBonus? Row, string? Sentence, bool GivenByAnother = false);
 
@@ -198,9 +210,15 @@ public sealed class ClubReferralService : IClubReferrals
             row = new ClubReferralBonus
             {
                 Id = Guid.NewGuid(), OrganizationId = organizationId, ReferrerMemberId = referrerId, ReferredMemberId = referredId,
-                ApplicationId = applicationId, CreatedAtUtc = now, Currency = currency,
+                ApplicationId = applicationId, CreatedAtUtc = now, Currency = currency, ClaimedUntilUtc = now.Add(HoldFor),
             };
             _db.ClubReferralBonuses.Add(row);
+        }
+        else if (!await HoldAsync(row, now, ct))
+        {
+            // Someone is giving it at this moment, or has just given it: theirs stands.
+            var theirs = await _db.ClubReferralBonuses.AsNoTracking().FirstOrDefaultAsync(b => b.Id == row.Id, ct);
+            return new(theirs, null, GivenByAnother: true);
         }
         row.Kind = settings.ReferralBonus;
         row.ReferrerMemberId = referrerId;
@@ -241,20 +259,23 @@ public sealed class ClubReferralService : IClubReferrals
         }
         else
         {
-            // The row first, as the claim; the credit after, under its own key.
+            // The row first, held; the credit after, under its own key.
             row.Status = ReferralBonusStatuses.Pending;
             row.Reason = null;
             sentence = null;
         }
+        // Done in this step unless a credit is still to be posted: the hold is let go with it.
+        var creditToPost = row.Kind == ReferralBonusKinds.Credit && row.Status == ReferralBonusStatuses.Pending && mayHandleMoney && referrer != null;
+        if (!creditToPost) row.ClaimedUntilUtc = null;
         if (!await SaveClaimAsync(row, ct))
         {
             // Another approval or press gave it at the same moment: theirs stands.
             var theirs = await _db.ClubReferralBonuses.AsNoTracking().FirstOrDefaultAsync(b => b.OrganizationId == organizationId && b.ReferredMemberId == referredId, ct);
             return new(theirs, null, GivenByAnother: true);
         }
-        if (row.Kind != ReferralBonusKinds.Credit || row.Status != ReferralBonusStatuses.Pending || !mayHandleMoney || referrer == null) return new(row, sentence);
+        if (!creditToPost) return new(row, sentence);
 
-        var credited = await _ledger.CreditAsync(organizationId, referrer.Id, settings.ReferralBonusAmount, $"Referral bonus for introducing {referred.Name}",
+        var credited = await _ledger.CreditAsync(organizationId, referrer!.Id, settings.ReferralBonusAmount, $"Referral bonus for introducing {referred.Name}",
             $"referral:{referredId}", ct);
         if (credited.IsSuccess)
         {
@@ -270,10 +291,44 @@ public sealed class ClubReferralService : IClubReferrals
             row.Reason = Clip($"The credit could not be posted: {credited.Error.Description}", 500);
             sentence = $"The referral credit for {referrer.Name} could not be posted yet: {credited.Error.Description}";
         }
+        row.ClaimedUntilUtc = null;
         // The ledger may have let go of what this context tracked when its own save lost a race.
         if (_db.Entry(row).State == EntityState.Detached) _db.ClubReferralBonuses.Attach(row).State = EntityState.Modified;
         await _db.SaveChangesAsync(ct);
         return new(row, sentence);
+    }
+
+    /// <summary>
+    /// Takes the hold on a bonus row already there, unless it was given or another request holds
+    /// it: one conditional update, so of two requests at the same moment one gets it.
+    /// </summary>
+    private async Task<bool> HoldAsync(ClubReferralBonus row, DateTime now, CancellationToken ct)
+    {
+        var until = now.Add(HoldFor);
+        if (_db.Database.IsRelational())
+        {
+            var held = await _db.ClubReferralBonuses
+                .Where(b => b.Id == row.Id && b.Status != ReferralBonusStatuses.Awarded && (b.ClaimedUntilUtc == null || b.ClaimedUntilUtc < now))
+                .ExecuteUpdateAsync(set => set.SetProperty(b => b.ClaimedUntilUtc, until), ct);
+            if (held != 1) return false;
+            // What the database now holds; the save that lets the hold go writes it again.
+            _db.Entry(row).Property(b => b.ClaimedUntilUtc).CurrentValue = until;
+            _db.Entry(row).Property(b => b.ClaimedUntilUtc).OriginalValue = until;
+            return true;
+        }
+        await InMemoryHolds.WaitAsync(ct);
+        try
+        {
+            var fresh = await _db.ClubReferralBonuses.AsNoTracking().FirstOrDefaultAsync(b => b.Id == row.Id, ct);
+            if (fresh == null || fresh.Status == ReferralBonusStatuses.Awarded || fresh.ClaimedUntilUtc >= now) return false;
+            row.ClaimedUntilUtc = until;
+            await _db.SaveChangesAsync(ct);
+            return true;
+        }
+        finally
+        {
+            InMemoryHolds.Release();
+        }
     }
 
     /// <summary>Saves the bonus row; false when another request saved the member's first (the unique index on SQL Server).</summary>

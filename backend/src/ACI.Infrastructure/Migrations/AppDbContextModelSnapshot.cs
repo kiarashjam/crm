@@ -3138,6 +3138,9 @@ namespace ACI.Infrastructure.Migrations
                     b.Property<Guid?>("AwardedByUserId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime?>("ClaimedUntilUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
