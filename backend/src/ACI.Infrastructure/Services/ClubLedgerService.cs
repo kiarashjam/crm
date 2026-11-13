@@ -208,9 +208,11 @@ public sealed partial class ClubLedgerService : IClubLedger
         var named = await HolderAsync(organizationId, request.MemberId, ct);
         if (named == null) return DomainErrors.Club.MemberNotFound;
         // The account it goes on: for a member, the household primary's when their bills roll up
-        // to them, or their company's when it pays its nominees' charges. A company's or a
-        // client's own account is billed as it is.
-        var (holder, rolledUpFrom) = named.Member is { } incurredBy ? await BillToAsync(organizationId, incurredBy, forDues: false, ct) : (named, null);
+        // to them, or their company's when it pays its nominees' charges (not for what they hired
+        // as a private client). A company's or a client's own account is billed as it is.
+        var (holder, rolledUpFrom) = named.Member is { } incurredBy
+            ? await BillToAsync(organizationId, incurredBy, forDues: false, ct, companyMayPay: !request.PrivateHire)
+            : (named, null);
         var kind = item?.ChargeKind ?? (request.Kind ?? "").Trim();
         if (kind.Length == 0) kind = "Other";
         if (!ChargeKinds.Contains(kind)) return DomainErrors.Club.ChargeKindInvalid;
@@ -684,15 +686,18 @@ public sealed partial class ClubLedgerService : IClubLedger
     /// and the overdue chasing all follow the bill without knowing about households. What is
     /// already posted stays where it is when the switch changes: an entry is never moved.
     /// </remarks>
-    private async Task<(Holder BillTo, ClubMember? IncurredBy)> BillToAsync(Guid? organizationId, ClubMember member, bool forDues, CancellationToken ct)
+    private async Task<(Holder BillTo, ClubMember? IncurredBy)> BillToAsync(Guid? organizationId, ClubMember member, bool forDues, CancellationToken ct,
+        bool companyMayPay = true)
     {
         var self = Holder.Of(member);
         // A nominee of a corporate membership whose company pays its nominees' charges: on the
         // company's account. Not their own dues: the company pays for the seat, not for each
         // member's subscription, so a subscription a nominee still has stays theirs to pay (or
-        // for the club to pause). The company's rule comes before a household's roll-up, as it
-        // is the agreement the company made for what its people spend.
-        if (!forDues)
+        // for the club to pause). Nor what they hire as a private client (a party of their own):
+        // that is theirs, not something they ran up in the club for the company. The company's
+        // rule comes before a household's roll-up, as it is the agreement the company made for
+        // what its people spend.
+        if (!forDues && companyMayPay)
         {
             var company = await _db.ClubCorporateNominees.AsNoTracking()
                 .Where(n => n.OrganizationId == organizationId && n.MemberId == member.Id && n.RemovedAtUtc == null)

@@ -257,6 +257,16 @@ public sealed class PostChargeRequest
     /// club wants it on the statement. A catalogue item's own rate is used instead of this.
     /// </summary>
     public decimal? VatRate { get; set; }
+
+    /// <summary>
+    /// For what a member hired as a private client (a private event's deposit and invoice): it
+    /// stays off the account of a company that pays its nominees' charges. The company agreed to
+    /// pay what its nominees run up in the club, not a party one of them hires for themselves; an
+    /// event the company hires is linked to it and billed to it. Set by the server only: a request
+    /// cannot send it.
+    /// </summary>
+    [JsonIgnore]
+    public bool PrivateHire { get; set; }
 }
 
 public sealed class PaymentAllocationRequest

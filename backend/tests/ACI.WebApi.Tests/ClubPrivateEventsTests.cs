@@ -271,6 +271,40 @@ public class ClubPrivateEventsTests
         account.GetProperty("owed").GetDecimal().Should().Be(0m);
     }
 
+    [Fact]
+    public async Task APrivateClientWhoIsACompanysNominee_PaysForTheirOwnParty_TheCompanyOnlyForWhatTheyRunUpInTheClub()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await ClubAsync(factory);
+        var acme = await CompanyAsync(client);
+        var marc = await ContactAsync(client, "Marc Weber");
+        var marcMember = await MemberAsync(client, "Marc", contactId: marc);
+        // Acme pays what its nominees run up in the club, and Marc holds one of its seats.
+        var corporate = Id(await Json(await client.PostAsync("/api/corporate-memberships", Body(new
+        {
+            companyId = acme, name = "Acme corporate", seats = 2, nomineeCharges = "company", startsAtUtc = DateTime.UtcNow.Date.ToString("O"),
+        })), "make Acme's corporate membership"));
+        await Json(await client.PostAsync($"/api/corporate-memberships/{corporate}/nominees", Body(new { memberId = marcMember })), "seat Marc");
+        (await Json(await client.PostAsync("/api/charges", Body(new { memberId = marcMember, kind = "Bar", description = "Negroni", amount = 18m })), "Marc's drink"))
+            .GetProperty("memberId").GetGuid().Should().Be(acme, "a drink at the bar is what the company agreed to pay");
+
+        // Marc hires the club for his own birthday, as himself: the party is his to pay, not Acme's.
+        var birthday = await EventAsync(client, new
+        {
+            title = "Marc's 50th", contactId = marc, startAtUtc = At(Evening), endAtUtc = At(Evening.AddHours(4)), guestCount = 25,
+            lines = new[] { new { name = "Dinner", quantity = 25m, unitPrice = 80m, vatRate = 8.1m } },
+        });
+        var asked = await Json(await client.PostAsync($"/api/private-events/{Id(birthday)}/deposit", Body(new { amount = 500m })), "ask Marc's deposit");
+        asked.GetProperty("money").GetProperty("billToAccountId").GetGuid().Should().Be(marcMember);
+        asked.GetProperty("money").GetProperty("billToKind").GetString().Should().Be("member");
+        var invoiced = await Json(await client.PostAsync($"/api/private-events/{Id(birthday)}/invoice", null), "invoice Marc's party");
+        var invoiceCharge = invoiced.GetProperty("money").GetProperty("invoiceChargeIds").EnumerateArray().Single().GetGuid();
+
+        (await Json(await client.GetAsync($"/api/charges?memberId={marcMember}"), "Marc's charges")).EnumerateArray().Select(Id)
+            .Should().Contain([asked.GetProperty("money").GetProperty("depositChargeId").GetGuid(), invoiceCharge]);
+        (await AccountAsync(client, "companies", acme)).GetProperty("owed").GetDecimal().Should().Be(18m, "Acme owes Marc's drink and nothing of his party");
+    }
+
     // ── contract ─────────────────────────────────────────────────────────────
 
     [Fact]

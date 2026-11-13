@@ -343,6 +343,8 @@ public sealed class PrivateEventService : IPrivateEvents
             Description = Clip($"Deposit: {e.Title}, {When(e, zone, CultureInfo.InvariantCulture)}", 500),
             Amount = amount,
             DueAtUtc = request.DueAtUtc,
+            // The client's own: a member client's company pays what they run up in the club, not their party.
+            PrivateHire = true,
         }, $"pe-deposit:{e.Id}", ct);
         if (!charged.IsSuccess) return charged.Error;
         e.DepositAmount = amount;
@@ -394,6 +396,7 @@ public sealed class PrivateEventService : IPrivateEvents
                 Amount = group.Sum(Total),
                 VatRate = group.Key,
                 DueAtUtc = request.DueAtUtc,
+                PrivateHire = true,
             }, $"pe-invoice:{e.Id}:{rate}", ct);
             if (!charged.IsSuccess) return charged.Error;
             charges.Add(charged.Value);
