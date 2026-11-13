@@ -357,8 +357,9 @@ public sealed class ClubRenewalService : IClubRenewals
         }
 
         var now = DateTime.UtcNow;
+        // The renewal of this subscription: a member's dues and their locker can end the same day.
         var row = await _db.ClubRenewals.FirstOrDefaultAsync(r => r.OrganizationId == organizationId && r.MemberId == member.Id
-            && r.Source == source && r.EndsAtUtc == endsAt, ct);
+            && r.Source == source && r.SubscriptionId == subscriptionId && r.EndsAtUtc == endsAt, ct);
         if (row != null && request.Version is { } version && version != Guid.Empty && version != row.Version) return DomainErrors.Renewal.Changed;
         if (row == null)
         {
@@ -459,15 +460,16 @@ public sealed class ClubRenewalService : IClubRenewals
                     && s.NextChargeAtUtc != null && s.NextChargeAtUtc > nowUtc && s.NextChargeAtUtc <= until)
                 .Select(s => new { s.Id, s.MemberId, Next = s.NextChargeAtUtc!.Value }).ToListAsync(ct))
             .Where(s => active.Contains(s.MemberId)).ToList();
+        // Each subscription's renewal apart: two of a member's ending the same day are two renewals.
         var known = (await _db.ClubRenewals.AsNoTracking()
                 .Where(r => r.OrganizationId == organizationId && r.EndsAtUtc > nowUtc && r.EndsAtUtc <= until)
-                .Select(r => new { r.MemberId, r.Source, r.EndsAtUtc }).ToListAsync(ct))
-            .Select(r => (r.MemberId, r.Source, r.EndsAtUtc)).ToHashSet();
+                .Select(r => new { r.MemberId, r.Source, r.SubscriptionId, r.EndsAtUtc }).ToListAsync(ct))
+            .Select(r => (r.MemberId, r.Source, r.SubscriptionId, r.EndsAtUtc)).ToHashSet();
 
         var added = new List<ClubRenewal>();
         void Note(Guid memberId, string source, Guid? subscriptionId, DateTime endsAt)
         {
-            if (!known.Add((memberId, source, endsAt))) return;
+            if (!known.Add((memberId, source, subscriptionId, endsAt))) return;
             added.Add(new ClubRenewal
             {
                 Id = Guid.NewGuid(), OrganizationId = organizationId, MemberId = memberId, Source = source, SubscriptionId = subscriptionId,

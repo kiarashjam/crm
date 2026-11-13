@@ -194,6 +194,62 @@ public class ClubRetentionOnSqlServerTests
     }
 
     [SqlServerFact]
+    public async Task TwoSubscriptionsEndingTogether_EachKeepARenewal_WhileAMembershipKeepsOneAnEnd()
+    {
+        await SqlServerApp.WaitForServerAsync();
+        var database = await SqlServerApp.NewDatabaseAsync();
+        try
+        {
+            using var app = SqlServerApp.Start(database);
+            var (owner, org) = await ClubAsync(app);
+            var hugo = await MemberAsync(owner, "Hugo", renewsInDays: 80);
+            // His dues and his locker, yearly and started the same day: both end at one midnight.
+            var endsAt = DateTime.SpecifyKind(DateTime.UtcNow.Date.AddDays(15), DateTimeKind.Utc);
+            Guid dues, locker;
+            using (var scope = app.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                ClubSubscription Yearly(string name, decimal amount) => new()
+                {
+                    Id = Guid.NewGuid(), OrganizationId = org, MemberId = hugo, MemberName = "Hugo Keller", Name = name, Amount = amount, Currency = "CHF",
+                    Cadence = "Annual", Status = "Active", StartedAtUtc = endsAt.AddYears(-1), NextChargeAtUtc = endsAt, CreatedAtUtc = endsAt.AddYears(-1),
+                    Version = Guid.NewGuid(),
+                };
+                var a = Yearly("Gold dues", 1200m);
+                var b = Yearly("Locker", 240m);
+                db.ClubSubscriptions.AddRange(a, b);
+                await db.SaveChangesAsync();
+                (dues, locker) = (a.Id, b.Id);
+            }
+
+            // The daily run notes his membership's renewal and each subscription's: three rows.
+            using (var scope = app.Services.CreateScope())
+            using (scope.ServiceProvider.GetRequiredService<ACI.Application.Interfaces.ITenantContext>().ActFor(org, null))
+                (await scope.ServiceProvider.GetRequiredService<IClubRenewals>().TrackUpcomingAsync(org, DateTime.UtcNow)).Should().Be(3);
+            (await SqlServerApp.ScalarAsync(database, $"SELECT COUNT(*) FROM [ClubRenewals] WHERE [MemberId] = '{hugo}' AND [Source] = N'subscription'"))
+                .Should().Be(2);
+
+            await Json(await owner.PostAsync("/api/renewals/stage", Body(new { memberId = hugo, source = "subscription", subscriptionId = locker, endsAtUtc = endsAt, stage = "lapsed" })),
+                "the locker is not renewing");
+            await Json(await owner.PostAsync("/api/renewals/stage", Body(new { memberId = hugo, source = "subscription", subscriptionId = dues, endsAtUtc = endsAt, stage = "contacted" })),
+                "the dues are talked about");
+            (await SqlServerApp.ScalarAsync(database, $"SELECT [Stage] FROM [ClubRenewals] WHERE [SubscriptionId] = '{locker}'")).Should().Be(RenewalStages.Lapsed);
+            (await SqlServerApp.ScalarAsync(database, $"SELECT [Stage] FROM [ClubRenewals] WHERE [SubscriptionId] = '{dues}'")).Should().Be(RenewalStages.Contacted);
+
+            // A membership's renewal has no subscription: the index still holds it to one row an end.
+            var second = () => SqlServerApp.ExecuteAsync(database, $@"
+                INSERT INTO [ClubRenewals] ([Id], [OrganizationId], [MemberId], [Source], [SubscriptionId], [EndsAtUtc], [CreatedAtUtc], [Version])
+                SELECT NEWID(), [OrganizationId], [MemberId], [Source], [SubscriptionId], [EndsAtUtc], [CreatedAtUtc], NEWID()
+                FROM [ClubRenewals] WHERE [MemberId] = '{hugo}' AND [Source] = N'membership';");
+            await second.Should().ThrowAsync<Microsoft.Data.SqlClient.SqlException>();
+        }
+        finally
+        {
+            await SqlServerApp.DropDatabaseAsync(database);
+        }
+    }
+
+    [SqlServerFact]
     public async Task ABonusPressedSeveralTimesAtOnce_IsGivenOnce_AsPointsOrAsACredit()
     {
         await SqlServerApp.WaitForServerAsync();

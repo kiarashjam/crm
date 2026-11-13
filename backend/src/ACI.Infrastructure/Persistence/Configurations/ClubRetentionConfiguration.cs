@@ -6,7 +6,7 @@ namespace ACI.Infrastructure.Persistence.Configurations;
 
 // Retention and referrals (see ClubRetention.cs in ACI.Domain). The unique indexes are the
 // database's own guard for what the services check first: one settings row and one risk row
-// per member in a workspace, one renewal row per member, source and end, one referral bonus per
+// per member in a workspace, one renewal row per member, source, subscription and end, one referral bonus per
 // member brought in, and one daily scoring run per workspace and day. The in-memory provider
 // the HTTP tests use enforces none of them; the SQL Server tests show they hold.
 
@@ -54,7 +54,11 @@ internal sealed class ClubRenewalConfiguration : IEntityTypeConfiguration<ClubRe
         builder.Property(e => e.Note).HasMaxLength(1000);
         builder.Property(e => e.Version).IsConcurrencyToken();
         // One row per renewal: the daily run adding it and someone marking it at the same moment make one.
-        builder.HasIndex(e => new { e.OrganizationId, e.MemberId, e.Source, e.EndsAtUtc }).IsUnique();
+        // A subscription's renewal is its own: a member's dues and their locker, started the same
+        // day, end at the same midnight. A membership's has no subscription, and SQL Server holds
+        // a null to one row per end like any other value, so the filter EF adds by default for a
+        // nullable column (which would leave memberships unguarded) is taken off.
+        builder.HasIndex(e => new { e.OrganizationId, e.MemberId, e.Source, e.SubscriptionId, e.EndsAtUtc }).IsUnique().HasFilter(null);
         builder.HasIndex(e => new { e.OrganizationId, e.EndsAtUtc });
     }
 }

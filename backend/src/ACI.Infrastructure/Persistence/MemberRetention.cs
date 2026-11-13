@@ -13,22 +13,22 @@ internal static class MemberRetention
     /// <summary>
     /// A merge says the two records were one person. The kept member's score stands (the next
     /// run works it out from the merged records) and the duplicate's goes; the duplicate's
-    /// renewals move unless the kept member has one for the same end; their concerns move. The
-    /// members and applications the duplicate referred, proposed or seconded name the kept member
-    /// (one that would name the kept member as their own referrer names nobody), and a bonus row
-    /// moves unless the kept member already has one of the same kind, when it stays under the
-    /// duplicate's id as the record of what was given.
+    /// renewals move unless the kept member has one for the same end (of the same subscription);
+    /// their concerns move. The members and applications the duplicate referred, proposed or
+    /// seconded name the kept member (one that would name the kept member as their own referrer
+    /// names nobody), and a bonus row moves unless the kept member already has one of the same
+    /// kind, when it stays under the duplicate's id as the record of what was given.
     /// </summary>
     public static async Task MoveToKeptMemberAsync(AppDbContext db, Guid keepId, Guid dropId, Guid? organizationId, CancellationToken ct)
     {
         db.ClubMemberRisks.RemoveRange(await db.ClubMemberRisks.Where(r => r.MemberId == dropId && r.OrganizationId == organizationId).ToListAsync(ct));
 
         var keptEnds = (await db.ClubRenewals.Where(r => r.MemberId == keepId && r.OrganizationId == organizationId)
-                .Select(r => new { r.Source, r.EndsAtUtc }).ToListAsync(ct))
-            .Select(r => (r.Source, r.EndsAtUtc)).ToHashSet();
+                .Select(r => new { r.Source, r.SubscriptionId, r.EndsAtUtc }).ToListAsync(ct))
+            .Select(r => (r.Source, r.SubscriptionId, r.EndsAtUtc)).ToHashSet();
         foreach (var renewal in await db.ClubRenewals.Where(r => r.MemberId == dropId && r.OrganizationId == organizationId).ToListAsync(ct))
         {
-            if (keptEnds.Add((renewal.Source, renewal.EndsAtUtc))) renewal.MemberId = keepId;
+            if (keptEnds.Add((renewal.Source, renewal.SubscriptionId, renewal.EndsAtUtc))) renewal.MemberId = keepId;
             else db.ClubRenewals.Remove(renewal);
         }
         foreach (var concern in await db.ClubMemberConcerns.Where(c => c.MemberId == dropId && c.OrganizationId == organizationId).ToListAsync(ct))

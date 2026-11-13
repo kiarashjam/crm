@@ -3258,7 +3258,7 @@ namespace ACI.Infrastructure.Migrations
 
                     b.HasIndex("OrganizationId", "EndsAtUtc");
 
-                    b.HasIndex("OrganizationId", "MemberId", "Source", "EndsAtUtc")
+                    b.HasIndex("OrganizationId", "MemberId", "Source", "SubscriptionId", "EndsAtUtc")
                         .IsUnique();
 
                     b.ToTable("ClubRenewals", (string)null);

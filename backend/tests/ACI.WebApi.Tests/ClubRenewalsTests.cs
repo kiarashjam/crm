@@ -371,6 +371,56 @@ public class ClubRenewalsTests
     }
 
     [Fact]
+    public async Task TwoSubscriptionsEndingTheSameDay_AreTwoRenewals_EachMarkedOnItsOwn()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (owner, _, org) = await ClubAsync(factory);
+        var hugo = await MemberAsync(owner, "Hugo", 200);
+        // His dues and his locker, both yearly and started the same day: the ledger starts a
+        // period at midnight, so both end at the same moment.
+        var endsAt = DateTime.SpecifyKind(DateTime.UtcNow.Date.AddDays(15), DateTimeKind.Utc);
+        Guid dues, locker;
+        using (var scope = factory.Services.CreateScope())
+        await using (var db = scope.ServiceProvider.EveryWorkspace())
+        {
+            ClubSubscription Yearly(string name, decimal amount) => new()
+            {
+                Id = Guid.NewGuid(), OrganizationId = org, MemberId = hugo, MemberName = "Hugo Keller", Name = name, Amount = amount, Currency = "CHF",
+                Cadence = "Annual", Status = "Active", StartedAtUtc = endsAt.AddYears(-1), NextChargeAtUtc = endsAt, CreatedAtUtc = endsAt.AddYears(-1),
+            };
+            var a = Yearly("Gold dues", 1200m);
+            var b = Yearly("Locker", 240m);
+            db.ClubSubscriptions.AddRange(a, b);
+            await db.SaveChangesAsync();
+            (dues, locker) = (a.Id, b.Id);
+        }
+
+        await TrackAsync(factory, org);
+        (await factory.Services.Read(db => db.ClubRenewals.Count(r => r.MemberId == hugo))).Should().Be(2, "the daily run notes each subscription's renewal");
+        var cards = Cards(await BoardAsync(owner)).Where(c => c.GetProperty("memberId").GetGuid() == hugo).ToList();
+        cards.Select(c => c.GetProperty("subscriptionId").GetGuid()).Should().BeEquivalentTo(new[] { dues, locker });
+
+        // He gives the locker up; his dues are still to be talked about.
+        var locked = await Json(await owner.PostAsync("/api/renewals/stage", Body(new
+        {
+            memberId = hugo, source = "subscription", subscriptionId = locker, endsAtUtc = endsAt, stage = "lapsed", note = "Giving up the locker",
+        })), "mark the locker not renewing");
+        (locked.GetProperty("subscriptionId").GetGuid(), locked.GetProperty("stage").GetString()).Should().Be((locker, RenewalStages.Lapsed));
+        await Json(await owner.PostAsync("/api/renewals/stage", Body(new
+        {
+            memberId = hugo, source = "subscription", subscriptionId = dues, endsAtUtc = endsAt, stage = "contacted",
+        })), "mark the dues contacted");
+
+        var board = Cards(await BoardAsync(owner)).Where(c => c.GetProperty("memberId").GetGuid() == hugo).ToList();
+        var duesCard = board.Single(c => c.GetProperty("subscriptionId").GetGuid() == dues);
+        var lockerCard = board.Single(c => c.GetProperty("subscriptionId").GetGuid() == locker);
+        (duesCard.GetProperty("stage").GetString(), duesCard.TryGetProperty("note", out _)).Should().Be((RenewalStages.Contacted, false));
+        (lockerCard.GetProperty("stage").GetString(), lockerCard.GetProperty("note").GetString()).Should().Be((RenewalStages.Lapsed, "Giving up the locker"));
+        (await factory.Services.Read(db => db.ClubRenewals.Where(r => r.MemberId == hugo).Select(r => r.SubscriptionId).ToList()))
+            .Should().BeEquivalentTo(new Guid?[] { dues, locker });
+    }
+
+    [Fact]
     public async Task EachOwnerCanSeeTheirOwnMembersRenewals()
     {
         using var factory = new CustomWebApplicationFactory();
