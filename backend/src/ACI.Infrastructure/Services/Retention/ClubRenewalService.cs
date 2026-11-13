@@ -304,8 +304,8 @@ public sealed class ClubRenewalService : IClubRenewals
         if (stage != "auto" && !RenewalStages.Settable.Contains(stage)) return DomainErrors.Renewal.StageInvalid(request.Stage ?? "");
         var note = request.Note?.Trim();
         if (note?.Length > 1000) return DomainErrors.Renewal.NoteTooLong;
-        var endsAt = DateTime.SpecifyKind(request.EndsAtUtc, DateTimeKind.Utc);
-        var until = request.RenewUntilUtc is DateTime asked ? DateTime.SpecifyKind(asked, DateTimeKind.Utc) : endsAt.AddYears(1);
+        var endsAt = AsUtc(request.EndsAtUtc);
+        var until = request.RenewUntilUtc is DateTime asked ? AsUtc(asked) : endsAt.AddYears(1);
         if (stage == RenewalStages.Renewed && source == RenewalSources.Membership && (until <= endsAt || until > endsAt.AddYears(10)))
             return DomainErrors.Renewal.RenewUntilInvalid;
 
@@ -326,6 +326,13 @@ public sealed class ClubRenewalService : IClubRenewals
         if (row != null && request.Version is { } version && version != Guid.Empty && version != row.Version) return DomainErrors.Renewal.Changed;
         if (row == null)
         {
+            // Only a renewal the board shows: the membership's end, or the subscription's next
+            // period, as they stand. A card loaded before the date moved (renewed on the member's
+            // form, say) would otherwise leave a record for an end that no longer exists.
+            var current = source == RenewalSources.Membership
+                ? member.RenewsAtUtc == endsAt
+                : await _db.ClubSubscriptions.AnyAsync(s => s.Id == subscriptionId && s.NextChargeAtUtc == endsAt, ct);
+            if (!current) return DomainErrors.Renewal.NotFound;
             row = new ClubRenewal
             {
                 Id = Guid.NewGuid(), OrganizationId = organizationId, MemberId = member.Id, Source = source, SubscriptionId = subscriptionId,
@@ -465,4 +472,16 @@ public sealed class ClubRenewalService : IClubRenewals
 
     private static bool IsUniqueViolation(DbUpdateException ex) =>
         ex.InnerException is SqlException { Number: 2601 or 2627 };
+
+    /// <summary>
+    /// A date the request means as UTC. One sent with an offset arrives converted to the
+    /// server's local time, and one without a zone arrives unspecified: both are turned to UTC,
+    /// so the end matches the one the board showed.
+    /// </summary>
+    private static DateTime AsUtc(DateTime value) => value.Kind switch
+    {
+        DateTimeKind.Local => value.ToUniversalTime(),
+        DateTimeKind.Unspecified => DateTime.SpecifyKind(value, DateTimeKind.Utc),
+        _ => value,
+    };
 }

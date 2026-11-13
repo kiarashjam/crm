@@ -48,6 +48,9 @@ public static partial class DomainErrors
 
         public static readonly Error WindowInvalid = new(
             "Renewal.WindowInvalid", "The board looks from 1 to 365 days ahead and up to 365 days back.");
+
+        public static readonly Error NotFound = new(
+            "Renewal.NotFound", "That renewal is not on the board any more: the date it ends on has changed. Reload the board to see where it stands.");
     }
 
     public static class Referral
