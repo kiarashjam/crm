@@ -300,7 +300,8 @@ What follows from it:
 - **Duplicates.** The same name in the same city is the same place. Two leads without an
   email are never duplicates of each other.
 - **Email.** Sequences and automations write to the contact person, else to the
-  establishment's own address, and greet the contact person by name.
+  establishment's own address, and greet the contact person by name. The assistant's email
+  drafts (`propose_email_draft`) go to the same address, and their card names the contact person.
 - **Webhook.** `POST /api/webhook/leads` takes `kind` and the same fields.
 - **Capture form.** The public form (`GET /api/public/capture/{token}`) tells the page
   which kinds the workspace takes (`leadKinds`). For an establishment, the name and email
