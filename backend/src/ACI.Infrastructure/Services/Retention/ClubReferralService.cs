@@ -98,12 +98,17 @@ public sealed class ClubReferralService : IClubReferrals
     public async Task<Result> CheckApplicationAsync(Guid organizationId, Guid? applicantMemberId, Guid? referrerId, Guid? proposerId, Guid? seconderId,
         bool referrerChanged, bool proposerChanged, bool seconderChanged, CancellationToken ct = default)
     {
-        var named = new[] { referrerId, proposerId, seconderId }.OfType<Guid>().Distinct().ToList();
+        // Only someone named now has to be in the club's records. One named before and erased
+        // since stays named (under the pseudonym erasure gave them) and does not stop the rest of
+        // the application from being worked on: checked again, every later save was refused.
+        Guid? Now(Guid? id, bool changed) => changed ? id : null;
+        var named = new[] { Now(referrerId, referrerChanged), Now(proposerId, proposerChanged), Now(seconderId, seconderChanged) }
+            .OfType<Guid>().Distinct().ToList();
         var known = named.Count == 0 ? new HashSet<Guid>()
             : (await Members(organizationId).Where(m => named.Contains(m.Id) && m.ErasedAtUtc == null).Select(m => m.Id).ToListAsync(ct)).ToHashSet();
-        if (referrerId is Guid r && !known.Contains(r)) return DomainErrors.Referral.ReferrerNotFound;
-        if (proposerId is Guid p && !known.Contains(p)) return DomainErrors.Referral.ProposerNotFound;
-        if (seconderId is Guid s && !known.Contains(s)) return DomainErrors.Referral.SeconderNotFound;
+        if (Now(referrerId, referrerChanged) is Guid r && !known.Contains(r)) return DomainErrors.Referral.ReferrerNotFound;
+        if (Now(proposerId, proposerChanged) is Guid p && !known.Contains(p)) return DomainErrors.Referral.ProposerNotFound;
+        if (Now(seconderId, seconderChanged) is Guid s && !known.Contains(s)) return DomainErrors.Referral.SeconderNotFound;
         if (applicantMemberId is Guid self && (referrerId == self || proposerId == self || seconderId == self)) return DomainErrors.Referral.SelfSponsor;
         if (proposerId != null && proposerId == seconderId) return DomainErrors.Referral.SameSponsor;
 

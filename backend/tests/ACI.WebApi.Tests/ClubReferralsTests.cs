@@ -125,6 +125,27 @@ public class ClubReferralsTests
         approved.GetProperty("memberCreated").GetBoolean().Should().BeTrue();
     }
 
+    [Fact]
+    public async Task AnApplicationWhoseReferrerOrProposerWasErased_CanStillBeWorkedOn()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (owner, _, _) = await ClubAsync(factory);
+        var ana = await MemberAsync(owner, "Ana");
+        var ben = await MemberAsync(owner, "Ben");
+        var id = (await ApplyAsync(owner, referrer: ana, proposer: ben)).GetProperty("id").GetGuid();
+        await Json(await owner.PostAsync("/api/privacy/erasure", Body(new { memberIds = new[] { ana, ben }, confirm = "ERASE" })), "erase Ana and Ben");
+
+        // The committee goes on with the application: what it changes is saved, and the erased
+        // referrer and proposer stay named under the pseudonyms erasure gave them.
+        var edited = await Json(await owner.PutAsync($"/api/applications/{id}", Body(new { phone = "+41 79 000 00 00" })), "add a phone number");
+        edited.GetProperty("phone").GetString().Should().Be("+41 79 000 00 00");
+        (edited.GetProperty("referredByMemberId").GetGuid(), edited.GetProperty("proposerMemberId").GetGuid()).Should().Be((ana, ben));
+
+        // Naming an erased member anew is refused, as naming anyone outside the club's records is.
+        await ApplyAsync(owner, referrer: ana, first: "Dora", expected: HttpStatusCode.NotFound);
+        await Refused(await owner.PutAsync($"/api/applications/{id}", Body(new { seconderMemberId = ana })), HttpStatusCode.NotFound, "an erased seconder");
+    }
+
     // ── the bonus ────────────────────────────────────────────────────────────
 
     [Fact]

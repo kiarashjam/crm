@@ -31,6 +31,8 @@ public interface IClubReferrals
     /// <summary>
     /// Checks the referrer, proposer and seconder an application names: members of this club,
     /// not the applicant, two different sponsors, each in good standing when the club's rule asks.
+    /// Only those named by this change are held to the club's records and its rule: one named
+    /// before stays, whatever became of them, and the approval checks the sponsors again.
     /// </summary>
     Task<Result> CheckApplicationAsync(Guid organizationId, Guid? applicantMemberId, Guid? referrerId, Guid? proposerId, Guid? seconderId,
         bool referrerChanged, bool proposerChanged, bool seconderChanged, CancellationToken ct = default);
