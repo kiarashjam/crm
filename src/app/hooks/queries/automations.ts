@@ -16,7 +16,7 @@ export function useAutomations() {
   });
 }
 
-/** The triggers, what each can test, wait for and do: the same for every workspace, so read once. */
+/** The triggers, what each can test, wait for and do: with the workspace's own tags and custom fields, refreshed when one changes. */
 export function useAutomationCatalog() {
   const ws = useWorkspaceScope();
   return useQuery({

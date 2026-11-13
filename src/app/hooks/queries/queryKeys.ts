@@ -104,6 +104,21 @@ export const queryKeys = {
   duplicates: {
     notSame: (s: WorkspaceScope) => key(s, 'duplicates', 'not-same'),
   },
+  // The workspace's own fields and their values. A value saved, a field added or changed,
+  // refreshes them, and the lists whose columns and filters show them (api/dataChanged).
+  customFields: {
+    definitions: (s: WorkspaceScope, entity: string) => key(s, 'custom-fields', 'definitions', entity),
+    values: (s: WorkspaceScope, entity: string, id: string) => key(s, 'custom-fields', 'values', entity, id),
+    batch: (s: WorkspaceScope, entity: string, ids: readonly string[]) => key(s, 'custom-fields', 'batch', entity, ids),
+  },
+  tags: {
+    all: (s: WorkspaceScope) => key(s, 'tags', 'all'),
+    record: (s: WorkspaceScope, entity: string, id: string) => key(s, 'tags', 'record', entity, id),
+    batch: (s: WorkspaceScope, entity: string, ids: readonly string[]) => key(s, 'tags', 'batch', entity, ids),
+  },
+  savedViews: {
+    list: (s: WorkspaceScope, list: string) => key(s, 'saved-views', list),
+  },
   workQueue: (s: WorkspaceScope, scope: WorkScope) => key(s, 'work-queue', scope),
   /**
    * The calendar's six weeks of tasks and meetings. It shows the same work as the work
