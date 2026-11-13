@@ -152,7 +152,7 @@ public sealed class AssistantTools
 
         if (scope.ClubOn && scope.May(MemberPermissions.FrontDesk))
         {
-            tools.Add(Tool("propose_booking", "Propose booking a resource for a member, for the person to confirm. A clash or too many people is refused when they confirm.",
+            tools.Add(Tool("propose_booking", "Propose booking a resource for a member, for the person to confirm. A clash or too many people is refused when they confirm; a resource that takes a deposit charges it to the member's house account when they confirm.",
                 Props(
                     ("member_id", Str("Member (GUID).")),
                     ("resource_id", Str("Resource (GUID), from list_resources.")),
@@ -370,6 +370,11 @@ public sealed class AssistantTools
             $"{Local(start, scope.Zone)} to {Local(end, scope.Zone).Split(' ').Last()}, {party} {(party == 1 ? "person" : "people")}",
         };
         if (party > resource.Capacity && resource.Capacity > 0) details.Add($"Note: {resource.Name} holds {resource.Capacity}; the booking will be refused as it stands.");
+        // Confirming books through the bookings endpoint, which charges the resource's deposit to
+        // the member's house account (its default for a deposit): the card says so, so nobody
+        // confirms a booking without knowing it moves money.
+        if (resource.DepositAmount > 0)
+            details.Add($"Confirming charges a deposit of {resource.Currency} {resource.DepositAmount.ToString("#,##0.00", CultureInfo.InvariantCulture)} to {member.Name}'s house account, given back when they are checked in.");
         if (notes != null) details.Add($"Notes: {Clip(notes, 160)}");
         return Propose(proposals, AssistantProposalKinds.Booking, "Book a resource", details, payload, $"/members/{memberId}");
     }

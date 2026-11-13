@@ -344,6 +344,34 @@ public class AssistantChatTests
     }
 
     [Fact]
+    public async Task ABookingThatTakesADepositSaysSoOnItsCard_BecauseConfirmingItChargesTheMember()
+    {
+        using var factory = new AssistantFactory();
+        var (_, ownerId, org) = await WorkspaceAsync(factory, "pavillon");
+        var anna = await SaveAsync(factory, NewMember(org, ownerId, "Anna", "Keller"));
+        var court = await SaveAsync(factory, new ClubResource
+        {
+            Id = Guid.NewGuid(), OrganizationId = org, Name = "Court 1", Kind = "Court", Capacity = 4, Active = true, Currency = "CHF", DepositAmount = 50m,
+        });
+        var (desk, _) = await MemberAsync(factory, org, "desk", "front_desk");
+        var start = DateTime.UtcNow.AddDays(3).ToString("yyyy-MM-dd") + " 10:00";
+        factory.Model.Answer = (_, n) => n == 1
+            ? ScriptedModel.Call("propose_booking", Args(new { member_id = anna.Id.ToString(), resource_id = court.Id.ToString(), start, party_size = 2 }))
+            : ScriptedModel.Say("A booking is ready for you to confirm.");
+
+        var reply = await Json(await Ask(desk, "Book court 1 for Anna"), "ask");
+
+        var booking = reply.GetProperty("proposals").EnumerateArray().Single();
+        booking.GetProperty("details").EnumerateArray().Select(d => d.GetString()!).Should()
+            .Contain(d => d.Contains("deposit of CHF 50.00") && d.Contains("Anna Keller's house account"), "confirming moves money, and the card says so");
+        factory.Model.ToolResultsInLastRequest().Single().Should().Contain("deposit of CHF 50.00", "the model is told too, so its answer can say it");
+
+        // What the card says is what confirming does: the bookings endpoint charges the deposit.
+        await Json(await desk.PostAsync("/api/reservations", new StringContent(booking.GetProperty("payload").GetRawText(), System.Text.Encoding.UTF8, "application/json")), "confirm");
+        (await factory.Services.Read(db => db.ClubCharges.Single(c => c.MemberId == anna.Id).Amount)).Should().Be(50m);
+    }
+
+    [Fact]
     public async Task AnEmailIsOnlyEverADraftForTheComposer_AndNoneIsProposedToSomeoneWhoAskedNotToBeContacted()
     {
         using var factory = new AssistantFactory();

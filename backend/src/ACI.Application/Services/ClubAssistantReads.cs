@@ -34,7 +34,7 @@ public interface IClubAssistantReads
     /// <summary>A member a proposal names: null when not in this workspace, or erased.</summary>
     Task<ClubMemberRef?> MemberRefAsync(Guid organizationId, Guid memberId, CancellationToken ct = default);
 
-    /// <summary>A resource a proposed booking names: null when not in this workspace.</summary>
+    /// <summary>A resource a proposed booking names, with the deposit booking it takes: null when not in this workspace.</summary>
     Task<ClubResourceRef?> ResourceRefAsync(Guid organizationId, Guid resourceId, CancellationToken ct = default);
 
     /// <summary>The workspace's currency (house accounts are kept in it) and time zone.</summary>
@@ -43,4 +43,5 @@ public interface IClubAssistantReads
 
 public sealed record ClubMemberRef(Guid Id, string Name, string Status, string Tier);
 
-public sealed record ClubResourceRef(Guid Id, string Name, string Kind, int Capacity, bool Active);
+/// <param name="DepositAmount">What booking it charges to the member's house account until they come (0 for none).</param>
+public sealed record ClubResourceRef(Guid Id, string Name, string Kind, int Capacity, bool Active, decimal DepositAmount, string Currency);

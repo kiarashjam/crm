@@ -172,7 +172,7 @@ public sealed class ClubAssistantReads : IClubAssistantReads
 
     public async Task<ClubResourceRef?> ResourceRefAsync(Guid organizationId, Guid resourceId, CancellationToken ct = default) =>
         await _db.ClubResources.AsNoTracking().Where(r => r.OrganizationId == organizationId && r.Id == resourceId)
-            .Select(r => new ClubResourceRef(r.Id, r.Name, r.Kind, r.Capacity, r.Active))
+            .Select(r => new ClubResourceRef(r.Id, r.Name, r.Kind, r.Capacity, r.Active, r.DepositAmount, r.Currency))
             .FirstOrDefaultAsync(ct);
 
     public async Task<(string Currency, TimeZoneInfo Zone)> WorkspaceAsync(Guid organizationId, CancellationToken ct = default)
