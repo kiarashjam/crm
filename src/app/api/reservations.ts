@@ -75,6 +75,8 @@ export interface Reservation {
   noShowFee?: number;
   noShowChargeId?: string;
   noShowFeeState?: 'charged' | 'reversed';
+  /** For a space a private event holds: the event, which moves, confirms and releases the hold. */
+  privateEventId?: string;
   createdByName?: string;
   version?: string;
 }

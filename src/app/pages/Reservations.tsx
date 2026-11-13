@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   CalendarClock,
   Plus,
@@ -401,7 +402,13 @@ export default function Reservations() {
   };
 
   /** Status, edit and delete: the same on a row, a card and a table line. */
-  const reservationActions = (r: Reservation) => (
+  const reservationActions = (r: Reservation) => (r.privateEventId ? (
+    // A private event's hold follows the event: the server refuses its status, edit and delete
+    // here, so they are not offered; the event's page is where its spaces change.
+    <Link to={`/private-events/${r.privateEventId}`} className="text-xs font-semibold text-amber-800 hover:underline dark:text-amber-300">
+      Held for a private event
+    </Link>
+  ) : (
     <div className="flex items-center gap-2">
       {/* Changing a booking's status is the front desk's; only the moves the server allows are offered. */}
       <WriteOnly permission={PERMISSION.FrontDesk}>
@@ -444,7 +451,7 @@ export default function Reservations() {
         </button>
       </WriteOnly>
     </div>
-  );
+  ));
 
   const reservationColumns: RecordColumn<Reservation>[] = [
     {
