@@ -542,7 +542,8 @@ public sealed partial class AutomationEngine : IAutomationEngine
                 if (view.Gone != null) return Outcome.End(view.Gone);
                 var holds = AutomationConditions.Holds(step.Condition, FactsOf(view, EventFacts(run)));
                 var next = AutomationSteps.Enter(steps, run.CurrentPath, holds);
-                var said = AutomationConditions.Describe(step.Condition, trigger);
+                var said = AutomationConditions.Describe(step.Condition,
+                    trigger == null ? null : AutomationCatalog.WithFlex(trigger, view.FlexFields, view.FlexDates));
                 return Outcome.Go(next, holds ? $"Yes: {said}." : $"No: not {said}.");
             }
             case AutomationStepTypes.SendEmail:
@@ -582,9 +583,10 @@ public sealed partial class AutomationEngine : IAutomationEngine
         {
             // Read now, every time it looks: a booking moved to another day moves the wait with it.
             var key = Value(config, "date") ?? "";
-            var label = trigger?.Dates.FirstOrDefault(d => d.Key == key)?.Label ?? key;
             var view = await ViewAsync(run, ct);
             if (view.Gone != null) return Outcome.End(view.Gone);
+            var label = trigger?.Dates.FirstOrDefault(d => d.Key == key)?.Label
+                ?? view.FlexDates.FirstOrDefault(d => d.Key == key)?.Label ?? key;
             if (!view.Dates.TryGetValue(key, out var date))
                 return Outcome.End($"Stopped: there is no {Lower(label)} to wait for.");
             until = date.Add(Span(Value(config, "offsetAmount"), Value(config, "offsetUnit")));

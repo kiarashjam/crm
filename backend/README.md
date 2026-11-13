@@ -333,6 +333,133 @@ An import still running cannot be undone: both undo calls answer 409 until it ha
 | `GET` | `/api/imports/{id}/undo` | What undoing would remove, and what it keeps and why |
 | `POST` | `/api/imports/{id}/undo` | Remove what the import created that nobody has touched since |
 
+### Custom fields, tags and saved views
+
+**Custom fields.** Each workspace defines its own fields for leads, contacts, companies, deals
+and, in an organization, club members. A field is one of these kinds: text, number, money (in
+its own currency, by default the workspace's), date, select, multi select, checkbox, web
+address, or a link to another record (a lead, contact, company, deal or member of the same
+workspace). A field can be **required**: a save cannot empty a required field that has a
+value, but a record still without one (made before the field was required, or an import's
+empty cell) does not block saving its other fields. A field can have a **default**: every new
+record starts with it, however it is made (a form, an import, the website, a converted lead,
+an approved application), unless that same save gives the field a value. A field with values
+cannot change kind (409), and deleting a field deletes its values.
+
+**How values are kept, and why filtering by them stays fast.** Values live in
+`CustomFieldEntries`, one typed row per value: `TextValue` (up to 2,000 characters) with
+`TextKey` (its first 200, which an index can hold), `NumberValue` (`decimal(28,8)`, also the
+amount of a money value, with `Currency`), `DateValue`, `BoolValue` or `LinkId`. A multi select
+keeps one row per option chosen. Each row carries the workspace (`OrganizationId`), so the
+workspace query filter scopes it like every other table. The indexes:
+
+- `(OrganizationId, FieldId, TextKey)`, `(OrganizationId, FieldId, NumberValue)`,
+  `(OrganizationId, FieldId, DateValue)` and `(OrganizationId, FieldId, LinkId)`, each
+  `INCLUDE (RecordId)`: a list condition such as `budget:gte:1000` becomes
+  `EXISTS (SELECT 1 FROM CustomFieldEntries e WHERE e.OrganizationId = @ws AND e.FieldId = @f
+  AND e.NumberValue >= 1000 AND e.RecordId = r.Id)`, an index seek that reads only the matching
+  range of one field in one workspace. Its cost depends on how many records match, not on how
+  many records or fields the workspace has, and no JSON is parsed (the old design kept one JSON
+  document per record, which any filter would have had to read and parse for every record).
+- A unique `(RecordId, FieldId, TextKey)`: one row per value, and how a record's values are
+  read. Two saves racing to fill a number, money, date, checkbox or link field cannot leave it
+  two values (the loser gets 409), and a multi select cannot hold an option twice. Two first
+  saves of different texts at the same moment can leave a text, web address or select field
+  two rows (their text keys differ); the next save of that field keeps one.
+- Tags: `RecordTags` has a unique `(TagId, RecordId)` ("the records with this tag", straight
+  from the index) and `(RecordId, TagId)` (a record's tags, removal with the record).
+
+Sorting by a field orders by the record's row for it (MIN or MAX for a multi select), records
+without a value last either way, then by the list's own order. Two paths do not seek: a text
+`contains` condition and a list's free-text search read `TextValue` with `LIKE`, so they scan
+the workspace's rows (of that one field for `contains`); at tens of thousands of records with
+a handful of text fields each that is still a small read, and it is the place to add a
+full-text index if a workspace ever needs one.
+
+The table that kept values as one JSON document per record (`CustomFieldValues`) is left as it
+was and no longer written: the migration `AddFlexibleData` copied its values into typed rows
+(idempotently, values that no longer fit their field are left behind there), and a person's
+data export still includes anything left in it.
+
+**Tags** are the workspace's own, each with a name (unique in the workspace) and one of twelve
+colours (`slate`, `red`, `orange`, `amber`, `lime`, `green`, `teal`, `sky`, `blue`, `indigo`,
+`violet`, `pink`). The same tags go on leads, contacts, companies, deals and members.
+
+**List parameters.** `GET /api/leads`, `/api/contacts`, `/api/companies`, `/api/deals/board`
+(and `/board/column`), `/api/members`, and the contact and company exports take:
+
+| Parameter | Meaning |
+|-----------|---------|
+| `tag=<id>`, repeated | Records with any of these tags; all of them with `tagMatch=all` |
+| `notTag=<id>`, repeated | Records with none of these tags |
+| `field=<key>:<op>[:<value>]`, repeated | Records whose field passes the test; every condition must hold |
+| `sortBy=cf:<key>` with `sortDir` | Sort by a custom field (leads, contacts, companies); not a link field |
+
+| Field kind | `op` (and value) |
+|------------|------------------|
+| any | `empty`, `set` |
+| text, web address, select | `is`, `not`, `any` / `none` (values joined by `\|`), `contains` |
+| multi select | as select (one of its options), and `all` (`interests:all:Golf\|Tennis`) |
+| number, money | `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `between` (`budget:between:500..6000`) |
+| date | `is`, `before`, `after`, `gte`, `lte`, `between` (`yyyy-MM-dd`, `joined:between:2026-01-01..2026-06-30`) |
+| checkbox | `true`, `false` (`vip:true`; false includes records never ticked) |
+| link | `is`, `not` (the linked record's id) |
+
+At most 20 tags, 20 excluded tags and 20 field conditions are read. A condition on a field
+that no longer exists, or that cannot be read, is left out rather than refused, so a saved view
+still opens after a field it named was deleted. A list's `search` also finds records by their
+custom field text and their tag names. Exports add one column per custom field, in the
+workspace's order, then `Tags` when the workspace has any tags (a workspace without tags
+exports the columns it always did). Imports offer the custom fields as `custom:<key>` and read
+each kind as its form does: a multi select from options separated by `,`, `;` or `|`, money as
+`CHF 1'200.50`, `1200 EUR` or a bare amount in the field's currency, a link as the record's id.
+
+**Saved views.** A view is a name, a list (`leads`, `contacts`, `companies`, `deals`, `members`),
+the list's parameters (`query`, an object of strings and string arrays, at most 40 keys, such as
+`{"tag": ["…"], "field": ["tier:is:Gold"], "sort": "name-desc"}`) and the columns shown (up to 60). A view
+is private, or shared with the workspace by someone who may change something in it. Only its
+owner changes a view (with its `version`, 409 when it changed meanwhile); its owner, or whoever
+manages the workspace's settings, deletes it. Each person has at most one default view per list
+and workspace (a unique index), which may be a shared one; a view made private again stops being
+anyone else's default.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/custom-fields?entityType=contact` | The workspace's fields of that kind, in order (any member) |
+| `POST`/`PUT`/`DELETE` | `/api/custom-fields`, `/api/custom-fields/{id}` | Define, change or delete a field (`settings.manage`) |
+| `PUT` | `/api/custom-fields/order` | Put a kind's fields in order (`settings.manage`) |
+| `GET` | `/api/custom-fields/values?entityType=&recordId=` | One record's values |
+| `POST` | `/api/custom-fields/values/batch` | The values of a page of records (up to 500), for list columns and exports |
+| `PUT` | `/api/custom-fields/values` | Save a record's values (`records.edit`; a member's: `club.members`) |
+| `GET` | `/api/tags` | The workspace's tags with how many records carry each |
+| `POST` | `/api/tags` | Add a tag (`records.edit` or `club.members`: whoever may put tags on records) |
+| `PUT`/`DELETE` | `/api/tags/{id}` | Rename, recolour or delete a tag, taking it off every record (`settings.manage`) |
+| `GET`/`PUT` | `/api/tags/records` | One record's tags; set them (`records.edit`; a member's: `club.members`) |
+| `POST` | `/api/tags/records/batch` | The tags of a page of records |
+| `POST` | `/api/tags/bulk` | Put tags on and take tags off up to 1,000 records (up to 20 tags); records the caller cannot see are skipped and counted, and running it twice changes nothing more |
+| `GET` | `/api/saved-views?list=contacts` | The caller's views and the shared ones, with the caller's default |
+| `POST` | `/api/saved-views` | Save a view |
+| `PUT`/`DELETE` | `/api/saved-views/{id}` | Change or delete a view |
+| `PUT` | `/api/saved-views/default` | Set (or with `viewId: null` clear) the caller's default view of a list |
+
+**Automations.** The catalogue (`GET /api/automations/catalog`) adds the workspace's own
+fields to each trigger whose record carries them: `tags` (a choice of the workspace's tags:
+is, is not, any of, none of, empty, set) and `cf:<key>` for each custom field of the record's
+kind, tested as the value it holds (numbers and money compared, checkboxes yes or no, selects
+and multi selects by option, text and web addresses as text, a link by the linked record's
+name, a date as the days from today to it). A lead's or deal's rule tests its own; a rule on a
+club record (a member, a renewal, a booking, an event registration, an application, a payment)
+tests its member's, labelled "Member's …". A wait can also wait until a custom date field
+("1 day before the deal's Renewal"). Saving a rule checks its conditions against the catalogue
+as the workspace has it then.
+
+**Workspaces and privacy.** `CustomFieldEntries`, `Tags`, `RecordTags`, `SavedViews` and
+`SavedViewDefaults` each carry the workspace and have its query filter, with tests that another
+workspace's rows are never read. Deleting a record deletes its values and tags; merging
+duplicates moves them onto the record kept; a person's data export includes their field values
+and tags, and erasing a person removes them. A new organization made from another copies its
+fields, values, tags and views.
+
 ### Tasks
 
 | Method | Endpoint | Description |

@@ -14,7 +14,9 @@ import { http, HttpResponse } from 'msw';
 import { server } from '@/test/mocks/server';
 import { withQueries } from '@/test/queryWrapper';
 import { PERMISSION, type Permission } from '@/app/api/organizations';
-import type { AutomationCatalog, AutomationRule, AutomationRun, AutomationRunDetail } from '@/app/api/automations';
+import type {
+  AutomationCatalog, AutomationRule, AutomationRun, AutomationRunDetail, AutomationTriggerDef,
+} from '@/app/api/automations';
 
 vi.mock('@/app/components/AppHeader', () => ({ default: () => null }));
 vi.mock('@/app/hooks/useMotionPreference', () => ({ useMotionPreference: () => true }));
@@ -283,6 +285,57 @@ describe('the automations page', () => {
     expect(posted?.actions).toEqual([
       { type: 'wait', config: { mode: 'until', date: 'start', offsetAmount: '-1', offsetUnit: 'days' } },
       { type: 'send_email', config: { subject: 'See you tomorrow', body: 'Your booking is tomorrow.', purpose: 'service' } },
+    ]);
+  });
+
+  it("tests the record's tags and custom fields, and waits for one of its custom dates", async () => {
+    // The server adds the workspace's own tags and custom fields to each trigger it can test.
+    const [lead, booking] = CATALOG.triggers as [AutomationTriggerDef, AutomationTriggerDef];
+    server.use(http.get(`${BASE}/api/automations/catalog`, () => HttpResponse.json({
+      ...CATALOG,
+      triggers: [{
+        ...lead,
+        fields: [
+          ...lead.fields,
+          { key: 'tags', label: 'Tags', type: 'choice', choices: [{ value: 't-vip', label: 'VIP' }, { value: 't-cold', label: 'Cold' }] },
+          { key: 'cf:renewal', label: 'Renewal: days from today', type: 'number' },
+        ],
+        dates: [{ key: 'cf:renewal', label: "The lead's Renewal" }],
+      }, booking],
+    })));
+    const user = userEvent.setup();
+    show();
+    const dialog = await openNew(user);
+    await user.type(within(dialog).getByLabelText('Name'), 'VIP renewals');
+
+    // VIP leads whose renewal is at most 30 days away.
+    await user.click(within(dialog).getByRole('button', { name: /Add a condition/ }));
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Condition 1: field' }), 'tags');
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Condition 1: value' }), 'VIP');
+    await user.click(within(dialog).getByRole('button', { name: /Add a condition/ }));
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Condition 2: field' }), 'cf:renewal');
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Condition 2: comparison' }), 'lte');
+    await user.type(within(dialog).getByLabelText('Condition 2: value'), '30');
+
+    await user.type(within(dialog).getByLabelText('Step 1: subject'), 'Renewal soon');
+    await user.type(within(dialog).getByLabelText('Step 1: body'), 'Your renewal is coming up.');
+    // The email waits for a day before the renewal date.
+    await user.click(within(dialog).getByRole('button', { name: /Add a wait/ }));
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Step 2: wait for' }), 'until');
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Step 2: when' }), 'before');
+    expect(within(dialog).getByRole('combobox', { name: 'Step 2: date' })).toHaveDisplayValue("the lead's Renewal");
+    await user.click(within(dialog).getByRole('button', { name: 'Move step 2 up' }));
+
+    await user.click(within(dialog).getByRole('button', { name: 'Create automation' }));
+    await waitFor(() => expect(posted).not.toBeNull());
+    expect(posted?.conditions).toEqual({
+      match: 'all',
+      conditions: [{ field: 'tags', op: 'is', value: 't-vip' }, { field: 'cf:renewal', op: 'lte', value: '30' }],
+      groups: [],
+    });
+    expect(posted?.actions).toEqual([
+      { type: 'wait', config: { mode: 'until', date: 'cf:renewal', offsetAmount: '-1', offsetUnit: 'days' } },
+      { type: 'send_email', config: { subject: 'Renewal soon', body: 'Your renewal is coming up.' } },
     ]);
   });
 

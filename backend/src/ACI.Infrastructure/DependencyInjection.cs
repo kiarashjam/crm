@@ -142,6 +142,10 @@ public static class DependencyInjection
         services.AddScoped<ICopyHistoryRepository, CopyHistoryRepository>();
         services.AddScoped<IReportingService, ReportingService>();
         services.AddScoped<IDealBoardService, DealBoardService>();
+        // Tags on records, saved views of the lists, and what lists filter and sort by in them.
+        services.AddScoped<ITagService, TagService>();
+        services.AddScoped<ISavedViewService, SavedViewService>();
+        services.AddScoped<IRecordFlexQuery, RecordFlexQuery>();
         services.AddScoped<WeeklyDigestService>();
         services.AddScoped<IWebhookTransport, WebhookTransport>();
         

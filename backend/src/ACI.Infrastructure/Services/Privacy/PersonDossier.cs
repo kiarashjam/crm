@@ -59,7 +59,16 @@ internal sealed class PersonDossier
     public List<ContractDeposit> ContractDeposits { get; private set; } = new();
     public List<DealOnboarding> Onboardings { get; private set; } = new();
     public List<Attachment> Attachments { get; private set; } = new();
+    /// <summary>Values kept the old way, as JSON per record: read-only since they were copied into <see cref="CustomFieldEntries"/>.</summary>
     public List<CustomFieldValueSet> CustomFieldValues { get; private set; } = new();
+    /// <summary>The values of the workspace's own fields on their leads, contacts, deals and member records.</summary>
+    public List<CustomFieldEntry> CustomFieldEntries { get; private set; } = new();
+    /// <summary>The fields those values are of, to name them in the export.</summary>
+    public List<CustomFieldDefinition> CustomFieldDefinitions { get; private set; } = new();
+    /// <summary>The tags on their leads, contacts, deals and member records.</summary>
+    public List<RecordTag> RecordTags { get; private set; } = new();
+    /// <summary>The names of those tags, for the export.</summary>
+    public Dictionary<Guid, string> TagNames { get; private set; } = new();
     public List<CopyHistoryItem> CopyHistory { get; private set; } = new();
     public List<Notification> Notifications { get; private set; } = new();
 
@@ -242,6 +251,26 @@ internal sealed class PersonDossier
                 || (v.EntityType == RecordTypes.Contact && contactIds.Contains(v.RecordId))
                 || (v.EntityType == RecordTypes.Deal && dealIds.Contains(v.RecordId)))
             .ToListAsync(ct);
+        // The typed values and the tags of their records, members' included: a member record
+        // stays for the books under a pseudonym, but what the club noted on it about them goes.
+        d.CustomFieldEntries = await Q(db.CustomFieldEntries).Where(e =>
+                (e.EntityType == RecordTypes.Lead && leadIds.Contains(e.RecordId))
+                || (e.EntityType == RecordTypes.Contact && contactIds.Contains(e.RecordId))
+                || (e.EntityType == RecordTypes.Deal && dealIds.Contains(e.RecordId))
+                || (e.EntityType == RecordTypes.Member && memberIds.Contains(e.RecordId)))
+            .ToListAsync(ct);
+        var fieldIds = d.CustomFieldEntries.Select(e => e.FieldId).Distinct().ToList();
+        d.CustomFieldDefinitions = fieldIds.Count == 0 ? new()
+            : await db.CustomFieldDefinitions.AsNoTracking().Where(f => fieldIds.Contains(f.Id)).ToListAsync(ct);
+        d.RecordTags = await Q(db.RecordTags).Where(t =>
+                (t.EntityType == RecordTypes.Lead && leadIds.Contains(t.RecordId))
+                || (t.EntityType == RecordTypes.Contact && contactIds.Contains(t.RecordId))
+                || (t.EntityType == RecordTypes.Deal && dealIds.Contains(t.RecordId))
+                || (t.EntityType == RecordTypes.Member && memberIds.Contains(t.RecordId)))
+            .ToListAsync(ct);
+        var tagIds = d.RecordTags.Select(t => t.TagId).Distinct().ToList();
+        d.TagNames = tagIds.Count == 0 ? new()
+            : await db.Tags.AsNoTracking().Where(t => tagIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => t.Name, ct);
         var recordIdTexts = subject.RecordIds.Select(id => id.ToString()).ToList();
         d.CopyHistory = await Q(db.CopyHistoryItems).Where(c =>
                 recordIdTexts.Contains(c.RecipientId)

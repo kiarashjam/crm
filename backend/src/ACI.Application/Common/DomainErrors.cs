@@ -282,10 +282,88 @@ public static partial class DomainErrors
     /// <summary>
     /// Custom field errors.
     /// </summary>
+    public static class SavedView
+    {
+        public static readonly Error InvalidList = new(
+            "SavedView.InvalidList", "Views can be saved for the leads, contacts, companies, deals and members lists");
+
+        public static readonly Error NameRequired = new("SavedView.NameRequired", "A view needs a name");
+
+        public static readonly Error InvalidQuery = new(
+            "SavedView.InvalidQuery", "A view's filters are the list's query string: at most 40 names, each with text or a list of texts");
+
+        public static readonly Error InvalidColumns = new(
+            "SavedView.InvalidColumns", "A view's columns are a list of at most 60 column names");
+
+        public static readonly Error NotFound = new("SavedView.NotFound", "The view was not found");
+
+        // ".Conflict" maps it to 409, as for the records people edit as a whole.
+        public static readonly Error Changed = new(
+            "SavedView.Changed.Conflict", "Someone changed this view since you opened it; reload it and try again");
+
+        // "NotOwner" in the code maps these to 403.
+        public static readonly Error NotOwner = new(
+            "SavedView.NotOwner", "Only whoever made this view can change it");
+
+        public static readonly Error NotOwnerCannotShare = new(
+            "SavedView.NotOwnerCannotShare", "Your role here is view-only, so you can keep views for yourself but not share them");
+    }
+
+    public static class Tag
+    {
+        public static readonly Error NameRequired = new("Tag.NameRequired", "A tag needs a name");
+
+        public static readonly Error InvalidColor = new("Tag.InvalidColor", "That is not one of the tag colours");
+
+        public static readonly Error NotFound = new("Tag.NotFound", "The tag was not found");
+
+        public static readonly Error RecordNotFound = new("TagRecord.NotFound", "The record was not found");
+
+        public static readonly Error InvalidEntityType = new(
+            "Tag.InvalidEntityType", "Tags can be put on leads, contacts, companies, deals and, in an organization, members");
+
+        // ".Conflict" maps it to 409: the workspace already has a tag of that name.
+        public static Error NameTaken(string name) => new("Tag.Name.Conflict", $"There is already a tag called \"{name}\"");
+
+        public static readonly Error TooMany = new("Tag.TooMany", "A bulk change takes at most 1,000 records and 20 tags at a time");
+
+        public static readonly Error RecordsConflict = new(
+            "Tag.Records.Conflict", "Someone else changed these tags at the same moment; reload and try again");
+
+        // "NotOwner" in the code maps it to 403: renaming or deleting a tag changes everyone's records.
+        public static readonly Error NotOwnerOrManager = new(
+            "Tag.NotOwnerOrManager", "Your role here does not let you rename or delete the workspace's tags");
+    }
+
     public static class CustomField
     {
         public static readonly Error InvalidEntityType = new(
-            "CustomField.InvalidEntityType", "Custom fields can be added to leads, contacts, companies and deals");
+            "CustomField.InvalidEntityType", "Custom fields can be added to leads, contacts, companies, deals and, in an organization, members");
+
+        public static readonly Error InvalidCurrency = new(
+            "CustomField.InvalidCurrency", "A money field's currency is a three-letter code such as CHF");
+
+        public static readonly Error LinkTypeRequired = new(
+            "CustomField.LinkTypeRequired", "A link field needs the kind of record it points at: a lead, contact, company, deal or member");
+
+        // ".Conflict" is what maps this to 409: the field is there, but its values stop it changing kind.
+        public static readonly Error TypeChangeConflict = new(
+            "CustomField.TypeChange.Conflict", "This field already has values, so its kind can't change; add a new field instead");
+
+        public static readonly Error ValuesConflict = new(
+            "CustomField.Values.Conflict", "Someone else saved these fields at the same moment; reload the record and try again");
+
+        public static readonly Error ReorderInvalid = new(
+            "CustomField.InvalidOrder", "Send every field of that kind of record, each once");
+
+        public static Error IsRequired(string label) => new(
+            "CustomField.Required", $"{label} is required");
+
+        public static Error LinkNotFound(string label) => new(
+            "CustomField.InvalidValue", $"{label} must point at a record of this workspace");
+
+        public static Error InvalidDefault(string label, string expected) => new(
+            "CustomField.InvalidDefault", $"The default for {label} {expected}");
 
         public static readonly Error InvalidType = new(
             "CustomField.InvalidType", "That is not a kind of custom field");
@@ -294,7 +372,7 @@ public static partial class DomainErrors
             "CustomField.LabelRequired", "A custom field needs a label");
 
         public static readonly Error OptionsRequired = new(
-            "CustomField.OptionsRequired", "A dropdown field needs at least one option");
+            "CustomField.OptionsRequired", "A dropdown or multi select field needs at least one option");
 
         public static readonly Error CannotMove = new(
             "CustomField.CannotMove", "A field can't move to another kind of record; add a new one instead");

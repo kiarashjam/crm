@@ -1,4 +1,5 @@
 import type { Contact, PagedResult, PaginationParams } from './types';
+import { appendFlexFilters, type FlexFilters } from './flexFilters';
 import { mockContacts, mockLeads } from './mockData';
 import { servesDemoData, authFetchJson, authFetch, ensureOk, type RequestOptions } from './apiClient';
 import { downloadCsv, downloadFile } from '@/app/lib/exportCsv';
@@ -190,8 +191,11 @@ export interface ContactListFilters {
   /** true: only contacts at a company; false: only those at none. */
   hasCompany?: boolean;
   activity?: ContactActivity;
-  sortBy?: ContactSortField;
+  /** A field of the contact's, or a custom field's key after "cf:". */
+  sortBy?: ContactSortField | `cf:${string}`;
   sortDir?: 'asc' | 'desc';
+  /** Conditions on the contacts' tags and custom fields (the server applies them; demo data has none). */
+  flex?: FlexFilters;
 }
 
 /** The figures above the contacts list, over the whole workspace. All but `archived` count active contacts. */
@@ -216,6 +220,7 @@ function contactListQuery(filters: ContactListFilters): URLSearchParams {
   if (filters.activity) query.set('activity', filters.activity);
   if (filters.sortBy) query.set('sortBy', filters.sortBy);
   if (filters.sortDir) query.set('sortDir', filters.sortDir);
+  appendFlexFilters(query, filters.flex);
   return query;
 }
 
@@ -244,7 +249,8 @@ function demoContactList(filters: ContactListFilters): Contact[] {
     lastActivity: (a, b) => (last(a) ?? -1) - (last(b) ?? -1),
     createdAt: (a, b) => time(a.createdAtUtc) - time(b.createdAtUtc),
   };
-  return [...rows].sort((a, b) => dir * compare[filters.sortBy ?? 'name'](a, b) || a.name.localeCompare(b.name));
+  const by = compare[filters.sortBy as ContactSortField] ?? compare.name;
+  return [...rows].sort((a, b) => dir * by(a, b) || a.name.localeCompare(b.name));
 }
 
 /** Get contacts with pagination, filters and order (real API or mock). */

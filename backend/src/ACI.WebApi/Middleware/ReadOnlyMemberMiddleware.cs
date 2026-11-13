@@ -34,6 +34,9 @@ public sealed class ReadOnlyMemberMiddleware
     {
         "/api/auth",
         "/api/settings",
+        // A person's own saved views of a list and the one they open it with. Sharing a view
+        // with everyone is refused to a read-only member by the service itself.
+        "/api/saved-views",
     };
 
     private readonly RequestDelegate _next;
@@ -127,6 +130,11 @@ public sealed class ReadOnlyMemberMiddleware
         // and a change it proposes is made only by the caller's confirm, a request of its own
         // that this check still refuses. A POST because a question does not belong in a URL.
         if (string.Equals(path, "/api/agent/chat", Ignore)) return true;
+
+        // Reading the custom field values and tags of a page of a list: POSTs only because the
+        // record ids do not fit in a URL. They change nothing.
+        if (string.Equals(path, "/api/custom-fields/values/batch", Ignore)) return true;
+        if (string.Equals(path, "/api/tags/records/batch", Ignore)) return true;
 
         // Accepting an invitation — /api/invites/accept or /api/invites/{id}/accept —
         // concerns only their own membership. Creating an invite

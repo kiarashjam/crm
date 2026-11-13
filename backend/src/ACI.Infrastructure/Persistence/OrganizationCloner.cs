@@ -261,7 +261,10 @@ public sealed class OrganizationCloner
         var adjustments = new Dictionary<string, int>();
         var deferred = new List<(object Copy, IProperty Property, object Value)>();
         var previous = _db.RecordsAuditTrail;
+        var defaults = _db.AppliesFieldDefaults;
         _db.RecordsAuditTrail = false;
+        // The copied records bring their own field values, the defaults' included.
+        _db.AppliesFieldDefaults = false;
         try
         {
             _db.Organizations.Add(org);
@@ -297,6 +300,7 @@ public sealed class OrganizationCloner
         finally
         {
             _db.RecordsAuditTrail = previous;
+            _db.AppliesFieldDefaults = defaults;
             _db.ChangeTracker.Clear();
         }
 

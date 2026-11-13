@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { 
   Building2, Search, Plus, Pencil, Trash2, Globe, Briefcase, Users, X,
@@ -12,7 +12,11 @@ import { PageTransition } from '@/app/components/PageTransition';
 import { ContentSkeleton } from '@/app/components/PageSkeleton';
 import DataPagination from '@/app/components/DataPagination';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { getCompanyById, createCompany, updateCompany, deleteCompany, messages } from '@/app/api';
+import { getCompanyById, createCompany, updateCompany, deleteCompany, messages, readFlexParams } from '@/app/api';
+import { FlexFilterBar } from '@/app/components/flex/FlexFilterBar';
+import { SavedViewsMenu } from '@/app/components/flex/SavedViewsMenu';
+import { BulkTagButton } from '@/app/components/flex/BulkTagDialog';
+import { useFlexColumns } from '@/app/components/flex/useFlexColumns';
 import { useCompaniesPage, useCompanySummary, useDealsPage } from '@/app/hooks/queries';
 import { LoadFailed } from '@/app/components/LoadFailed';
 import { isEditConflict, showEditConflict } from '@/app/lib/editConflict';
@@ -107,6 +111,14 @@ const COMPANY_SIZES = [
   { value: '1000+', label: '1000+ employees', category: 'Enterprise' },
 ];
 
+/** "sector:desc" from the address: an order by a custom field; null for none. */
+function parseFieldSort(value: string | null): { key: string; dir: 'asc' | 'desc' } | null {
+  const [key, dir] = (value ?? '').split(':');
+  return key ? { key, dir: dir === 'desc' ? 'desc' : 'asc' } : null;
+}
+
+const companyId = (c: CompanyListItem) => c.id;
+
 const NO_COMPANIES: CompanyListItem[] = [];
 const NO_DEALS: Deal[] = [];
 
@@ -123,6 +135,11 @@ export default function Companies() {
   const filterIndustry = searchParams.get('industry') || 'all';
   const filterSize = searchParams.get('size') || 'all';
   const [sortField, sortDirection] = parseSort(searchParams.get('sort'));
+  // Conditions on tags and custom fields, and an order by a custom field, are in the address too.
+  const paramsKey = searchParams.toString();
+  const flex = useMemo(() => readFlexParams(new URLSearchParams(paramsKey)), [paramsKey]);
+  const cfSortParam = searchParams.get('cfSort');
+  const fieldSort = useMemo(() => parseFieldSort(cfSortParam), [cfSortParam]);
 
   const [exporting, setExporting] = useState(false);
   const [searchQuery, setSearchQuery] = useState(searchFromUrl);
@@ -147,8 +164,15 @@ export default function Companies() {
   };
   const setFilterIndustry = (next: string) => setListParam('industry', next === 'all' ? null : next);
   const setFilterSize = (next: string) => setListParam('size', next === 'all' ? null : next);
-  const setSort = (field: CompanySortField, dir: 'asc' | 'desc') =>
-    setListParam('sort', field === 'name' && dir === 'asc' ? null : `${field}-${dir}`);
+  const setSort = (field: CompanySortField, dir: 'asc' | 'desc') => {
+    const params = new URLSearchParams(searchParams);
+    if (field === 'name' && dir === 'asc') params.delete('sort');
+    else params.set('sort', `${field}-${dir}`);
+    // A sort of the list's own takes over from one by a custom field.
+    params.delete('cfSort');
+    params.set('page', '1');
+    setSearchParams(params);
+  };
 
   // What the server is asked for, the list and the export alike.
   const listFilters = useMemo<CompanyListFilters>(() => ({
@@ -156,9 +180,10 @@ export default function Companies() {
     industry: filterIndustry === 'all' || filterIndustry === NO_INDUSTRY ? undefined : filterIndustry,
     hasIndustry: filterIndustry === NO_INDUSTRY ? false : undefined,
     size: filterSize === 'all' ? undefined : filterSize,
-    sortBy: sortField,
-    sortDir: sortDirection,
-  }), [debouncedSearch, filterIndustry, filterSize, sortField, sortDirection]);
+    sortBy: fieldSort ? `cf:${fieldSort.key}` as const : sortField,
+    sortDir: fieldSort ? fieldSort.dir : sortDirection,
+    flex,
+  }), [debouncedSearch, filterIndustry, filterSize, sortField, sortDirection, fieldSort, flex]);
 
   // Debounce search input
   useEffect(() => {
@@ -181,6 +206,21 @@ export default function Companies() {
       setSearchParams(params);
     }
   }, [debouncedSearch]);
+
+  // A saved view, or the browser's back and forward buttons, can change the search in the
+  // address without the box: the box and the list then follow the address, or the list went
+  // on searching for what was typed before while the address showed the view's search. Read
+  // against a ref, so the search this page writes into the address itself is never read back
+  // over what is being typed.
+  const debouncedSearchRef = useRef(debouncedSearch);
+  useEffect(() => {
+    debouncedSearchRef.current = debouncedSearch;
+  }, [debouncedSearch]);
+  useEffect(() => {
+    if (searchFromUrl === debouncedSearchRef.current) return;
+    setDebouncedSearch(searchFromUrl);
+    setSearchQuery(searchFromUrl);
+  }, [searchFromUrl]);
 
   // The page of companies, each with its own counts, and the figures above the list
   // with the server's count of the whole workspace, through the shared cache: keyed by
@@ -400,6 +440,7 @@ export default function Companies() {
   const topIndustryCount = companyStats.topIndustry?.count || 0;
   // How this person likes companies shown: cards, a list or a table, saved for them.
   const view = useViewPreference('companies', { layouts: ['grid', 'list', 'table'] });
+  const flexColumns = useFlexColumns('company', companies, companyId, view);
   const openCompany = (c: Company) => navigate(recordHref(`/companies/${c.id}`, c.name, 'Companies'));
   const companyColumns: RecordColumn<CompanyListItem>[] = [
     {
@@ -421,6 +462,8 @@ export default function Companies() {
     { id: 'deals', label: 'Deals', numeric: true, cell: (c) => c.dealCount || '—' },
     { id: 'value', label: 'Deal value', numeric: true, cell: (c) => formatTotals(c.dealTotals) },
   ];
+
+  const allCompanyColumns = [...companyColumns, ...flexColumns];
 
   /** The same menu on a card, a row and a table line. */
   const companyMenu = (company: CompanyListItem, triggerClassName = '') => (
@@ -655,8 +698,22 @@ export default function Companies() {
               </Select>
               </div>
 
-              <ViewSwitcher view={view} columns={columnChoices(companyColumns)} />
+              <SavedViewsMenu list="companies" params={searchParams} onChange={(next) => setSearchParams(next)} view={view} columns={columnChoices(allCompanyColumns)} />
+              <ViewSwitcher view={view} columns={columnChoices(allCompanyColumns)} />
             </div>
+          </div>
+
+          {/* Tags and custom fields: filters, an order by a field, and tags for the companies shown. */}
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <FlexFilterBar
+              entity="company"
+              params={searchParams}
+              onChange={(next) => setSearchParams(next)}
+              sortField={fieldSort?.key ?? null}
+              sortDir={fieldSort?.dir}
+              onSortField={(key, dir) => setListParam('cfSort', key ? `${key}:${dir}` : null)}
+            />
+            <BulkTagButton entityType="company" recordIds={companies.map((c) => c.id)} what={`the ${companies.length} companies shown`} />
           </div>
 
           {/* Expandable Filter Panel */}
@@ -864,7 +921,7 @@ export default function Companies() {
               leading={(c) => <InitialsAvatar name={c.name} />}
               title={(c) => c.name}
               subtitle={(c) => [c.industry, c.location].filter(Boolean).join(' · ') || c.domain || c.website}
-              columns={companyColumns}
+              columns={allCompanyColumns}
               actions={(c) => companyMenu(c)}
             />
           ) : view.layout === 'table' ? (
@@ -874,7 +931,7 @@ export default function Companies() {
               view={view}
               getKey={(c) => c.id}
               onOpen={openCompany}
-              columns={companyColumns}
+              columns={allCompanyColumns}
               actions={(c) => companyMenu(c)}
             />
           ) : (

@@ -4,12 +4,13 @@ using Microsoft.EntityFrameworkCore;
 namespace ACI.Infrastructure.Persistence;
 
 /// <summary>
-/// When a lead, contact, company or deal is deleted, its attachments and custom
-/// field values are deleted in the same save, and a deal's line items with it.
+/// When a lead, contact, company, deal or member is deleted, its attachments, custom
+/// field values and tags are deleted in the same save, and a deal's line items with it;
+/// so are other records' link fields that pointed at it.
 /// </summary>
 /// <remarks>
 /// They are keyed by record type and id rather than by a foreign key, because one
-/// table serves four kinds of record. Doing it here covers every way a record is
+/// table serves five kinds of record. Doing it here covers every way a record is
 /// deleted, and never reads the bytes of a file it is removing. They are found whatever
 /// workspace the save acts for (IgnoreQueryFilters): a record's id is its own, and its
 /// files and values must go with it even when the code deleting it acts for none.
@@ -28,10 +29,18 @@ internal static class RecordDependents
                 case Contact r: deleted.Add((RecordTypes.Contact, r.Id)); break;
                 case Company r: deleted.Add((RecordTypes.Company, r.Id)); break;
                 case Deal r: deleted.Add((RecordTypes.Deal, r.Id)); break;
+                case ClubMember r: deleted.Add((RecordTypes.Member, r.Id)); break;
             }
         }
         return deleted;
     }
+
+    /// <summary>The custom field values and tags of the records, and the link values pointing at them.</summary>
+    private static IQueryable<CustomFieldEntry> EntriesOf(AppDbContext db, List<Guid> ids) =>
+        db.CustomFieldEntries.IgnoreQueryFilters().Where(e => ids.Contains(e.RecordId) || (e.LinkId != null && ids.Contains(e.LinkId.Value)));
+
+    private static IQueryable<RecordTag> TagsOf(AppDbContext db, List<Guid> ids) =>
+        db.RecordTags.IgnoreQueryFilters().Where(t => ids.Contains(t.RecordId));
 
     public static async Task RemoveAsync(AppDbContext db, CancellationToken ct)
     {
@@ -48,7 +57,21 @@ internal static class RecordDependents
                 ? await db.DealLineItems.Where(i => ids.Contains(i.DealId)).ToListAsync(ct)
                 : new List<DealLineItem>();
             Remove(db, attachmentIds, valueSets, lineItems);
+            RemoveFlexible(db, ids, await EntriesOf(db, ids).ToListAsync(ct), await TagsOf(db, ids).ToListAsync(ct));
         }
+    }
+
+    /// <remarks>
+    /// The rows are found by what the database holds, but judged by what this save makes of
+    /// them: a merge that moves a member's values to the member kept, and deletes the
+    /// duplicate in the same save, must not lose the values it moved.
+    /// </remarks>
+    private static void RemoveFlexible(AppDbContext db, List<Guid> ids, List<CustomFieldEntry> entries, List<RecordTag> tags)
+    {
+        foreach (var entry in entries.Where(e => ids.Contains(e.RecordId) || (e.LinkId is Guid linked && ids.Contains(linked))))
+            if (db.Entry(entry).State != EntityState.Deleted) db.CustomFieldEntries.Remove(entry);
+        foreach (var tag in tags.Where(t => ids.Contains(t.RecordId)))
+            if (db.Entry(tag).State != EntityState.Deleted) db.RecordTags.Remove(tag);
     }
 
     /// <summary>
@@ -143,6 +166,7 @@ internal static class RecordDependents
                 ? db.DealLineItems.Where(i => ids.Contains(i.DealId)).ToList()
                 : new List<DealLineItem>();
             Remove(db, attachmentIds, valueSets, lineItems);
+            RemoveFlexible(db, ids, EntriesOf(db, ids).ToList(), TagsOf(db, ids).ToList());
         }
     }
 

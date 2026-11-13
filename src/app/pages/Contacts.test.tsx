@@ -4,6 +4,7 @@
 // on a later page, an export of one page, and no way to list archived contacts at all.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import type { Contact } from '@/app/api/types';
 import type { ContactStats } from '@/app/api/contacts';
@@ -23,6 +24,7 @@ const stats: ContactStats = {
 
 const api = vi.hoisted(() => ({
   getContactsPaged: vi.fn(), getCompanies: vi.fn(), getDealsPaged: vi.fn(), updateContact: vi.fn(), getContactById: vi.fn(), deleteContact: vi.fn(),
+  getSavedViews: vi.fn(),
 }));
 vi.mock('@/app/api', async () => ({ ...(await vi.importActual<typeof import('@/app/api')>('@/app/api')), ...api }));
 const contactsApi = vi.hoisted(() => ({
@@ -73,9 +75,27 @@ beforeEach(() => {
   api.getDealsPaged.mockResolvedValue({ items: [], totalCount: 0, page: 1, pageSize: 100, totalPages: 0, hasNextPage: false, hasPreviousPage: false });
   contactsApi.getContactStats.mockResolvedValue(stats);
   contactsApi.exportContacts.mockResolvedValue({ exported: 640, total: 640 });
+  api.getSavedViews.mockResolvedValue([]);
 });
 
 describe('Contacts', () => {
+  it('opens a saved view with its search, in the box and in what the server is asked', async () => {
+    api.getSavedViews.mockResolvedValue([{
+      id: 'v1', list: 'contacts', name: 'The Kellers', shared: false, mine: true, isDefault: false,
+      query: { search: 'Keller', status: 'archived' }, columns: null, version: 'v1', updatedAtUtc: '2026-11-13T00:00:00Z',
+    }]);
+    const user = userEvent.setup();
+    show();
+    await screen.findByText('Anna Keller');
+    await user.click(screen.getByRole('button', { name: /^views$/i }));
+    await user.click(await screen.findByRole('menuitem', { name: /^The Kellers/ }));
+    await waitFor(() => expect(lastQuery()).toMatchObject({ search: 'Keller', status: 'archived' }));
+    // And it stays so once the page has written its search into the address.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(lastQuery()).toMatchObject({ search: 'Keller', status: 'archived' });
+    expect(screen.getByLabelText('Search contacts')).toHaveValue('Keller');
+  });
+
   it("shows the workspace's figures, not one page's", async () => {
     show();
     expect(await screen.findByRole('button', { name: /Archived, 3/ })).toBeTruthy();

@@ -114,6 +114,9 @@ public sealed class ClubRepository : IClubRepository
                 visit.MemberId = keepId;
                 visit.MemberName = name;
             }
+            // The duplicate's custom field values fill the kept member's empty fields, and its tags
+            // join theirs, before deleting it would take them away (RecordDependents).
+            await RecordMerge.MoveFieldsAndTagsAsync(_db, keepId, dropId, ct);
             foreach (var entry in await _db.LoyaltyLedger.Where(e => e.MemberId == dropId && e.OrganizationId == organizationId).ToListAsync(ct))
             {
                 entry.MemberId = keepId;

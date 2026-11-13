@@ -253,13 +253,15 @@ public static class AutomationConditions
     {
         var field = trigger == null ? null : AutomationCatalog.Field(trigger, c.Field);
         var name = (field?.Label ?? c.Field).ToLowerInvariant();
-        var value = field?.Choices?.FirstOrDefault(x => Same(x.Value, (c.Value ?? "").Trim()))?.Label ?? c.Value;
+        // A choice by its name (a tag's, an option's), not the id the rule keeps.
+        string Named(string? raw) => field?.Choices?.FirstOrDefault(x => Same(x.Value, (raw ?? "").Trim()))?.Label ?? raw ?? "";
+        var value = Named(c.Value);
         return c.Op switch
         {
             AutomationOps.Is => $"{name} is {value}",
             AutomationOps.IsNot => $"{name} is not {value}",
-            AutomationOps.IsAnyOf => $"{name} is any of {string.Join(", ", c.Values ?? [])}",
-            AutomationOps.IsNoneOf => $"{name} is none of {string.Join(", ", c.Values ?? [])}",
+            AutomationOps.IsAnyOf => $"{name} is any of {string.Join(", ", (c.Values ?? []).Select(Named))}",
+            AutomationOps.IsNoneOf => $"{name} is none of {string.Join(", ", (c.Values ?? []).Select(Named))}",
             AutomationOps.Contains => $"{name} contains {value}",
             AutomationOps.NotContains => $"{name} does not contain {value}",
             AutomationOps.IsEmpty => $"{name} is empty",

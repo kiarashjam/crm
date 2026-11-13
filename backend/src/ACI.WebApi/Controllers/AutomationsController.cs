@@ -44,7 +44,7 @@ public class AutomationsController : ControllerBase
 
     /// <summary>The triggers, what their conditions can test, the dates their waits can wait for and the steps they can take.</summary>
     [HttpGet("catalog")]
-    public ActionResult<AutomationCatalogDto> Catalog() => Ok(_automations.Catalog());
+    public async Task<ActionResult<AutomationCatalogDto>> Catalog(CancellationToken ct) => Ok(await _automations.CatalogAsync(ct));
 
     [HttpPost]
     [Requires(MemberPermissions.ManageSettings, What = "change automations")]

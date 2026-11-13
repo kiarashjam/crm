@@ -7,6 +7,7 @@
 // offline so the UI is fully exercisable without server changes.
 
 import { apiWithFallback, authFetch, authFetchJson, ensureOk, type RequestOptions } from './apiClient';
+import { appendFlexFilters, type FlexFilters } from './flexFilters';
 import { createMockStore, demoPatch, mockId } from './mockStore';
 import { getCatalog, tierNamed } from './catalog';
 
@@ -149,10 +150,15 @@ const memberStore = createMockStore<Member>({
   idOf: (m) => m.id,
 });
 
-export async function getMembers(req?: RequestOptions): Promise<Member[]> {
+/**
+ * The club's members; with `flex`, only those whose tags and custom fields meet its
+ * conditions, worked out by the server (demo data has neither, so all are kept).
+ */
+export async function getMembers(req?: RequestOptions, flex?: FlexFilters): Promise<Member[]> {
   return apiWithFallback(
     async () => {
-      const res = await authFetchJson<Member[]>('/api/members', { signal: req?.signal });
+      const query = appendFlexFilters(new URLSearchParams(), flex).toString();
+      const res = await authFetchJson<Member[]>(`/api/members${query ? `?${query}` : ''}`, { signal: req?.signal });
       return Array.isArray(res) ? res : [];
     },
     async () => {

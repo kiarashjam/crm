@@ -40,10 +40,16 @@ public sealed class AutomationRecordReader : IAutomationRecordReader
     {
         var lead = id == null ? null : await _db.Leads.AsNoTracking().FirstOrDefaultAsync(l => l.Id == id, ct);
         if (lead == null) return Gone("Stopped: the lead was deleted.");
+        var facts = LeadFacts(lead);
+        var dates = new Dictionary<string, DateTime>(StringComparer.Ordinal);
+        var flex = await AddFlexAsync(AutomationRecords.Lead, lead.Id, facts, dates, ct);
         return new AutomationRecordView
         {
             Name = lead.Name,
-            Facts = LeadFacts(lead),
+            Facts = facts,
+            Dates = dates,
+            FlexFields = flex.Fields,
+            FlexDates = flex.Dates,
             Link = $"/leads/{lead.Id}",
         };
     }
@@ -68,11 +74,15 @@ public sealed class AutomationRecordReader : IAutomationRecordReader
         var deal = id == null ? null : await _db.Deals.AsNoTracking().FirstOrDefaultAsync(d => d.Id == id, ct);
         if (deal == null) return Gone("Stopped: the deal was deleted.");
         var facts = await DealFactsAsync(deal, ct);
+        var dates = Dates(("expectedClose", deal.ExpectedCloseDateUtc));
+        var flex = await AddFlexAsync(AutomationRecords.Deal, deal.Id, facts, dates, ct);
         return new AutomationRecordView
         {
             Name = deal.Name,
             Facts = facts,
-            Dates = Dates(("expectedClose", deal.ExpectedCloseDateUtc)),
+            Dates = dates,
+            FlexFields = flex.Fields,
+            FlexDates = flex.Dates,
             Link = $"/deals/{deal.Id}",
         };
     }
@@ -167,11 +177,13 @@ public sealed class AutomationRecordReader : IAutomationRecordReader
     }
 
     private static AutomationRecordView ClubView(string name, ClubMember? member, Dictionary<string, FactValue> facts,
-        Dictionary<string, DateTime> dates, string link) => new()
+        Dictionary<string, DateTime> dates, string link, Flex flex) => new()
     {
         Name = name,
         Facts = facts,
         Dates = dates,
+        FlexFields = flex.Fields,
+        FlexDates = flex.Dates,
         MemberId = member?.Id,
         MemberName = member == null ? null : NameOf(member),
         MemberEmail = string.IsNullOrWhiteSpace(member?.Email) ? null : member!.Email,
@@ -191,7 +203,8 @@ public sealed class AutomationRecordReader : IAutomationRecordReader
         // "When a member becomes at risk" can test ("score at least 80").
         var risk = await _db.ClubMemberRisks.AsNoTracking().Where(r => r.MemberId == member.Id).Select(r => (int?)r.Score).FirstOrDefaultAsync(ct);
         facts["riskScore"] = FactValue.OfNumber(risk);
-        return ClubView(NameOf(member), member, facts, dates, $"/members/{member.Id}");
+        var flex = await AddFlexAsync(AutomationRecords.Member, member.Id, facts, dates, ct);
+        return ClubView(NameOf(member), member, facts, dates, $"/members/{member.Id}", flex);
     }
 
     private async Task<AutomationRecordView> SubscriptionAsync(Guid? id, CancellationToken ct)
@@ -219,7 +232,8 @@ public sealed class AutomationRecordReader : IAutomationRecordReader
             facts["daysUntil"] = FactValue.OfNumber((decimal)Math.Ceiling((next - DateTime.UtcNow).TotalDays));
         }
         AddMember(member, facts, dates);
-        return ClubView($"{NameOf(member)}: {subscription.Name}", member, facts, dates, $"/members/{member.Id}");
+        var flex = await AddFlexAsync(AutomationRecords.Member, member.Id, facts, dates, ct);
+        return ClubView($"{NameOf(member)}: {subscription.Name}", member, facts, dates, $"/members/{member.Id}", flex);
     }
 
     private async Task<AutomationRecordView> ReservationAsync(Guid? id, CancellationToken ct)
@@ -240,7 +254,8 @@ public sealed class AutomationRecordReader : IAutomationRecordReader
         };
         var dates = new Dictionary<string, DateTime>(StringComparer.Ordinal) { ["start"] = booking.StartAtUtc, ["end"] = booking.EndAtUtc };
         AddMember(member, facts, dates);
-        return ClubView($"{booking.MemberName}: {booking.ResourceName}", member, facts, dates, "/reservations");
+        var flex = await AddFlexAsync(AutomationRecords.Member, member?.Id, facts, dates, ct);
+        return ClubView($"{booking.MemberName}: {booking.ResourceName}", member, facts, dates, "/reservations", flex);
     }
 
     private async Task<AutomationRecordView> RegistrationAsync(Guid? id, CancellationToken ct)
@@ -265,7 +280,8 @@ public sealed class AutomationRecordReader : IAutomationRecordReader
         };
         var dates = new Dictionary<string, DateTime>(StringComparer.Ordinal) { ["eventStart"] = ev.StartAtUtc, ["eventEnd"] = ev.EndAtUtc };
         AddMember(member, facts, dates);
-        return ClubView($"{place.Name}: {ev.Name}", member, facts, dates, $"/events/{ev.Id}");
+        var flex = await AddFlexAsync(AutomationRecords.Member, member?.Id, facts, dates, ct);
+        return ClubView($"{place.Name}: {ev.Name}", member, facts, dates, $"/events/{ev.Id}", flex);
     }
 
     private async Task<AutomationRecordView> ApplicationAsync(Guid? id, CancellationToken ct)
@@ -282,7 +298,8 @@ public sealed class AutomationRecordReader : IAutomationRecordReader
         var dates = new Dictionary<string, DateTime>(StringComparer.Ordinal);
         AddMember(member, facts, dates);
         var name = $"{app.FirstName} {app.LastName}".Trim();
-        return ClubView(name, member, facts, dates, member == null ? "/applications" : $"/members/{member.Id}");
+        var flex = await AddFlexAsync(AutomationRecords.Member, member?.Id, facts, dates, ct);
+        return ClubView(name, member, facts, dates, member == null ? "/applications" : $"/members/{member.Id}", flex);
     }
 
     private async Task<AutomationRecordView> PaymentAsync(Guid? id, CancellationToken ct)
@@ -299,8 +316,102 @@ public sealed class AutomationRecordReader : IAutomationRecordReader
         };
         var dates = new Dictionary<string, DateTime>(StringComparer.Ordinal);
         AddMember(member, facts, dates);
-        return ClubView($"{payment.MemberName}: {payment.Description}", member, facts, dates, $"/members/{payment.MemberId}");
+        var flex = await AddFlexAsync(AutomationRecords.Member, member?.Id, facts, dates, ct);
+        return ClubView($"{payment.MemberName}: {payment.Description}", member, facts, dates, $"/members/{payment.MemberId}", flex);
     }
+
+    // ── tags and custom fields ───────────────────────────────────────────────
+
+    /// <summary>The workspace's own fields a record was read with, named for the run log.</summary>
+    private sealed record Flex(IReadOnlyList<AutomationField> Fields, IReadOnlyList<AutomationDateField> Dates);
+
+    /// <summary>
+    /// Adds the record's tags and custom fields to its facts, as conditions test them
+    /// (<see cref="AutomationCatalog.FlexFields"/>), and its custom dates to the dates a wait can
+    /// wait for. For the club's records they are the member's; a record without a member has
+    /// none, so "tags is VIP" does not hold for it and "tags is empty" does.
+    /// </summary>
+    private async Task<Flex> AddFlexAsync(string automationRecord, Guid? recordId, Dictionary<string, FactValue> facts,
+        Dictionary<string, DateTime> dates, CancellationToken ct)
+    {
+        var entityType = AutomationCatalog.FlexRecordType(automationRecord);
+        if (entityType == null) return new Flex([], []);
+        var definitions = await _db.CustomFieldDefinitions.AsNoTracking()
+            .Where(d => d.EntityType == entityType)
+            .OrderBy(d => d.Order).ThenBy(d => d.CreatedAtUtc)
+            .ToListAsync(ct);
+        var tags = (await _db.Tags.AsNoTracking().OrderBy(t => t.Name).Select(t => new { t.Id, t.Name }).ToListAsync(ct))
+            .Select(t => new AutomationChoice(t.Id.ToString(), t.Name)).ToList();
+        var flex = new Flex(AutomationCatalog.FlexFields(automationRecord, definitions, tags), AutomationCatalog.FlexDates(automationRecord, definitions));
+        if (recordId is not Guid id) return flex;
+
+        var carried = (await _db.RecordTags.AsNoTracking().Where(t => t.RecordId == id).Select(t => t.TagId).ToListAsync(ct))
+            .Select(t => t.ToString()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        facts[AutomationCatalog.TagsField] = FactValue.Of(tags.Where(t => carried.Contains(t.Value)).SelectMany(t => new[] { t.Value, t.Label }).ToArray());
+        if (definitions.Count == 0) return flex;
+
+        var entries = await _db.CustomFieldEntries.AsNoTracking().Where(e => e.RecordId == id && e.EntityType == entityType).ToListAsync(ct);
+        var names = await LinkNamesAsync(definitions, entries, ct);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        foreach (var definition in definitions)
+        {
+            var key = AutomationCatalog.CustomFieldPrefix + definition.Key;
+            var rows = entries.Where(e => e.FieldId == definition.Id).ToList();
+            var first = rows.FirstOrDefault();
+            switch (definition.Type)
+            {
+                case CustomFieldTypes.Number or CustomFieldTypes.Money:
+                    facts[key] = FactValue.OfNumber(first?.NumberValue);
+                    break;
+                // A box never ticked reads as unticked, as it does on the record and in the lists.
+                case CustomFieldTypes.Checkbox:
+                    facts[key] = FactValue.OfFlag(first?.BoolValue == true);
+                    break;
+                case CustomFieldTypes.Date:
+                    if (first?.DateValue is DateOnly date)
+                    {
+                        facts[key] = FactValue.OfNumber(date.DayNumber - today.DayNumber);
+                        dates[key] = date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+                    }
+                    break;
+                case CustomFieldTypes.Link:
+                    if (first?.LinkId is Guid link) facts[key] = FactValue.Of(link.ToString(), names.GetValueOrDefault(link));
+                    break;
+                default:
+                    facts[key] = FactValue.Of(rows.Select(r => r.TextValue).ToArray());
+                    break;
+            }
+        }
+        return flex;
+    }
+
+    /// <summary>The names of the records link fields point at, so "is" and "contains" test them by name.</summary>
+    private async Task<Dictionary<Guid, string>> LinkNamesAsync(
+        IReadOnlyList<CustomFieldDefinition> definitions, IReadOnlyList<CustomFieldEntry> entries, CancellationToken ct)
+    {
+        var names = new Dictionary<Guid, string>();
+        foreach (var group in definitions.Where(d => d.Type == CustomFieldTypes.Link).GroupBy(d => d.LinkEntityType))
+        {
+            var fieldIds = group.Select(d => d.Id).ToHashSet();
+            var ids = entries.Where(e => fieldIds.Contains(e.FieldId) && e.LinkId != null).Select(e => e.LinkId!.Value).Distinct().ToList();
+            if (ids.Count == 0) continue;
+            IQueryable<LinkName>? named = group.Key switch
+            {
+                RecordTypes.Lead => _db.Leads.AsNoTracking().Where(r => ids.Contains(r.Id)).Select(r => new LinkName(r.Id, r.Name)),
+                RecordTypes.Contact => _db.Contacts.AsNoTracking().Where(r => ids.Contains(r.Id)).Select(r => new LinkName(r.Id, r.Name)),
+                RecordTypes.Company => _db.Companies.AsNoTracking().Where(r => ids.Contains(r.Id)).Select(r => new LinkName(r.Id, r.Name)),
+                RecordTypes.Deal => _db.Deals.AsNoTracking().Where(r => ids.Contains(r.Id)).Select(r => new LinkName(r.Id, r.Name)),
+                RecordTypes.Member => _db.ClubMembers.AsNoTracking().Where(r => ids.Contains(r.Id) && r.ErasedAtUtc == null)
+                    .Select(r => new LinkName(r.Id, (r.FirstName + " " + r.LastName).Trim())),
+                _ => null,
+            };
+            if (named == null) continue;
+            foreach (var record in await named.ToListAsync(ct)) names[record.Id] = record.Name;
+        }
+        return names;
+    }
+
+    private sealed record LinkName(Guid Id, string Name);
 
     // ── the scan and the workspace ───────────────────────────────────────────
 
@@ -319,6 +430,11 @@ public sealed class AutomationRecordReader : IAutomationRecordReader
     // Stripe reports) act as the workspace's owner, as a lead from the website does.
     public Task<Guid?> WorkspaceOwnerAsync(Guid organizationId, CancellationToken ct = default) =>
         _db.Organizations.AsNoTracking().Where(o => o.Id == organizationId).Select(o => (Guid?)o.OwnerUserId).FirstOrDefaultAsync(ct);
+
+    public async Task<AutomationWorkspaceFields> WorkspaceFieldsAsync(CancellationToken ct = default) => new(
+        await _db.CustomFieldDefinitions.AsNoTracking().OrderBy(d => d.EntityType).ThenBy(d => d.Order).ThenBy(d => d.CreatedAtUtc).ToListAsync(ct),
+        (await _db.Tags.AsNoTracking().OrderBy(t => t.Name).Select(t => new { t.Id, t.Name }).ToListAsync(ct))
+            .Select(t => new AutomationChoice(t.Id.ToString(), t.Name)).ToList());
 
     public async Task<TimeZoneInfo> ZoneAsync(Guid organizationId, CancellationToken ct = default) =>
         RegionalSettings.ZoneOf(await _db.Organizations.AsNoTracking().Where(o => o.Id == organizationId).Select(o => o.TimeZone).FirstOrDefaultAsync(ct));

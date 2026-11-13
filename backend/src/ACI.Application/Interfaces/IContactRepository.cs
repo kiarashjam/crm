@@ -102,6 +102,7 @@ public sealed record DoNotContactMarked(IReadOnlyList<Guid> ContactIds, IReadOnl
 
 /// <summary>One contact as the export writes it.</summary>
 public sealed record ContactExportRow(
+    Guid Id,
     string Name,
     string Email,
     string? Phone,

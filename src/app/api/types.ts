@@ -291,6 +291,13 @@ export interface DealBoardQuery {
   closeTo?: string;
   staleOnly?: boolean;
   sort?: 'close' | 'value' | 'created' | 'name';
+  /** Tag ids: deals with any of them (all of them with tagMatch "all"). */
+  tag?: string[];
+  tagMatch?: 'any' | 'all';
+  /** Tag ids: deals with none of them. */
+  notTag?: string[];
+  /** Conditions on custom fields, each "key:op[:value]", all of which must hold. */
+  field?: string[];
 }
 
 export type TaskStatusType = 'todo' | 'in_progress' | 'completed' | 'cancelled';

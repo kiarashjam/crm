@@ -9,6 +9,7 @@ import AppHeader from '@/app/components/AppHeader';
 import { Spinner } from '@/app/components/motion/CadenceLoader';
 import { RecordSkeleton } from '@/app/components/PageSkeleton';
 import CustomFieldsCard from '@/app/components/CustomFieldsCard';
+import RecordTagsEditor from '@/app/components/flex/RecordTagsEditor';
 import AttachmentsCard from '@/app/components/AttachmentsCard';
 import { ClientClubCard } from '@/app/components/corporate/ClientClubCard';
 import { PageTransition } from '@/app/components/PageTransition';
@@ -410,6 +411,11 @@ export default function CompanyDetail() {
               </RecordCard>
 
               <ClientClubCard kind="company" id={company.id} name={company.name} />
+
+              {/* Tags on the company */}
+              <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+                <RecordTagsEditor entityType="company" recordId={company.id} />
+              </div>
 
               {/* Custom fields (renders only when defined for companies) */}
               <CustomFieldsCard

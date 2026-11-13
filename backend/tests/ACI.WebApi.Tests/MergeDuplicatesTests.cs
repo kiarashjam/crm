@@ -114,6 +114,86 @@ public class MergeDuplicatesTests
         fields.GetProperty("seats").GetInt32().Should().Be(12);
     }
 
+    private static CustomFieldDefinition FieldDef(World w, string type, string key, string kind, string? linkTo = null) => new()
+    {
+        Id = Guid.NewGuid(), OrganizationId = w.Org.Id, OwnerUserId = w.User.Id, EntityType = type, Key = key, Label = key, Type = kind,
+        LinkEntityType = linkTo, CreatedAtUtc = DateTime.UtcNow,
+    };
+
+    private static CustomFieldEntry ValueOn(World w, CustomFieldDefinition field, Guid recordId, string? text = null, decimal? number = null, Guid? link = null) => new()
+    {
+        Id = Guid.NewGuid(), OrganizationId = w.Org.Id, OwnerUserId = w.User.Id, EntityType = field.EntityType, RecordId = recordId, FieldId = field.Id,
+        TextValue = text, TextKey = text, NumberValue = number, LinkId = link, UpdatedAtUtc = DateTime.UtcNow,
+    };
+
+    private static RecordTag TagOn(World w, Tag tag, string type, Guid recordId) => new()
+    {
+        Id = Guid.NewGuid(), OrganizationId = w.Org.Id, OwnerUserId = w.User.Id, TagId = tag.Id, EntityType = type, RecordId = recordId, CreatedAtUtc = DateTime.UtcNow,
+    };
+
+    [Fact]
+    public async Task MergingLeads_FoldsTheTypedValuesAndTags_TheKeptLeadsValuesWin()
+    {
+        using var connection = new SqliteConnection("DataSource=:memory:");
+        var w = await OpenAsync(connection);
+        await using var db = w.Db;
+        var keep = NewLead(w, "Ada Lovelace", "ada@example.ch");
+        var drop = NewLead(w, "Ada Lovelace", "ada@example.ch");
+        var deal = NewDeal(w, "Ada's membership");
+        var tier = FieldDef(w, RecordTypes.Lead, "tier", CustomFieldTypes.Select);
+        var budget = FieldDef(w, RecordTypes.Lead, "budget", CustomFieldTypes.Number);
+        var referrer = FieldDef(w, RecordTypes.Deal, "referrer", CustomFieldTypes.Link, RecordTypes.Lead);
+        var vip = new Tag { Id = Guid.NewGuid(), OrganizationId = w.Org.Id, OwnerUserId = w.User.Id, Name = "VIP", CreatedAtUtc = DateTime.UtcNow, UpdatedAtUtc = DateTime.UtcNow };
+        var golf = new Tag { Id = Guid.NewGuid(), OrganizationId = w.Org.Id, OwnerUserId = w.User.Id, Name = "Golf", CreatedAtUtc = DateTime.UtcNow, UpdatedAtUtc = DateTime.UtcNow };
+        db.AddRange(keep, drop, deal, tier, budget, referrer, vip, golf);
+        db.AddRange(
+            ValueOn(w, tier, keep.Id, text: "Gold"), ValueOn(w, tier, drop.Id, text: "Silver"), ValueOn(w, budget, drop.Id, number: 5000),
+            ValueOn(w, referrer, deal.Id, link: drop.Id),
+            TagOn(w, vip, RecordTypes.Lead, keep.Id), TagOn(w, vip, RecordTypes.Lead, drop.Id), TagOn(w, golf, RecordTypes.Lead, drop.Id));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        (await new LeadRepository(db).MergeIntoAsync(keep.Id, drop.Id, w.User.Id, w.Org.Id)).Should().BeTrue();
+        db.ChangeTracker.Clear();
+
+        var values = await db.CustomFieldEntries.ToListAsync();
+        values.Should().HaveCount(3, "the duplicate's tier gave way to the kept lead's");
+        values.Single(e => e.FieldId == tier.Id).Should().Match<CustomFieldEntry>(e => e.RecordId == keep.Id && e.TextValue == "Gold");
+        values.Single(e => e.FieldId == budget.Id).Should().Match<CustomFieldEntry>(e => e.RecordId == keep.Id && e.NumberValue == 5000, "an empty field takes the duplicate's value");
+        values.Single(e => e.FieldId == referrer.Id).LinkId.Should().Be(keep.Id, "a link to the duplicate now points at the lead kept");
+        (await db.RecordTags.Select(t => new { t.RecordId, t.TagId }).ToListAsync())
+            .Should().BeEquivalentTo(new[] { new { RecordId = keep.Id, TagId = vip.Id }, new { RecordId = keep.Id, TagId = golf.Id } }, "the tags of both, once each");
+    }
+
+    [Fact]
+    public async Task MergingMembers_FoldsTheirValuesAndTags()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (owner, ownerId) = await SignInAsync(factory, "owner@pavillon46.ch");
+        owner.In(await CreateAsync(factory, ownerId, "Pavillon46"));
+        async Task<Guid> Post(string url, object body)
+        {
+            var res = await owner.PostAsync(url, Body(body));
+            res.IsSuccessStatusCode.Should().BeTrue(await res.Content.ReadAsStringAsync());
+            return JsonDocument.Parse(await res.Content.ReadAsStringAsync()).RootElement.GetProperty("id").GetGuid();
+        }
+        await Post("/api/custom-fields", new { entityType = "member", label = "Handicap", type = "number" });
+        var board = await Post("/api/tags", new { name = "Board" });
+        var keep = await Post("/api/members", new { firstName = "Ana", lastName = "Silva", email = "ana@example.ch", tier = "Gold", status = "Active" });
+        var drop = await Post("/api/members", new { firstName = "Ana", lastName = "Silva", email = "ana.silva@example.ch", tier = "Gold", status = "Active" });
+        (await owner.PutAsync("/api/custom-fields/values", Body(new { entityType = "member", recordId = drop, values = new { handicap = 12 } })))
+            .StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await owner.PutAsync("/api/tags/records", Body(new { entityType = "member", recordId = drop, tagIds = new[] { board } }))).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        (await owner.PostAsync($"/api/members/{keep}/merge", Body(new { otherMemberId = drop }))).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var values = JsonDocument.Parse(await owner.GetStringAsync($"/api/custom-fields/values?entityType=member&recordId={keep}")).RootElement;
+        values.GetProperty("handicap").GetDecimal().Should().Be(12);
+        JsonDocument.Parse(await owner.GetStringAsync($"/api/tags/records?entityType=member&recordId={keep}")).RootElement.EnumerateArray()
+            .Select(t => t.GetGuid()).Should().Equal(board);
+        (await factory.Services.Read(db => db.CustomFieldEntries.Count(e => e.RecordId == drop) + db.RecordTags.Count(t => t.RecordId == drop))).Should().Be(0);
+    }
+
     [Fact]
     public async Task MergingLeads_ThatBothBecameContacts_KeepsBothContacts()
     {

@@ -99,6 +99,89 @@ public class AutomationLogicTests
         AutomationConditions.Problem(nested, LeadCreated).Should().Contain("cannot hold another group");
     }
 
+    // ── tags and custom fields ───────────────────────────────────────────────
+
+    private static ACI.Domain.Entities.CustomFieldDefinition Field(string entityType, string key, string type, params string[] options) => new()
+    {
+        Id = Guid.NewGuid(), EntityType = entityType, Key = key, Label = char.ToUpperInvariant(key[0]) + key[1..], Type = type,
+        OptionsJson = options.Length == 0 ? null : System.Text.Json.JsonSerializer.Serialize(options),
+    };
+
+    private static readonly ACI.Domain.Entities.CustomFieldDefinition[] Fields =
+    [
+        Field("deal", "tier", "select", "Gold", "Silver"),
+        Field("deal", "seats", "number"),
+        Field("deal", "fee", "money"),
+        Field("deal", "renewal", "date"),
+        Field("deal", "corporate", "checkbox"),
+        Field("deal", "interests", "multiselect", "Golf", "Wine"),
+        Field("deal", "account", "link"),
+        Field("lead", "budget", "money"),
+        Field("member", "handicap", "number"),
+    ];
+
+    private static readonly AutomationChoice[] WorkspaceTags = [new("7f2b5c1e-0000-0000-0000-000000000001", "VIP"), new("7f2b5c1e-0000-0000-0000-000000000002", "Board")];
+
+    [Fact]
+    public void EachCustomFieldIsTestedAsTheKindOfValueItHolds_OnTheTriggersOfItsKindOfRecord()
+    {
+        var deal = AutomationCatalog.WithFlex(DealMoved, Fields, WorkspaceTags);
+        AutomationField Of(string key) => deal.Fields.Single(f => f.Key == key);
+        Of("tags").Type.Should().Be(AutomationFieldTypes.Choice);
+        Of("tags").Choices!.Select(c => c.Label).Should().Equal("VIP", "Board");
+        Of("cf:tier").Choices!.Select(c => c.Value).Should().Equal("Gold", "Silver");
+        Of("cf:interests").Type.Should().Be(AutomationFieldTypes.Choice);
+        Of("cf:seats").Type.Should().Be(AutomationFieldTypes.Number);
+        Of("cf:fee").Type.Should().Be(AutomationFieldTypes.Money);
+        Of("cf:renewal").Type.Should().Be(AutomationFieldTypes.Number, "a date is tested as the days from today to it");
+        Of("cf:renewal").Label.Should().Contain("days from today");
+        Of("cf:corporate").Type.Should().Be(AutomationFieldTypes.Bool);
+        Of("cf:account").Type.Should().Be(AutomationFieldTypes.Text, "a link is tested by the linked record's name");
+        deal.Fields.Should().NotContain(f => f.Key == "cf:budget" || f.Key == "cf:handicap", "those are a lead's and a member's");
+        deal.Dates.Select(d => d.Key).Should().Contain(["expectedClose", "cf:renewal"]);
+        deal.Fields.Take(DealMoved.Fields.Count).Should().Equal(DealMoved.Fields, "the trigger's own fields come first, as they were");
+
+        var booking = AutomationCatalog.WithFlex(AutomationCatalog.Find(AutomationCatalog.ReservationCreated)!, Fields, WorkspaceTags);
+        booking.Fields.Single(f => f.Key == "tags").Label.Should().Be("Member's tags", "a booking is tested by its member's tags");
+        booking.Fields.Single(f => f.Key == "cf:handicap").Label.Should().Be("Member's Handicap");
+
+        var task = AutomationCatalog.Find(AutomationCatalog.TaskOverdue)!;
+        AutomationCatalog.WithFlex(task, Fields, WorkspaceTags).Should().BeSameAs(task, "a task carries no tags or custom fields");
+        AutomationCatalog.FlexRecordType(AutomationRecords.Contract).Should().BeNull();
+    }
+
+    [Fact]
+    public void ARecordsTagsAreTestedOneByOne_ByIdOrName()
+    {
+        var facts = new Dictionary<string, FactValue>
+        {
+            ["tags"] = FactValue.Of(WorkspaceTags[0].Value, "VIP", WorkspaceTags[1].Value, "Board"),
+            ["cf:interests"] = FactValue.Of("Golf", "Wine"),
+            ["cf:corporate"] = FactValue.OfFlag(false),
+        };
+        AutomationConditions.Holds(All(When("tags", "is", WorkspaceTags[0].Value)), facts).Should().BeTrue("it has VIP");
+        AutomationConditions.Holds(All(When("tags", "is", "board")), facts).Should().BeTrue("by name too, ignoring case");
+        AutomationConditions.Holds(All(When("tags", "is_not", "VIP")), facts).Should().BeFalse();
+        AutomationConditions.Holds(All(When("tags", "is_none_of", values: ["Lapsed", "Guest"])), facts).Should().BeTrue();
+        AutomationConditions.Holds(All(When("tags", "is_empty")), facts).Should().BeFalse();
+        AutomationConditions.Holds(All(When("tags", "is_empty")), new Dictionary<string, FactValue>()).Should().BeTrue("a record with no tags");
+        AutomationConditions.Holds(All(When("cf:interests", "is", "Wine")), facts).Should().BeTrue("one of the options picked");
+        AutomationConditions.Holds(All(When("cf:corporate", "is_false")), facts).Should().BeTrue();
+    }
+
+    [Fact]
+    public void SavingChecksATagOrFieldConditionAgainstTheWorkspacesFields()
+    {
+        var deal = AutomationCatalog.WithFlex(DealMoved, Fields, WorkspaceTags);
+        AutomationConditions.Problem(All(When("cf:seats", "gte", "2"), When("tags", "is", "VIP")), deal).Should().BeNull();
+        AutomationConditions.Problem(All(When("cf:seats", "gte", "2")), DealMoved).Should().Contain("not something", "without the workspace's fields");
+        AutomationConditions.Problem(All(When("cf:budget", "gte", "2")), deal).Should().Contain("not something", "a lead's field");
+        AutomationConditions.Problem(All(When("cf:tier", "contains", "Go")), deal).Should().Contain("cannot be tested");
+        AutomationConditions.Problem(All(When("cf:seats", "gte", "many")), deal).Should().Contain("number");
+        AutomationConditions.Describe(All(When("tags", "is_any_of", values: [WorkspaceTags[1].Value])), deal)
+            .Should().Be("tags is any of Board", "the run log names a tag, not its id");
+    }
+
     // ── steps ────────────────────────────────────────────────────────────────
 
     private static AutomationStep Step(string type) => new() { Id = Guid.NewGuid(), Type = type };

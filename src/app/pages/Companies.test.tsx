@@ -3,6 +3,7 @@
 // exported, over the twenty companies it had been sent.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import type { CompanyListItem, CompanySummary } from '@/app/api/companies';
 import { withQueries } from '@/test/queryWrapper';
@@ -18,7 +19,7 @@ const summary: CompanySummary = {
   withoutIndustry: 112,
 };
 
-const api = vi.hoisted(() => ({ getCompaniesPaged: vi.fn(), getDealsPaged: vi.fn(), deleteCompany: vi.fn() }));
+const api = vi.hoisted(() => ({ getCompaniesPaged: vi.fn(), getDealsPaged: vi.fn(), deleteCompany: vi.fn(), getSavedViews: vi.fn() }));
 vi.mock('@/app/api', async () => ({ ...(await vi.importActual<typeof import('@/app/api')>('@/app/api')), ...api }));
 const companiesApi = vi.hoisted(() => ({ getCompanySummary: vi.fn(), exportCompanies: vi.fn() }));
 vi.mock('@/app/api/companies', async () => ({
@@ -55,9 +56,27 @@ beforeEach(() => {
   api.getDealsPaged.mockResolvedValue({ items: [], totalCount: 0, page: 1, pageSize: 500, totalPages: 0, hasNextPage: false, hasPreviousPage: false });
   companiesApi.getCompanySummary.mockResolvedValue(summary);
   companiesApi.exportCompanies.mockResolvedValue({ exported: 140, total: 140 });
+  api.getSavedViews.mockResolvedValue([]);
 });
 
 describe('Companies', () => {
+  it('opens a saved view with its search, in the box and in what the server is asked', async () => {
+    api.getSavedViews.mockResolvedValue([{
+      id: 'v1', list: 'companies', name: 'Banks', shared: true, mine: false, isDefault: false, ownerName: 'Kia',
+      query: { search: 'Banque', industry: 'Finance' }, columns: null, version: 'v1', updatedAtUtc: '2026-11-13T00:00:00Z',
+    }]);
+    const user = userEvent.setup();
+    show();
+    await screen.findByText('Hotel Bellevue');
+    await user.click(screen.getByRole('button', { name: /^views$/i }));
+    await user.click(await screen.findByRole('menuitem', { name: /^Banks/ }));
+    await waitFor(() => expect(lastQuery()).toMatchObject({ search: 'Banque', industry: 'Finance' }));
+    // And it stays so once the page has written its search into the address.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(lastQuery()).toMatchObject({ search: 'Banque', industry: 'Finance' });
+    expect(screen.getByLabelText('Search companies')).toHaveValue('Banque');
+  });
+
   it("shows the workspace's figures, and each row's own counts", async () => {
     show();
     await screen.findByText('Hotel Bellevue');

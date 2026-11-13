@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import {
@@ -48,7 +49,11 @@ import { Spinner } from '@/app/components/motion/CadenceLoader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { KanbanSkeleton } from '@/app/components/PageSkeleton';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { getDealBoardColumn, getDealById, updateDeal, createDeal, deleteDeal, messages } from '@/app/api';
+import {
+  getDealBoardColumn, getDealById, updateDeal, createDeal, deleteDeal, messages, readFlexParams, appendFlexFilters, writeFlexParams,
+} from '@/app/api';
+import { FlexFilterBar } from '@/app/components/flex/FlexFilterBar';
+import { SavedViewsMenu } from '@/app/components/flex/SavedViewsMenu';
 import {
   dealBoardKey, queryKeys, recordActivitiesKey, tasksKey, useAllCompanies, useAllContacts, useAllDeals, useCacheWriter,
   useDealBoard, useOrgMembers, usePipelines, useRecordActivities, useTasksList, useWorkspaceScope,
@@ -283,6 +288,9 @@ export default function Pipeline() {
   const debouncedSearch = useDebounce(searchQuery, 300);
   const debouncedMin = useDebounce(filterValueMin, 300);
   const debouncedMax = useDebounce(filterValueMax, 300);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const flexKey = searchParams.toString();
+  const flex = useMemo(() => readFlexParams(new URLSearchParams(flexKey)), [flexKey]);
   const boardQuery = useMemo<DealBoardQuery>(() => ({
     pipelineId: selectedPipelineId ?? undefined,
     take: BOARD_PAGE,
@@ -296,7 +304,44 @@ export default function Pipeline() {
     closeFrom: filterCloseDateFrom || undefined,
     closeTo: filterCloseDateTo || undefined,
     staleOnly: filterStale || undefined,
-  }), [selectedPipelineId, boardSort, debouncedSearch, filterMyDeals, filterAssignee, debouncedMin, debouncedMax, filterCloseDateFrom, filterCloseDateTo, filterStale]);
+    // Conditions on the deals' tags and custom fields, kept in the address.
+    tag: flex.tags,
+    tagMatch: flex.tagMatch,
+    notTag: flex.notTags,
+    field: flex.fields,
+  }), [selectedPipelineId, boardSort, debouncedSearch, filterMyDeals, filterAssignee, debouncedMin, debouncedMax, filterCloseDateFrom, filterCloseDateTo, filterStale, flex]);
+
+  // The board's filters as a saved view keeps them: the page's own (kept in its state) under the
+  // names of the board's query, with the tag and field conditions from the address. The
+  // pipeline on screen is not part of a view, so a view opens on whichever one is shown.
+  const boardView = useMemo(() => {
+    const kept = new URLSearchParams();
+    if (searchQuery.trim()) kept.set('search', searchQuery.trim());
+    if (filterMyDeals) kept.set('mine', 'true');
+    if (filterAssignee !== 'all') kept.set('assignee', filterAssignee);
+    if (filterValueMin.trim()) kept.set('minAmount', filterValueMin.trim());
+    if (filterValueMax.trim()) kept.set('maxAmount', filterValueMax.trim());
+    if (filterCloseDateFrom) kept.set('closeFrom', filterCloseDateFrom);
+    if (filterCloseDateTo) kept.set('closeTo', filterCloseDateTo);
+    if (filterStale) kept.set('staleOnly', 'true');
+    if (boardSort !== 'close') kept.set('sort', boardSort);
+    return appendFlexFilters(kept, flex);
+  }, [searchQuery, filterMyDeals, filterAssignee, filterValueMin, filterValueMax, filterCloseDateFrom, filterCloseDateTo, filterStale, boardSort, flex]);
+
+  /** Open the board as a saved view has it: its own filters set, its tag and field conditions put in the address. */
+  const openBoardView = (next: URLSearchParams) => {
+    setSearchQuery(next.get('search') ?? '');
+    setFilterMyDeals(next.get('mine') === 'true');
+    setFilterAssignee(next.get('assignee') || 'all');
+    setFilterValueMin(next.get('minAmount') ?? '');
+    setFilterValueMax(next.get('maxAmount') ?? '');
+    setFilterCloseDateFrom(next.get('closeFrom') ?? '');
+    setFilterCloseDateTo(next.get('closeTo') ?? '');
+    setFilterStale(next.get('staleOnly') === 'true');
+    const sort = next.get('sort');
+    setBoardSort(sort === 'value' || sort === 'created' || sort === 'name' ? sort : 'close');
+    setSearchParams(writeFlexParams(searchParams, readFlexParams(next)), { replace: true });
+  };
 
   // The board for the pipeline on screen and the filters set, a page of cards per stage.
   // Keyed by those filters, so an older filter's answer can never replace the board for
@@ -1099,6 +1144,13 @@ export default function Pipeline() {
                     Stale
                   </button>
                 )}
+
+                {view.layout === 'board' && (
+                  <FlexFilterBar entity="deal" params={searchParams} onChange={(next) => setSearchParams(next, { replace: true })} />
+                )}
+
+                {/* The board's filters, order and tag and field conditions kept under a name. */}
+                {view.layout === 'board' && <SavedViewsMenu list="deals" params={boardView} onChange={openBoardView} />}
 
                 {view.layout === 'board' && (
                   <Select value={boardSort} onValueChange={(v) => setBoardSort(v as NonNullable<DealBoardQuery['sort']>)}>

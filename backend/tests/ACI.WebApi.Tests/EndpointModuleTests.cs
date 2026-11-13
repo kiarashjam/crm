@@ -40,6 +40,8 @@ public class EndpointModuleTests
         ["WorkQueueController"] = "each person's tasks, which belong to both",
         ["AttachmentsController"] = "files on records of both modules",
         ["CustomFieldsController"] = "fields on records of both modules",
+        ["TagsController"] = "tags on records of both modules",
+        ["SavedViewsController"] = "saved views of lists of both modules",
         ["SearchController"] = "searches both; with Sales off it leaves leads and deals out of what it finds",
         ["EmailController"] = "email to contacts, which belong to both",
         ["TemplatesController"] = "email templates, used for contacts of both modules",

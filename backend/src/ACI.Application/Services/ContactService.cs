@@ -15,17 +15,20 @@ public class ContactService : IContactService
     private readonly IActivityRepository _activityRepository;
     private readonly IWorkspaceRecords _records;
     private readonly ILogger<ContactService> _logger;
+    private readonly IRecordFlexQuery? _flex;
 
     public ContactService(
-        IContactRepository repository, 
+        IContactRepository repository,
         IActivityRepository activityRepository,
         IWorkspaceRecords records,
-        ILogger<ContactService> logger)
+        ILogger<ContactService> logger,
+        IRecordFlexQuery? flex = null)
     {
         _repository = repository;
         _activityRepository = activityRepository;
         _records = records;
         _logger = logger;
+        _flex = flex;
     }
 
     /// <summary>The most rows one export writes: plenty for a workspace, and a bound on one request.</summary>
@@ -86,11 +89,16 @@ public class ContactService : IContactService
         // The rows the list would show, all of them: the page used to export the twenty
         // contacts on screen.
         var (rows, total) = await _repository.GetExportRowsAsync(userId, organizationId, options, MaxExportRows, ct);
-        var csv = new CsvExport(separator, "Name", "Email", "Phone", "Job title", "Company", "Do not contact", "Archived", "Last activity (UTC)", "Added (UTC)");
+        // The workspace's own fields and the tags follow the built-in columns.
+        var flex = _flex == null
+            ? FlexColumns.None
+            : await _flex.ExportColumnsAsync(userId, organizationId, Domain.Entities.RecordTypes.Contact, rows.Select(r => r.Id).ToList(), ct);
+        var csv = new CsvExport(separator, new[] { "Name", "Email", "Phone", "Job title", "Company", "Do not contact", "Archived", "Last activity (UTC)", "Added (UTC)" }
+            .Concat(flex.Headers).ToArray());
         foreach (var r in rows)
         {
-            csv.Row(r.Name, r.Email, r.Phone, r.JobTitle, r.CompanyName, CsvExport.YesNo(r.DoNotContact), CsvExport.YesNo(r.IsArchived),
-                CsvExport.Utc(r.LastActivityAtUtc), CsvExport.Utc(r.CreatedAtUtc));
+            csv.Row(new string?[] { r.Name, r.Email, r.Phone, r.JobTitle, r.CompanyName, CsvExport.YesNo(r.DoNotContact), CsvExport.YesNo(r.IsArchived),
+                CsvExport.Utc(r.LastActivityAtUtc), CsvExport.Utc(r.CreatedAtUtc) }.Concat(flex.CellsOf(r.Id)).ToArray());
         }
         _logger.LogInformation("Exported {Count} of {Total} contacts for user {UserId}", rows.Count, total, userId);
         return new ExportFile($"contacts-{DateTime.UtcNow:yyyy-MM-dd}.csv", csv.ToBytes(), rows.Count, total);

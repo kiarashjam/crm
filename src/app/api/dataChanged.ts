@@ -61,6 +61,9 @@ const NOT_RECORD_WRITES = [
   '/api/imports/analyze', '/api/imports/preview',
   '/api/privacy/find', '/api/privacy/export', '/api/privacy/erasure/preview',
   '/api/agent/chat',
+  // A list reads its page's custom values and tags in one POST each (the ids would not fit
+  // in an address): reads, which announced as writes would make every list read itself again.
+  '/api/custom-fields/values/batch', '/api/tags/records/batch',
 ];
 
 /** …except these, under an excluded prefix, which do change records. */
@@ -257,6 +260,10 @@ const CHANGES: Readonly<Record<string, readonly string[]>> = {
   retention: ['retention', 'referrals', 'renewals', 'tasks', 'work-queue', 'communications'],
   // A membership marked renewed moves the member's renewal date on.
   renewals: ['renewals', 'members', 'club-reports'],
+  // A record's custom values and tags show in the lists' columns and decide what their
+  // filters find; a field or a tag added, renamed or deleted is something a rule can test.
+  'custom-fields': ['custom-fields', 'leads', 'contacts', 'companies', 'deals', 'members', 'automations'],
+  tags: ['tags', 'leads', 'contacts', 'companies', 'deals', 'members', 'automations'],
 };
 
 /** What working a member's score out again changes: a crossing into at risk makes a task and queues an email. */

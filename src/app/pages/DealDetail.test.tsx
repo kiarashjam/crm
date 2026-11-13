@@ -13,6 +13,7 @@ vi.mock('@/app/api/tasks', () => ({ getTasksByDeal: async () => [] }));
 vi.mock('@/app/components/AppHeader', () => ({ default: () => null }));
 vi.mock('@/app/components/DealLineItemsCard', () => ({ default: () => null }));
 vi.mock('@/app/components/CustomFieldsCard', () => ({ default: () => null }));
+vi.mock('@/app/components/flex/RecordTagsEditor', () => ({ default: () => null }));
 vi.mock('@/app/components/AttachmentsCard', () => ({ default: () => null }));
 // The deal's contract and the member it brought in have their own tests; here, that the page shows them for this deal.
 vi.mock('./contracts/ContractPanel', () => ({

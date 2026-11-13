@@ -1,4 +1,5 @@
 import type { Company, CurrencyTotal, PagedResult, PaginationParams } from './types';
+import { appendFlexFilters, type FlexFilters } from './flexFilters';
 import { servesDemoData, authFetchJson, authFetch, ensureOk, type RequestOptions } from './apiClient';
 import { mockCompanies } from './mockData';
 import { exportCounts, type ExportResult } from './contacts';
@@ -57,8 +58,11 @@ export interface CompanyListFilters {
   /** false: only companies with no industry. */
   hasIndustry?: boolean;
   size?: string;
-  sortBy?: CompanySortField;
+  /** A field of the company's, or a custom field's key after "cf:". */
+  sortBy?: CompanySortField | `cf:${string}`;
   sortDir?: 'asc' | 'desc';
+  /** Conditions on the companies' tags and custom fields (the server applies them; demo data has none). */
+  flex?: FlexFilters;
 }
 
 /** A company in the list, with its active contacts and the deals the viewer may see counted on the server. */
@@ -100,6 +104,7 @@ function companyListQuery(filters: CompanyListFilters): URLSearchParams {
   if (filters.size) query.set('size', filters.size);
   if (filters.sortBy) query.set('sortBy', filters.sortBy);
   if (filters.sortDir) query.set('sortDir', filters.sortDir);
+  appendFlexFilters(query, filters.flex);
   return query;
 }
 

@@ -18,13 +18,16 @@ public sealed class CompanyRepository : ICompanyRepository
             ? q.Where(c => c.UserId == userId && c.OrganizationId == null)
             : q.Where(c => c.OrganizationId == organizationId);
 
-    private static IQueryable<Company> ApplySearch(IQueryable<Company> query, string? search)
+    private IQueryable<Company> ApplySearch(IQueryable<Company> query, string? search)
     {
         if (string.IsNullOrWhiteSpace(search)) return query;
         var q = search.Trim().ToLowerInvariant();
-        return query.Where(c => c.Name.ToLower().Contains(q) 
-            || (c.Domain != null && c.Domain.ToLower().Contains(q)) 
-            || (c.Industry != null && c.Industry.ToLower().Contains(q)));
+        // Their custom fields' text and their tags' names too.
+        var flexHits = FlexQueryable.SearchHits(_db, q);
+        return query.Where(c => c.Name.ToLower().Contains(q)
+            || (c.Domain != null && c.Domain.ToLower().Contains(q))
+            || (c.Industry != null && c.Industry.ToLower().Contains(q))
+            || flexHits.Contains(c.Id));
     }
 
     /// <summary>
@@ -32,9 +35,9 @@ public sealed class CompanyRepository : ICompanyRepository
     /// The page filtered and sorted the twenty companies it had been sent, so "most contacts"
     /// ordered one page and an industry filter missed every other.
     /// </summary>
-    private IQueryable<Company> Query(Guid userId, Guid? organizationId, CompanyQueryOptions options)
+    private IQueryable<Company> Query(Guid userId, Guid? organizationId, CompanyQueryOptions options, FlexPlan plan)
     {
-        var query = ApplySearch(FilterByUserAndOrg(_db.Companies.AsNoTracking(), userId, organizationId), options.Search);
+        var query = FlexQueryable.Filter(ApplySearch(FilterByUserAndOrg(_db.Companies.AsNoTracking(), userId, organizationId), options.Search), _db, plan);
         if (!string.IsNullOrWhiteSpace(options.Industry))
         {
             var industry = options.Industry.Trim().ToLower();
@@ -53,6 +56,7 @@ public sealed class CompanyRepository : ICompanyRepository
         // Counted as the list shows them: active contacts, and deals the caller may see.
         var contacts = _db.Contacts.Where(x => !x.IsArchived);
         var deals = _db.Deals.VisibleTo(_db, userId, organizationId);
+        if (FlexQueryable.Sort(query, _db, plan) is { } byField) return byField.ThenBy(c => c.Name).ThenBy(c => c.Id);
         var desc = string.Equals(options.SortDir?.Trim(), "desc", StringComparison.OrdinalIgnoreCase);
         return (options.SortBy?.Trim().ToLowerInvariant()) switch
         {
@@ -79,7 +83,7 @@ public sealed class CompanyRepository : ICompanyRepository
         CompanyQueryOptions options,
         CancellationToken ct = default)
     {
-        var query = Query(userId, organizationId, options);
+        var query = Query(userId, organizationId, options, await FlexQueryable.PlanAsync(_db, RecordTypes.Company, options.Flex, ct));
         var totalCount = await query.CountAsync(ct);
         var items = await query.Skip(skip).Take(take).ToListAsync(ct);
         return (items, totalCount);
@@ -126,7 +130,7 @@ public sealed class CompanyRepository : ICompanyRepository
     public async Task<(IReadOnlyList<Company> Rows, int Total)> GetExportRowsAsync(
         Guid userId, Guid? organizationId, CompanyQueryOptions options, int max, CancellationToken ct = default)
     {
-        var query = Query(userId, organizationId, options);
+        var query = Query(userId, organizationId, options, await FlexQueryable.PlanAsync(_db, RecordTypes.Company, options.Flex, ct));
         var total = await query.CountAsync(ct);
         var rows = await query.Take(max).ToListAsync(ct);
         return (rows, total);

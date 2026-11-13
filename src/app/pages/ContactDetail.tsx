@@ -14,6 +14,7 @@ import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import EmailComposerDialog from '@/app/components/EmailComposerDialog';
 import CustomFieldsCard from '@/app/components/CustomFieldsCard';
+import RecordTagsEditor from '@/app/components/flex/RecordTagsEditor';
 import AttachmentsCard from '@/app/components/AttachmentsCard';
 import ReferredLeadsCard from '@/app/components/ReferredLeadsCard';
 import RelationshipsCard from '@/app/components/RelationshipsCard';
@@ -656,6 +657,11 @@ export default function ContactDetail() {
 
               {/* Leads this person referred, each a link to that lead (the Sales module's) */}
               {salesOn && <ReferredLeadsCard contactId={contact.id} contactName={contact.name} revision={recordRevision} />}
+
+              {/* Tags on the contact */}
+              <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+                <RecordTagsEditor entityType="contact" recordId={contact.id} />
+              </div>
 
               {/* Custom fields (renders only when fields are defined for contacts) */}
               <CustomFieldsCard

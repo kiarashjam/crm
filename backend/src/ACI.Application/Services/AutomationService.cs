@@ -61,6 +61,9 @@ public interface IAutomationService
     Task<Result<AutomationRuleDto>> UpdateAsync(Guid id, Guid? organizationId, AutomationWriteRequest request, CancellationToken ct = default);
     Task<Result> DeleteAsync(Guid id, Guid? organizationId, CancellationToken ct = default);
     AutomationCatalogDto Catalog();
+
+    /// <summary>The catalogue as the caller's workspace sees it: each trigger with the workspace's tags and custom fields its rules can test.</summary>
+    Task<AutomationCatalogDto> CatalogAsync(CancellationToken ct = default);
     Task<IReadOnlyList<AutomationRunDto>> RunsAsync(Guid? ruleId, string? status, int take, CancellationToken ct = default);
     Task<Result<AutomationRunDetailDto>> RunAsync(Guid runId, CancellationToken ct = default);
     Task<Result<AutomationRunDto>> RetryAsync(Guid runId, CancellationToken ct = default);
@@ -80,16 +83,22 @@ public sealed class AutomationService : IAutomationService
     private readonly ISequenceRepository? _sequences;
     private readonly IAutomationRunStore? _runs;
     private readonly IAutomationSignal? _signal;
+    private readonly IAutomationRecordReader? _records;
 
     public AutomationService(IAutomationRepository rules, IOrganizationRepository? organizations = null, ISequenceRepository? sequences = null,
-        IAutomationRunStore? runs = null, IAutomationSignal? signal = null)
+        IAutomationRunStore? runs = null, IAutomationSignal? signal = null, IAutomationRecordReader? records = null)
     {
         _rules = rules;
         _organizations = organizations;
         _sequences = sequences;
         _runs = runs;
         _signal = signal;
+        _records = records;
     }
+
+    /// <summary>The workspace's custom fields and tags, which its rules can test besides a trigger's own fields.</summary>
+    private Task<AutomationWorkspaceFields> WorkspaceFieldsAsync(CancellationToken ct) =>
+        _records?.WorkspaceFieldsAsync(ct) ?? Task.FromResult(AutomationWorkspaceFields.None);
 
     public async Task<IReadOnlyList<AutomationRuleDto>> ListAsync(Guid? organizationId, CancellationToken ct = default)
     {
@@ -164,8 +173,12 @@ public sealed class AutomationService : IAutomationService
         // The steps are checked again when they change, and when the trigger does: steps kept
         // from a lead's rule (an assignment, a sequence, a wait for a lead's date) cannot run on
         // a member's, and moved there unchecked they would be skipped every time it fires.
-        var stepsChanged = request.Actions != null || !string.Equals(trigger.Key, row.Trigger, StringComparison.Ordinal);
-        if (await CheckAsync(trigger, config, conditions, window, steps, organizationId, ct, stepsChanged) is { } invalid)
+        var triggerChanged = !string.Equals(trigger.Key, row.Trigger, StringComparison.Ordinal);
+        var stepsChanged = request.Actions != null || triggerChanged;
+        // Conditions kept as they were are not checked again either: one on a custom field
+        // deleted since would otherwise keep the rule from being renamed or switched off.
+        var conditionsChanged = sent != null || request.Clears(nameof(request.Conditions)) || triggerChanged;
+        if (await CheckAsync(trigger, config, conditions, window, steps, organizationId, ct, stepsChanged, conditionsChanged) is { } invalid)
             return invalid;
 
         row.Trigger = trigger.Key;
@@ -192,7 +205,15 @@ public sealed class AutomationService : IAutomationService
         return deleted ? Result.Success() : DomainErrors.Automation.NotFound;
     }
 
-    public AutomationCatalogDto Catalog() => new(AutomationCatalog.Triggers, new Dictionary<string, IReadOnlyList<string>>
+    public AutomationCatalogDto Catalog() => Catalog(AutomationCatalog.Triggers);
+
+    public async Task<AutomationCatalogDto> CatalogAsync(CancellationToken ct = default)
+    {
+        var workspace = await WorkspaceFieldsAsync(ct);
+        return Catalog(AutomationCatalog.Triggers.Select(t => AutomationCatalog.WithFlex(t, workspace.CustomFields, workspace.Tags)).ToList());
+    }
+
+    private static AutomationCatalogDto Catalog(IReadOnlyList<AutomationTrigger> triggers) => new(triggers, new Dictionary<string, IReadOnlyList<string>>
     {
         [AutomationFieldTypes.Text] = AutomationOps.For(AutomationFieldTypes.Text),
         [AutomationFieldTypes.Choice] = AutomationOps.For(AutomationFieldTypes.Choice),
@@ -215,8 +236,16 @@ public sealed class AutomationService : IAutomationService
     /// failing quietly every time it runs.
     /// </summary>
     private async Task<Error?> CheckAsync(AutomationTrigger trigger, IReadOnlyDictionary<string, string>? config, ConditionGroup? conditions,
-        SendWindow? window, IReadOnlyList<AutomationStep> steps, Guid? organizationId, CancellationToken ct, bool stepsChanged = true)
+        SendWindow? window, IReadOnlyList<AutomationStep> steps, Guid? organizationId, CancellationToken ct, bool stepsChanged = true,
+        bool conditionsChanged = true)
     {
+        // The trigger as this workspace sees it: with its tags and custom fields to test, and
+        // its custom dates to wait for.
+        if (conditionsChanged || stepsChanged)
+        {
+            var workspace = await WorkspaceFieldsAsync(ct);
+            trigger = AutomationCatalog.WithFlex(trigger, workspace.CustomFields, workspace.Tags);
+        }
         foreach (var key in (config ?? new Dictionary<string, string>()).Keys)
         {
             if (!trigger.TakesDaysBefore || key != AutomationCatalog.DaysBeforeKey)
@@ -225,7 +254,7 @@ public sealed class AutomationService : IAutomationService
             if (!int.TryParse(config![key], NumberStyles.Integer, CultureInfo.InvariantCulture, out var days) || days < 1 || days > AutomationCatalog.MaxDaysBefore)
                 return DomainErrors.Automation.Invalid($"A renewal rule fires between 1 and {AutomationCatalog.MaxDaysBefore} days ahead.");
         }
-        if (AutomationConditions.Problem(conditions, trigger) is { } badConditions) return DomainErrors.Automation.Invalid(badConditions);
+        if (conditionsChanged && AutomationConditions.Problem(conditions, trigger) is { } badConditions) return DomainErrors.Automation.Invalid(badConditions);
         if (window != null && SendWindows.Problem(window) is { } badWindow) return DomainErrors.Automation.Invalid(badWindow);
         // Steps saved before are not checked again when only the name or the switch changes:
         // a rule that was valid then keeps saving, as it did.
