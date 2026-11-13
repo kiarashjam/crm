@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { PERMISSION, type Permission } from '@/app/api/organizations';
 import type { CustomFieldDef, CustomFieldValues, SavedView, Tag } from '@/app/api';
 import type { ViewPreference } from '@/app/lib/viewPreferences';
+import { formatMoney } from '@/app/lib/money';
 import { withQueries } from '@/test/queryWrapper';
 
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), warning: vi.fn() }));
@@ -215,6 +216,20 @@ describe('the tag and field columns of a list', () => {
     expect(api.values).toHaveBeenCalledTimes(1);
     expect(api.values).toHaveBeenCalledWith('contact', ['c1', 'c2']);
     expect(api.recordTags).toHaveBeenCalledTimes(1);
+  });
+
+  it('write an amount as every other amount in the workspace is written, not as the export does', async () => {
+    function Spend() {
+      const view = fakeView();
+      view.columns['cf:spend'] = true;
+      const columns = useFlexColumns('contact', [{ id: 'c1' }], (r) => r.id, view);
+      const spend = columns.find((c) => c.id === 'cf:spend');
+      return <output aria-label="spend">{spend?.cell({ id: 'c1' })}</output>;
+    }
+    render(withQueries(<Spend />));
+    // The workspace writes money its own way (de-CH here), whatever separators this Node's ICU uses.
+    await waitFor(() => expect(screen.getByLabelText('spend').textContent).toBe(formatMoney(1200, 'CHF', { locale: 'de-CH' })));
+    expect(screen.getByLabelText('spend').textContent).not.toBe('1200.00 CHF');
   });
 });
 
