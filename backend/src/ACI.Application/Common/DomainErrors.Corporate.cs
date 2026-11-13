@@ -66,7 +66,7 @@ public static partial class DomainErrors
 
         public static Error SeatsFull(int seats) => new(
             "CorporateMembership.SeatsFull.Conflict",
-            $"All {seats} seats are taken. Swap a nominee, remove one, or give the membership more seats.");
+            $"{(seats == 1 ? "Its one seat is" : $"All {seats} seats are")} taken. Swap a nominee, remove one, or give the membership more seats.");
 
         public static Error AlreadySeated(string membershipName) => new(
             "CorporateMembership.AlreadySeated.Conflict",

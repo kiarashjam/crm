@@ -83,6 +83,8 @@ public sealed class ClubRepository : IClubRepository
         await MemberPos.ForgetDeletedMemberAsync(_db, id, organizationId, ct);
         // Their score, renewals and concerns go, and nobody is named as referred or sponsored by them.
         await MemberRetention.ForgetDeletedMemberAsync(_db, id, organizationId, ct);
+        // Their corporate seats go (one they hold is free for the company); guest lists keep them by name.
+        await MemberCorporate.ForgetDeletedMemberAsync(_db, id, organizationId, ct);
         _db.ClubMembers.Remove(row);
         await _db.SaveChangesAsync(ct);
         return true;
@@ -204,6 +206,8 @@ public sealed class ClubRepository : IClubRepository
 
             // Their concerns and renewals, and the members they referred or sponsored, are the kept member's.
             await MemberRetention.MoveToKeptMemberAsync(_db, keepId, dropId, organizationId, ct);
+            // Their seat on a company's corporate membership (one a member), and the guest lists they are on.
+            await MemberCorporate.MoveToKeptMemberAsync(_db, keepId, dropId, organizationId, name, ct);
             if (keep.ReferredByMemberId == null && drop.ReferredByMemberId is { } referrer && referrer != keepId) keep.ReferredByMemberId = referrer;
 
             keep.Phone = RecordMerge.Fill(keep.Phone, drop.Phone);

@@ -42,6 +42,12 @@ public interface IContactRepository
     Task<Contact> AddAsync(Contact contact, CancellationToken ct = default);
     Task<Contact?> UpdateAsync(Contact contact, Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<bool> DeleteAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default);
+
+    /// <summary>
+    /// What the club keeps the contact for as its private client (money on their house account, a
+    /// private event still to come), in words for refusing to delete them; null when nothing.
+    /// </summary>
+    Task<string?> KeptByClubAsync(Guid id, Guid? organizationId, CancellationToken ct = default);
     Task<bool> ArchiveAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<bool> UnarchiveAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default);
 

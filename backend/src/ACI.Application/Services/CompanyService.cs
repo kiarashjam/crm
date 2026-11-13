@@ -305,6 +305,7 @@ public class CompanyService : ICompanyService
         
         try
         {
+            if (await _repository.KeptByClubAsync(id, organizationId, ct) is { } kept) return DomainErrors.Company.KeptByClub(kept);
             var deleted = await _repository.DeleteAsync(id, userId, organizationId, ct);
             
             if (!deleted)

@@ -287,10 +287,15 @@ public sealed class CompanyRepository : ICompanyRepository
         await _db.Leads.Where(l => l.CompanyId == id).ExecuteUpdateAsync(s => s.SetProperty(l => l.CompanyId, (Guid?)null), ct);
         // BUG #4 fix: Also nullify ConvertedToCompanyId on leads that were converted to this company
         await _db.Leads.Where(l => l.ConvertedToCompanyId == id).ExecuteUpdateAsync(s => s.SetProperty(l => l.ConvertedToCompanyId, (Guid?)null), ct);
+        // Nothing of the club's keeps it (CompanyService asked): an empty account and past events let it go.
+        await ClubClientRecords.ForgetDeletedCompanyAsync(_db, id, organizationId, ct);
         _db.Companies.Remove(entity);
         await _db.SaveChangesAsync(ct);
         return true;
     }
+
+    public Task<string?> KeptByClubAsync(Guid id, Guid? organizationId, CancellationToken ct = default) =>
+        ClubClientRecords.WhyCompanyIsKeptAsync(_db, id, organizationId, ct);
 
     public Task<bool> MergeIntoAsync(Guid keepId, Guid dropId, Guid userId, Guid? organizationId, CancellationToken ct = default) =>
         RecordMerge.InTransactionAsync(_db, async () =>
@@ -310,6 +315,8 @@ public sealed class CompanyRepository : ICompanyRepository
                 lead.ConvertedToCompanyId = keepId;
             // Deleting the other company would delete its files and custom fields with it.
             await RecordMerge.MoveDependentsAsync(_db, RecordTypes.Company, keepId, dropId, ct);
+            // Its corporate memberships, private events and house account (with every entry on it) are the kept company's.
+            await ClubClientRecords.MoveCompanyAsync(_db, keepId, dropId, organizationId, keep.Name, ct);
 
             keep.Domain = RecordMerge.Fill(keep.Domain, drop.Domain);
             keep.Industry = RecordMerge.Fill(keep.Industry, drop.Industry);

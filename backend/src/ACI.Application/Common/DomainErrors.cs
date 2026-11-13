@@ -460,6 +460,11 @@ public static partial class DomainErrors
     {
         public static readonly Error NotFound = new(
             "Contact.NotFound", "The contact was not found");
+
+        /// <summary>A 409: the club's records name the contact as its private client.</summary>
+        public static Error KeptByClub(string what) => new(
+            "Contact.KeptByClub.Conflict",
+            $"This contact has {what}, and the club's records would be left naming nobody, so they can't be deleted. Merge them into the contact they duplicate instead.");
         
         public static readonly Error NameRequired = new(
             "Contact.NameRequired", "Contact name is required");
@@ -517,6 +522,11 @@ public static partial class DomainErrors
         public static readonly Error Changed = new(
             "Company.Changed.Conflict",
             "Someone else changed this company after you opened it, so your changes were not saved. Reload it to see the latest, then make your change again.");
+
+        /// <summary>A 409: the club's records name the company (its account's entries, a membership, an event).</summary>
+        public static Error KeptByClub(string what) => new(
+            "Company.KeptByClub.Conflict",
+            $"This company has {what}, and the club's records would be left naming nobody, so it can't be deleted. Merge it into the company it duplicates instead.");
     }
 
     /// <summary>

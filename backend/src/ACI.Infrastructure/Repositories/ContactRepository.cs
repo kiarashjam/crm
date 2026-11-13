@@ -293,10 +293,15 @@ public sealed class ContactRepository : IContactRepository
             lead.PersonContactRemovedAtUtc ??= now;
         }
 
+        // Nothing of the club's keeps them (ContactService asked): an empty account, past events and billing let them go.
+        await ClubClientRecords.ForgetDeletedContactAsync(_db, id, organizationId, ct);
         _db.Contacts.Remove(entity);
         await _db.SaveChangesAsync(ct);
         return true;
     }
+
+    public Task<string?> KeptByClubAsync(Guid id, Guid? organizationId, CancellationToken ct = default) =>
+        ClubClientRecords.WhyContactIsKeptAsync(_db, id, organizationId, ct);
 
     public async Task<bool> ArchiveAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default)
     {
@@ -558,6 +563,8 @@ public sealed class ContactRepository : IContactRepository
                 lead.ReferredByContactId = keepId;
             await MoveRelationshipsAsync(keepId, dropId, ct);
             await MoveClubLinksAsync(keepId, dropId, ct);
+            // As the club's private client: their events, the memberships billed to them and their house account.
+            await ClubClientRecords.MoveContactAsync(_db, keepId, dropId, organizationId, keep.Name, ct);
             await RecordMerge.MoveEnrollmentsAsync(_db, "contact", keepId, dropId, ct);
             // The dropped record is archived rather than deleted, so its files and
             // custom fields would otherwise stay on a contact nobody sees.
