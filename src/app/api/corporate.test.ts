@@ -10,6 +10,8 @@ import {
   getMemberCorporateSeat, getPrivateEvents, renewCorporateMembership, updatePrivateEvent,
 } from './corporate';
 import { resourcesChangedBy } from './dataChanged';
+import { deleteCompany } from './companies';
+import { deleteContact } from './contacts';
 
 const saved = vi.hoisted(() => ({ files: [] as { name: string; type: string }[] }));
 vi.mock('@/app/lib/exportCsv', async (importOriginal) => ({
@@ -119,6 +121,23 @@ describe('the club client calls', () => {
     expect(requests[0]!.search).toBe('?from=2026-11-13T00%3A00%3A00Z&companyId=acme');
     await expect(createPrivateEvent({ title: 'Party', companyId: 'acme' })).rejects.toThrow(/Terrace is already booked/);
     await expect(addNominee('cm-1', 'ben')).rejects.toMatchObject({ status: 409, code: 'CorporateMembership.SeatsFull.Conflict' });
+  });
+});
+
+describe('deleting a company or contact the club keeps', () => {
+  it("is refused in the server's words, and a delete that goes through still says so", async () => {
+    server.use(
+      http.delete(`${BASE}/api/companies/acme`, () => HttpResponse.json({
+        title: 'Conflict', status: 409, errorCode: 'Company.KeptByClub.Conflict',
+        detail: 'This company has a corporate membership at the club, and the club’s records would be left naming nobody, so it can’t be deleted. Merge it into the company it duplicates instead.',
+      }, { status: 409 })),
+      http.delete(`${BASE}/api/contacts/lena`, () => new HttpResponse(null, { status: 204 })),
+      http.delete(`${BASE}/api/contacts/gone`, () => new HttpResponse(null, { status: 404 })),
+    );
+
+    await expect(deleteCompany('acme')).rejects.toMatchObject({ status: 409, code: 'Company.KeptByClub.Conflict', message: expect.stringContaining('corporate membership') });
+    expect(await deleteContact('lena')).toBe(true);
+    expect(await deleteContact('gone')).toBe(false);
   });
 });
 

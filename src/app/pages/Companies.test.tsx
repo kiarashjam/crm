@@ -2,7 +2,7 @@
 // and the export. It filtered by industry and size, sorted by contacts and deals, and
 // exported, over the twenty companies it had been sent.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import type { CompanyListItem, CompanySummary } from '@/app/api/companies';
 import { withQueries } from '@/test/queryWrapper';
@@ -18,7 +18,7 @@ const summary: CompanySummary = {
   withoutIndustry: 112,
 };
 
-const api = vi.hoisted(() => ({ getCompaniesPaged: vi.fn(), getDealsPaged: vi.fn() }));
+const api = vi.hoisted(() => ({ getCompaniesPaged: vi.fn(), getDealsPaged: vi.fn(), deleteCompany: vi.fn() }));
 vi.mock('@/app/api', async () => ({ ...(await vi.importActual<typeof import('@/app/api')>('@/app/api')), ...api }));
 const companiesApi = vi.hoisted(() => ({ getCompanySummary: vi.fn(), exportCompanies: vi.fn() }));
 vi.mock('@/app/api/companies', async () => ({
@@ -97,6 +97,20 @@ describe('Companies', () => {
     show();
     fireEvent.click(await screen.findByRole('button', { name: /Top industry, Hospitality/ }));
     await waitFor(() => expect(lastQuery()).toMatchObject({ industry: 'Hospitality', page: 1 }));
+  });
+
+  it("says why a company the club keeps cannot be deleted, in the server's words", async () => {
+    const refusal = 'This company has a corporate membership at the club, and the club’s records would be left naming nobody, so it can’t be deleted. Merge it into the company it duplicates instead.';
+    api.deleteCompany.mockRejectedValue(new Error(refusal));
+    show();
+    await screen.findAllByText('Hotel Bellevue');
+    fireEvent.pointerDown(screen.getAllByText('Actions for Hotel Bellevue')[0]!.closest('button')!, { button: 0, ctrlKey: false });
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Delete/ }));
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(refusal));
+    expect(api.deleteCompany).toHaveBeenCalledWith('co1');
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it('exports every company the list shows, through the server', async () => {

@@ -305,7 +305,11 @@ export async function getCompanyStats(): Promise<CompanyStatsItem[]> {
 export async function deleteCompany(id: string): Promise<boolean> {
   if (!servesDemoData()) {
     const res = await authFetch(`/api/companies/${id}`, { method: 'DELETE' });
-    return res.status === 204;
+    if (res.status === 204) return true;
+    if (res.status === 404) return false;
+    // A refusal says why (the club still bills the company, say): throw it in the server's words.
+    await ensureOk(res);
+    return false;
   }
   await delay(200);
   return false;

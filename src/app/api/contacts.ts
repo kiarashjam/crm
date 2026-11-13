@@ -486,7 +486,11 @@ export async function updateContact(
 export async function deleteContact(id: string): Promise<boolean> {
   if (!servesDemoData()) {
     const res = await authFetch(`/api/contacts/${id}`, { method: 'DELETE' });
-    return res.status === 204;
+    if (res.status === 204) return true;
+    if (res.status === 404) return false;
+    // A refusal says why (the club still bills them as a private client, say): throw it in the server's words.
+    await ensureOk(res);
+    return false;
   }
   await delay(200);
   return contactStore.remove(id);

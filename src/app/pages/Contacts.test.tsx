@@ -22,7 +22,7 @@ const stats: ContactStats = {
 };
 
 const api = vi.hoisted(() => ({
-  getContactsPaged: vi.fn(), getCompanies: vi.fn(), getDealsPaged: vi.fn(), updateContact: vi.fn(), getContactById: vi.fn(),
+  getContactsPaged: vi.fn(), getCompanies: vi.fn(), getDealsPaged: vi.fn(), updateContact: vi.fn(), getContactById: vi.fn(), deleteContact: vi.fn(),
 }));
 vi.mock('@/app/api', async () => ({ ...(await vi.importActual<typeof import('@/app/api')>('@/app/api')), ...api }));
 const contactsApi = vi.hoisted(() => ({
@@ -138,6 +138,20 @@ describe('Contacts', () => {
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("An active contact already uses 'old@example.ch', so this one cannot be restored beside it."));
     expect(contactsApi.unarchiveContact).toHaveBeenCalledWith('c9');
+  });
+
+  it("says why a contact the club keeps cannot be deleted, in the server's words", async () => {
+    const refusal = 'This contact has money on their house account at the club, and the club’s records would be left naming nobody, so they can’t be deleted. Merge them into the contact they duplicate instead.';
+    api.deleteContact.mockRejectedValue(new Error(refusal));
+    show();
+    await screen.findByText('Anna Keller');
+    fireEvent.pointerDown(screen.getByText('Actions for Anna Keller').closest('button')!, { button: 0, ctrlKey: false });
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Delete/ }));
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(refusal));
+    expect(api.deleteContact).toHaveBeenCalledWith('c1');
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it('exports every contact the list shows, through the server', async () => {

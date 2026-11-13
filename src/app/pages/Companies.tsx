@@ -359,8 +359,8 @@ export default function Companies() {
       } else {
         toast.error(messages.errors.generic);
       }
-    } catch {
-      toast.error(messages.errors.generic);
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : messages.errors.generic);
     } finally {
       setDeleting(false);
     }
