@@ -138,6 +138,7 @@ public class SavedViewsTests
         using var factory = new CustomWebApplicationFactory();
         var (owner, org, _) = await TeamAsync(factory);
         var shared = (await Ok(await owner.PostAsync("/api/saved-views", Body(View("Gold", shared: true))), "save")).GetProperty("id").GetGuid();
+        (await owner.PutAsync("/api/saved-views/default", Body(new { list = "contacts", viewId = shared }))).StatusCode.Should().Be(HttpStatusCode.NoContent);
         var (rival, rivalId) = await SignInAsync(factory, "rival@example.ch");
         var rivalOrg = await CreateAsync(factory, rivalId, "Rival");
         rival.In(rivalOrg);
@@ -146,10 +147,19 @@ public class SavedViewsTests
         (await rival.PutAsync("/api/saved-views/default", Body(new { list = "contacts", viewId = shared }))).StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await rival.DeleteAsync($"/api/saved-views/{shared}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
 
+        // Read through the workspace filter: the rival workspace sees neither the view nor anyone's default.
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ACI.Infrastructure.Persistence.AppDbContext>();
         var tenant = scope.ServiceProvider.GetRequiredService<ACI.Application.Interfaces.ITenantContext>();
-        using (tenant.ActFor(rivalOrg, rivalId)) db.SavedViews.Count().Should().Be(0);
-        using (tenant.ActFor(org, null)) db.SavedViews.Count().Should().Be(1);
+        using (tenant.ActFor(rivalOrg, rivalId))
+        {
+            db.SavedViews.Count().Should().Be(0);
+            db.SavedViewDefaults.Count().Should().Be(0);
+        }
+        using (tenant.ActFor(org, null))
+        {
+            db.SavedViews.Count().Should().Be(1);
+            db.SavedViewDefaults.Count().Should().Be(1);
+        }
     }
 }
