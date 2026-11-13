@@ -18,6 +18,7 @@ import AttachmentsCard from '@/app/components/AttachmentsCard';
 import ReferredLeadsCard from '@/app/components/ReferredLeadsCard';
 import RelationshipsCard from '@/app/components/RelationshipsCard';
 import { PersonMembershipCard } from '@/app/components/MembershipLinks';
+import { ClientClubCard } from '@/app/components/corporate/ClientClubCard';
 import { useOrg } from '@/app/contexts/OrgContext';
 import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
 import { useModules } from '@/app/hooks/useModules';
@@ -651,6 +652,7 @@ export default function ContactDetail() {
 
               {/* The club: the member this person is, their applications and household. */}
               <PersonMembershipCard kind="contact" id={contact.id} personName={contact.name} readOnly={isReadOnly || !!contact.isArchived} />
+              <ClientClubCard kind="contact" id={contact.id} name={contact.name} readOnly={isReadOnly || !!contact.isArchived} />
 
               {/* Leads this person referred, each a link to that lead (the Sales module's) */}
               {salesOn && <ReferredLeadsCard contactId={contact.id} contactName={contact.name} revision={recordRevision} />}

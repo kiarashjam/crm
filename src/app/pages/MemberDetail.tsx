@@ -45,6 +45,7 @@ import type { GiftCard } from '@/app/api/giftCards';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import { ClubReadState } from '@/app/components/ClubReadState';
 import { MemberLinksCard } from '@/app/components/MembershipLinks';
+import { MemberCorporateSeat } from '@/app/components/corporate/MemberCorporateSeat';
 import {
   NONE, useClubCharges, useClubMembers, useClubPayments, useClubReads, useClubVisits, useCommunications, useGiftCards, useLoyaltyLedger,
   useMemberRegistrations, useReservations,
@@ -372,6 +373,7 @@ export default function MemberDetail() {
                 </SectionCard>
 
                 {/* Their lead and contact on the sales side, how they joined, and their household. */}
+                <MemberCorporateSeat memberId={member.id} />
                 <MemberLinksCard memberId={member.id} />
 
                 {/* What names them on a POS ticket: a member number, their card's code, a POS customer. */}

@@ -183,8 +183,9 @@ describe('what a write changes', () => {
     expect(resourcesChangedBy('POST', '/api/reservations')).toEqual(
       expect.arrayContaining(['reservations', 'charges', 'payments', 'members', 'statements']),
     );
-    expect(resourcesChangedBy('PUT', '/api/resources/r-1')).toEqual(['resources', 'reservations']);
-    expect(resourcesChangedBy('POST', '/api/resources/defaults')).toEqual(['resources', 'reservations']);
+    // A private event's spaces are bookings of the club's resources, under the resource's name.
+    expect(resourcesChangedBy('PUT', '/api/resources/r-1')).toEqual(['resources', 'reservations', 'private-events']);
+    expect(resourcesChangedBy('POST', '/api/resources/defaults')).toEqual(['resources', 'reservations', 'private-events']);
   });
 
   it("a club member's merge moves their registrations too", () => {

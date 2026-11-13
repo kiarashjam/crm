@@ -10,6 +10,7 @@ import { Spinner } from '@/app/components/motion/CadenceLoader';
 import { RecordSkeleton } from '@/app/components/PageSkeleton';
 import CustomFieldsCard from '@/app/components/CustomFieldsCard';
 import AttachmentsCard from '@/app/components/AttachmentsCard';
+import { ClientClubCard } from '@/app/components/corporate/ClientClubCard';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import { getCompanies, getCompanyById, getContactsPaged, getDealsPaged, updateCompany, deleteCompany, messages } from '@/app/api';
@@ -407,6 +408,8 @@ export default function CompanyDetail() {
                   {company.updatedAtUtc && <span>Updated {new Date(company.updatedAtUtc).toLocaleDateString(currentDateLocale())}</span>}
                 </div>
               </RecordCard>
+
+              <ClientClubCard kind="company" id={company.id} name={company.name} />
 
               {/* Custom fields (renders only when defined for companies) */}
               <CustomFieldsCard

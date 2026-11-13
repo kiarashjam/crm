@@ -40,6 +40,8 @@ export const nav: Translation<typeof en> = {
   'nav.importMembers': 'Mitglieder importieren',
   'nav.households': 'Haushalte',
   'nav.applications': 'Anträge',
+  'nav.corporateMemberships': 'Firmenmitgliedschaften',
+  'nav.privateEvents': 'Private Anlässe',
   'nav.renewals': 'Erneuerungen',
   'nav.events': 'Anlässe',
   'nav.reservations': 'Reservationen',

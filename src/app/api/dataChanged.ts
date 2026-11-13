@@ -100,7 +100,7 @@ const MEMBER_MERGE = [
   'members', 'campaigns', 'communications', 'duplicates', 'visits', 'loyalty', 'charges', 'payments', 'statements',
   'tabs', 'reservations', 'events', 'gift-cards', 'donations', 'subscriptions', 'households', 'applications',
   'payment-profile', 'online-payments', 'bank', 'sales', 'pos', 'member-codes', 'club-reports',
-  'retention', 'renewals', 'referrals',
+  'retention', 'renewals', 'referrals', 'corporate', 'private-events',
 ];
 
 /**
@@ -113,7 +113,7 @@ const MEMBER_MERGE = [
  * logged.
  */
 const PERSON_ERASURE = [...new Set([
-  ...LINKED, ...MEMBER_MERGE, 'contracts', 'activities', 'communications', 'campaigns', 'automations', 'privacy',
+  ...LINKED, ...MEMBER_MERGE, 'contracts', 'activities', 'communications', 'campaigns', 'automations', 'privacy', 'club-accounts',
 ])];
 
 /**
@@ -170,8 +170,8 @@ const CHANGES: Readonly<Record<string, readonly string[]>> = {
   leads: ['leads', 'contacts', 'tasks', 'activities', 'sequences', 'duplicates', 'work-queue', 'reports'],
   activities: ['activities', 'leads', 'contacts', 'deals', 'sequences', 'work-queue', 'reports'],
   deals: ['deals', 'companies', 'contacts', 'activities', 'tasks', 'work-queue', 'reports'],
-  contacts: ['contacts', 'companies', 'deals', 'leads', 'duplicates', 'reports'],
-  companies: ['companies', 'contacts', 'deals', 'duplicates', 'reports'],
+  contacts: ['contacts', 'companies', 'deals', 'leads', 'duplicates', 'reports', 'club-accounts', 'private-events'],
+  companies: ['companies', 'contacts', 'deals', 'duplicates', 'reports', 'club-accounts', 'corporate', 'private-events'],
   tasks: ['tasks', 'work-queue', 'reports'],
   sequences: ['sequences', 'leads', 'work-queue'],
   email: ['activities', 'leads', 'contacts', 'deals', 'sequences'],
@@ -198,10 +198,10 @@ const CHANGES: Readonly<Record<string, readonly string[]>> = {
   // A void or a payment can put back a member the billing lapsed (members).
   // What referred members are charged is the referrals report's figures; a subscription
   // period billed and paid is a renewal done (the renewals board).
-  charges: ['charges', 'members', 'statements', 'club-reports', 'referrals', 'renewals'],
-  payments: ['payments', 'charges', 'members', 'statements', 'club-reports', 'renewals'],
+  charges: ['charges', 'members', 'statements', 'club-reports', 'referrals', 'renewals', 'club-accounts', 'corporate', 'private-events'],
+  payments: ['payments', 'charges', 'members', 'statements', 'club-reports', 'renewals', 'club-accounts', 'corporate', 'private-events'],
   tabs: ['tabs', 'charges', 'members', 'loyalty', 'statements', 'club-reports'],
-  subscriptions: ['subscriptions', 'charges', 'members', 'statements', 'billing', 'club-reports', 'renewals'],
+  subscriptions: ['subscriptions', 'charges', 'members', 'statements', 'billing', 'club-reports', 'renewals', 'club-accounts', 'corporate'],
   // A check-in writes the points it earned to the loyalty ledger.
   visits: ['visits', 'loyalty', 'club-reports'],
   // Club Reports and Today at the Club count what is left on gift cards and the points
@@ -212,11 +212,20 @@ const CHANGES: Readonly<Record<string, readonly string[]>> = {
   catalog: ['catalog', 'members', 'club-reports'],
   // Billing posts charges, moves subscriptions on and members' balances, and is a run; its
   // reminders and monthly statements are emailed, each logged in the member's communications.
-  billing: ['billing', 'charges', 'subscriptions', 'members', 'statements', 'communications', 'club-reports', 'renewals'],
+  billing: ['billing', 'charges', 'subscriptions', 'members', 'statements', 'communications', 'club-reports', 'renewals', 'club-accounts', 'corporate'],
   hospitality: ['hospitality'],
   events: ['events', 'charges', 'payments', 'members', 'statements', 'loyalty', 'communications', 'club-reports', 'tasks'],
   reservations: ['reservations', 'charges', 'payments', 'members', 'statements', 'club-reports', 'tasks'],
-  resources: ['resources', 'reservations'],
+  resources: ['resources', 'reservations', 'private-events'],
+  // A client's account opened.
+  'club-accounts': ['club-accounts', 'corporate'],
+  // A corporate membership opens the company's account and can start its dues; a seat changed
+  // decides whose account a nominee's charges go on; ending it stops the dues.
+  'corporate-memberships': ['corporate', 'club-accounts', 'subscriptions', 'charges', 'members', 'statements', 'billing', 'club-reports'],
+  // A private event holds its spaces as bookings; its deposit and invoice are charges on the
+  // client's account (a deposit given back is credit); its contract is drafted on its deal.
+  'private-events': ['private-events', 'reservations', 'charges', 'payments', 'club-accounts', 'corporate', 'members', 'statements',
+    'club-reports', 'contracts', 'deals'],
   // Sending a campaign writes a message per member into the communications log.
   campaigns: ['campaigns', 'communications'],
   // An approval makes the member, starts their dues, charges the initiation fee, joins the
@@ -311,7 +320,7 @@ export function resourcesChangedBy(method: string | undefined, path: string, bod
   // the id of someone who is gone. They leave their household too, and a household nobody
   // is left in goes with them.
   if (base === 'members' && segments.length === 2 && (method ?? 'GET').toUpperCase() === 'DELETE') {
-    return [...(CHANGES.members ?? ['members']), 'events', 'reservations', 'payment-profile', 'households'];
+    return [...(CHANGES.members ?? ['members']), 'events', 'reservations', 'payment-profile', 'households', 'corporate', 'private-events'];
   }
   // Households merge on their own: the people move to the household kept.
   if (base === 'households') return [...HOUSEHOLD_WRITE];
@@ -327,13 +336,16 @@ export function resourcesChangedBy(method: string | undefined, path: string, bod
   // member is made or linked, their dues start, the initiation fee is charged, they join
   // the household and are sent the welcome (logged in their communications).
   if (base === 'contracts' && last === 'countersign') {
-    return [...new Set([...(CHANGES.contracts ?? []), ...(CHANGES.applications ?? [])])];
+    return [...new Set([...(CHANGES.contracts ?? []), ...(CHANGES.applications ?? []), 'private-events', 'reservations'])];
   }
   // Handing a deal's contact to the member portal notes it on the deal's and the contact's
   // timelines, and can add them to the club's members.
   if (base === 'deals' && last === 'onboarding') return [...(CHANGES.deals ?? []), 'members', 'club-reports'];
   // A merge moves everything linked to the record merged away; a conversion makes
   // a contact, a company and a deal from the lead.
+  if (last === 'merge' && (base === 'companies' || base === 'contacts')) {
+    return [...new Set([...LINKED, 'club-accounts', 'corporate', 'private-events', 'charges', 'payments', 'subscriptions', 'members', 'statements', 'households'])];
+  }
   if (last === 'merge' || (base === 'leads' && last === 'convert')) return [...LINKED];
   if (base === 'activities' && (method ?? 'GET').toUpperCase() === 'POST') {
     const links = activityLinks(body);

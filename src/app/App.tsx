@@ -78,6 +78,9 @@ const Communications = lazy(() => import('@/app/pages/Communications'));
 const MemberPortal = lazy(() => import('@/app/pages/MemberPortal'));
 const Households = lazy(() => import('@/app/pages/Households'));
 const Renewals = lazy(() => import('@/app/pages/Renewals'));
+const CorporateMemberships = lazy(() => import('@/app/pages/CorporateMemberships'));
+const PrivateEvents = lazy(() => import('@/app/pages/PrivateEvents'));
+const PrivateEventDetail = lazy(() => import('@/app/pages/PrivateEventDetail'));
 const Subscriptions = lazy(() => import('@/app/pages/Subscriptions'));
 const Campaigns = lazy(() => import('@/app/pages/Campaigns'));
 const Donations = lazy(() => import('@/app/pages/Donations'));
@@ -270,6 +273,9 @@ export default function App() {
                       <Route path="/portal" element={<MemberPortal />} />
                       <Route path="/households" element={<Households />} />
                       <Route path="/renewals" element={<Renewals />} />
+                      <Route path="/corporate-memberships" element={<CorporateMemberships />} />
+                      <Route path="/private-events" element={<PrivateEvents />} />
+                      <Route path="/private-events/:id" element={<PrivateEventDetail />} />
                       <Route path="/subscriptions" element={<Subscriptions />} />
                       <Route path="/campaigns" element={<Campaigns />} />
                       <Route path="/donations" element={<Donations />} />
