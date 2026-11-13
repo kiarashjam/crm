@@ -360,6 +360,16 @@ public class OrganizationCloneTests
                 Id = Guid.NewGuid(), OrganizationId = org.Id, Trigger = RetentionRunTriggers.Schedule, ScheduledFor = DateOnly.FromDateTime(now),
                 Status = RetentionRunStatuses.Succeeded, StartedAtUtc = now, FinishedAtUtc = now, LeadsDeleted = 1,
             });
+        // The assistant: its settings and a morning brief that went out. The month's calls to the
+        // language model stay with the original (left out), so the copy starts its month afresh.
+        db.AddRange(
+            new AssistantSettings { Id = Guid.NewGuid(), OrganizationId = org.Id, MonthlyLimit = 120, MorningBriefs = true, CreatedAtUtc = now, Version = Guid.NewGuid() },
+            new AssistantBrief
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, UserId = manager, Day = DateOnly.FromDateTime(now), Status = AssistantBriefStatuses.Sent,
+                Items = 3, CreatedAtUtc = now, SentAtUtc = now,
+            },
+            new AiUsage { Id = Guid.NewGuid(), OrganizationId = org.Id, Month = new DateOnly(now.Year, now.Month, 1), Calls = 42, UpdatedAtUtc = now });
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
         return new Seeded(org.Id, owner, manager, rep, lead.Id, deal.Id, contact.Id, member.Id, rule.Id, sequence.Id);

@@ -147,6 +147,11 @@ public partial class AppDbContext : DbContext
     public DbSet<PrivacySettings> PrivacySettings => Set<PrivacySettings>();
     public DbSet<PersonErasure> PersonErasures => Set<PersonErasure>();
     public DbSet<RetentionRun> RetentionRuns => Set<RetentionRun>();
+    // The assistant: what each workspace's calls to the language model came to, its settings,
+    // and when each person's morning brief went out.
+    public DbSet<AiUsage> AiUsage => Set<AiUsage>();
+    public DbSet<AssistantSettings> AssistantSettings => Set<AssistantSettings>();
+    public DbSet<AssistantBrief> AssistantBriefs => Set<AssistantBrief>();
 
     /// <summary>
     /// Whether saving writes audit lines. Off only while an organization is copied: its

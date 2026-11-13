@@ -142,5 +142,8 @@ public static class PersonDataInventory
         [typeof(Campaign)] = "A campaign's text and totals, written to everyone in it.",
         [typeof(PrivacySettings)] = "Settings: the controller's identity, the forms' consent and the retention periods.",
         [typeof(RetentionRun)] = "What a retention run removed, in counts.",
+        [typeof(AiUsage)] = "How many calls to the language model a workspace (or a staff member, outside any organization) made in a month, and their tokens.",
+        [typeof(AssistantSettings)] = "Settings: the assistant's monthly limit and whether morning briefs go out.",
+        [typeof(AssistantBrief)] = "When a staff member's morning brief went out, and how many things it listed. Its words are in the notification and the email it became, which an erasure handles.",
     };
 }
