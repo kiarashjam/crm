@@ -9,3 +9,4 @@ export * from './payments';
 export * from './pos';
 export * from './privacy';
 export * from './automations';
+export * from './retention';

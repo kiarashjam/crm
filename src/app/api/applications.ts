@@ -30,7 +30,15 @@ export interface Application {
   email: string;
   phone?: string;
   requestedTier: MemberTier;
+  /** The name typed in before the referrer was a member of the club; kept as it was written. */
   referredByName?: string;
+  /** The member who referred them, the proposer and the seconder: members of the club. */
+  referredByMemberId?: string | null;
+  referredByMemberName?: string | null;
+  proposerMemberId?: string | null;
+  proposerName?: string | null;
+  seconderMemberId?: string | null;
+  seconderName?: string | null;
   occupation?: string;
   reasonForJoining?: string;
   status: ApplicationStatus;
@@ -188,6 +196,13 @@ export interface ApplicationInput {
   phone?: string;
   requestedTier: MemberTier;
   referredByName?: string;
+  /**
+   * The member who referred them, the proposer and the seconder. Left out, each stays as it
+   * is; an empty string takes it off (the server reads an empty id as "none").
+   */
+  referredByMemberId?: string;
+  proposerMemberId?: string;
+  seconderMemberId?: string;
   occupation?: string;
   reasonForJoining?: string;
   leadId?: string;
@@ -196,9 +211,21 @@ export interface ApplicationInput {
   householdRole?: string;
 }
 
+/** The empty id the server reads as "take it off". */
+export const NO_MEMBER = '00000000-0000-0000-0000-000000000000';
+
+/** An input as the server reads it: an empty member id is sent as the empty Guid, which takes the link off. */
+function sponsorsForServer<T extends Partial<ApplicationInput>>(input: T): T {
+  const out: T = { ...input };
+  for (const key of ['referredByMemberId', 'proposerMemberId', 'seconderMemberId'] as const) {
+    if (out[key] === '') (out as Partial<ApplicationInput>)[key] = NO_MEMBER;
+  }
+  return out;
+}
+
 export async function createApplication(input: ApplicationInput): Promise<Application> {
   return apiWithFallback(
-    () => authFetchJson<Application>('/api/applications', { method: 'POST', body: JSON.stringify(input) }),
+    () => authFetchJson<Application>('/api/applications', { method: 'POST', body: JSON.stringify(sponsorsForServer(input)) }),
     async () => {
       await delay(160);
       return applicationStore.add({ id: mockId('app'), submittedAtUtc: new Date().toISOString(), status: 'Submitted', source: 'staff', ...input });
@@ -209,7 +236,7 @@ export async function createApplication(input: ApplicationInput): Promise<Applic
 /** Changes an application's details (not its status: see setApplicationStatus and approveApplication). */
 export async function updateApplication(id: string, patch: Partial<ApplicationInput> & { reviewerNotes?: string; version?: string }): Promise<Application> {
   return apiWithFallback(
-    () => authFetchJson<Application>(`/api/applications/${id}`, { method: 'PUT', body: JSON.stringify(patch) }),
+    () => authFetchJson<Application>(`/api/applications/${id}`, { method: 'PUT', body: JSON.stringify(sponsorsForServer(patch)) }),
     async () => {
       await delay(120);
       demoFind(id);

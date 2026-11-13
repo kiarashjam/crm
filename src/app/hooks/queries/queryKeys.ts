@@ -168,4 +168,26 @@ export const queryKeys = {
     portalUsage: (s: WorkspaceScope) => key(s, 'member-portal', 'members'),
     portalUse: (s: WorkspaceScope, memberId: string) => key(s, 'member-portal', 'member', memberId),
   },
+  // Keeping members: each member's score and the concerns recorded about them, the club's
+  // retention and referral rules, and the night's scoring runs. Working a score out again can
+  // make a task and queue an email (logged in the member's communications), so it refreshes
+  // those too (api/dataChanged).
+  retention: {
+    settings: (s: WorkspaceScope) => key(s, 'retention', 'settings'),
+    member: (s: WorkspaceScope, memberId: string) => key(s, 'retention', 'member', memberId),
+    concerns: (s: WorkspaceScope, memberId: string) => key(s, 'retention', 'concerns', memberId),
+    atRisk: (s: WorkspaceScope, level: string) => key(s, 'retention', 'at-risk', level),
+    runs: (s: WorkspaceScope) => key(s, 'retention', 'runs'),
+  },
+  // The renewals board: renewal dates, payments, contacts and scores decide its columns, so
+  // the writes that move any of those refresh it.
+  renewals: {
+    board: (s: WorkspaceScope, query: object) => key(s, 'renewals', 'board', query),
+  },
+  // Who referred, proposed and seconded whom, the bonus, and the report of what referred
+  // members bring in.
+  referrals: {
+    member: (s: WorkspaceScope, memberId: string) => key(s, 'referrals', 'member', memberId),
+    report: (s: WorkspaceScope, range: object) => key(s, 'referrals', 'report', range),
+  },
 } as const;

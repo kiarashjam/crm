@@ -98,6 +98,7 @@ const MEMBER_MERGE = [
   'members', 'campaigns', 'communications', 'duplicates', 'visits', 'loyalty', 'charges', 'payments', 'statements',
   'tabs', 'reservations', 'events', 'gift-cards', 'donations', 'subscriptions', 'households', 'applications',
   'payment-profile', 'online-payments', 'bank', 'sales', 'pos', 'member-codes', 'club-reports',
+  'retention', 'renewals', 'referrals',
 ];
 
 /**
@@ -188,12 +189,17 @@ const CHANGES: Readonly<Record<string, readonly string[]>> = {
   // A balance set by hand on a member is an entry on the ledger, a member's tier or
   // status changes who a campaign reaches, and a member added can start their dues
   // subscription (due today, so billing now has it to bill) and be charged their initiation fee.
-  members: ['members', 'charges', 'payments', 'statements', 'campaigns', 'subscriptions', 'billing', 'club-reports', 'tasks'],
+  // Their renewal date and status are what the renewals board and the at-risk list read, and
+  // their name shows on referrals.
+  members: ['members', 'charges', 'payments', 'statements', 'campaigns', 'subscriptions', 'billing', 'club-reports', 'tasks',
+    'renewals', 'retention', 'referrals'],
   // A void or a payment can put back a member the billing lapsed (members).
-  charges: ['charges', 'members', 'statements', 'club-reports'],
-  payments: ['payments', 'charges', 'members', 'statements', 'club-reports'],
+  // What referred members are charged is the referrals report's figures; a subscription
+  // period billed and paid is a renewal done (the renewals board).
+  charges: ['charges', 'members', 'statements', 'club-reports', 'referrals', 'renewals'],
+  payments: ['payments', 'charges', 'members', 'statements', 'club-reports', 'renewals'],
   tabs: ['tabs', 'charges', 'members', 'loyalty', 'statements', 'club-reports'],
-  subscriptions: ['subscriptions', 'charges', 'members', 'statements', 'billing', 'club-reports'],
+  subscriptions: ['subscriptions', 'charges', 'members', 'statements', 'billing', 'club-reports', 'renewals'],
   // A check-in writes the points it earned to the loyalty ledger.
   visits: ['visits', 'loyalty', 'club-reports'],
   // Club Reports and Today at the Club count what is left on gift cards and the points
@@ -204,7 +210,7 @@ const CHANGES: Readonly<Record<string, readonly string[]>> = {
   catalog: ['catalog', 'members', 'club-reports'],
   // Billing posts charges, moves subscriptions on and members' balances, and is a run; its
   // reminders and monthly statements are emailed, each logged in the member's communications.
-  billing: ['billing', 'charges', 'subscriptions', 'members', 'statements', 'communications', 'club-reports'],
+  billing: ['billing', 'charges', 'subscriptions', 'members', 'statements', 'communications', 'club-reports', 'renewals'],
   hospitality: ['hospitality'],
   events: ['events', 'charges', 'payments', 'members', 'statements', 'loyalty', 'communications', 'club-reports', 'tasks'],
   reservations: ['reservations', 'charges', 'payments', 'members', 'statements', 'club-reports', 'tasks'],
@@ -214,7 +220,9 @@ const CHANGES: Readonly<Record<string, readonly string[]>> = {
   // An approval makes the member, starts their dues, charges the initiation fee, joins the
   // household, records their consent and queues the welcome (logged in their communications);
   // the lead's and the contact's pages show the application and the member.
-  applications: ['applications', 'members', 'charges', 'payments', 'subscriptions', 'statements', 'communications', 'households', 'billing', 'leads', 'contacts', 'campaigns', 'club-reports', 'tasks'],
+  // An approval of a referred applicant gives their referrer the club's bonus: points, or a credit on the ledger.
+  applications: ['applications', 'members', 'charges', 'payments', 'subscriptions', 'statements', 'communications', 'households', 'billing', 'leads', 'contacts', 'campaigns', 'club-reports', 'tasks',
+    'referrals', 'loyalty', 'renewals'],
   households: HOUSEHOLD_WRITE,
   // The payment settings decide what the money screens offer (pay online, the QR-bill).
   'payment-settings': ['payment-settings'],
@@ -232,7 +240,19 @@ const CHANGES: Readonly<Record<string, readonly string[]>> = {
   'member-portal': ['member-portal', 'communications'],
   // The member portal's settings say whether the workspace also hands members to its own portal.
   onboarding: ['onboarding', 'member-portal'],
+  // The club's retention and referral rules (what the referrals card offers, the board's
+  // threshold), and a scoring run, which can make tasks and queue emails (logged in the
+  // members' communications) and notes the renewals coming up.
+  retention: ['retention', 'referrals', 'renewals', 'tasks', 'work-queue', 'communications'],
+  // A membership marked renewed moves the member's renewal date on.
+  renewals: ['renewals', 'members', 'club-reports'],
 };
+
+/** What working a member's score out again changes: a crossing into at risk makes a task and queues an email. */
+const RISK_RECOMPUTE = ['retention', 'renewals', 'tasks', 'work-queue', 'communications'];
+
+/** What a referral bonus given by hand changes: points on the loyalty ledger, or a credit on the house account. */
+const REFERRAL_BONUS = ['referrals', 'loyalty', 'payments', 'members', 'statements', 'club-reports'];
 
 /** Which records an activity is about, from the body it was saved with. */
 function activityLinks(body: unknown): string[] | null {
@@ -277,6 +297,12 @@ export function resourcesChangedBy(method: string | undefined, path: string, bod
     if (sub === 'codes') return ['member-codes'];
     if (sub === 'card' && last === 'charge') return [...SAVED_CARD_CHARGE];
     if (sub === 'card' || sub === 'autopay' || sub === 'pay-link') return ['payment-profile'];
+    // Their score worked out again, the concerns recorded about them, who referred them, and
+    // their referrer's bonus.
+    if (sub === 'risk') return [...RISK_RECOMPUTE];
+    if (sub === 'concerns') return ['retention'];
+    if (sub === 'referrer') return ['referrals', 'members'];
+    if (sub === 'referral-bonus') return [...REFERRAL_BONUS];
   }
   // Deleting a member detaches their places on event lists and their bookings, which stay
   // under the name they were made in: a screen still showing the member on one would send
