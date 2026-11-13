@@ -89,6 +89,10 @@ public static class PersonDataInventory
         [typeof(MemberPortalAccount)] = "Deleted: when they were invited to the member portal and when they used it.",
         [typeof(MemberPortalSession)] = "Deleted: their member portal sessions end.",
         [typeof(MemberPortalLink)] = "Deleted: sign-in links not yet used stop working.",
+        [typeof(ClubMemberRisk)] = "Deleted: their at-risk score and the signs behind it.",
+        [typeof(ClubRenewal)] = "Deleted: their renewals and the notes staff wrote on them.",
+        [typeof(ClubMemberConcern)] = "Deleted: the complaints and concerns recorded about them.",
+        [typeof(ClubReferralBonus)] = "Kept with the books: points or a credit between two members' ids, naming nobody (the credit is on the ledger).",
     };
 
     /// <summary>Tables that hold nothing about the people a workspace keeps records of, and why.</summary>
@@ -142,5 +146,7 @@ public static class PersonDataInventory
         [typeof(Campaign)] = "A campaign's text and totals, written to everyone in it.",
         [typeof(PrivacySettings)] = "Settings: the controller's identity, the forms' consent and the retention periods.",
         [typeof(RetentionRun)] = "What a retention run removed, in counts.",
+        [typeof(ClubRetentionSettings)] = "Settings: how members' at-risk scores are worked out, the save actions, the referral bonus and the sponsor rule.",
+        [typeof(ClubScoringRun)] = "What a scoring run found and did, in counts.",
     };
 }

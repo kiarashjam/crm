@@ -360,6 +360,45 @@ public class OrganizationCloneTests
                 Id = Guid.NewGuid(), OrganizationId = org.Id, Trigger = RetentionRunTriggers.Schedule, ScheduledFor = DateOnly.FromDateTime(now),
                 Status = RetentionRunStatuses.Succeeded, StartedAtUtc = now, FinishedAtUtc = now, LeadsDeleted = 1,
             });
+        // Keeping members and referrals: the rules (with the save email on, which the copy turns
+        // off), the member's at-risk score with the task and email its save actions made, a
+        // renewal staff marked contacted, a complaint, a scoring run, and a member she brought
+        // in with the points it earned her: rows that point at members, a subscription, a task,
+        // an email and a loyalty entry, which the copy must point at its own copies of.
+        var referred = new ClubMember
+        {
+            Id = Guid.NewGuid(), OrganizationId = org.Id, OwnerUserId = owner, FirstName = "Luca", LastName = "Rossi", Email = $"luca@{name}.ch",
+            Tier = "Gold", Status = "Active", ReferredByMemberId = member.Id,
+        };
+        var bonusPoints = new LoyaltyLedgerEntry { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, MemberName = "Ana Silva", Reason = "Referral", Points = 500, CreatedAtUtc = now };
+        db.AddRange(referred, bonusPoints,
+            new ClubRetentionSettings
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, SaveTask = true, SaveEmail = true, ReferralBonus = ReferralBonusKinds.Points,
+                ReferralBonusPoints = 500, SponsorRule = SponsorRules.Required, CreatedAtUtc = now, Version = Guid.NewGuid(),
+            },
+            new ClubMemberRisk
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, Score = 72, Level = RiskLevels.AtRisk, FactorsJson = "[]",
+                ComputedAtUtc = now, AtRiskSinceUtc = now, SaveActionsAtUtc = now, SaveTaskId = task.Id, SaveMessageId = sentEmail.Id,
+            },
+            new ClubRenewal
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, Source = RenewalSources.Subscription, SubscriptionId = subscription.Id,
+                EndsAtUtc = now.AddDays(30), Stage = RenewalStages.Contacted, ContactedAtUtc = now, ContactedByUserId = owner, CreatedAtUtc = now, Version = Guid.NewGuid(),
+            },
+            new ClubMemberConcern { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, Kind = ConcernKinds.Complaint, Note = "Slow service at the bar", RecordedAtUtc = now, RecordedByUserId = owner },
+            new ClubScoringRun
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, Trigger = ScoringRunTriggers.Schedule, ScheduledFor = DateOnly.FromDateTime(now),
+                Status = "succeeded", StartedAtUtc = now, FinishedAtUtc = now, MembersScored = 2, BecameAtRisk = 1,
+            },
+            new ClubReferralBonus
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, ReferrerMemberId = member.Id, ReferredMemberId = referred.Id, Kind = ReferralBonusKinds.Points,
+                Status = ReferralBonusStatuses.Awarded, Points = 500, Currency = "CHF", LoyaltyEntryId = bonusPoints.Id, CreatedAtUtc = now,
+                AwardedAtUtc = now, AwardedByUserId = owner,
+            });
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
         return new Seeded(org.Id, owner, manager, rep, lead.Id, deal.Id, contact.Id, member.Id, rule.Id, sequence.Id);
@@ -544,7 +583,13 @@ public class OrganizationCloneTests
         (await db.Attachments.IgnoreQueryFilters().SingleAsync(a => a.OrganizationId == report.CopyId)).RecordId.Should().Be(deal.Id);
         (await db.Attachments.IgnoreQueryFilters().SingleAsync(a => a.OrganizationId == report.CopyId)).Content.Should().Equal("%PDF"u8.ToArray());
 
-        var member = await db.ClubMembers.IgnoreQueryFilters().SingleAsync(m => m.OrganizationId == report.CopyId);
+        var member = await db.ClubMembers.IgnoreQueryFilters().SingleAsync(m => m.OrganizationId == report.CopyId && m.FirstName == "Ana");
+        // The member she brought in names the copied her, and so does the bonus it earned her.
+        var referred = await db.ClubMembers.IgnoreQueryFilters().SingleAsync(m => m.OrganizationId == report.CopyId && m.FirstName == "Luca");
+        referred.ReferredByMemberId.Should().Be(member.Id);
+        var bonus = await db.ClubReferralBonuses.IgnoreQueryFilters().SingleAsync(b => b.OrganizationId == report.CopyId);
+        (bonus.ReferrerMemberId, bonus.ReferredMemberId).Should().Be((member.Id, referred.Id));
+        (await db.LoyaltyLedger.IgnoreQueryFilters().SingleAsync(e => e.Id == bonus.LoyaltyEntryId)).OrganizationId.Should().Be(report.CopyId);
         (await db.ConsentRecords.IgnoreQueryFilters().SingleAsync(c => c.OrganizationId == report.CopyId)).SubjectId
             .Should().Be(member.Id, "a consent answer belongs to the copied member, not the original");
         var copiedCampaigns = await db.Campaigns.IgnoreQueryFilters().Where(c => c.OrganizationId == report.CopyId).ToListAsync();
@@ -612,6 +657,12 @@ public class OrganizationCloneTests
         (await db.MemberPortalLinks.IgnoreQueryFilters().CountAsync(x => x.OrganizationId == report.CopyId)).Should().Be(0);
         (await db.MemberPortalAccounts.IgnoreQueryFilters().CountAsync(x => x.OrganizationId == report.CopyId)).Should().Be(0);
         report.Adjustments.Keys.Should().Contain("The member portal starts off in the copy, at an address of its own");
+        // The same members again: a member who becomes at risk in the copy is not emailed from it
+        // as well as from the original. The club's other rules come along.
+        var retention = await db.ClubRetentionSettings.IgnoreQueryFilters().SingleAsync(s => s.OrganizationId == report.CopyId);
+        (retention.SaveEmail, retention.SaveTask, retention.ReferralBonusPoints, retention.SponsorRule).Should().Be((false, true, 500, SponsorRules.Required));
+        (await db.ClubRetentionSettings.IgnoreQueryFilters().SingleAsync(s => s.OrganizationId == original.Org)).SaveEmail.Should().BeTrue();
+        report.Adjustments.Keys.Should().Contain("Members found at risk in the copy are not emailed from it");
         (await db.OutreachEnrollments.IgnoreQueryFilters().Where(e => e.OrganizationId == report.CopyId).Select(e => e.Status).ToListAsync())
             .Should().BeEquivalentTo(["paused", "stopped"]);
         var contract = await db.Set<Contract>().IgnoreQueryFilters().SingleAsync(c => c.OrganizationId == report.CopyId);

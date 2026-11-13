@@ -193,6 +193,15 @@ public partial class AppDbContext
         Scope<MemberPortalAccount>(model, e => e.OrganizationId);
         Scope<MemberPortalSession>(model, e => e.OrganizationId);
         Scope<MemberPortalLink>(model, e => e.OrganizationId);
+        // Retention and referrals: an organization's alone. The daily scoring run finds the
+        // workspaces it scores across workspaces first (IgnoreQueryFilters, said where), then
+        // acts for each.
+        Scope<ClubRetentionSettings>(model, e => e.OrganizationId);
+        Scope<ClubMemberRisk>(model, e => e.OrganizationId);
+        Scope<ClubRenewal>(model, e => e.OrganizationId);
+        Scope<ClubReferralBonus>(model, e => e.OrganizationId);
+        Scope<ClubMemberConcern>(model, e => e.OrganizationId);
+        Scope<ClubScoringRun>(model, e => e.OrganizationId);
 
         // Copy templates follow a person rather than a workspace (TemplateRepository): the
         // system's templates are everyone's, a person's own go with them, and a team's
