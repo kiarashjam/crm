@@ -1,8 +1,7 @@
 import type { portal as en } from '../en/portal';
 import type { Translation } from '../../catalog';
 
-// Before « : ? ! ; » French takes a no-break space, written   here so it cannot be
-// mistaken for a plain one.
+// Before : ? ! and ; French takes a no-break space (U+00A0), never a plain one; catalogues.test.ts checks.
 export const portal: Translation<typeof en> = {
   'portal.title': 'Votre compte au club',
 

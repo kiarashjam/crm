@@ -64,8 +64,23 @@ describe('opening Settings', () => {
 });
 
 describe('the Sales module turned off', () => {
-  it('leaves its tabs out of Settings: pipelines, and the welcome a deal is handed over with', async () => {
+  it('leaves the pipelines out of Settings, and keeps Welcome & portal for the club’s member portal', async () => {
     currentOrg = { id: 'org-1', name: 'Pavillon 46', role: 'owner', salesEnabled: false, clubEnabled: true };
+    render(withQueries(
+      <MemoryRouter initialEntries={['/settings?tab=welcome']}>
+        <Settings />
+      </MemoryRouter>,
+    ));
+
+    expect((await screen.findAllByText('Team')).length).toBeGreaterThan(0);
+    expect(screen.queryByText('Pipelines')).toBeNull();
+    expect(screen.getAllByText('Welcome & portal').length).toBeGreaterThan(0);
+    // The hand-over a deal's contact is given belongs to Sales: said, not offered.
+    expect(screen.getByText(/Handing a deal's contact to your own portal belongs to the Sales module/)).toBeInTheDocument();
+  });
+
+  it('leaves Welcome & portal out too when the Club module is off as well', async () => {
+    currentOrg = { id: 'org-1', name: 'Pavillon 46', role: 'owner', salesEnabled: false, clubEnabled: false };
     render(withQueries(
       <MemoryRouter initialEntries={['/settings?tab=profile']}>
         <Settings />
@@ -73,7 +88,6 @@ describe('the Sales module turned off', () => {
     ));
 
     expect((await screen.findAllByText('Team')).length).toBeGreaterThan(0);
-    expect(screen.queryByText('Pipelines')).toBeNull();
     expect(screen.queryByText('Welcome & portal')).toBeNull();
   });
 

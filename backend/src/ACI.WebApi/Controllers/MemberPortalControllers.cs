@@ -214,6 +214,7 @@ public class PublicMemberPortalController : ControllerBase
 [WorkspaceRequired]
 [InModule(WorkspaceModules.Club)]
 [Produces("application/json")]
+[Route("api/member-portal")]
 public class MemberPortalAdminController : ControllerBase
 {
     private readonly IMemberPortalAdmin _admin;
@@ -228,7 +229,7 @@ public class MemberPortalAdminController : ControllerBase
     private Guid Org => _user.CurrentOrganizationId!.Value;
 
     /// <summary>Whether the portal is on, its address and rules. Every member of the team may read them.</summary>
-    [HttpGet("api/member-portal/settings")]
+    [HttpGet("settings")]
     public async Task<ActionResult<MemberPortalSettingsDto>> Settings(CancellationToken ct)
     {
         var settings = await _admin.GetSettingsAsync(Org, ct);
@@ -237,7 +238,7 @@ public class MemberPortalAdminController : ControllerBase
     }
 
     /// <summary>Turns the portal on or off and sets its rules. Turning it off signs every member out.</summary>
-    [HttpPut("api/member-portal/settings")]
+    [HttpPut("settings")]
     [Requires(MemberPermissions.ManageSettings, What = "change the member portal's settings")]
     public async Task<ActionResult> SaveSettings([FromBody] SaveMemberPortalSettingsRequest request, CancellationToken ct)
     {
@@ -251,11 +252,11 @@ public class MemberPortalAdminController : ControllerBase
     }
 
     /// <summary>Every member, with when they were invited and last used the portal.</summary>
-    [HttpGet("api/member-portal/members")]
+    [HttpGet("members")]
     public async Task<ActionResult<IReadOnlyList<MemberPortalUseDto>>> Usage(CancellationToken ct) => Ok(await _admin.UsageAsync(Org, ct));
 
     /// <summary>Invites every member with an email address not invited yet, a batch at a time.</summary>
-    [HttpPost("api/member-portal/invite-all")]
+    [HttpPost("invite-all")]
     [Requires(MemberPermissions.ClubMembers, What = "invite members to the member portal")]
     [EnableRateLimiting("invite-email")]
     public async Task<ActionResult<PortalInviteAllDto>> InviteAll(CancellationToken ct)
@@ -264,12 +265,12 @@ public class MemberPortalAdminController : ControllerBase
         return (await _admin.InviteAllAsync(Org, userId, ct)).ToActionResult();
     }
 
-    [HttpGet("api/members/{memberId:guid}/portal")]
+    [HttpGet("/api/members/{memberId:guid}/portal")]
     public async Task<ActionResult<MemberPortalUseDto>> Use(Guid memberId, CancellationToken ct) =>
         (await _admin.UseAsync(Org, memberId, ct)).ToActionResult();
 
     /// <summary>Emails the member an invitation to the portal, with a sign-in link.</summary>
-    [HttpPost("api/members/{memberId:guid}/portal/invite")]
+    [HttpPost("/api/members/{memberId:guid}/portal/invite")]
     [Requires(MemberPermissions.ClubMembers, What = "invite members to the member portal")]
     [EnableRateLimiting("invite-email")]
     public async Task<ActionResult<MemberPortalUseDto>> Invite(Guid memberId, CancellationToken ct)
@@ -279,7 +280,7 @@ public class MemberPortalAdminController : ControllerBase
     }
 
     /// <summary>Ends every session of the member in the portal; their unused sign-in links stop working.</summary>
-    [HttpPost("api/members/{memberId:guid}/portal/revoke")]
+    [HttpPost("/api/members/{memberId:guid}/portal/revoke")]
     [Requires(MemberPermissions.ClubMembers, What = "sign members out of the member portal")]
     public async Task<ActionResult<MemberPortalUseDto>> Revoke(Guid memberId, CancellationToken ct)
     {

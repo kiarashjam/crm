@@ -84,7 +84,8 @@ function memberApi(me: () => PortalMe | Response, seen: string[] = []) {
     seen.push(header);
     return header === 'Bearer member-token';
   };
-  const answer = <T,>(request: Request, body: T) => (authorised(request) ? HttpResponse.json(body) : new HttpResponse(null, { status: 401 }));
+  const answer = (request: Request, body: Record<string, unknown> | unknown[]) =>
+    (authorised(request) ? HttpResponse.json(body as Record<string, unknown>) : new HttpResponse(null, { status: 401 }));
   server.use(
     http.get(`${BASE}/api/portal/me`, ({ request }) => {
       if (!authorised(request)) return new HttpResponse(null, { status: 401 });
