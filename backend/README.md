@@ -764,10 +764,11 @@ membership's row so two seats taken at once are one after the other). Nominees a
 swapped (one step, the old nominee kept in the history with who took over) and removed by
 whoever runs the members (`club.members`). The nominee rule decides whose account a nominee's
 own charges go on while the membership is active: `company` (the company's account, each charge
-saying which nominee ran it up) or `nominee` (their own). A nominee's own dues are never moved;
+saying which nominee ran it up) or `nominee` (their own). A private event a nominee hires for
+themselves is theirs, not the company's (an event the company hires is linked to it). A nominee's own dues are never moved;
 the card says when they still run beside the company's, for the club to stop. The company's
 dues are a subscription on the company's own account (`money.manage`), billed by the daily
-billing run like any other. Renewal is on the company: *due* within 60 days of the renewal date,
+billing run like any other; dues set twice at once start one subscription. Renewal is on the company: *due* within 60 days of the renewal date,
 *overdue* after it, *not renewing* when marked so; renewing moves the date on by the term (12
 months by default). Ending a membership frees its seats and stops its dues (which takes
 `money.manage` while they run). Nominees leave the members' own renewals board, since the
@@ -776,7 +777,8 @@ company renews for them.
 **Private events.** A client's hire of the club's spaces: linked to a company, a contact or
 both, and to the deal it was sold through. Its spaces are held as bookings of the club's
 resources for its time, taking each resource's whole capacity: a member cannot book the room
-under the party, and a booking in the way refuses the event (409, saying what is in the way).
+under the party (in a shared room too, whatever its capacity is set to since), and a booking in
+the way refuses the event (409, saying what is in the way). The bookings page links a hold to its event.
 The diary cannot move or delete a hold; it follows the event when it moves, is confirmed with
 it, and is released when it is cancelled or completed. The event's row and its holds are saved
 in one transaction, so a clash leaves the event as it was. Its menu and services come from the
@@ -784,7 +786,9 @@ price catalogue (price and VAT copied, as a charge would take them) or are typed
 is a charge on the client's account (the company's, else the contact's member account, else
 the contact's own); once money is on an account, the client cannot change. The final invoice
 posts one charge per VAT rate, and the deposit is set against it: its charge is taken back and
-what was paid on it pays the invoice. Cancelling asks whether a deposit is kept or given back
+what was paid on it pays the invoice. Nothing on the menu changes once invoiced; an invoiced
+event is cancelled once every charge of its invoice has been voided on the client's account.
+Cancelling asks whether a deposit is kept or given back
 as credit (giving it back takes `money.manage`, as asking the deposit and invoicing do). The
 contract is drafted on the deal from a private event template (spaces, menu, total, deposit);
 countersigning it confirms the event and admits nobody, even when the deal's contact has
@@ -814,7 +818,7 @@ event; the front desk (`club.frontdesk`) adds walk-ins and checks guests in, onc
 | `PUT` | `/api/private-events/{id}` | Changes its details, time or spaces against `version` (or `If-Match`) (`club.members`) |
 | `POST/PUT/DELETE` | `/api/private-events/{id}/lines[/{lineId}]` | Its menu and services (`club.members`); nothing changes once invoiced |
 | `POST` | `/api/private-events/{id}/confirm`, `/complete` | Confirms it (its holds with it), or marks it completed (holds released) (`club.members`) |
-| `POST` | `/api/private-events/{id}/cancel` | Cancels it with a reason and `deposit: keep\|release` when one was asked (`club.members`; release takes `money.manage`) |
+| `POST` | `/api/private-events/{id}/cancel` | Cancels it with a reason and `deposit: keep\|release` when one was asked; an invoiced one once its invoice's charges are voided (`club.members`; release takes `money.manage`) |
 | `POST` | `/api/private-events/{id}/deposit` | Asks the deposit on the client's account (`money.manage`) |
 | `POST` | `/api/private-events/{id}/invoice` | Posts the final invoice, the deposit set against it (`money.manage`) |
 | `POST` | `/api/private-events/{id}/contract` | Drafts its contract on its deal (`club.members` and `records.edit`; Sales on) |
@@ -823,14 +827,19 @@ event; the front desk (`club.frontdesk`) adds walk-ins and checks guests in, onc
 
 A company is not deleted while it has a corporate membership, money on its house account or a
 private event still to come (409): merge it into the company it duplicates instead, which moves
-its memberships, events and account with every entry on it. A contact is kept the same way for
+its memberships, events and account with every entry on it, the QR references printed for it
+(one printed for the same month as the kept company's stops being that month's) and the bank
+transfers recorded as its. A contact is kept the same way for
 money on their account or an event to come, and merged likewise. A merged member's seat moves to
 the member kept (when both hold one, the duplicate's ends), and their guest list places move; a
 deleted member's seat is freed. A person's export includes the private events they hired as a
 private client and the guest lists they are on; their erasure takes them off guest lists and
 keeps the events they hired for the books, without the link to them and with their names out of
 the title, notes and the diary's holds. A company's corporate membership stays when the person it
-names as its billing contact or address is erased; they are taken off it.
+names as its billing contact or address is erased; they are taken off it. The retention run's
+stale-lead rule keeps the contact made for the lead when they are the club's private client (an
+event to come or held since, money on their account since, or a running corporate membership's
+bills to look after).
 
 Not done yet: monthly statements, reminders and the lapse after the grace period run for
 members' accounts only (a company's statement is made on demand); a bank transfer the import
