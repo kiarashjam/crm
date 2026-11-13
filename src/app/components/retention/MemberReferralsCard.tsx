@@ -137,8 +137,10 @@ export function MemberReferralsCard({ memberId }: { memberId: string }) {
               {r.bonusForThem.reason ? `. ${r.bonusForThem.reason}` : '.'}
             </p>
           )}
-          {r.bonusAvailable && (
-            <WriteOnly permission={PERMISSION.ClubMembers}>
+          {r.bonusAvailable && !settings.isLoading && (
+            // A credit puts money on an account: the server gives it only to someone who may
+            // charge accounts as well, so nobody else is offered a button it would refuse.
+            <WriteOnly permission={settings.data?.referralBonus === 'credit' ? [PERMISSION.ClubMembers, PERMISSION.ManageMoney] : PERMISSION.ClubMembers} all>
               <Button type="button" size="sm" variant="outline" onClick={() => award.mutate()} disabled={award.isPending}>
                 {award.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Gift className="h-3.5 w-3.5" aria-hidden />}
                 Give {r.referredBy?.name ?? 'their referrer'} the referral bonus

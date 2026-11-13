@@ -36,6 +36,7 @@ const api = vi.hoisted(() => ({
   referrals: vi.fn<() => Promise<MemberReferrals>>(),
   setReferrer: vi.fn<(memberId: string, referrerId: string | null) => Promise<MemberReferrals>>(),
   award: vi.fn<(memberId: string) => Promise<ReferralBonus>>(),
+  bonusKind: 'points' as 'points' | 'credit',
 }));
 vi.mock('@/app/api/retention', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/app/api/retention')>()),
@@ -46,7 +47,7 @@ vi.mock('@/app/api/retention', async (importOriginal) => ({
   getMemberReferrals: () => api.referrals(),
   setReferrer: (memberId: string, referrerId: string | null) => api.setReferrer(memberId, referrerId),
   awardReferralBonus: (memberId: string) => api.award(memberId),
-  getRetentionSettings: async () => ({ ...DEFAULT_RETENTION_SETTINGS, referralBonus: 'points' }),
+  getRetentionSettings: async () => ({ ...DEFAULT_RETENTION_SETTINGS, referralBonus: api.bonusKind }),
 }));
 vi.mock('@/app/api/members', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/app/api/members')>()),
@@ -71,7 +72,8 @@ const REFERRALS: MemberReferrals = {
 };
 
 beforeEach(() => {
-  Object.values(api).forEach((fn) => fn.mockReset());
+  [api.risk, api.recompute, api.concerns, api.addConcern, api.referrals, api.setReferrer, api.award].forEach((fn) => fn.mockReset());
+  api.bonusKind = 'points';
   toast.success.mockReset();
   toast.error.mockReset();
   as([PERMISSION.ClubMembers]);
@@ -151,7 +153,7 @@ describe("a member's referrals", () => {
     render(withQueries(<MemoryRouter><MemberReferralsCard memberId="m1" /></MemoryRouter>));
 
     expect(await screen.findByRole('link', { name: 'Ana Keller' })).toHaveAttribute('href', '/members/m-ana');
-    await user.click(screen.getByRole('button', { name: /Give Ana Keller the referral bonus/ }));
+    await user.click(await screen.findByRole('button', { name: /Give Ana Keller the referral bonus/ }));
 
     await waitFor(() => expect(api.award).toHaveBeenCalledWith('m1'));
     expect(toast.success).toHaveBeenCalledWith('Ana Keller was given 500 points.');
@@ -187,6 +189,21 @@ describe("a member's referrals", () => {
 
     await waitFor(() => expect(api.setReferrer).toHaveBeenCalledWith('m1', null));
     expect(await screen.findByText('Nobody named')).toBeInTheDocument();
+  });
+
+  it('offers a bonus paid as a credit only to someone who may also charge accounts', async () => {
+    api.bonusKind = 'credit';
+    // The member's referrals come after the club's rules, so the card is drawn knowing the bonus is a credit.
+    api.referrals.mockImplementation(() => new Promise((resolve) => { setTimeout(() => resolve(REFERRALS), 30); }));
+    const { unmount } = render(withQueries(<MemoryRouter><MemberReferralsCard memberId="m1" /></MemoryRouter>));
+
+    expect(await screen.findByRole('button', { name: /Change referrer/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /referral bonus/ })).not.toBeInTheDocument();
+    unmount();
+
+    as([PERMISSION.ClubMembers, PERMISSION.ManageMoney]);
+    render(withQueries(<MemoryRouter><MemberReferralsCard memberId="m1" /></MemoryRouter>));
+    expect(await screen.findByRole('button', { name: /Give Ana Keller the referral bonus/ })).toBeInTheDocument();
   });
 
   it('offers no changes to someone who may not manage members', async () => {
