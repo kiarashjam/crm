@@ -106,6 +106,16 @@ public sealed class AutomationRecordView
     public string Name { get; init; } = string.Empty;
     public IReadOnlyDictionary<string, FactValue> Facts { get; init; } = new Dictionary<string, FactValue>();
     public IReadOnlyDictionary<string, DateTime> Dates { get; init; } = new Dictionary<string, DateTime>();
+
+    /// <summary>
+    /// The workspace's own fields the record is tested by (its tags and custom fields,
+    /// <see cref="AutomationCatalog.FlexFields"/>), so the run log can name them.
+    /// </summary>
+    public IReadOnlyList<AutomationField> FlexFields { get; init; } = [];
+
+    /// <summary>Its custom dates a wait can wait for, by name (<see cref="AutomationCatalog.FlexDates"/>).</summary>
+    public IReadOnlyList<AutomationDateField> FlexDates { get; init; } = [];
+
     public Guid? MemberId { get; init; }
     public string? MemberName { get; init; }
     public string? MemberEmail { get; init; }
@@ -136,6 +146,18 @@ public interface IAutomationRecordReader
 
     /// <summary>The workspace's time zone, for send windows.</summary>
     Task<TimeZoneInfo> ZoneAsync(Guid organizationId, CancellationToken ct = default);
+
+    /// <summary>
+    /// The custom fields and tags of the workspace being acted for, which its rules can test
+    /// besides a trigger's own fields (<see cref="AutomationCatalog.FlexFields"/>).
+    /// </summary>
+    Task<AutomationWorkspaceFields> WorkspaceFieldsAsync(CancellationToken ct = default) => Task.FromResult(AutomationWorkspaceFields.None);
+}
+
+/// <summary>A workspace's custom fields (of every kind of record) and its tags, as choices by id and name.</summary>
+public sealed record AutomationWorkspaceFields(IReadOnlyList<CustomFieldDefinition> CustomFields, IReadOnlyList<AutomationChoice> Tags)
+{
+    public static readonly AutomationWorkspaceFields None = new([], []);
 }
 
 /// <summary>A subscription whose period ends soon: the renewal trigger's event.</summary>

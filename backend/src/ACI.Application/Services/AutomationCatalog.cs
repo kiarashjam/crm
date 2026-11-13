@@ -330,4 +330,84 @@ public static class AutomationCatalog
         config != null && config.TryGetValue(DaysBeforeKey, out var raw) && int.TryParse(raw, out var days)
             ? Math.Clamp(days, 1, MaxDaysBefore)
             : DefaultDaysBefore;
+
+    // ── the workspace's own fields: tags and custom fields ───────────────────
+
+    /// <summary>The record's tags, tested by a tag's id or name: "tags is VIP" holds when it has that tag.</summary>
+    public const string TagsField = "tags";
+
+    /// <summary>A custom field's condition key is this and the field's key: "cf:tier".</summary>
+    public const string CustomFieldPrefix = "cf:";
+
+    /// <summary>
+    /// The kind of record whose tags and custom fields a rule on this kind of record tests: a
+    /// lead's or a deal's own, and for the club's records their member's. Null for a record that
+    /// carries none (a task, a contract).
+    /// </summary>
+    public static string? FlexRecordType(string automationRecord) => automationRecord switch
+    {
+        AutomationRecords.Lead => RecordTypes.Lead,
+        AutomationRecords.Deal => RecordTypes.Deal,
+        AutomationRecords.Member or AutomationRecords.Subscription or AutomationRecords.Reservation
+            or AutomationRecords.Registration or AutomationRecords.Application or AutomationRecords.Payment => RecordTypes.Member,
+        _ => null,
+    };
+
+    /// <summary>
+    /// The fields of a workspace's own a rule on this kind of record can test: its tags (one
+    /// choice per tag of the workspace), and each custom field of the record's kind as the kind
+    /// of value it holds. A date is tested as the days from today to it ("contract ends: days
+    /// from today is at most 30"), and is also a date a wait can wait for (<see cref="FlexDates"/>).
+    /// </summary>
+    public static IReadOnlyList<AutomationField> FlexFields(
+        string automationRecord, IEnumerable<CustomFieldDefinition> definitions, IEnumerable<AutomationChoice> tags)
+    {
+        var entityType = FlexRecordType(automationRecord);
+        if (entityType == null) return [];
+        var member = entityType == RecordTypes.Member;
+        var fields = new List<AutomationField>
+        {
+            new(TagsField, member ? "Member's tags" : "Tags", AutomationFieldTypes.Choice, null, tags.ToList()),
+        };
+        foreach (var definition in definitions.Where(d => d.EntityType == entityType))
+        {
+            var key = CustomFieldPrefix + definition.Key;
+            var label = member ? $"Member's {definition.Label}" : definition.Label;
+            fields.Add(definition.Type switch
+            {
+                CustomFieldTypes.Number => new AutomationField(key, label, AutomationFieldTypes.Number),
+                CustomFieldTypes.Money => new AutomationField(key, label, AutomationFieldTypes.Money),
+                CustomFieldTypes.Checkbox => new AutomationField(key, label, AutomationFieldTypes.Bool),
+                CustomFieldTypes.Select or CustomFieldTypes.MultiSelect => new AutomationField(key, label, AutomationFieldTypes.Choice, null,
+                    CustomFieldValues.Options(definition).Select(o => new AutomationChoice(o, o)).ToList()),
+                CustomFieldTypes.Date => new AutomationField(key, $"{label}: days from today", AutomationFieldTypes.Number),
+                // Text, a web address, and a link to another record, tested by its name.
+                _ => new AutomationField(key, label, AutomationFieldTypes.Text),
+            });
+        }
+        return fields;
+    }
+
+    /// <summary>The custom date fields of the record's kind, as dates a wait can wait for.</summary>
+    public static IReadOnlyList<AutomationDateField> FlexDates(string automationRecord, IEnumerable<CustomFieldDefinition> definitions)
+    {
+        var entityType = FlexRecordType(automationRecord);
+        if (entityType == null) return [];
+        return definitions
+            .Where(d => d.EntityType == entityType && d.Type == CustomFieldTypes.Date)
+            .Select(d => new AutomationDateField(CustomFieldPrefix + d.Key, $"The {entityType}'s {d.Label}"))
+            .ToList();
+    }
+
+    /// <summary>The trigger with a workspace's own fields and dates added to its fixed ones.</summary>
+    public static AutomationTrigger WithFlex(AutomationTrigger trigger, IReadOnlyList<AutomationField> fields, IReadOnlyList<AutomationDateField> dates) =>
+        fields.Count == 0 && dates.Count == 0
+            ? trigger
+            : trigger with { Fields = trigger.Fields.Concat(fields).ToList(), Dates = trigger.Dates.Concat(dates).ToList() };
+
+    /// <summary>The trigger as a workspace with these custom fields and tags sees it.</summary>
+    public static AutomationTrigger WithFlex(AutomationTrigger trigger, IReadOnlyCollection<CustomFieldDefinition> definitions, IEnumerable<AutomationChoice> tags) =>
+        FlexRecordType(trigger.Record) == null
+            ? trigger
+            : WithFlex(trigger, FlexFields(trigger.Record, definitions, tags), FlexDates(trigger.Record, definitions));
 }
