@@ -104,7 +104,7 @@ public static class ResultExtensions
         // The member portal: closed by the club, something a member may not do themselves,
         // and too many sign-in links asked for one address (DomainErrors.Portal).
         DomainErrors.Portal.OffCode => StatusCodes.Status403Forbidden,
-        DomainErrors.Portal.NotAllowedCode => StatusCodes.Status403Forbidden,
+        var code when code.StartsWith(DomainErrors.Portal.NotAllowedCode, StringComparison.Ordinal) => StatusCodes.Status403Forbidden,
         DomainErrors.Portal.TooManyLinksCode => StatusCodes.Status429TooManyRequests,
         
         // Unauthorized/Authentication errors

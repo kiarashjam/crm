@@ -14,7 +14,10 @@ public static partial class DomainErrors
         /// <summary>Too many sign-in links asked for one address (429, ResultExtensions).</summary>
         public const string TooManyLinksCode = "Portal.TooManyLinks";
 
-        /// <summary>Something a member may not do themselves, for a reason the sentence gives (403, ResultExtensions).</summary>
+        /// <summary>
+        /// Something a member may not do themselves (403, ResultExtensions): every such code starts
+        /// with this, and ends with the reason, so the portal can say it in the member's language.
+        /// </summary>
         public const string NotAllowedCode = "Portal.NotAllowed";
 
         public static readonly Error NotFound = new("Portal.NotFound", "This member portal address is not one we know. Check the link the club gave you.");
@@ -48,19 +51,19 @@ public static partial class DomainErrors
 
         public static readonly Error MonthInvalid = new("Portal.Month", "Say which month, as yyyy-MM.");
 
-        public static readonly Error NotPrimary = new(NotAllowedCode, "Only the household's primary member sees the household's statement.");
+        public static readonly Error NotPrimary = new(NotAllowedCode + ".NotPrimary", "Only the household's primary member sees the household's statement.");
 
-        public static readonly Error NotActive = new(NotAllowedCode,
+        public static readonly Error NotActive = new(NotAllowedCode + ".NotActive",
             "Your membership is not active at the moment, so booking and signing up for events are closed. Ask the club if you think this is a mistake.");
 
-        public static readonly Error EventNotOpen = new(NotAllowedCode, "This event is not open for signing up.");
+        public static readonly Error EventNotOpen = new(NotAllowedCode + ".EventNotOpen", "This event is not open for signing up.");
 
-        public static readonly Error EventStarted = new(NotAllowedCode, "This event has started, so the list can no longer be changed here.");
+        public static readonly Error EventStarted = new(NotAllowedCode + ".Started", "This event has started, so the list can no longer be changed here.");
 
-        public static Error TooLateToCancel(int hours) => new(NotAllowedCode,
+        public static Error TooLateToCancel(int hours) => new(NotAllowedCode + ".TooLate",
             $"Places and bookings can be cancelled here up to {hours} hour{(hours == 1 ? "" : "s")} before they start. Ask the club to cancel this one.");
 
-        public static readonly Error NotYours = new(NotAllowedCode, "Only the person it is for can cancel it here.");
+        public static readonly Error NotYours = new(NotAllowedCode + ".NotYours", "Only the person it is for can cancel it here.");
 
         public static readonly Error AlreadyCancelled = new("Portal.AlreadyCancelled.Conflict", "This is cancelled already.");
 

@@ -134,7 +134,9 @@ public class MemberPortalDataTests
 
         var events = (await Ok(await member.GetAsync("/api/portal/events"), "the events")).EnumerateArray().Select(e => e.GetProperty("id").GetGuid()).ToList();
         events.Should().Contain([soon, later]).And.NotContain(draft, "a draft is not offered");
-        await Refused(await member.PostAsync($"/api/portal/events/{draft}/register", null), HttpStatusCode.Forbidden, "signing up for a draft");
+        // Each refusal by the club's rules has a code of its own, so the portal can say it in the member's language.
+        (await Refused(await member.PostAsync($"/api/portal/events/{draft}/register", null), HttpStatusCode.Forbidden, "signing up for a draft"))
+            .Should().Contain("Portal.NotAllowed.EventNotOpen");
 
         var place = await Ok(await member.PostAsync($"/api/portal/events/{later}/register", null), "sign up");
         place.GetProperty("myStatus").GetString().Should().Be("Reserved");
@@ -149,11 +151,11 @@ public class MemberPortalDataTests
         var soonPlace = await Ok(await member.PostAsync($"/api/portal/events/{soon}/register", null), "sign up for tonight");
         soonPlace.GetProperty("canCancel").GetBoolean().Should().BeFalse("it starts within the club's 24 hours");
         (await Refused(await member.PostAsync($"/api/portal/registrations/{soonPlace.GetProperty("myRegistrationId").GetGuid()}/cancel", null), HttpStatusCode.Forbidden, "cancelling too late"))
-            .Should().Contain("24 hours");
+            .Should().Contain("24 hours").And.Contain("Portal.NotAllowed.TooLate");
 
         var lena = await SignInMemberAsync(factory, key, "lena@example.ch");
         (await Refused(await lena.PostAsync($"/api/portal/events/{later}/register", null), HttpStatusCode.Forbidden, "a lapsed member signing up"))
-            .Should().Contain("not active");
+            .Should().Contain("not active").And.Contain("Portal.NotAllowed.NotActive");
     }
 
     [Fact]
