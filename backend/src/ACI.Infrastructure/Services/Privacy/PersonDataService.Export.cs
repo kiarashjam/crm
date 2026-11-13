@@ -167,6 +167,15 @@ public sealed partial class PersonDataService
             new("club/loyalty.json", "Loyalty points they earned and spent.", d.Loyalty.Select(e => Row(e)).ToList()),
             new("club/households.json", "The households they belong to, and their place in each.", d.HouseholdLinks.Select(l => With(Row(l), "household",
                 d.Households.TryGetValue(l.HouseholdId, out var h) ? new { h.Name, h.Notes } : null)).ToList()),
+            new("club/retention.json", "Their at-risk score and the signs it was worked out from, their renewals as the renewals board keeps them, and complaints or concerns staff recorded about them.",
+                d.Risks.Count + d.Renewals.Count + d.Concerns.Count == 0 ? [] : [new
+                {
+                    score = d.Risks.Select(r => Row(r)).ToList(),
+                    renewals = d.Renewals.Select(r => Row(r)).ToList(),
+                    concerns = d.Concerns.Select(c => Row(c)).ToList(),
+                }]),
+            new("club/referral-bonuses.json", "Referral bonuses: given to them for a member they introduced, or to the member who introduced them.",
+                d.ReferralBonuses.Select(b => Row(b)).ToList()),
             new("club/old-documents.json", "Club records kept read-only from before the club's records had tables of their own, that name them.", d.Documents.Select(x => Row(x)).ToList()),
             new("audit/audit-trail.json", "The history of changes to their records: who changed what, and when.", d.Audit.Select(a => Row(a)).ToList()),
         ];

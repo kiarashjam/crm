@@ -99,6 +99,14 @@ internal sealed class PersonDossier
     public List<ClubHouseholdMember> HouseholdLinks { get; private set; } = new();
     public Dictionary<Guid, ClubHousehold> Households { get; private set; } = new();
     public List<ClubDocument> Documents { get; private set; } = new();
+    /// <summary>Their at-risk score, with the signs it was made of.</summary>
+    public List<ClubMemberRisk> Risks { get; private set; } = new();
+    /// <summary>Their renewals as the board keeps them: the stage staff set, notes, when they were contacted.</summary>
+    public List<ClubRenewal> Renewals { get; private set; } = new();
+    /// <summary>Complaints and concerns staff recorded about them.</summary>
+    public List<ClubMemberConcern> Concerns { get; private set; } = new();
+    /// <summary>Referral bonuses for a member they brought in, or to the member who brought them in: kept with the books.</summary>
+    public List<ClubReferralBonus> ReferralBonuses { get; private set; } = new();
 
     /// <summary>The ids of every money record of the person's, for the audit lines written about them.</summary>
     public HashSet<Guid> MoneyRecordIds =>
@@ -328,6 +336,11 @@ internal sealed class PersonDossier
             .ToListAsync(ct);
         var householdIds = d.HouseholdLinks.Select(l => l.HouseholdId).Distinct().ToList();
         d.Households = await Q(db.ClubHouseholds).Where(h => householdIds.Contains(h.Id)).ToDictionaryAsync(h => h.Id, ct);
+        d.Risks = await Q(db.ClubMemberRisks).Where(r => memberIds.Contains(r.MemberId)).ToListAsync(ct);
+        d.Renewals = await Q(db.ClubRenewals).Where(r => memberIds.Contains(r.MemberId)).OrderBy(r => r.EndsAtUtc).ToListAsync(ct);
+        d.Concerns = await Q(db.ClubMemberConcerns).Where(c => memberIds.Contains(c.MemberId)).OrderBy(c => c.RecordedAtUtc).ToListAsync(ct);
+        d.ReferralBonuses = await Q(db.ClubReferralBonuses).Where(b => memberIds.Contains(b.ReferrerMemberId) || memberIds.Contains(b.ReferredMemberId))
+            .OrderBy(b => b.CreatedAtUtc).ToListAsync(ct);
         // The JSON documents kept read-only from before the club's records had tables of their
         // own: the old copies of their records (a record moved to its table kept its document's
         // id), any that name a member's id, and any that mention the person, as written or as
@@ -384,8 +397,11 @@ internal sealed class PersonDossier
         // A task a rule made about one of their club records (a booking, a renewal) is linked to
         // none of their records, since a task has no member, only through the run's log, and
         // says "About Anna Keller: Court": it is theirs, as a task on their lead is.
+        // So is the task the club's retention rules made when they became at risk ("Member at
+        // risk: Anna Keller"), which their score names.
         var knownTasks = d.Tasks.Select(t => t.Id).ToHashSet();
         var madeByRuns = d.AutomationRunSteps.Where(x => x.TaskId != null).Select(x => x.TaskId!.Value)
+            .Concat(d.Risks.Where(r => r.SaveTaskId != null).Select(r => r.SaveTaskId!.Value))
             .Where(id => !knownTasks.Contains(id)).Distinct().ToList();
         if (madeByRuns.Count > 0)
         {

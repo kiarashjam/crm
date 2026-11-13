@@ -258,6 +258,11 @@ public sealed partial class PersonDataService
             "Kept under the pseudonym, with their notes removed.");
         Add("Visits", ErasureActions.Anonymise, d.Visits.Count, "Kept for the club's figures, under the pseudonym.");
         Add("Loyalty points", ErasureActions.Anonymise, d.Loyalty.Count, "Kept for the club's figures, under the pseudonym.");
+        Add("At-risk score", ErasureActions.Delete, d.Risks.Count, "An erased member is not scored again.");
+        Add("Renewals on the renewals board", ErasureActions.Delete, d.Renewals.Count, "With the notes staff kept on them.");
+        Add("Complaints and concerns about them", ErasureActions.Delete, d.Concerns.Count);
+        Add("Referral bonuses", ErasureActions.Keep, d.ReferralBonuses.Count,
+            "Kept with the books: the points or credit given stay, and the people they name show under their pseudonyms.");
         Add("Older club records kept read-only", ErasureActions.Anonymise, d.Documents.Count);
         Add("Lines of the audit trail", ErasureActions.Anonymise, d.Audit.Count, "Their name is replaced by the pseudonym; who did what and when stays.");
         Add("Addresses", ErasureActions.Delete, s.Addresses.Count,
@@ -567,6 +572,13 @@ public sealed partial class PersonDataService
             e.MemberName = pseudonym;
             e.Note = null;
         }
+        // The score and the renewals are worked out about them, and a concern is staff's words
+        // about them: none is needed for the books. A referral bonus is (it is points or money
+        // given): it stays, and a reason that names them loses the name.
+        _db.ClubMemberRisks.RemoveRange(d.Risks);
+        _db.ClubRenewals.RemoveRange(d.Renewals);
+        _db.ClubMemberConcerns.RemoveRange(d.Concerns);
+        foreach (var b in d.ReferralBonuses) b.Reason = Scrub(b.Reason);
         foreach (var c in d.Charges)
         {
             if (memberIds.Contains(c.MemberId)) c.MemberName = pseudonym;
