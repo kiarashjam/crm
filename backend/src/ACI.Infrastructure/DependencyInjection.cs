@@ -185,6 +185,7 @@ public static class DependencyInjection
         services.AddSingleton<ACI.Infrastructure.Services.Assistant.AiWorkspaceThrottle>();
         services.AddScoped<IAiBudget, ACI.Infrastructure.Services.Assistant.AiBudget>();
         services.AddScoped<IAssistantSettingsService, ACI.Infrastructure.Services.Assistant.AssistantSettingsService>();
+        services.AddScoped<IClubAssistantReads, ACI.Infrastructure.Services.Assistant.ClubAssistantReads>();
 
         services.AddDataProtection().SetApplicationName("ACI");
         services.AddSingleton<ISecretProtector, DataProtectionSecretProtector>();

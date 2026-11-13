@@ -68,7 +68,8 @@ public sealed class ScriptedModel : IAssistantModel
         int n;
         lock (_gate)
         {
-            Requests.Add(request);
+            // A copy of the conversation as it stood: the chat goes on adding to its own list.
+            Requests.Add(request with { Messages = request.Messages.ToList(), Tools = request.Tools.ToList() });
             n = Requests.Count;
         }
         return Task.FromResult(Answer(request, n));

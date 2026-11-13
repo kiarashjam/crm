@@ -123,6 +123,11 @@ public sealed class ReadOnlyMemberMiddleware
         // organization they are merely a viewer of.
         if (string.Equals(path, "/api/organizations", Ignore)) return true;
 
+        // Asking the assistant changes nothing: it reads the records as the caller sees them,
+        // and a change it proposes is made only by the caller's confirm, a request of its own
+        // that this check still refuses. A POST because a question does not belong in a URL.
+        if (string.Equals(path, "/api/agent/chat", Ignore)) return true;
+
         // Accepting an invitation — /api/invites/accept or /api/invites/{id}/accept —
         // concerns only their own membership. Creating an invite
         // (/api/invites/{organizationId}) is administrative and is NOT included.

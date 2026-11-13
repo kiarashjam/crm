@@ -1,10 +1,12 @@
 using ACI.Application.Interfaces;
 using ACI.Application.Services;
 using ACI.Domain.Common;
+using ACI.WebApi.Assistant;
 using ACI.WebApi.Extensions;
 using ACI.WebApi.Filters;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace ACI.WebApi.Controllers;
 
@@ -25,11 +27,33 @@ public class AgentController : ControllerBase
 {
     private readonly IAssistantSettingsService _settings;
     private readonly ICurrentUserService _currentUser;
+    private readonly AssistantChat _chat;
 
-    public AgentController(IAssistantSettingsService settings, ICurrentUserService currentUser)
+    public AgentController(IAssistantSettingsService settings, ICurrentUserService currentUser, AssistantChat chat)
     {
         _settings = settings;
         _currentUser = currentUser;
+        _chat = chat;
+    }
+
+    /// <summary>
+    /// Asks the assistant. The language model answers from the tools the caller may use, reading
+    /// the records as the caller sees them, and proposes changes rather than making them: each
+    /// comes back as a proposal the app shows for the caller to confirm, and only that confirm
+    /// sends it to the endpoint that makes it.
+    /// </summary>
+    /// <response code="200">The answer, with any proposed changes and what was looked up.</response>
+    /// <response code="429">Asked too fast, the workspace's team is asking too much at once, or its monthly AI allowance is used up.</response>
+    /// <response code="502">The language model did not answer properly (errorCode Assistant.ModelFailed).</response>
+    /// <response code="503">No language model is set up on the server (errorCode Assistant.NotConfigured).</response>
+    [HttpPost("chat")]
+    [EnableRateLimiting("assistant")]
+    [ProducesResponseType(typeof(AssistantChatReply), StatusCodes.Status200OK)]
+    public async Task<ActionResult<object>> Chat([FromBody] AssistantChatRequest request, CancellationToken ct)
+    {
+        if (_currentUser.CurrentOrganizationId is not Guid org || _currentUser.UserId is not Guid user) return Unauthorized();
+        var result = await _chat.AskAsync(org, user, _currentUser.UserName, request, ct);
+        return result.IsSuccess ? Ok(result.Value) : result.Error.ToProblemResult();
     }
 
     /// <summary>
