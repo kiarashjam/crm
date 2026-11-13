@@ -14,7 +14,9 @@ import { http, HttpResponse } from 'msw';
 import { server } from '@/test/mocks/server';
 import { withQueries } from '@/test/queryWrapper';
 import { PERMISSION, type Permission } from '@/app/api/organizations';
-import type { AutomationCatalog, AutomationRule, AutomationRun, AutomationRunDetail } from '@/app/api/automations';
+import type {
+  AutomationCatalog, AutomationRule, AutomationRun, AutomationRunDetail, AutomationTriggerDef,
+} from '@/app/api/automations';
 
 vi.mock('@/app/components/AppHeader', () => ({ default: () => null }));
 vi.mock('@/app/hooks/useMotionPreference', () => ({ useMotionPreference: () => true }));
@@ -288,7 +290,7 @@ describe('the automations page', () => {
 
   it("tests the record's tags and custom fields, and waits for one of its custom dates", async () => {
     // The server adds the workspace's own tags and custom fields to each trigger it can test.
-    const [lead, booking] = CATALOG.triggers;
+    const [lead, booking] = CATALOG.triggers as [AutomationTriggerDef, AutomationTriggerDef];
     server.use(http.get(`${BASE}/api/automations/catalog`, () => HttpResponse.json({
       ...CATALOG,
       triggers: [{
