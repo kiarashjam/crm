@@ -336,10 +336,15 @@ public sealed partial class ClubRetentionService
 
         // What a member spent: charges and their voids, other than dues (which run whatever the
         // member does), by whoever ran them up (a spouse whose bills roll up spent them, not the
-        // primary). In the workspace's currency; another currency is not added to it.
+        // primary). In the workspace's currency; another currency is not added to it. A void of
+        // an opening balance or a balance set by hand takes back no spending, as on Club Reports:
+        // counted, one in the months before made them look as if they had spent nothing then.
         var spend = (await _db.ClubCharges.AsNoTracking()
                 .Where(c => c.OrganizationId == organizationId && c.PostedAtUtc >= baselineFrom && c.PostedAtUtc <= now
-                    && (c.EntryType == ClubEntryTypes.Charge || c.EntryType == ClubEntryTypes.Void) && c.Kind != "Dues" && c.Currency == currency
+                    && (c.EntryType == ClubEntryTypes.Charge
+                        || (c.EntryType == ClubEntryTypes.Void
+                            && _db.ClubCharges.Any(o => o.Id == c.ReversesChargeId && o.EntryType == ClubEntryTypes.Charge)))
+                    && c.Kind != "Dues" && c.Currency == currency
                     && (onlyMemberId == null || (c.IncurredByMemberId ?? c.MemberId) == onlyMemberId))
                 .Select(c => new { MemberId = c.IncurredByMemberId ?? c.MemberId, c.Amount, c.PostedAtUtc })
                 .GroupBy(x => x.MemberId)

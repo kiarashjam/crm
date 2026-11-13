@@ -436,10 +436,13 @@ public sealed class ClubReferralService : IClubReferrals
 
         // What the members brought in were charged in the period, by whoever ran it up (a spouse
         // whose bills go on the primary's account brought their own spending in): dues apart from
-        // everything else, voids taken off, per currency. Opening balances and corrections are not sales.
+        // everything else, voids taken off, per currency. Opening balances and corrections are not
+        // sales, and voiding one takes back none (as on Club Reports).
         var charged = (await _db.ClubCharges.AsNoTracking()
                 .Where(c => c.OrganizationId == organizationId && c.PostedAtUtc >= from && c.PostedAtUtc < to
-                    && (c.EntryType == ClubEntryTypes.Charge || c.EntryType == ClubEntryTypes.Void))
+                    && (c.EntryType == ClubEntryTypes.Charge
+                        || (c.EntryType == ClubEntryTypes.Void
+                            && _db.ClubCharges.Any(o => o.Id == c.ReversesChargeId && o.EntryType == ClubEntryTypes.Charge))))
                 .Select(c => new { MemberId = c.IncurredByMemberId ?? c.MemberId, Dues = c.Kind == "Dues", c.Currency, c.Amount })
                 .GroupBy(x => new { x.MemberId, x.Dues, x.Currency })
                 .Select(g => new { g.Key.MemberId, g.Key.Dues, g.Key.Currency, Amount = g.Sum(x => x.Amount) })

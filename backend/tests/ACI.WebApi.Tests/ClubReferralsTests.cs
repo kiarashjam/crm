@@ -321,6 +321,29 @@ public class ClubReferralsTests
             .Should().Be(HttpStatusCode.BadRequest);
     }
 
+    [Fact]
+    public async Task ABalanceCorrectionTakenBack_TakesNothingOffWhatAReferredMemberBrought()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (owner, _, _) = await ClubAsync(factory);
+        var ana = await MemberAsync(owner, "Ana");
+        var ben = await MemberAsync(owner, "Ben", joinedDaysAgo: 100);
+        await Json(await owner.PutAsync($"/api/members/{ben}/referrer", Body(new { referredByMemberId = ana })), "Ana referred Ben");
+        await Json(await owner.PostAsync("/api/charges", Body(new { memberId = ben, kind = "Bar", description = "Bar", amount = 40m })), "Ben's bar");
+        // Ben's balance was set by hand to owe 200 more, in error, and the correction was voided.
+        var balance = await factory.Services.Read(db => db.ClubMembers.Single(m => m.Id == ben).HouseAccountBalance);
+        await Json(await owner.PutAsync($"/api/members/{ben}", Body(new { houseAccountBalance = balance - 200m })), "set Ben's balance by hand");
+        var correction = await factory.Services.Read(db => db.ClubCharges.Single(c => c.MemberId == ben && c.EntryType == ClubEntryTypes.Adjustment).Id);
+        await Json(await owner.PostAsync($"/api/charges/{correction}/void", Body(new { reason = "Set on the wrong member" })), "void the correction");
+
+        var report = await Json(await owner.GetAsync("/api/referrals/report"), "the report");
+
+        var anaRow = report.GetProperty("referrers").EnumerateArray().Single();
+        Amount(anaRow.GetProperty("spend")).Should().Be(40m, "a correction is no sale, so voiding one takes no sale back");
+        Amount(anaRow.GetProperty("revenue")).Should().Be(40m);
+        Amount(report.GetProperty("totals").GetProperty("revenue")).Should().Be(40m);
+    }
+
     private static decimal Amount(JsonElement amounts) =>
         amounts.EnumerateArray().Where(a => a.GetProperty("currency").GetString() == "CHF").Sum(a => a.GetProperty("amount").GetDecimal());
 

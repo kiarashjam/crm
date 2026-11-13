@@ -158,6 +158,36 @@ public class ClubRetentionTests
         listed.EnumerateArray().Count(c => c.TryGetProperty("resolvedAtUtc", out var r) && r.ValueKind != JsonValueKind.Null).Should().Be(1);
     }
 
+    [Fact]
+    public async Task AnOpeningBalanceTakenBack_IsNoSpending_SoAFallInSpendingStillShows()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (owner, _, org) = await ClubAsync(factory);
+        var anna = await MemberAsync(owner, "Anna");
+        // CHF 900 at the bar in the months before the last 90 days, nothing since; and an opening
+        // balance brought over in error, voided 150 days ago.
+        using (var scope = factory.Services.CreateScope())
+        await using (var db = scope.ServiceProvider.EveryWorkspace())
+        {
+            ClubCharge Entry(string type, decimal amount, int daysAgo, Guid? reverses = null) => new()
+            {
+                Id = Guid.NewGuid(), OrganizationId = org, MemberId = anna, MemberName = "Anna Keller", EntryType = type, Kind = "Other",
+                Description = type == ClubEntryTypes.Charge ? "Bar" : "Opening balance", Amount = amount, Currency = "CHF",
+                PostedAtUtc = DateTime.UtcNow.AddDays(-daysAgo), ReversesChargeId = reverses, CreatedAtUtc = DateTime.UtcNow.AddDays(-daysAgo),
+            };
+            db.ClubCharges.AddRange(Entry(ClubEntryTypes.Charge, 300m, 120), Entry(ClubEntryTypes.Charge, 300m, 200), Entry(ClubEntryTypes.Charge, 300m, 300));
+            var opening = Entry(ClubEntryTypes.Opening, 2000m, 340);
+            db.ClubCharges.AddRange(opening, Entry(ClubEntryTypes.Void, -2000m, 150, opening.Id));
+            await db.SaveChangesAsync();
+        }
+
+        var risk = await RecomputeAsync(owner, anna);
+
+        var spend = Factor(risk, RiskScoring.Spend);
+        spend.GetProperty("points").GetInt32().Should().Be(15, "she spent about CHF 300 in a usual 90 days and nothing in the last 90: the whole of the sign");
+        spend.GetProperty("detail").GetString().Should().Contain("against about").And.Contain("300.00");
+    }
+
     // ── save actions ─────────────────────────────────────────────────────────
 
     [Fact]
