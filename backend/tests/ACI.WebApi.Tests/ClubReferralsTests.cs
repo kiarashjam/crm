@@ -182,6 +182,33 @@ public class ClubReferralsTests
     }
 
     [Fact]
+    public async Task TheBonus_GoesToTheReferrerTheMemberHasOnRecord_WhenTheirApplicationNamesAnother()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (owner, _, _) = await ClubAsync(factory);
+        await Rules(owner, new { referralBonus = "points", referralBonusPoints = 200 });
+        var ana = await MemberAsync(owner, "Ana");
+        var ben = await MemberAsync(owner, "Ben");
+        // Claire is on the club's books already, still pending, and staff recorded that Ana brought her in.
+        var claire = (await Json(await owner.PostAsync("/api/members", Body(new
+        {
+            firstName = "Claire", lastName = "Martin", email = "claire@example.ch", tier = "Gold", status = "Pending",
+        })), "add Claire")).GetProperty("id").GetGuid();
+        await Json(await owner.PutAsync($"/api/members/{claire}/referrer", Body(new { referredByMemberId = ana })), "Ana brought Claire in");
+        // Her application names Ben.
+        var id = (await ApplyAsync(owner, referrer: ben)).GetProperty("id").GetGuid();
+
+        var approved = await Json(await owner.PostAsync($"/api/applications/{id}/approve", Body(new { })), "approve");
+
+        approved.GetProperty("memberId").GetGuid().Should().Be(claire, "she is the member the club already had");
+        (await factory.Services.Read(db => db.ClubMembers.Single(m => m.Id == claire).ReferredByMemberId)).Should().Be(ana, "the referrer on record stays");
+        (await factory.Services.Read(db => db.ClubReferralBonuses.Single().ReferrerMemberId)).Should().Be(ana,
+            "the bonus goes to the member the records (and the referrals report) say brought her in");
+        (await factory.Services.Read(db => db.LoyaltyLedger.Count(e => e.MemberId == ana))).Should().Be(1);
+        (await factory.Services.Read(db => db.LoyaltyLedger.Count(e => e.MemberId == ben))).Should().Be(0);
+    }
+
+    [Fact]
     public async Task PointsGivenWhenTheDirectorApproves_AreNotGivenAgainWhenFinanceFinishesTheMoney()
     {
         using var factory = new CustomWebApplicationFactory();

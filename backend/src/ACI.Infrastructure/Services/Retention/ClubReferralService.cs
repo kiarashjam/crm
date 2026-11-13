@@ -151,10 +151,15 @@ public sealed class ClubReferralService : IClubReferrals
 
     public async Task<string?> RewardReferrerAsync(Guid organizationId, Guid applicationId, Guid userId, bool mayHandleMoney, CancellationToken ct = default)
     {
-        var app = await _db.ClubApplications.AsNoTracking()
+        var admitted = await _db.ClubApplications.AsNoTracking()
             .Where(a => a.Id == applicationId && a.OrganizationId == organizationId)
-            .Select(a => new { a.MemberId, a.ReferredByMemberId }).FirstOrDefaultAsync(ct);
-        if (app?.MemberId is not Guid memberId || app.ReferredByMemberId is not Guid referrerId) return null;
+            .Select(a => a.MemberId).FirstOrDefaultAsync(ct);
+        if (admitted is not Guid memberId) return null;
+        // The referrer the member has on record once the approval carried the application's over:
+        // one they had already (set by hand, or by an earlier application) stays, and is who the
+        // referrals report counts, so the bonus goes to them, as a bonus given by hand does.
+        var referrer = await Members(organizationId).Where(m => m.Id == memberId).Select(m => m.ReferredByMemberId).FirstOrDefaultAsync(ct);
+        if (referrer is not Guid referrerId) return null;
         var award = await AwardCoreAsync(organizationId, memberId, referrerId, applicationId, userId, mayHandleMoney, requireActiveReferrer: true, ct);
         return award.Sentence;
     }

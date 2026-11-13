@@ -41,8 +41,9 @@ public interface IClubReferrals
     Task<Result> CheckApprovalAsync(Guid organizationId, ClubApplication application, CancellationToken ct = default);
 
     /// <summary>
-    /// After an approval admitted the applicant: the bonus for their referrer, once. Answers a
-    /// sentence for the reviewer, or null when there is no bonus to speak of.
+    /// After an approval admitted the applicant: the bonus for their referrer (the one on the
+    /// member's record, which the approval took from the application unless they had one), once.
+    /// Answers a sentence for the reviewer, or null when there is no bonus to speak of.
     /// </summary>
     Task<string?> RewardReferrerAsync(Guid organizationId, Guid applicationId, Guid userId, bool mayHandleMoney, CancellationToken ct = default);
 
