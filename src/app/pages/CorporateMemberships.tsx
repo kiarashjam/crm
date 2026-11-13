@@ -26,7 +26,7 @@ const STATUSES = [
 ] as const;
 
 export default function CorporateMemberships() {
-  useDocumentTitle('Corporate memberships');
+  useDocumentTitle(null, 'Corporate memberships');
   const f = useFormat();
   const amount = useClubAmount();
   const [status, setStatus] = useState('');
