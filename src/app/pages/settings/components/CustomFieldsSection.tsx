@@ -16,6 +16,7 @@ import {
 import { useFieldDefinitions } from '@/app/hooks/queries';
 import { useModules } from '@/app/hooks/useModules';
 import { useMay } from '@/app/hooks/useMay';
+import { useRegional } from '@/app/hooks/useMoney';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import { TagsSection } from './TagsSection';
 
@@ -40,6 +41,9 @@ const TYPES: { id: CustomFieldType; label: string }[] = [
 ];
 
 const CURRENCIES = ['CHF', 'EUR', 'USD', 'GBP'];
+
+/** The currencies a money field can be in here: the common ones, and the workspace's own first. */
+const currenciesFor = (workspace: string) => [workspace, ...CURRENCIES.filter((c) => c !== workspace)];
 
 const hasOptions = (type: CustomFieldType) => type === 'select' || type === 'multiselect';
 /** The kinds a default can be typed for here; a link's or a money field's is set on a record instead. */
@@ -69,7 +73,11 @@ export function CustomFieldsSection() {
   const [type, setType] = useState<CustomFieldType>('text');
   const [options, setOptions] = useState('');
   const [required, setRequired] = useState(false);
-  const [currency, setCurrency] = useState('CHF');
+  // A money field is in the workspace's currency unless someone picks another, as its deals are
+  // (read when the form is used, so a workspace that loads after the page still counts).
+  const workspaceCurrency = useRegional().currency;
+  const [pickedCurrency, setPickedCurrency] = useState<string | null>(null);
+  const currency = pickedCurrency ?? workspaceCurrency;
   const [linkTo, setLinkTo] = useState<CustomFieldEntity>('contact');
   const [defaultText, setDefaultText] = useState('');
   const [defaultTicked, setDefaultTicked] = useState(false);
@@ -79,6 +87,7 @@ export function CustomFieldsSection() {
 
   const reset = () => {
     setLabel(''); setOptions(''); setRequired(false); setType('text'); setDefaultText(''); setDefaultTicked(false);
+    setPickedCurrency(null);
   };
 
   const add = async () => {
@@ -257,9 +266,9 @@ export function CustomFieldsSection() {
             {type === 'money' && (
               <div>
                 <Label htmlFor="cf-currency">Currency</Label>
-                <Select value={currency} onValueChange={setCurrency}>
+                <Select value={currency} onValueChange={setPickedCurrency}>
                   <SelectTrigger id="cf-currency" className="mt-1 bg-white"><SelectValue /></SelectTrigger>
-                  <SelectContent>{CURRENCIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                  <SelectContent>{currenciesFor(workspaceCurrency).map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
             )}

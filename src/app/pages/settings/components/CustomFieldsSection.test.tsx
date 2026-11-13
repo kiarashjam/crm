@@ -92,6 +92,20 @@ describe("the workspace's own fields", () => {
     })));
   });
 
+  it("starts a money field in the workspace's own currency, not always in francs", async () => {
+    (org.current!.currentOrg as Record<string, unknown>).currency = 'EUR';
+    const user = userEvent.setup();
+    render(withQueries(<CustomFieldsSection />));
+    await screen.findByText('Budget');
+
+    await user.type(screen.getByLabelText('Label'), 'Annual fee');
+    await user.click(screen.getByLabelText('Type'));
+    await user.click(await screen.findByRole('option', { name: 'Money' }));
+    expect(screen.getByLabelText('Currency')).toHaveTextContent('EUR');
+    await user.click(screen.getByRole('button', { name: /add field/i }));
+    await waitFor(() => expect(api.create).toHaveBeenCalledWith(expect.objectContaining({ type: 'money', currency: 'EUR' })));
+  });
+
   it('puts fields in order and changes one in place, its default included', async () => {
     const user = userEvent.setup();
     render(withQueries(<CustomFieldsSection />));
