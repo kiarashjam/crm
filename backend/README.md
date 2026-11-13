@@ -453,6 +453,69 @@ click, and flags images that point at a computer or plain http.
 `CADENCE_E2E_PORTAL` (its handoff address, e.g. a local Pavillon 46 in Development) and
 `CADENCE_E2E_PORTAL_SECRET` (its `CADENCE_ONBOARDING_SECRET`) are set; otherwise it is skipped.
 
+### Member portal
+
+The club's members sign in to their own club account at `{Email:FrontendBaseUrl}/member-portal/{portalKey}`
+(the frontend's `MemberPortalSite`), in French, German or English. It is part of the Club module
+and **off in every workspace until someone with Manage settings turns it on** (Settings ›
+Welcome & portal). A copied workspace starts with it off, at an address of its own. When the
+workspace also hands new members to its own portal (the handoff above), the settings say so: its
+members then have two places to sign in.
+
+**Signing in.** A member asks for a link by email; the answer is the same whether or not the
+address is a member's, and at most 3 links go to one address of one club in 15 minutes (with
+per-IP limits on top). The link carries a 256-bit secret in the address's fragment (`#token=…`),
+stored only as its SHA-256; it works once, for 15 minutes (an invitation's for 3 days, a handoff's
+for 2 minutes), and is spent by deleting it, so of two uses at once only one signs in. Using it opens
+a **member session** of 30 days: a JWT of its own scheme (`MemberPortal`, its own audience and key,
+naming the organization, the member and the session), sent as `Authorization: Bearer` to
+`/api/portal/*` only. A member token is refused by every staff endpoint and a staff token by every
+portal endpoint. The session is checked on every request, so signing out, signing out everywhere,
+staff ending the member's sessions, turning the portal off, turning the Club module off, and erasing
+the member all end it at once. An erased member is never sent a link. Invitations and links go
+through the outbox from the Welcome & portal sender (its name, its from address when the workspace's
+verified domain allows it, its reply-to), in the member's language.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/public/portal/{key}` | The club's name, language and whether the portal is open (404 for no such portal) |
+| `POST` | `/api/public/portal/{key}/sign-in-link` | `{ email }`: emails a sign-in link if the address is a member's; 202 either way, 429 past the limit |
+| `POST` | `/api/public/portal/{key}/sign-in` | `{ token }`: uses a link once; returns `{ token, expiresAtUtc, memberId, firstName, clubName, language }` |
+| `POST` | `/api/public/portal/handoff/{onboardingId}/link` | The club's own portal asks for a sign-in link for the member a handoff added (below) |
+| `GET`/`PATCH` | `/api/portal/me` | Who they are to the club (status, start date or "still to be decided", household); `PATCH` changes only `phone` and `preferredLanguage` (merge-patch: a `phone` sent as null is taken off) |
+| `POST` | `/api/portal/sign-out`, `/api/portal/sign-out-everywhere` | Ends this session, or every session of theirs (and their unused links) |
+| `GET` | `/api/portal/account` | Balance, what is owed or in credit, open charges, the months with statements |
+| `GET` | `/api/portal/statements/{yyyy-MM}` (`/pdf`, `/household-pdf`) | A month's statement, its PDF, and the household's for its primary |
+| `GET`/`DELETE` | `/api/portal/card`; `POST /api/portal/card/setup` | Their saved card; saving one (and paying dues with it) goes through the club's pay page |
+| `POST` | `/api/portal/pay` | `{ chargeIds? }`: a pay page for those open charges, or everything owed |
+| `GET` | `/api/portal/events`; `POST /events/{id}/register`, `/registrations/{id}/cancel` | Published events to come, signing up (the event's capacity, waitlist and member price) and cancelling up to the club's cut-off |
+| `GET` | `/api/portal/resources`, `/api/portal/reservations`; `POST /reservations`, `/reservations/{id}/cancel` | What the club opens to members' bookings, their bookings (a primary also sees the household's), booking by the resource's rules and cancelling up to the cut-off |
+| `GET`/`PUT` | `/api/portal/consent` | Marketing and service, per channel; `{ channel, purpose, granted }` is recorded with the member as its source |
+| `GET` | `/api/portal/points` | Their points and how they came |
+| `GET`/`PUT` | `/api/member-portal/settings` | On or off, the cancel cut-off in hours (0 to 720), the address; `PUT` takes `{ enabled?, memberCancelHours?, version }` or `If-Match` (Manage settings). Turning it off ends every session |
+| `GET` | `/api/member-portal/members`, `/api/members/{id}/portal` | Who was invited, who has signed in and on how many devices |
+| `POST` | `/api/member-portal/invite-all`, `/api/members/{id}/portal/invite`, `/api/members/{id}/portal/revoke` | Inviting everyone not invited yet (200 addresses a request; the answer says how many remain), one member, and ending a member's sessions (Club members) |
+
+Every portal endpoint answers only from the member's own records (and, for a household's primary,
+the household's): a record of another member, another household or another workspace is "not
+found", the same as one that does not exist. A refusal by the club's rules is 403
+`Portal.NotAllowed.<reason>` (`TooLate`, `NotActive`, `EventNotOpen`, `Started`, `NotYours`,
+`NotPrimary`), so the portal can say it in the member's language. A resource is bookable in the
+portal only when its `memberBooking` is `request` (the club confirms) or `instant`; every existing
+resource starts `off`. A member's portal actions run the workspace's automations as any booking or
+registration does.
+
+**The club's own portal opening a session here.** A member added through the welcome handoff may
+also use the club's own portal. It can send them here without a second sign-in: it posts any small
+JSON body (with a random nonce in it) to `/api/public/portal/handoff/{onboardingId}/link`, signed as
+the handoff itself is (`X-Cadence-Timestamp`: Unix seconds; `X-Cadence-Signature-256`:
+`sha256=` + hex HMAC-SHA256 of `{timestamp}.{body}` with the handoff's secret), and gets back
+`{ url, expiresAtUtc }`, a sign-in link for that handoff's member that works once, for two minutes,
+to send the member's browser to. A request more than five minutes from now, a signature already
+used, or one made with a secret since replaced is refused (401, the same answer as an unknown
+handoff); the portal being off is 403. The handoff's own contract (its payload, signatures,
+callback and events) is unchanged.
+
 ### Organizations & Team
 
 | Method | Endpoint | Description |

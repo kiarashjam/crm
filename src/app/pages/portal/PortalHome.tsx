@@ -36,7 +36,9 @@ export function PortalHome({ portalKey, session }: { portalKey: string; session:
   const [search, setSearch] = useSearchParams();
   const tab = (TABS as readonly string[]).includes(search.get('tab') ?? '') ? (search.get('tab') as Tab) : 'overview';
   const me = useQuery({ queryKey: keys.me, queryFn: ({ signal }) => timed(signal, (s) => api.me(s)) });
+  // The member's own language; without one, their browser's, then the club's.
   usePageLanguage(me.data?.preferredLanguage ?? session.language ?? null, 'reader');
+  usePageLanguage(me.data?.locale ?? null, 'club');
   usePortalTitle(me.data?.clubName ?? session.clubName);
   const [leaving, setLeaving] = useState(false);
 
