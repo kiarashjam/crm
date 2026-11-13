@@ -221,6 +221,9 @@ public sealed partial class PersonDataService
         Add("Generated copy", ErasureActions.Delete, d.CopyHistory.Count);
         Add("Relationships between contacts", ErasureActions.Delete, d.Relationships.Count);
         Add("Duplicate decisions", ErasureActions.Delete, d.DuplicateDecisions.Count);
+        Add("Custom field values on their records", ErasureActions.Delete, d.CustomFieldEntries.Select(e => (e.RecordId, e.FieldId)).Distinct().Count(),
+            "Including those on the member record and deals that stay.");
+        Add("Tags on their records", ErasureActions.Delete, d.RecordTags.Count, "The tags themselves stay, for the workspace's other records.");
         Add("Leads they referred", ErasureActions.Anonymise, d.LeadsReferredByThem.Count, "The leads stay; only the link to them as referrer goes.");
         Add("Establishments they are the contact person of", ErasureActions.Anonymise, d.EstablishmentsTheySpeakFor.Count,
             "The establishments stay, with their history; their name, role, email and phone as the contact person are removed.");
@@ -352,6 +355,8 @@ public sealed partial class PersonDataService
         _db.CopyHistoryItems.RemoveRange(d.CopyHistory);
         _db.Notifications.RemoveRange(d.Notifications);
         _db.CustomFieldValues.RemoveRange(d.CustomFieldValues);
+        _db.CustomFieldEntries.RemoveRange(d.CustomFieldEntries);
+        _db.RecordTags.RemoveRange(d.RecordTags);
         foreach (var lead in d.LeadsReferredByThem) lead.ReferredByContactId = null;
         // Records of theirs that staff kept out of the selection stay, but stop pointing at what
         // goes. A lead whose contact goes is marked so no new contact is made for it on its next

@@ -108,7 +108,16 @@ public sealed partial class PersonDataService
                 }).ToList()),
             new("records/applications.json", "Their membership applications.", s.Applications.Select(a => Row(a)).ToList()),
             new("records/deals.json", "Deals made for them.", s.Deals.Select(x => Row(x)).ToList()),
-            new("records/custom-fields.json", "Values of the workspace's own fields on their records.", d.CustomFieldValues.Select(v => Row(v)).ToList()),
+            new("records/custom-fields.json", "Values of the workspace's own fields on their records.", FieldValues(d)),
+            new("records/custom-fields-kept-the-old-way.json", "The same values as they were kept before each had a row of its own, kept read-only.",
+                d.CustomFieldValues.Select(v => Row(v)).ToList()),
+            new("records/tags.json", "The tags on their records.", d.RecordTags.Select(t => (object)new
+            {
+                record = t.EntityType,
+                recordId = t.RecordId,
+                tag = d.TagNames.GetValueOrDefault(t.TagId),
+                taggedAtUtc = t.CreatedAtUtc,
+            }).ToList()),
             new("records/relationships.json", "How their contact is related to other contacts.", d.Relationships.Select(r => Row(r)).ToList()),
             new("records/duplicate-decisions.json", "Staff's decisions that one of their records is not a duplicate of another.", d.DuplicateDecisions.Select(x => Row(x)).ToList()),
             new("timeline/activities.json", "Calls, meetings, emails and notes logged on their records.", d.Activities.Select(a => Row(a)).ToList()),
@@ -190,6 +199,28 @@ public sealed partial class PersonDataService
             new("club/old-documents.json", "Club records kept read-only from before the club's records had tables of their own, that name them.", d.Documents.Select(x => Row(x)).ToList()),
             new("audit/audit-trail.json", "The history of changes to their records: who changed what, and when.", d.Audit.Select(a => Row(a)).ToList()),
         ];
+    }
+
+    /// <summary>
+    /// Their records' custom values, one row per record and field, written as the record
+    /// shows them (a multi select's options together, money with its currency).
+    /// </summary>
+    private static List<object> FieldValues(PersonDossier d)
+    {
+        var fields = d.CustomFieldDefinitions.ToDictionary(f => f.Id);
+        return d.CustomFieldEntries
+            .Where(e => fields.ContainsKey(e.FieldId))
+            .GroupBy(e => (e.EntityType, e.RecordId, e.FieldId))
+            .Select(g => (object)new
+            {
+                record = g.Key.EntityType,
+                recordId = g.Key.RecordId,
+                field = fields[g.Key.FieldId].Label,
+                key = fields[g.Key.FieldId].Key,
+                value = CustomFieldValues.Text(fields[g.Key.FieldId], g.ToList()),
+                updatedAtUtc = g.Max(e => e.UpdatedAtUtc),
+            })
+            .ToList();
     }
 
     /// <summary>
