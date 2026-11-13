@@ -53,6 +53,12 @@ public class Organization : Common.BaseEntity
     /// unless its pipeline sets its own (<see cref="Pipeline.StaleDealDays"/>). 0: never.
     /// </summary>
     public int StaleDealDays { get; set; } = 30;
+    /// <summary>
+    /// What this workspace's leads are (<see cref="Entities.LeadKinds"/>): people only (a club),
+    /// establishments only (a business selling to restaurants), or both. People only until
+    /// someone who manages the settings changes it, so every workspace works as it always has.
+    /// </summary>
+    public string LeadKinds { get; set; } = Entities.LeadKinds.Person;
 
     /// <summary>
     /// Whether the Sales module is turned off (see <see cref="Common.WorkspaceModules"/>):

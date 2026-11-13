@@ -19,9 +19,25 @@ public sealed class LeadOpsRepository : ILeadOpsRepository
     public Task<Lead?> FindOpenByEmailAsync(Guid userId, Guid? organizationId, string email, Guid? exceptId, CancellationToken ct = default)
     {
         var normalized = email.Trim().ToLowerInvariant();
+        // No email is nobody's: an establishment without one is not the same as every other.
+        if (normalized.Length == 0) return Task.FromResult<Lead?>(null);
         return _db.Leads.FirstOrDefaultAsync(l =>
             !l.IsConverted
             && l.Email.ToLower() == normalized
+            && (exceptId == null || l.Id != exceptId)
+            && (organizationId == null ? l.OrganizationId == null && l.UserId == userId : l.OrganizationId == organizationId), ct);
+    }
+
+    public Task<Lead?> FindOpenEstablishmentAsync(Guid userId, Guid? organizationId, string name, string city, Guid? exceptId, CancellationToken ct = default)
+    {
+        var n = name.Trim().ToLowerInvariant();
+        var c = city.Trim().ToLowerInvariant();
+        if (n.Length == 0 || c.Length == 0) return Task.FromResult<Lead?>(null);
+        return _db.Leads.FirstOrDefaultAsync(l =>
+            !l.IsConverted
+            && l.Kind == LeadKinds.Establishment
+            && l.Name.ToLower() == n
+            && l.City != null && l.City.ToLower() == c
             && (exceptId == null || l.Id != exceptId)
             && (organizationId == null ? l.OrganizationId == null && l.UserId == userId : l.OrganizationId == organizationId), ct);
     }

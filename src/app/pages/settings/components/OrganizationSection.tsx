@@ -5,6 +5,7 @@ import { servesDemoData } from '@/app/api/apiClient';
 import { orgCan, PERMISSION, PRESET_LABELS, type InviteDto, type JoinRequestDto, type OrgMemberDto } from '@/app/api/organizations';
 import { RegionalSettingsCard } from './RegionalSettingsCard';
 import { ModulesCard } from './ModulesCard';
+import { LeadKindsCard } from './LeadKindsCard';
 import { EmailSendingCard } from './EmailSendingCard';
 import { SingleSignOnCard } from './SingleSignOnCard';
 
@@ -95,6 +96,8 @@ export function OrganizationSection({
       <ModulesCard />
 
       <RegionalSettingsCard />
+
+      <LeadKindsCard />
 
       <EmailSendingCard />
 

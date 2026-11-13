@@ -245,6 +245,11 @@ export async function getPublicCaptureForm(token: string, language?: string) {
     marketingConsentText?: string | null;
     /** The workspace's language (from its locale), for a visitor whose browser speaks none of the app's. */
     language?: string | null;
+    /**
+     * What the workspace's leads are, so an establishment's form asks for the place.
+     * Missing (an older server) means people.
+     */
+    leadKinds?: 'person' | 'establishment' | 'both' | null;
   }>;
 }
 
@@ -262,6 +267,18 @@ export async function submitPublicCapture(token: string, body: {
   marketingConsent?: boolean;
   /** The language the form was filled in (en, de, fr): the thank-you and the consent record are in it. */
   language?: string;
+  /**
+   * An establishment: name, email, phone and jobTitle above are then the person filling
+   * the form in, who becomes its contact person, and establishmentName is the lead's name.
+   */
+  kind?: 'person' | 'establishment';
+  establishmentName?: string;
+  establishmentType?: string;
+  addressLine?: string;
+  postalCode?: string;
+  city?: string;
+  /** The establishment's site. Not `website`, which is the honeypot. */
+  businessWebsite?: string;
 }): Promise<string | null> {
   const res = await publicFetch(`/api/public/capture/${encodeURIComponent(token)}`, {
     method: 'POST',

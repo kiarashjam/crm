@@ -30,6 +30,11 @@ export interface Organization {
   ssoRequired?: boolean;
   /** Whether this workspace refuses the current session (it began with a password or a passkey): sign in with SSO to open it. */
   ssoSignInNeeded?: boolean;
+  /**
+   * What the workspace's leads are: "person" (people only, the default), "establishment"
+   * (businesses such as restaurants) or "both". Older servers send none: people.
+   */
+  leadKinds?: 'person' | 'establishment' | 'both';
 }
 
 /**
@@ -257,7 +262,14 @@ export async function createOrganization(name: string): Promise<Organization | n
  */
 export async function updateOrganizationSettings(
   id: string,
-  settings: { currency?: string; locale?: string; timeZone?: string; staleDealDays?: number; csvSemicolon?: boolean },
+  settings: {
+    currency?: string;
+    locale?: string;
+    timeZone?: string;
+    staleDealDays?: number;
+    csvSemicolon?: boolean;
+    leadKinds?: 'person' | 'establishment' | 'both';
+  },
 ): Promise<Organization | null> {
   const org = await authFetchJson<Organization>(`/api/organizations/${id}/settings`, {
     method: 'PUT',

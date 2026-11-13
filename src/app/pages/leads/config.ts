@@ -1,3 +1,4 @@
+import type { LeadForm } from './types';
 import { User, Building2, Activity, Briefcase, Phone, Mail, Calendar, RefreshCw } from 'lucide-react';
 import type { WizardStep } from './types';
 
@@ -124,10 +125,23 @@ export const STATUS_BADGE_COLORS: Record<string, { bg: string; text: string; bor
 };
 
 // Default empty form
-export const EMPTY_LEAD_FORM = {
+export const EMPTY_LEAD_FORM: LeadForm = {
+  kind: 'person',
   name: '',
   email: '',
   phone: '',
+  jobTitle: '',
+  establishmentType: '',
+  addressLine: '',
+  postalCode: '',
+  city: '',
+  country: '',
+  website: '',
+  seats: '',
+  contactPersonName: '',
+  contactPersonRole: '',
+  contactPersonEmail: '',
+  contactPersonPhone: '',
   referredByContactId: '',
   companyId: '',
   source: 'Manual',

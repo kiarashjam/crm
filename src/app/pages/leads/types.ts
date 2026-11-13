@@ -1,13 +1,29 @@
-import type { Lead, Company, LeadStatus, LeadSource, Contact, Deal, Pipeline, Activity as ActivityType, TaskItem } from '@/app/api/types';
+import type { Lead, Company, LeadStatus, LeadSource, Contact, Deal, Pipeline, Activity as ActivityType, TaskItem, LeadKind } from '@/app/api/types';
 
 // Step type for the multi-step wizard
 export type WizardStep = 'contact' | 'company' | 'qualification' | 'notes';
 
 // Lead form type
 export type LeadForm = {
+  /** A person, or an establishment (see lib/leadKinds.ts). */
+  kind: LeadKind;
   name: string;
   email: string;
   phone: string;
+  // A person's.
+  jobTitle: string;
+  // An establishment's (country a person may have too).
+  establishmentType: string;
+  addressLine: string;
+  postalCode: string;
+  city: string;
+  country: string;
+  website: string;
+  seats: string;
+  contactPersonName: string;
+  contactPersonRole: string;
+  contactPersonEmail: string;
+  contactPersonPhone: string;
   referredByContactId: string;
   companyId: string;
   source: string;

@@ -216,10 +216,11 @@ public class OnboardingTests
         using var portal = app.CreateClient();
 
         (await portal.SendAsync(Report(id, null, new { @event = "account_created" }))).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-        // A token one character off. "0" in front of the rest was the real token whenever the real
-        // one began with 0 (one handoff in sixteen), and the test then failed.
-        var forged = (token[0] == '0' ? "1" : "0") + token[1..];
-        (await portal.SendAsync(Report(id, forged, new { @event = "account_created" }))).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        // A token one character off. Swapped for another digit, never set to "0": a token
+        // that began with "0" (one in sixteen) was then the real one, and was rightly let in.
+        var tampered = (token[0] == '0' ? "1" : "0") + token[1..];
+        tampered.Should().NotBe(token);
+        (await portal.SendAsync(Report(id, tampered, new { @event = "account_created" }))).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         (await portal.SendAsync(Report(Guid.NewGuid(), token, new { @event = "account_created" }))).StatusCode.Should().Be(HttpStatusCode.Unauthorized,
             "a handoff that does not exist answers like a wrong token");
         (await portal.SendAsync(Report(id, token, new { @event = "hello" }))).StatusCode.Should().Be(HttpStatusCode.BadRequest);

@@ -23,14 +23,18 @@ public record OrganizationDto(
     bool ClubEnabled = true,
     bool CsvSemicolon = false,
     bool SsoRequired = false,
-    bool SsoSignInNeeded = false);
+    bool SsoSignInNeeded = false,
+    /// <summary>What the workspace's leads are: "person" (people only), "establishment" or "both".</summary>
+    string LeadKinds = "person");
 
 /// <summary>
 /// What a workspace works in. Each field left out keeps its current value.
 /// </summary>
 /// <param name="StaleDealDays">Days without activity after which an open deal is stale, 1–365; 0 never flags one.</param>
 /// <param name="CsvSemicolon">CSV exports with a semicolon between columns, as Excel set up for Switzerland reads them.</param>
-public record UpdateOrganizationSettingsRequest(string? Currency, string? Locale, string? TimeZone, int? StaleDealDays = null, bool? CsvSemicolon = null);
+/// <param name="LeadKinds">What new leads may be: "person", "establishment" or "both".</param>
+public record UpdateOrganizationSettingsRequest(string? Currency, string? Locale, string? TimeZone, int? StaleDealDays = null, bool? CsvSemicolon = null,
+    string? LeadKinds = null);
 
 /// <summary>Which of the Sales and Club modules a workspace has on.</summary>
 public record WorkspaceModulesDto(bool Sales, bool Club);

@@ -35,6 +35,9 @@ internal static partial class AuditTrail
             nameof(Lead.LeadSourceId), nameof(Lead.Description), nameof(Lead.LifecycleStage), nameof(Lead.PipelineState),
             nameof(Lead.JobTitle), nameof(Lead.Country), nameof(Lead.Industry), nameof(Lead.CompanySize),
             nameof(Lead.QueueId), nameof(Lead.TerritoryId), nameof(Lead.ReferredByContactId),
+            nameof(Lead.Kind), nameof(Lead.EstablishmentType), nameof(Lead.AddressLine), nameof(Lead.PostalCode), nameof(Lead.City),
+            nameof(Lead.Website), nameof(Lead.Seats), nameof(Lead.ContactPersonName), nameof(Lead.ContactPersonRole),
+            nameof(Lead.ContactPersonEmail), nameof(Lead.ContactPersonPhone),
         }),
         [typeof(Deal)] = new("deal", "Deal", nameof(Deal.Name), new[]
         {

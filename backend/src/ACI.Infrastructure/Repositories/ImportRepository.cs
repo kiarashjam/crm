@@ -82,6 +82,9 @@ public sealed class ImportRepository : IImportRepository
                 Id = l.Id, Name = l.Name, Email = l.Email, Phone = l.Phone, CompanyId = l.CompanyId, JobTitle = l.JobTitle,
                 Source = l.Source, Status = l.Status, Country = l.Country, Industry = l.Industry, CompanySize = l.CompanySize,
                 Description = l.Description, IsConverted = l.IsConverted, CreatedAtUtc = l.CreatedAtUtc,
+                Kind = l.Kind, EstablishmentType = l.EstablishmentType, AddressLine = l.AddressLine, PostalCode = l.PostalCode,
+                City = l.City, Website = l.Website, Seats = l.Seats, ContactPersonName = l.ContactPersonName,
+                ContactPersonRole = l.ContactPersonRole, ContactPersonEmail = l.ContactPersonEmail, ContactPersonPhone = l.ContactPersonPhone,
             })
             .ToListAsync(ct);
 

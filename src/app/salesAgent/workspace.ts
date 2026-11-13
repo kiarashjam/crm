@@ -7,7 +7,7 @@
 import { duplicateCompanyGroups, duplicateContactGroups, pairsOf, type DuplicateGroup } from '@/app/api/dedupe';
 import type { SequenceStepType } from '@/app/api/sequences';
 import { calendarKey, daysBetween, todayKey } from './calendarDay';
-import { nextActionForLead, type NextAction, type SuggestionKind, type SuggestableLead } from './nextAction';
+import { nextActionForLead, reachEmailOf, reachPhoneOf, type NextAction, type SuggestionKind, type SuggestableLead } from './nextAction';
 import { dealBriefKind, writerBrief, type WriterBrief } from './writerBrief';
 
 export interface WorkSuggestion {
@@ -386,13 +386,20 @@ export function nextActionForAutomation(rule: SuggestableAutomation): WorkSugges
 }
 
 function leadSuggestion(step: NextAction, lead: SuggestableLead): WorkSuggestion {
-  const reachable = !!(lead.email?.trim() || lead.phone?.trim());
+  const reachEmail = reachEmailOf(lead);
+  const reachable = !!(reachEmail || reachPhoneOf(lead));
+  const place = lead.kind === 'establishment';
   const needsReach = step.kind === 'start_outreach' || step.kind === 'try_again';
   const blocked = !reachable && needsReach;
   const action = blocked
-    ? 'Add a phone number or an email. There is no way to reach them.'
+    ? (place
+      ? 'Add a phone number or an email for the establishment or its contact person. There is no way to reach it.'
+      : 'Add a phone number or an email. There is no way to reach them.')
     : step.action;
   const context = [
+    place && lead.contactPersonName?.trim()
+      ? `Speak to ${lead.contactPersonName.trim()}${lead.contactPersonRole?.trim() ? `, ${lead.contactPersonRole.trim()}` : ''}.`
+      : '',
     lead.source?.trim() ? `Source: ${lead.source.trim()}.` : '',
     lead.referredByContactName?.trim() ? `Referred by ${lead.referredByContactName.trim()}.` : '',
     lead.tags && lead.tags.length > 0 ? `Tags: ${lead.tags.slice(0, 3).join(', ')}.` : '',
@@ -402,7 +409,7 @@ function leadSuggestion(step: NextAction, lead: SuggestableLead): WorkSuggestion
   const because = blocked
     ? 'The next step is a call, and neither a phone number nor an email is saved.'
     : [step.because, ...context].join(' ');
-  const canWrite = !blocked && !!lead.email?.trim();
+  const canWrite = !blocked && !!reachEmail;
   return withBrief({
     key: `lead:${step.leadId}`,
     href: `/leads/${step.leadId}`,
@@ -412,7 +419,7 @@ function leadSuggestion(step: NextAction, lead: SuggestableLead): WorkSuggestion
     because: noteOwner(because, !!lead.assignedToId?.trim()),
     priority: step.priority,
     guide: step.kind,
-    email: lead.email,
+    email: reachEmail || lead.email,
   }, canWrite ? LEAD_BRIEF[step.kind] ?? null : null);
 }
 

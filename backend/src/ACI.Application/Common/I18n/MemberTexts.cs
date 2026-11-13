@@ -66,6 +66,10 @@ public static partial class MemberTexts
             "Please tick the box to say you would like to hear from us: this form signs you up for news.",
             "Bitte kreuzen Sie das Feld an, um von uns zu hören: Mit diesem Formular melden Sie sich für Neuigkeiten an.",
             $"Veuillez cocher la case pour avoir de nos nouvelles{Nb}: ce formulaire vous inscrit à nos actualités."),
+        ["form.captureEstablishmentName"] = new(
+            "Enter the name of the establishment.",
+            "Bitte geben Sie den Namen des Betriebs ein.",
+            "Veuillez indiquer le nom de l’établissement."),
 
         // ── welcome, on approval ───────────────────────────────────────────────
         ["welcome.subject"] = new("Welcome to {club}", "Willkommen bei {club}", "Bienvenue chez {club}"),

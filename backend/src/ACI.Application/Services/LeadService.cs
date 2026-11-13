@@ -178,6 +178,13 @@ public class LeadService : ILeadService
             "Creating lead with email {Email} for user {UserId}",
             request.Email, userId);
 
+        // A person or an establishment, as the workspace takes (LeadKindRules): a club's
+        // workspace takes people only, from here as from every other way in.
+        var kindResult = LeadKindRules.Resolve(request.Kind, await WorkspaceLeadKindsAsync(organizationId, ct));
+        if (kindResult.IsFailure) return kindResult.Error;
+        var kind = kindResult.Value;
+        var establishment = kind == LeadKinds.Establishment;
+
         // Validate required fields
         if (string.IsNullOrWhiteSpace(request.Name))
         {
@@ -185,30 +192,39 @@ public class LeadService : ILeadService
             return DomainErrors.Lead.NameRequired;
         }
 
-        if (string.IsNullOrWhiteSpace(request.Email))
+        // A person is reached by email; an establishment may have none yet.
+        if (string.IsNullOrWhiteSpace(request.Email) && !establishment)
         {
             _logger.LogWarning("Lead creation failed: Email is required");
             return DomainErrors.Lead.EmailRequired;
         }
 
         // Validate email format
-        if (!ValidationHelper.IsValidEmail(request.Email))
+        if (!string.IsNullOrWhiteSpace(request.Email) && !ValidationHelper.IsValidEmail(request.Email))
         {
-            _logger.LogWarning("Lead creation failed: Invalid email format {Email}", request.Email);
+            _logger.LogWarning("Lead creation failed: Invalid email format");
             return DomainErrors.Lead.EmailInvalid;
         }
+        if (establishment && LeadKindRules.CheckEstablishment(request.EstablishmentType, request.Website, request.ContactPersonEmail, request.Seats) is { } badEstablishment)
+            return badEstablishment;
 
         var links = await _records.CheckLinksAsync(userId, organizationId, new RecordLinks { CompanyId = request.CompanyId }, ct);
         if (links.IsFailure) return links.Error;
 
         if (!request.AllowDuplicate)
         {
-            var duplicate = await _automation.FindOpenDuplicateAsync(userId, organizationId, request.Email, null, ct);
+            var duplicate = await _automation.FindOpenDuplicateAsync(userId, organizationId, request.Email ?? "", null, ct);
             if (duplicate != null)
             {
                 return new Error(
                     "Lead.Duplicate",
                     $"An open lead with this email already exists ({duplicate.Name}).");
+            }
+            // The same place entered twice: the same name in the same city.
+            if (establishment && !string.IsNullOrWhiteSpace(request.City)
+                && await _automation.FindOpenEstablishmentAsync(userId, organizationId, request.Name, request.City, null, ct) is { } same)
+            {
+                return new Error("Lead.Duplicate", $"An open lead for {same.Name} in {same.City} already exists.");
             }
         }
 
@@ -224,7 +240,7 @@ public class LeadService : ILeadService
             UserId = userId,
             OrganizationId = organizationId,
             Name = request.Name.Trim(),
-            Email = request.Email.Trim(),
+            Email = request.Email?.Trim() ?? "",
             Phone = request.Phone?.Trim(),
             CompanyId = request.CompanyId,
             Source = request.Source?.Trim(),
@@ -243,7 +259,25 @@ public class LeadService : ILeadService
             ReferredByContactId = request.ReferredByContactId,
             PipelineState = request.PipelineState,
             CreatedAtUtc = DateTime.UtcNow,
+            Kind = kind,
         };
+        if (establishment)
+        {
+            entity.EstablishmentType = LeadKindRules.Type(request.EstablishmentType);
+            entity.AddressLine = Blank(request.AddressLine);
+            entity.PostalCode = Blank(request.PostalCode);
+            entity.City = Blank(request.City);
+            entity.Website = Blank(request.Website);
+            entity.Seats = request.Seats;
+            entity.ContactPersonName = Blank(request.ContactPersonName);
+            entity.ContactPersonRole = Blank(request.ContactPersonRole);
+            entity.ContactPersonEmail = Blank(request.ContactPersonEmail);
+            entity.ContactPersonPhone = Blank(request.ContactPersonPhone);
+            // The establishment is a company of the workspace's: found by its name, or made
+            // with its address, website and type. Before the automations, which would
+            // otherwise make one from the email's domain.
+            await EnsureEstablishmentCompanyAsync(entity, userId, organizationId, ct);
+        }
 
         // A lead that arrives with recorded work (an API caller, a migration) takes
         // the status that work implies, before routing and scoring read it.
@@ -282,7 +316,7 @@ public class LeadService : ILeadService
         if (_automations != null && (!request.IsImport || request.RunAutomations))
         {
             await _automations.DispatchAsync("lead.created", new AutomationEvent(
-                organizationId, userId, entity.Id.ToString(), entity.Name, LeadId: entity.Id, Email: entity.Email, AssigneeId: entity.AssignedToUserId,
+                organizationId, userId, entity.Id.ToString(), entity.Name, LeadId: entity.Id, Email: LeadKindRules.EmailOf(entity) ?? "", AssigneeId: entity.AssignedToUserId,
                 FromImport: request.IsImport), ct);
         }
         if (_webhooks != null && !request.IsImport)
@@ -327,12 +361,29 @@ public class LeadService : ILeadService
         if (request.Version is Guid readVersion && readVersion != existing.Version)
             return DomainErrors.Lead.Changed;
 
-        // Validate email format if provided
-        if (request.Email != null && !ValidationHelper.IsValidEmail(request.Email))
+        // What it is after this edit: a change of kind is one the workspace takes.
+        var kind = existing.Kind;
+        if (request.Kind != null)
         {
-            _logger.LogWarning("Lead update failed: Invalid email format {Email}", request.Email);
+            var resolved = LeadKindRules.Resolve(request.Kind, await WorkspaceLeadKindsAsync(organizationId, ct));
+            if (resolved.IsFailure) return resolved.Error;
+            kind = resolved.Value;
+        }
+        var establishment = kind == LeadKinds.Establishment;
+
+        // Validate email format if provided. An establishment's may be taken off (sent
+        // empty); a person always has one.
+        var emailAfter = request.Email != null ? request.Email.Trim() : existing.Email;
+        if (request.Email != null && request.Email.Trim().Length > 0 && !ValidationHelper.IsValidEmail(request.Email))
+        {
+            _logger.LogWarning("Lead update failed: Invalid email format");
             return DomainErrors.Lead.EmailInvalid;
         }
+        if (!establishment && string.IsNullOrWhiteSpace(emailAfter))
+            return request.Email != null ? DomainErrors.Lead.EmailInvalid : DomainErrors.Lead.EmailRequired;
+        // Whatever of the establishment's fields is sent is checked, as it is saved below.
+        if (LeadKindRules.CheckEstablishment(request.EstablishmentType, request.Website, request.ContactPersonEmail, request.Seats) is { } badEstablishment)
+            return badEstablishment;
 
         if (request.CompanyId is Guid companyId && companyId != existing.CompanyId)
         {
@@ -354,6 +405,24 @@ public class LeadService : ILeadService
         // cleared" while the company, and its score points, stayed.
         if (request.Name != null) existing.Name = request.Name.Trim();
         if (request.Email != null) existing.Email = request.Email.Trim();
+        existing.Kind = kind;
+        // The establishment's own fields: a value sets it, null takes it off, left out keeps it.
+        void Apply(string? value, string name, Action<string?> set)
+        {
+            if (value != null) set(Blank(value));
+            else if (request.Clears(name)) set(null);
+        }
+        Apply(request.EstablishmentType, nameof(request.EstablishmentType), v => existing.EstablishmentType = LeadKindRules.Type(v));
+        Apply(request.AddressLine, nameof(request.AddressLine), v => existing.AddressLine = v);
+        Apply(request.PostalCode, nameof(request.PostalCode), v => existing.PostalCode = v);
+        Apply(request.City, nameof(request.City), v => existing.City = v);
+        Apply(request.Website, nameof(request.Website), v => existing.Website = v);
+        Apply(request.ContactPersonName, nameof(request.ContactPersonName), v => existing.ContactPersonName = v);
+        Apply(request.ContactPersonRole, nameof(request.ContactPersonRole), v => existing.ContactPersonRole = v);
+        Apply(request.ContactPersonEmail, nameof(request.ContactPersonEmail), v => existing.ContactPersonEmail = v);
+        Apply(request.ContactPersonPhone, nameof(request.ContactPersonPhone), v => existing.ContactPersonPhone = v);
+        if (request.Seats.HasValue) existing.Seats = request.Seats;
+        else if (request.Clears(nameof(request.Seats))) existing.Seats = null;
         if (request.Phone != null) existing.Phone = request.Phone.Trim();
         else if (request.Clears(nameof(request.Phone))) existing.Phone = null;
         if (request.CompanyId != null) existing.CompanyId = request.CompanyId;
@@ -426,6 +495,9 @@ public class LeadService : ILeadService
 
         existing.UpdatedAtUtc = DateTime.UtcNow;
         existing.UpdatedByUserId = userId;
+        // Now an establishment with no company of its own (made a person first, or before
+        // kinds were): it gets the company it is, as a new one does.
+        if (establishment) await EnsureEstablishmentCompanyAsync(existing, userId, organizationId, ct);
 
         Lead? updated;
         try
@@ -624,6 +696,14 @@ public class LeadService : ILeadService
             return new Error("Lead.ConversionRequired", "At least one conversion action must be specified");
         }
 
+        // The person a contact is made of: the lead, or an establishment's contact person.
+        // A place with nobody named yet can still become a deal, just not a contact.
+        var person = LeadKindRules.PersonOf(lead);
+        if (request.CreateContact && !request.ExistingContactId.HasValue && (person.Name == null || person.Email == null))
+            return new Error("Lead.ContactPersonMissing", lead.Kind == LeadKinds.Establishment
+                ? "Add the contact person's name and email to make a contact of them, or convert to a deal only."
+                : "This lead needs a name and an email to become a contact.");
+
         // Before anything is created, so a refused pipeline, stage, amount or currency
         // leaves no half-converted lead.
         decimal dealAmount = 0m;
@@ -675,6 +755,14 @@ public class LeadService : ILeadService
                     Name = companyName,
                     CreatedAtUtc = DateTime.UtcNow,
                 };
+                if (lead.Kind == LeadKinds.Establishment)
+                {
+                    // What is known of the place goes with it.
+                    company.Website = Blank(lead.Website);
+                    company.Domain = DomainOf(lead.Website);
+                    company.Industry = Blank(LeadKinds.TypeLabel(lead.EstablishmentType));
+                    company.Location = Blank(LeadKindRules.Location(lead));
+                }
                 await _companyRepository.AddAsync(company, ct);
                 companyId = company.Id;
                 newCompanyId = company.Id;
@@ -720,7 +808,7 @@ public class LeadService : ILeadService
         if (request.CreateContact && !request.ExistingContactId.HasValue)
         {
             var existingContactByEmail = await _contactRepository.GetByEmailAsync(
-                lead.Email, userId, organizationId, ct);
+                person.Email!, userId, organizationId, ct);
                 
             if (existingContactByEmail != null)
             {
@@ -745,9 +833,10 @@ public class LeadService : ILeadService
                     Id = Guid.NewGuid(),
                     UserId = userId,
                     OrganizationId = organizationId,
-                    Name = lead.Name,
-                    Email = lead.Email,
-                    Phone = lead.Phone,
+                    Name = person.Name!,
+                    Email = person.Email!,
+                    Phone = person.Phone,
+                    JobTitle = lead.Kind == LeadKinds.Establishment ? Blank(lead.ContactPersonRole) : null,
                     CompanyId = companyId,
                     CreatedAtUtc = DateTime.UtcNow,
                     ConvertedFromLeadId = lead.Id,
@@ -918,5 +1007,72 @@ public class LeadService : ILeadService
             e.ScoreIsManual,
             e.ReferredByContactId,
             e.ReferredByContact?.Name,
-            Version: e.Version);
+            Version: e.Version,
+            Kind: e.Kind,
+            EstablishmentType: e.EstablishmentType,
+            AddressLine: e.AddressLine,
+            PostalCode: e.PostalCode,
+            City: e.City,
+            Website: e.Website,
+            Seats: e.Seats,
+            ContactPersonName: e.ContactPersonName,
+            ContactPersonRole: e.ContactPersonRole,
+            ContactPersonEmail: e.ContactPersonEmail,
+            ContactPersonPhone: e.ContactPersonPhone);
+
+    private static string? Blank(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+    /// <summary>What the workspace's leads may be (Organization.LeadKinds); null for a personal workspace, which takes both.</summary>
+    private async Task<string?> WorkspaceLeadKindsAsync(Guid? organizationId, CancellationToken ct) =>
+        organizationId is Guid org && _organizations != null ? (await _organizations.GetByIdAsync(org, ct))?.LeadKinds : null;
+
+    /// <summary>
+    /// The company an establishment is: the workspace's company of that name (in the same
+    /// city, when both say), else a new one with its website, address and type, as the
+    /// person contact is for a person. A lead already linked to a company keeps it.
+    /// </summary>
+    private async Task EnsureEstablishmentCompanyAsync(Lead lead, Guid userId, Guid? organizationId, CancellationToken ct)
+    {
+        if (lead.CompanyId != null || string.IsNullOrWhiteSpace(lead.Name)) return;
+        var name = lead.Name.Trim();
+        var city = lead.City?.Trim();
+        var sameName = (await _companyRepository.SearchAsync(userId, organizationId, name, ct, take: 25))
+            .Where(c => string.Equals(c.Name.Trim(), name, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        // A chain is one company; two places of one name in two cities are two.
+        var match = sameName.FirstOrDefault(c => string.IsNullOrWhiteSpace(city) || string.IsNullOrWhiteSpace(c.Location)
+            || c.Location.Contains(city, StringComparison.OrdinalIgnoreCase));
+        if (match != null)
+        {
+            lead.CompanyId = match.Id;
+            return;
+        }
+        var industry = LeadKinds.TypeLabel(lead.EstablishmentType);
+        var company = new Company
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            OrganizationId = organizationId,
+            Name = name.Length > 256 ? name[..256] : name,
+            Website = lead.Website,
+            Domain = DomainOf(lead.Website),
+            Industry = industry.Length == 0 ? null : industry,
+            Location = LeadKindRules.Location(lead),
+            CreatedAtUtc = DateTime.UtcNow,
+        };
+        await _companyRepository.AddAsync(company, ct);
+        lead.CompanyId = company.Id;
+        _logger.LogInformation("Made company {CompanyId} for establishment lead {LeadId}", company.Id, lead.Id);
+    }
+
+    /// <summary>"pizzeria-roma.ch" from "https://www.pizzeria-roma.ch/menu".</summary>
+    private static string? DomainOf(string? website)
+    {
+        if (string.IsNullOrWhiteSpace(website)) return null;
+        var text = website.Trim();
+        if (!text.Contains("://", StringComparison.Ordinal)) text = "https://" + text;
+        if (!Uri.TryCreate(text, UriKind.Absolute, out var uri)) return null;
+        var host = uri.Host.ToLowerInvariant();
+        return host.StartsWith("www.", StringComparison.Ordinal) ? host[4..] : host;
+    }
 }

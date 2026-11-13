@@ -1,6 +1,6 @@
 import { amountOf, currencyOf, formatMoney } from '@/app/lib/money';
 import { shiftKey, todayKey } from '../calendarDay';
-import type { SuggestableLead } from '../nextAction';
+import { reachEmailOf, reachPhoneOf, type SuggestableLead } from '../nextAction';
 import type { SuggestableContact, SuggestableDeal, SuggestableTask, WorkSuggestion } from '../workspace';
 import { itemOnList, type PageScope } from '../pageScope';
 import { LEAD_PLAYBOOKS, playbookForKind, playbookForStage, type Playbook } from './playbooks';
@@ -177,7 +177,7 @@ function briefByName(world: AgentWorld, q: string, now: Date): AgentReply | null
   type Hit = { kind: 'lead' | 'contact' | 'deal'; id: string; name: string; email?: string | null; companyId?: string | null; companyName?: string | null; contactId?: string | null };
   const hits: Hit[] = longestOnly([
     ...(world.contacts ?? []).map((row): Hit => ({ kind: 'contact', ...row })),
-    ...world.leads.map((row): Hit => ({ kind: 'lead', ...row })),
+    ...world.leads.map((row): Hit => ({ ...row, kind: 'lead' })),
     ...world.deals.map((row): Hit => ({ kind: 'deal', id: row.id, name: row.name, companyId: row.companyId, companyName: row.companyName, contactId: row.contactId })),
   ].filter((row) => namesIn(q, row.name)));
   // A lead and the contact made from it share an email. They are one person, briefed together.
@@ -343,8 +343,8 @@ export function reachSentence(item: WorkSuggestion, leads: SuggestableLead[]): s
   if (!lead) return null;
   const reaching = REACH.test(item.action) || item.guide === 'start_outreach' || item.guide === 'try_again' || item.brief != null;
   if (!reaching) return null;
-  const phone = lead.phone?.trim() ?? '';
-  const email = lead.email?.trim() ?? '';
+  const phone = reachPhoneOf(lead);
+  const email = reachEmailOf(lead);
   if (phone && email) return `Phone ${phone} and email ${email} are both saved.`;
   if (phone) return `Phone ${phone} is saved. No email is saved.`;
   if (email) return `Email ${email} is saved. No phone is saved.`;
@@ -358,7 +358,7 @@ function callSlate(world: AgentWorld, items: WorkSuggestion[]): AgentReply {
     .slice(0, 5)
     .map((item) => {
       const lead = leadById.get(leadIdFrom(item.href) ?? '');
-      return { item, phone: lead?.phone?.trim() ?? '' };
+      return { item, phone: lead ? reachPhoneOf(lead) : '' };
     });
   const [firstCall] = shown;
   if (!firstCall) {

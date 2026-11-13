@@ -22,7 +22,10 @@ export async function createLeadOrOfferDuplicate(
     return await createLead(params);
   } catch (err) {
     if (!(err instanceof ApiError) || err.status !== 409) throw err;
-    toast.warning(err.message || 'An open lead with this email already exists.', {
+    const fallback = params.kind === 'establishment'
+      ? 'An open lead for this establishment already exists.'
+      : 'An open lead with this email already exists.';
+    toast.warning(err.message || fallback, {
       duration: 12_000,
       action: {
         label: 'Create anyway',

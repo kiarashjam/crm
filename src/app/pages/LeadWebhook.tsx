@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Copy, Eye, EyeOff, Key, Code, CheckCircle, Link2, Globe, Mail, ShoppingCart, Smartphone, Zap, BarChart3, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Copy, Eye, EyeOff, Key, Code, CheckCircle, Link2, Globe, Mail, ShoppingCart, Smartphone, Zap, BarChart3, RefreshCw, AlertTriangle, Store } from 'lucide-react';
+import { useLeadKinds } from '@/app/lib/leadKinds';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
 import LoadingSpinner from '@/app/components/LoadingSpinner';
@@ -25,6 +26,35 @@ import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import { currentDateLocale } from '@/app/i18n/current';
+
+/** An establishment sent by webhook: the place's own fields, and the person to speak to there. */
+const ESTABLISHMENT_SAMPLE = `{
+  "kind": "establishment",
+  "name": "Trattoria Bella",
+  "establishmentType": "restaurant",
+  "addressLine": "Rue du Lac 4",
+  "postalCode": "1003",
+  "city": "Lausanne",
+  "country": "Switzerland",
+  "phone": "+41 21 000 00 00",
+  "email": "",
+  "website": "trattoria.ch",
+  "seats": 60,
+  "contactPersonName": "Marco Rossi",
+  "contactPersonRole": "Owner",
+  "contactPersonEmail": "marco@trattoria.ch",
+  "contactPersonPhone": "+41 79 000 00 00",
+  "source": "website-form"
+}`;
+
+const ESTABLISHMENT_FIELDS: [string, string][] = [
+  ['kind', '"person" or "establishment" (defaults to person)'],
+  ['establishmentType', 'restaurant, cafe, bar, hotel, bakery, catering, food_truck, shop or other'],
+  ['addressLine, postalCode, city, country', 'Where it is'],
+  ['website, seats', 'Its site, and how many it seats'],
+  ['contactPersonName, contactPersonRole', 'Who to speak to there'],
+  ['contactPersonEmail, contactPersonPhone', 'How to reach them; with a name and an email they become a contact'],
+];
 
 const CODE_EXAMPLES = {
   curl: `curl -X POST \\
@@ -102,6 +132,7 @@ echo $response;
 export default function LeadWebhook() {
   const navigate = useNavigate();
   const { currentOrg } = useOrg();
+  const { establishments } = useLeadKinds();
   const [webhookInfo, setWebhookInfo] = useState<WebhookInfo | null>(null);
   const [loading, setLoading] = useState(true);
   usePageLoading(loading);
@@ -494,6 +525,40 @@ export default function LeadWebhook() {
               </div>
             </div>
           </div>
+          {/* Only where leads can be establishments: a people-only workspace's reference is as it was. */}
+          {establishments && (
+            <div className="mt-4 rounded-lg border border-violet-200 bg-violet-50/40 p-4">
+              <h3 className="mb-1 flex items-center gap-2 font-semibold text-slate-900">
+                <Store className="h-4 w-4 text-violet-600" aria-hidden />
+                Establishments
+              </h3>
+              <p className="mb-3 text-xs text-slate-600">
+                Send <span className="font-mono">"kind": "establishment"</span> for a business. Only its name is required; its
+                email may be empty. The establishment is kept as a company, and its contact person as a contact.
+              </p>
+              <dl className="mb-3 space-y-1.5 text-xs">
+                {ESTABLISHMENT_FIELDS.map(([field, text]) => (
+                  <div key={field} className="grid gap-x-3 sm:grid-cols-[minmax(0,16rem)_1fr]">
+                    <dt className="font-mono text-slate-700">{field}</dt>
+                    <dd className="text-slate-600">{text}</dd>
+                  </div>
+                ))}
+              </dl>
+              <div className="relative">
+                <pre className="overflow-x-auto rounded-lg bg-slate-900 p-3 text-xs text-slate-100">{ESTABLISHMENT_SAMPLE}</pre>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="absolute top-2 right-2 text-slate-500 hover:text-slate-100 bg-slate-800/50 hover:bg-slate-700/50"
+                  onClick={() => copyToClipboard(ESTABLISHMENT_SAMPLE, 'Establishment example')}
+                  aria-label="Copy establishment example"
+                  title="Copy establishment example"
+                >
+                  <Copy className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </StaggerItem>
 
         {/* Integration Ideas */}

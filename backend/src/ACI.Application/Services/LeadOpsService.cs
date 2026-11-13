@@ -32,6 +32,11 @@ public interface ILeadOpsService
     /// it and tell its owner, and return its id. Null when there is no such lead.
     /// </summary>
     Task<Guid?> AttachInquiryAsync(Guid? organizationId, Guid actingUserId, string email, string source, string summary, CancellationToken ct = default);
+    /// <summary>
+    /// As <see cref="AttachInquiryAsync"/>, for an establishment: the open lead for the
+    /// same place (its name in its city), else one with its email.
+    /// </summary>
+    Task<Guid?> AttachEstablishmentInquiryAsync(Guid? organizationId, Guid actingUserId, string name, string? city, string? email, string source, string summary, CancellationToken ct = default);
     Task<IReadOnlyList<LeadStatusEventDto>> HistoryAsync(Guid leadId, Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<Result<BulkLeadUpdateResult>> BulkUpdateAsync(Guid userId, Guid? organizationId, BulkLeadUpdateRequest request, CancellationToken ct = default);
     Task<ConversionReportDto> ConversionReportAsync(Guid? organizationId, CancellationToken ct = default);
@@ -217,11 +222,13 @@ public sealed class LeadOpsService : ILeadOpsService
     {
         var form = await _ops.GetFormByTokenAsync(token, ct);
         if (form == null) return null;
+        using var acting = _tenant?.ActFor(form.OrganizationId, form.CreatedByUserId);
         var consent = await ConsentAsync(form, ct);
         var workspaceLanguage = AppLanguages.Normalise(await WorkspaceLocaleAsync(form, ct));
         var words = AppLanguages.ForMember(language);
         return new PublicCaptureFormDto(form.Name, ThanksIn(form, words), consent.Mode,
-            consent.Mode == MarketingConsentModes.Off ? null : ConsentTextIn(consent, words), workspaceLanguage);
+            consent.Mode == MarketingConsentModes.Off ? null : ConsentTextIn(consent, words), workspaceLanguage,
+            await LeadKindsOfAsync(form.OrganizationId, ct) ?? LeadKinds.Both);
     }
 
     private const string StandardThanks = "Thanks. We'll be in touch.";
@@ -320,26 +327,70 @@ public sealed class LeadOpsService : ILeadOpsService
         var source = Clip(form.Name.Trim(), 64);
         var summary = Summary(request);
 
-        if (await AttachInquiryAsync(form.OrganizationId, form.CreatedByUserId, request.Email, source, summary, ct) is Guid existing)
+        // What is asked for, where the workspace takes it. The public is told only that it
+        // could not be saved: the workspace's settings are nobody else's business.
+        var kind = LeadKindRules.Resolve(request.Kind, await LeadKindsOfAsync(form.OrganizationId, ct));
+        if (kind.IsFailure)
+            return new Error("Lead.CaptureFailed", "That could not be saved. Please check the details and try again.");
+
+        // A returning visitor's answer about news and offers is recorded on the lead they
+        // already have, as a new one's is on the lead made for them: for an establishment, the
+        // person filling the form in is its contact person, whose consent this is.
+        CreateLeadRequest lead;
+        if (kind.Value == LeadKinds.Establishment)
         {
-            await RecordConsentAsync(form, consent, existing, request, language, ct);
-            return receipt;
+            if (string.IsNullOrWhiteSpace(request.EstablishmentName))
+                return new Error("Lead.EstablishmentName", MemberTexts.T(language, "form.captureEstablishmentName"));
+            var place = request.EstablishmentName.Trim();
+            if (await AttachEstablishmentInquiryAsync(form.OrganizationId, form.CreatedByUserId, place, request.City, null, source, summary, ct) is Guid existingPlace)
+            {
+                await RecordConsentAsync(form, consent, existingPlace, request, language, ct);
+                return receipt;
+            }
+            // The place is the lead; whoever filled the form in is its contact person.
+            lead = new CreateLeadRequest
+            {
+                Kind = LeadKinds.Establishment,
+                Name = place,
+                Status = "New",
+                Source = source,
+                Country = request.Country?.Trim(),
+                EstablishmentType = request.EstablishmentType,
+                AddressLine = request.AddressLine?.Trim(),
+                PostalCode = request.PostalCode?.Trim(),
+                City = request.City?.Trim(),
+                Website = request.BusinessWebsite?.Trim(),
+                ContactPersonName = request.Name.Trim(),
+                ContactPersonEmail = request.Email.Trim(),
+                ContactPersonPhone = request.Phone?.Trim(),
+                ContactPersonRole = string.IsNullOrWhiteSpace(request.JobTitle) ? null : Clip(request.JobTitle.Trim(), 100),
+                AllowDuplicate = true,
+            };
+        }
+        else
+        {
+            if (await AttachInquiryAsync(form.OrganizationId, form.CreatedByUserId, request.Email, source, summary, ct) is Guid existing)
+            {
+                await RecordConsentAsync(form, consent, existing, request, language, ct);
+                return receipt;
+            }
+            lead = new CreateLeadRequest
+            {
+                Name = request.Name.Trim(),
+                Email = request.Email.Trim(),
+                Phone = request.Phone?.Trim(),
+                Status = "New",
+                Source = source,
+                JobTitle = request.JobTitle?.Trim(),
+                Country = request.Country?.Trim(),
+                Description = string.IsNullOrWhiteSpace(request.Company) ? null : $"Company given on the form: {request.Company.Trim()}",
+                // Checked just above; a lead created between the two checks is a
+                // duplicate the lead list can merge, not a reason to lose the inquiry.
+                AllowDuplicate = true,
+            };
         }
 
-        var created = await _leads.CreateAsync(form.CreatedByUserId, form.OrganizationId, new CreateLeadRequest
-        {
-            Name = request.Name.Trim(),
-            Email = request.Email.Trim(),
-            Phone = request.Phone?.Trim(),
-            Status = "New",
-            Source = source,
-            JobTitle = request.JobTitle?.Trim(),
-            Country = request.Country?.Trim(),
-            Description = string.IsNullOrWhiteSpace(request.Company) ? null : $"Company given on the form: {request.Company.Trim()}",
-            // Checked just above; a lead created between the two checks is a
-            // duplicate the lead list can merge, not a reason to lose the inquiry.
-            AllowDuplicate = true,
-        }, ct);
+        var created = await _leads.CreateAsync(form.CreatedByUserId, form.OrganizationId, lead, ct);
         if (!created.IsSuccess)
             return new Error("Lead.CaptureFailed", "That could not be saved. Please check the details and try again.");
         await RecordConsentAsync(form, consent, created.Value.Id, request, language, ct);
@@ -350,8 +401,21 @@ public sealed class LeadOpsService : ILeadOpsService
     {
         if (string.IsNullOrWhiteSpace(email)) return null;
         var existing = await _automation.FindOpenDuplicateAsync(actingUserId, organizationId, email, null, ct);
-        if (existing == null) return null;
+        return existing == null ? null : await RecordInquiryAsync(existing, organizationId, actingUserId, source, summary, ct);
+    }
 
+    public async Task<Guid?> AttachEstablishmentInquiryAsync(Guid? organizationId, Guid actingUserId, string name, string? city, string? email, string source, string summary, CancellationToken ct = default)
+    {
+        var existing = !string.IsNullOrWhiteSpace(city)
+            ? await _automation.FindOpenEstablishmentAsync(actingUserId, organizationId, name, city, null, ct)
+            : null;
+        if (existing == null && !string.IsNullOrWhiteSpace(email))
+            existing = await _automation.FindOpenDuplicateAsync(actingUserId, organizationId, email, null, ct);
+        return existing == null ? null : await RecordInquiryAsync(existing, organizationId, actingUserId, source, summary, ct);
+    }
+
+    private async Task<Guid> RecordInquiryAsync(Lead existing, Guid? organizationId, Guid actingUserId, string source, string summary, CancellationToken ct)
+    {
         // An inbound inquiry, not our response to them — so automated: it must not
         // clear the "nobody has replied yet" deadline.
         await _activities.CreateAsync(actingUserId, organizationId, new CreateActivityRequest
@@ -370,9 +434,17 @@ public sealed class LeadOpsService : ILeadOpsService
         return existing.Id;
     }
 
+    /// <summary>What the workspace's leads are; null for a personal workspace, which takes both.</summary>
+    private async Task<string?> LeadKindsOfAsync(Guid? organizationId, CancellationToken ct) =>
+        organizationId is Guid org && _organizations != null ? (await _organizations.GetByIdAsync(org, ct))?.LeadKinds : null;
+
     private static string Summary(PublicCaptureRequest r)
     {
-        var lines = new List<string> { $"Name: {r.Name.Trim()}", $"Email: {r.Email.Trim()}" };
+        var lines = new List<string>();
+        if (!string.IsNullOrWhiteSpace(r.EstablishmentName)) lines.Add($"Establishment: {r.EstablishmentName.Trim()}");
+        if (!string.IsNullOrWhiteSpace(r.City)) lines.Add($"City: {r.City.Trim()}");
+        lines.Add($"Name: {r.Name.Trim()}");
+        lines.Add($"Email: {r.Email.Trim()}");
         if (!string.IsNullOrWhiteSpace(r.Phone)) lines.Add($"Phone: {r.Phone.Trim()}");
         if (!string.IsNullOrWhiteSpace(r.Company)) lines.Add($"Company: {r.Company.Trim()}");
         if (!string.IsNullOrWhiteSpace(r.JobTitle)) lines.Add($"Job title: {r.JobTitle.Trim()}");

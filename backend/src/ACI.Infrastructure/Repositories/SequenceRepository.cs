@@ -175,9 +175,19 @@ public sealed class SequenceRepository : ISequenceRepository
 
         var lead = await _db.Leads.AsNoTracking()
             .Where(l => l.Id == targetId && l.OrganizationId == organizationId)
-            .Select(l => new { l.Name, l.Email, Company = l.Company != null ? l.Company.Name : null, l.IsConverted, l.Status, l.AssignedToUserId, l.ConvertedToContactId })
+            .Select(l => new
+            {
+                l.Name, l.Email, Company = l.Company != null ? l.Company.Name : null, l.IsConverted, l.Status, l.AssignedToUserId, l.ConvertedToContactId,
+                l.Kind, l.ContactPersonName, l.ContactPersonEmail,
+            })
             .FirstOrDefaultAsync(ct);
         if (lead == null) return SequenceTargetState.Missing;
+        // An establishment is written to through its contact person (else its own address),
+        // greeted by their name, and is itself the company.
+        var place = lead.Kind == LeadKinds.Establishment;
+        var email = LeadKindRules.EmailOf(lead.Kind, lead.Email, lead.ContactPersonEmail) ?? "";
+        var name = place ? (string.IsNullOrWhiteSpace(lead.ContactPersonName) ? lead.Name : lead.ContactPersonName.Trim()) : lead.Name;
+        var company = place ? lead.Company ?? lead.Name : lead.Company;
         // Someone who has left the workspace no longer works its leads.
         var owner = lead.AssignedToUserId is Guid assignee
             && await _db.OrganizationMembers.AnyAsync(m => m.OrganizationId == organizationId && m.UserId == assignee, ct)
@@ -185,9 +195,9 @@ public sealed class SequenceRepository : ISequenceRepository
                 : null;
         // A lead has no flag of its own; its person says "stop" through their contact.
         // This was never read, so DoNotContact was always false for every lead.
-        var leadStopped = await DoNotContactRules.LeadAsync(_db, organizationId, targetId, lead.ConvertedToContactId, lead.Email, ct);
-        return new SequenceTargetState(true, lead.Name, lead.Email, lead.Company, IsConverted: lead.IsConverted, Status: lead.Status,
-            DoNotContact: leadStopped, OwnerUserId: owner, SuppressedAs: await SuppressedAsAsync(organizationId, lead.Email, ct));
+        var leadStopped = await DoNotContactRules.LeadAsync(_db, organizationId, targetId, lead.ConvertedToContactId, email, ct);
+        return new SequenceTargetState(true, name, email, company, IsConverted: lead.IsConverted, Status: lead.Status,
+            DoNotContact: leadStopped, OwnerUserId: owner, SuppressedAs: await SuppressedAsAsync(organizationId, email, ct));
     }
 
     /// <summary>
@@ -210,7 +220,8 @@ public sealed class SequenceRepository : ISequenceRepository
         var address = DoNotContactRules.Normalize(email);
         if (address.Length == 0) return 0;
         var leadIds = await _db.Leads.AsNoTracking()
-            .Where(l => l.OrganizationId == organizationId && l.Email.Trim().ToLower() == address)
+            .Where(l => l.OrganizationId == organizationId && (l.Email.Trim().ToLower() == address
+                || (l.Kind == LeadKinds.Establishment && l.ContactPersonEmail != null && l.ContactPersonEmail.Trim().ToLower() == address)))
             .Select(l => l.Id).ToListAsync(ct);
         var contactIds = await _db.Contacts.AsNoTracking()
             .Where(c => c.OrganizationId == organizationId && c.Email.Trim().ToLower() == address)

@@ -103,7 +103,7 @@ public sealed class ImportService : IImportService
         if (read.IsFailure) return read.Error;
         var file = read.Value;
 
-        var fields = ImportFields.For(kind, await _customFields.ListDefinitionsAsync(userId, organizationId, kind, ct));
+        var fields = ImportFields.For(kind, await _customFields.ListDefinitionsAsync(userId, organizationId, kind, ct), await LeadKindsAsync(kind, organizationId, ct));
         var suggested = ImportFields.Suggest(file.Headers, fields);
         var columns = file.Headers.Select((header, i) => new ImportColumnDto(
             i,
@@ -123,7 +123,7 @@ public sealed class ImportService : IImportService
         if (read.IsFailure) return read.Error;
         var file = read.Value;
 
-        var fields = ImportFields.For(kind, await _customFields.ListDefinitionsAsync(userId, organizationId, kind, ct));
+        var fields = ImportFields.For(kind, await _customFields.ListDefinitionsAsync(userId, organizationId, kind, ct), await LeadKindsAsync(kind, organizationId, ct));
         bool update;
         switch (request.Duplicates?.Trim().ToLowerInvariant())
         {
@@ -151,7 +151,7 @@ public sealed class ImportService : IImportService
         var planner = new ImportPlanner(
             kind, columns.Value, fields, update, existing,
             companies.Select(c => new ImportCompany(c.Id, c.Name, c.Domain)).ToList(),
-            statuses, sources, request.DefaultStatus, request.DefaultSource);
+            statuses, sources, request.DefaultStatus, request.DefaultSource, await LeadKindsAsync(kind, organizationId, ct));
         var plan = planner.Plan(file.Rows);
         // Someone erased at their request is not brought back by an old list: their row is
         // skipped and says so, in the dry run as in the import. Staff who are told the person
@@ -379,11 +379,16 @@ public sealed class ImportService : IImportService
         {
             RecordTypes.Lead when create => new CreateLeadRequest
             {
-                Name = v["name"], Email = v["email"], Phone = v.GetValueOrDefault("phone"), CompanyId = companyId,
+                Name = v["name"], Email = v.GetValueOrDefault("email"), Phone = v.GetValueOrDefault("phone"), CompanyId = companyId,
                 Source = v.GetValueOrDefault("source"), LeadSourceId = row.SourceId, Status = v["status"], LeadStatusId = row.StatusId,
                 JobTitle = v.GetValueOrDefault("jobTitle"), Country = v.GetValueOrDefault("country"), Industry = v.GetValueOrDefault("industry"),
                 CompanySize = v.GetValueOrDefault("companySize"), Description = v.GetValueOrDefault("description"),
                 Origin = "import", RunAutomations = runAutomations,
+                Kind = v.GetValueOrDefault("kind"), EstablishmentType = v.GetValueOrDefault("establishmentType"),
+                AddressLine = v.GetValueOrDefault("addressLine"), PostalCode = v.GetValueOrDefault("postalCode"), City = v.GetValueOrDefault("city"),
+                Website = v.GetValueOrDefault("website"), Seats = Seats(v), ContactPersonName = v.GetValueOrDefault("contactPersonName"),
+                ContactPersonRole = v.GetValueOrDefault("contactPersonRole"), ContactPersonEmail = v.GetValueOrDefault("contactPersonEmail"),
+                ContactPersonPhone = v.GetValueOrDefault("contactPersonPhone"),
             },
             RecordTypes.Lead => new UpdateLeadRequest
             {
@@ -392,6 +397,11 @@ public sealed class ImportService : IImportService
                 JobTitle = v.GetValueOrDefault("jobTitle"), Country = v.GetValueOrDefault("country"), Industry = v.GetValueOrDefault("industry"),
                 CompanySize = v.GetValueOrDefault("companySize"), Description = v.GetValueOrDefault("description"),
                 Origin = "import", RunAutomations = runAutomations,
+                Kind = v.GetValueOrDefault("kind"), EstablishmentType = v.GetValueOrDefault("establishmentType"),
+                AddressLine = v.GetValueOrDefault("addressLine"), PostalCode = v.GetValueOrDefault("postalCode"), City = v.GetValueOrDefault("city"),
+                Website = v.GetValueOrDefault("website"), Seats = Seats(v), ContactPersonName = v.GetValueOrDefault("contactPersonName"),
+                ContactPersonRole = v.GetValueOrDefault("contactPersonRole"), ContactPersonEmail = v.GetValueOrDefault("contactPersonEmail"),
+                ContactPersonPhone = v.GetValueOrDefault("contactPersonPhone"),
             },
             RecordTypes.Contact when create => new CreateContactRequest
             {
@@ -417,6 +427,13 @@ public sealed class ImportService : IImportService
             },
         };
     }
+
+    /// <summary>What a lead file's workspace takes as leads (Organization.LeadKinds); null for any other file, or a personal workspace.</summary>
+    private async Task<string?> LeadKindsAsync(string kind, Guid? organizationId, CancellationToken ct) =>
+        kind == RecordTypes.Lead && organizationId is Guid org ? (await _organizations.GetByIdAsync(org, ct))?.LeadKinds : null;
+
+    private static int? Seats(IReadOnlyDictionary<string, string> values) =>
+        values.TryGetValue("seats", out var seats) ? int.Parse(seats, System.Globalization.CultureInfo.InvariantCulture) : null;
 
     /// <summary>Sends a row's request to its service. The id is of the record created or updated.</summary>
     private async Task<Result<Guid>> SaveAsync(object request, Guid? recordId, Guid userId, Guid? organizationId, CancellationToken ct)
@@ -483,6 +500,11 @@ public sealed class ImportService : IImportService
                     ["name"] = l.Name, ["email"] = l.Email, ["phone"] = l.Phone, ["company"] = CompanyOf(l.CompanyId),
                     ["jobTitle"] = l.JobTitle, ["source"] = l.Source, ["status"] = l.Status, ["country"] = l.Country,
                     ["industry"] = l.Industry, ["companySize"] = l.CompanySize, ["description"] = l.Description,
+                    ["kind"] = l.Kind, ["establishmentType"] = l.EstablishmentType, ["addressLine"] = l.AddressLine,
+                    ["postalCode"] = l.PostalCode, ["city"] = l.City, ["website"] = l.Website,
+                    ["seats"] = l.Seats?.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    ["contactPersonName"] = l.ContactPersonName, ["contactPersonRole"] = l.ContactPersonRole,
+                    ["contactPersonEmail"] = l.ContactPersonEmail, ["contactPersonPhone"] = l.ContactPersonPhone,
                 }, CustomOf(l.Id), l.IsConverted ? "was converted into a contact, so there is no lead left to update" : null)).ToList();
             case RecordTypes.Contact:
                 return (await _imports.ContactsAsync(userId, organizationId, ct)).Select(c => new ImportExisting(c.Id, c.Name, new Dictionary<string, string?>
@@ -542,7 +564,9 @@ public sealed class ImportService : IImportService
         {
             if (!update && !used.Contains("name") && !used.Contains("firstName") && !used.Contains("lastName"))
                 return DomainErrors.Import.FieldRequired("the name");
-            if (!used.Contains("email")) return DomainErrors.Import.FieldRequired("the email address");
+            // A person is found and reached by email; a file of establishments may have none.
+            if (!used.Contains("email") && fields.Any(f => f.Key == "email" && f.Required))
+                return DomainErrors.Import.FieldRequired("the email address");
         }
         return mapped;
     }

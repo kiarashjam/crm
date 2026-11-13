@@ -94,6 +94,10 @@ export function recordBrief(world: AgentWorld, person: { key: string; href: stri
     lines.push(`Lead ${lead.name}. Status is not repeated beyond the saved next step.`);
     if (lead.email) lines.push(`Email: ${lead.email}.`);
     if (lead.phone) lines.push(`Phone: ${lead.phone}.`);
+    // An establishment: who to speak to there, and how.
+    if (lead.kind === 'establishment' && lead.contactPersonName) {
+      lines.push(`Contact person: ${[lead.contactPersonName, lead.contactPersonRole].filter(Boolean).join(', ')}${lead.contactPersonEmail ? `, ${lead.contactPersonEmail}` : ''}${lead.contactPersonPhone ? `, ${lead.contactPersonPhone}` : ''}.`);
+    }
     if (lead.lastContactedAt) lines.push(`Last contact date: ${dayOf(lead.lastContactedAt)}.`);
     if (typeof lead.leadScore === 'number') lines.push(`Lead score: ${lead.leadScore}.`);
   }
@@ -450,6 +454,10 @@ export function groundedDraft(world: AgentWorld, item: { key: string; href: stri
     if (lead?.companyName) lines.push(`Company: ${lead.companyName}`);
     if (lead?.email) lines.push(`Email: ${lead.email}`);
     if (lead?.phone) lines.push(`Phone: ${lead.phone}`);
+    if (lead?.kind === 'establishment' && lead.contactPersonName) {
+      lines.push(`Contact person: ${[lead.contactPersonName, lead.contactPersonRole].filter(Boolean).join(', ')}`);
+      if (lead.contactPersonEmail) lines.push(`Contact person's email: ${lead.contactPersonEmail}`);
+    }
     if (lead?.lastContactedAt) lines.push(`Last contact date: ${dayOf(lead.lastContactedAt)}`);
   }
   if (match[1] === 'deals') {

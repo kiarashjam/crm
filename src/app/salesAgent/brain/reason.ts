@@ -1,4 +1,4 @@
-import type { SuggestableLead } from '../nextAction';
+import { reachEmailOf, type SuggestableLead } from '../nextAction';
 import type { SuggestableContact, SuggestableDeal, WorkSuggestion } from '../workspace';
 
 /** The record the previous answer was about. Follow-ups use the ids, then read current records. */
@@ -61,7 +61,7 @@ export function rowFor(world: Loaded, key: string | null | undefined): WorkSugge
   const blank = { action: '', because: '', priority: 0 };
   if (kind === 'lead') {
     const lead = world.leads.find((row) => row.id === id);
-    return lead ? { ...blank, key, href: `/leads/${id}`, name: lead.name, list: 'Leads', email: lead.email } : null;
+    return lead ? { ...blank, key, href: `/leads/${id}`, name: lead.name, list: 'Leads', email: reachEmailOf(lead) || lead.email } : null;
   }
   if (kind === 'deal') {
     const deal = world.deals.find((row) => row.id === id);

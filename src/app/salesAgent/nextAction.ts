@@ -67,6 +67,28 @@ export interface SuggestableLead {
   description?: string | null;
   tags?: string[] | null;
   referredByContactName?: string | null;
+  /** An establishment is reached at its own email and number, else its contact person's. */
+  kind?: 'person' | 'establishment' | null;
+  city?: string | null;
+  establishmentType?: string | null;
+  contactPersonName?: string | null;
+  contactPersonRole?: string | null;
+  contactPersonEmail?: string | null;
+  contactPersonPhone?: string | null;
+}
+
+/** The number to call: the lead's own, else an establishment's contact person's. */
+export function reachPhoneOf(lead: SuggestableLead): string {
+  const own = lead.phone?.trim();
+  if (own) return own;
+  return lead.kind === 'establishment' ? lead.contactPersonPhone?.trim() ?? '' : '';
+}
+
+/** The address to write to: the lead's own, else an establishment's contact person's. */
+export function reachEmailOf(lead: SuggestableLead): string {
+  const own = lead.email?.trim();
+  if (own) return own;
+  return lead.kind === 'establishment' ? lead.contactPersonEmail?.trim() ?? '' : '';
 }
 
 function actionFor(p: LeadPipeline, now: Date, lastContactedAt?: string | null): Omit<NextAction, 'leadId' | 'leadName'> | null {

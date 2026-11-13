@@ -5,7 +5,7 @@ import {
   Tag, UserPlus, Info, CircleDot, Upload, RefreshCw, Users, Handshake,
   ArrowRight, CheckCircle2, SlidersHorizontal, ArrowUpDown, ArrowUp,
   ArrowDown, X, Target, Clock, Zap, UserCircle,
-  AlertTriangle,
+  AlertTriangle, Store, UserRound,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ApiError } from '@/app/api/apiClient';
@@ -15,7 +15,7 @@ import AppHeader from '@/app/components/AppHeader';
 import PageHero, { heroPrimary, heroSecondary, type PageStat } from '@/app/components/PageHero';
 import { DuplicateMerge, LEAD_DUPLICATES } from '@/app/components/duplicates';
 import {
-  InitialsAvatar, RecordList, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
+  RecordList, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
   type RecordColumn,
 } from '@/app/components/views';
 import { Checkbox } from '@/app/components/ui/checkbox';
@@ -45,7 +45,7 @@ import {
   useAllLeads, useLeadSources, useLeadStatuses, useLeadStats, useLeadsPage, useOrgMembers,
 } from '@/app/hooks/queries';
 import { LoadFailed } from '@/app/components/LoadFailed';
-import type { Lead, Company, Contact, Deal, LeadStatus, LeadSource, Pipeline, Activity } from '@/app/api/types';
+import type { Lead, LeadKind, Company, Contact, Deal, LeadStatus, LeadSource, Pipeline, Activity } from '@/app/api/types';
 import { recordHref } from '@/app/hooks/useDocumentTitle';
 import { orgCan, PERMISSION, type OrgMemberDto } from '@/app/api/organizations';
 import { relationshipLabel } from '@/app/api/relationships';
@@ -76,10 +76,11 @@ import { WelcomeConfirmDialog, WelcomeFields, WelcomeProgressDialog, draftFrom, 
 import { getOnboardingSettings, type OnboardingSettings, type StartOnboardingRequest } from '@/app/api/onboarding';
 import { StatusFilterMultiSelect } from './leads/components/StatusFilterMultiSelect';
 import { BulkActionsBar } from './leads/components/BulkActionsBar';
-import { QuickAddLeadDialog } from './leads/components/QuickAddLeadDialog';
+import { QuickAddLeadDialog, type QuickLeadInput } from './leads/components/QuickAddLeadDialog';
 import type { QuickLogPayload } from './leads/components/QuickLogPopover';
 import { activityTime } from '@/app/lib/activityFacts';
 import { LeadGalleryCard } from './leads/LeadGalleryCard';
+import { LeadAvatar } from './leads/components/LeadAvatar';
 import { useLeadStatusSync } from './leads/useLeadStatusSync';
 import {
   SalesTrackerFilters,
@@ -99,6 +100,8 @@ import { LeadAssignmentMigrationDialog } from './leads/components/LeadAssignment
 import { LeadReferralMigrationDialog } from './leads/components/LeadReferralMigrationDialog';
 import { FALLBACK_STATUSES, FALLBACK_SOURCES, EMPTY_LEAD_FORM, STATUS_BADGE_COLORS } from './leads/config';
 import { leadEditForm, useFreshLeadOnOpen } from './leads/useFreshLeadOnOpen';
+import { leadFormProblem, leadProfilePayload, quickInputToForm } from './leads/leadFormPayload';
+import { convertRecipient, establishmentSummary, establishmentTypeLabel, leadKindOf, useLeadKinds } from '@/app/lib/leadKinds';
 import { QUALIFIED_OR_BEYOND, statusIn } from './leads/leadStatusSync';
 import { findStatusFixes } from './leads/bulkStatusReconcile';
 import StatusReconcileDialog from './leads/components/StatusReconcileDialog';
@@ -250,6 +253,13 @@ export default function Leads() {
     const v = new URLSearchParams(window.location.search).get('converted');
     return v === 'all' || v === 'converted' || v === 'active' ? v : 'active';
   });
+  // People or establishments: a choice only where the workspace has both.
+  const leadKinds = useLeadKinds();
+  const [filterKindChosen, setFilterKind] = useState<'all' | LeadKind>(() => {
+    const v = new URLSearchParams(window.location.search).get('kind');
+    return v === 'person' || v === 'establishment' ? v : 'all';
+  });
+  const filterKind = leadKinds.choose ? filterKindChosen : 'all';
   // 'all' (no filter), 'me' (current user), 'unassigned', or an org member's userId.
   const [filterAssignment, setFilterAssignment] = useState<string>(() => {
     const v = new URLSearchParams(window.location.search).get('assignment');
@@ -377,7 +387,7 @@ export default function Leads() {
   // ref) so this effect re-running for other reasons can't clobber pagination.
   const prevFilterSigRef = useRef<string | null>(null);
   useEffect(() => {
-    const sig = JSON.stringify([filterStatuses, filterSource, filterConverted, filterAssignment, sortField, sortDirection, salesFilters]);
+    const sig = JSON.stringify([filterStatuses, filterSource, filterConverted, filterAssignment, filterKind, sortField, sortDirection, salesFilters]);
     const filtersChanged = prevFilterSigRef.current !== null && prevFilterSigRef.current !== sig;
     prevFilterSigRef.current = sig;
     setSearchParams(
@@ -392,6 +402,8 @@ export default function Leads() {
         else params.delete('converted');
         if (filterAssignment !== 'all') params.set('assignment', filterAssignment);
         else params.delete('assignment');
+        if (filterKind !== 'all') params.set('kind', filterKind);
+        else params.delete('kind');
         if (sortField !== 'createdAt') params.set('sort', sortField);
         else params.delete('sort');
         if (sortDirection !== 'desc') params.set('dir', sortDirection);
@@ -406,7 +418,7 @@ export default function Leads() {
       },
       { replace: true }
     );
-  }, [filterStatuses, filterSource, filterConverted, filterAssignment, sortField, sortDirection, salesFilters, setSearchParams]);
+  }, [filterStatuses, filterSource, filterConverted, filterAssignment, filterKind, sortField, sortDirection, salesFilters, setSearchParams]);
 
   // Browser back/forward or opening a shared link: align committed search with the URL.
   // Compare against a ref so this effect fires only on external URL changes — depending on
@@ -522,6 +534,7 @@ export default function Leads() {
       if (filterSource !== 'all') result = result.filter((l) => l.source === filterSource);
       if (filterConverted === 'converted') result = result.filter((l) => l.isConverted);
       else if (filterConverted === 'active') result = result.filter((l) => !l.isConverted);
+      if (filterKind !== 'all') result = result.filter((l) => leadKindOf(l) === filterKind);
 
       const toSortableTimestamp = (value?: string) => {
         if (!value) return Number.NEGATIVE_INFINITY;
@@ -551,7 +564,7 @@ export default function Leads() {
       });
       return result;
     },
-    [debouncedSearch, filterStatuses, filterSource, filterConverted, sortField, sortDirection],
+    [debouncedSearch, filterStatuses, filterSource, filterConverted, filterKind, sortField, sortDirection],
   );
 
   const activityRequestRef = useRef(0);
@@ -611,9 +624,10 @@ export default function Leads() {
     status: filterStatuses.length === 1 ? filterStatuses[0] : undefined,
     source: filterSource !== 'all' ? filterSource : undefined,
     converted: filterConverted,
+    kind: filterKind,
     sortBy: sortField,
     sortDir: sortDirection,
-  }), [currentPage, pageSize, debouncedSearch, filterStatuses, filterSource, filterConverted, sortField, sortDirection]);
+  }), [currentPage, pageSize, debouncedSearch, filterStatuses, filterSource, filterConverted, filterKind, sortField, sortDirection]);
   const pageQuery = useLeadsPage(pageParams, !useClientMode);
   const allLeadsQuery = useAllLeads(useClientMode);
   const listQuery = useClientMode ? allLeadsQuery : pageQuery;
@@ -743,6 +757,7 @@ export default function Leads() {
     filterSource !== 'all',
     filterConverted !== 'all',
     filterAssignment !== 'all',
+    filterKind !== 'all',
   ].filter(Boolean).length + activeSalesFilterCount;
 
   // Clear all filters
@@ -751,6 +766,7 @@ export default function Leads() {
     setFilterSource('all');
     setFilterConverted('all');
     setFilterAssignment('all');
+    setFilterKind('all');
     setSalesFilters(EMPTY_SALES_TRACKER_FILTERS);
     setSearchQuery('');
   };
@@ -789,6 +805,15 @@ export default function Leads() {
         'Converted At',
         'Description',
       ];
+      // An establishment's own columns, where the workspace has establishments (or kept some
+      // from before): a people-only export reads as it always did.
+      const withPlaces = leadKinds.establishments || allLeads.some((l) => leadKindOf(l) === 'establishment');
+      if (withPlaces) {
+        headers.push(
+          'Kind', 'Establishment Type', 'Address', 'Postal Code', 'City', 'Country', 'Website', 'Seats',
+          'Contact Person', 'Contact Person Role', 'Contact Person Email', 'Contact Person Phone',
+        );
+      }
 
       const rows = allLeads.map((lead) => [
         lead.id,
@@ -807,6 +832,22 @@ export default function Leads() {
         formatIsoDate(lead.lastContactedAt),
         formatIsoDate(lead.convertedAtUtc),
         lead.description ?? '',
+        ...(withPlaces
+          ? [
+            leadKindOf(lead) === 'establishment' ? 'Establishment' : 'Person',
+            lead.establishmentType ? establishmentTypeLabel(lead.establishmentType) : '',
+            lead.addressLine ?? '',
+            lead.postalCode ?? '',
+            lead.city ?? '',
+            lead.country ?? '',
+            lead.website ?? '',
+            lead.seats ?? '',
+            lead.contactPersonName ?? '',
+            lead.contactPersonRole ?? '',
+            lead.contactPersonEmail ?? '',
+            lead.contactPersonPhone ?? '',
+          ]
+          : []),
       ]);
 
       // The shared cell encoder: names and descriptions arrive from the public form
@@ -845,52 +886,22 @@ export default function Leads() {
 
   // Open the full multi-step editor, optionally prefilled with what the user
   // already typed in Quick Add.
-  const openFullEditor = (prefill?: {
-    name?: string;
-    email?: string;
-    phone?: string;
-    companyId?: string;
-    source?: string;
-    status?: string;
-    description?: string;
-  }) => {
+  const openFullEditor = (prefill?: QuickLeadInput) => {
     void ensureCompaniesAndContacts();
     setEditingLead(null);
-    setForm({
-      ...EMPTY_LEAD_FORM,
-      name: prefill?.name ?? '',
-      email: prefill?.email ?? '',
-      phone: prefill?.phone ?? '',
-      companyId: prefill?.companyId ?? '',
-      source: prefill?.source ?? '',
-      status: prefill?.status ?? '',
-      description: prefill?.description ?? '',
-    });
+    setForm(prefill ? quickInputToForm(prefill) : EMPTY_LEAD_FORM);
     setDialogOpen(true);
   };
 
   // Persist a lead from the Quick Add modal using the same handlers as the wizard.
-  const handleQuickAddSubmit = async (input: {
-    name: string;
-    email: string;
-    phone?: string;
-    companyId?: string;
-    source?: string;
-    status?: string;
-    description?: string;
-  }) => {
+  const handleQuickAddSubmit = async (input: QuickLeadInput) => {
     const onAdded = async () => {
       toast.success('Lead added');
     };
     try {
       const created = await createLeadOrOfferDuplicate({
-        name: input.name,
-        email: input.email,
-        phone: input.phone,
+        ...input,
         companyId: input.companyId && isValidGuid(input.companyId) ? input.companyId : undefined,
-        source: input.source,
-        status: input.status,
-        description: input.description,
       }, onAdded);
       // Keep the dialog open on a duplicate, so "Create anyway" or a new email are both one step away.
       if (created === 'offered') return false;
@@ -910,9 +921,13 @@ export default function Leads() {
     void ensureCompaniesAndContacts();
     setConvertDialogLead(lead);
     setConvertOptionsLoading(true);
+    // An establishment's contact is its contact person, who can be one only with a name and
+    // an email (the server refuses it otherwise); without them, it converts to its company and a deal.
+    const place = leadKindOf(lead) === 'establishment';
+    const personReachable = !place || (!!lead.contactPersonName?.trim() && !!lead.contactPersonEmail?.trim());
     setConvertForm({
-      createContact: true,
-      createDeal: false,
+      createContact: personReachable,
+      createDeal: !personReachable,
       dealName: lead.name,
       dealValue: '',
       // Priced in the workspace's currency unless someone picks another, as a new deal is.
@@ -921,8 +936,9 @@ export default function Leads() {
       pipelineId: undefined,
       dealStageId: undefined,
       createNewCompany: false,
-      newCompanyName: companies.find((c) => c.id === lead.companyId)?.name ?? '',
-      existingCompanyId: undefined,
+      newCompanyName: companies.find((c) => c.id === lead.companyId)?.name ?? (place ? lead.name : ''),
+      // The establishment's own company, which the server made or found for it.
+      existingCompanyId: place ? lead.companyId ?? undefined : undefined,
       existingContactId: undefined,
       existingDealId: undefined,
     });
@@ -943,6 +959,14 @@ export default function Leads() {
       .catch(() => setOnboardingSettings(null));
   };
 
+  // An establishment converts into its company, its contact person and a deal.
+  const convertPlace = leadKindOf(convertDialogLead) === 'establishment';
+  const convertPersonName = convertPlace ? convertDialogLead?.contactPersonName?.trim() || '' : '';
+  const convertPersonEmail = convertPlace ? convertDialogLead?.contactPersonEmail?.trim() || '' : convertDialogLead?.email ?? '';
+  // Something to convert into. A person always becomes a contact (new or existing), as
+  // before; an establishment may convert to a deal alone, as nobody there may be named yet.
+  const convertChoiceMade = convertForm.createContact || !!convertForm.existingContactId
+    || (convertPlace && (convertForm.createDeal || !!convertForm.existingDealId));
   const convertPipeline = convertForm.pipelineId
     ? convertOptions.pipelines.find((p) => p.id === convertForm.pipelineId)
     : convertOptions.pipelines[0];
@@ -956,8 +980,8 @@ export default function Leads() {
   const welcomePreview = useMemo(
     () => (welcomeConfirm && convertDialogLead
       ? toPreviewRequest(welcome, {
-        name: convertDialogLead.name,
-        email: convertDialogLead.email,
+        name: convertRecipient(convertDialogLead).name,
+        email: convertRecipient(convertDialogLead).email,
         company: convertDialogLead.companyName ?? companies.find((c) => c.id === convertDialogLead.companyId)?.name,
         dealName: convertForm.createDeal ? convertForm.dealName || convertDialogLead.name : undefined,
       })
@@ -968,7 +992,7 @@ export default function Leads() {
   const handleConvert = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!convertDialogLead) return;
-    if (!convertForm.createContact && !convertForm.createDeal && !convertForm.existingDealId) {
+    if (!convertChoiceMade) {
       toast.error(messages.validation.selectContactOrDeal);
       return;
     }
@@ -997,7 +1021,7 @@ export default function Leads() {
         if (result.dealId) parts.push('deal created');
         toast.success(parts.length ? `Lead converted: ${parts.join(', ')}` : messages.success.leadConverted);
         if (welcomeGoes && result.dealId) {
-          setWelcomeProgress({ dealId: result.dealId, name: convertDialogLead.name, request: toStartRequest(welcome, convertDialogLead.id) });
+          setWelcomeProgress({ dealId: result.dealId, name: convertRecipient(convertDialogLead).name ?? convertDialogLead.name, request: toStartRequest(welcome, convertDialogLead.id) });
         }
         setWelcomeConfirm(false);
         setConvertDialogLead(null);
@@ -1285,8 +1309,9 @@ export default function Leads() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name.trim() || !form.email.trim()) {
-      toast.error(messages.validation.nameAndEmailRequired);
+    const problem = leadFormProblem(form);
+    if (problem) {
+      toast.error(form.kind === 'establishment' ? problem : messages.validation.nameAndEmailRequired);
       return;
     }
     setSaving(true);
@@ -1299,6 +1324,8 @@ export default function Leads() {
 
       if (editingLead) {
         const updated = await updateLead(editingLead.id, {
+          // The kind and its own fields: a person's job title, an establishment's address and contact person.
+          ...leadProfilePayload(form, 'update', leadKindOf(editingLead)),
           name: form.name.trim(),
           email: form.email.trim(),
           // An emptied field is sent as null, which takes it off; left out, it was kept.
@@ -1335,10 +1362,12 @@ export default function Leads() {
           setDialogOpen(false);
         };
         const created = await createLeadOrOfferDuplicate({
+          ...leadProfilePayload(form, 'create'),
           name: form.name.trim(),
           email: form.email.trim(),
           phone: form.phone.trim() || undefined,
-          companyId: form.companyId || undefined,
+          // An establishment's company is made or found by the server from its name.
+          companyId: form.kind === 'establishment' ? undefined : form.companyId || undefined,
           source: form.source || undefined,
           status: form.status,
           leadSourceId: validLeadSourceId,
@@ -1442,13 +1471,33 @@ export default function Leads() {
       cell: (l) => (
         <span className="flex items-center gap-2.5">
           {leadPick(l)}
-          <InitialsAvatar name={l.name} size="sm" />
+          <LeadAvatar lead={l} size="sm" />
           <span className="truncate">{l.name}</span>
         </span>
       ),
     },
+    // Only where leads can be establishments: a people-only workspace's table is as it was.
+    ...(leadKinds.establishments
+      ? [{
+        id: 'kind',
+        label: 'Kind',
+        // Every lead is an establishment where the workspace has no people.
+        byDefault: leadKinds.choose,
+        cell: (l: Lead) => (leadKindOf(l) === 'establishment' ? establishmentTypeLabel(l.establishmentType) : 'Person'),
+      } satisfies RecordColumn<Lead>]
+      : []),
     { id: 'status', label: 'Status', cell: (l) => statusPill(l.status) },
-    { id: 'company', label: 'Company', cell: (l) => companyName(l) },
+    ...(leadKinds.establishments
+      ? [
+        { id: 'city', label: 'City', cell: (l: Lead) => l.city || '—' } satisfies RecordColumn<Lead>,
+        {
+          id: 'contactPerson',
+          label: 'Contact person',
+          cell: (l: Lead) => (leadKindOf(l) === 'establishment' ? l.contactPersonName || '—' : '—'),
+        } satisfies RecordColumn<Lead>,
+      ]
+      : []),
+    { id: 'company', label: 'Company', byDefault: !leadKinds.establishments, cell: (l) => companyName(l) },
     { id: 'email', label: 'Email', cell: (l) => l.email || '—' },
     { id: 'phone', label: 'Phone', byDefault: false, cell: (l) => l.phone || '—' },
     { id: 'owner', label: 'Owner', cell: (l) => (l.assignedToId ? orgMembersById.get(l.assignedToId)?.name ?? l.assignedToName ?? '—' : 'Unassigned') },
@@ -1628,7 +1677,7 @@ export default function Leads() {
                 <Input
                   ref={searchInputRef}
                   type="search"
-                  placeholder="Search by name, email, or phone…  (press / )"
+                  placeholder={leadKinds.establishments ? 'Search by name, city, contact person, email or phone…  (press / )' : 'Search by name, email, or phone…  (press / )'}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-14 pr-10 h-11 rounded-xl border border-slate-200 bg-slate-50/80 text-slate-900 placeholder:text-slate-400 focus:border-orange-300 focus:ring-4 focus:ring-orange-200/50 focus:bg-white hover:bg-white hover:border-slate-300 transition-all duration-300"
@@ -1895,6 +1944,30 @@ export default function Leads() {
                   </Select>
                 </div>
 
+                {/* People or establishments, where the workspace has both */}
+                {leadKinds.choose && (
+                  <div className="min-w-0">
+                    <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                      <Store className="w-3.5 h-3.5 text-orange-500" />
+                      Kind
+                    </label>
+                    <Select value={filterKind} onValueChange={(v) => setFilterKind(v as typeof filterKind)}>
+                      <SelectTrigger aria-label="Kind" className="w-full h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-orange-300 transition-colors">
+                        <SelectValue placeholder="People and establishments" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">People and establishments</SelectItem>
+                        <SelectItem value="person">
+                          <span className="flex items-center gap-2"><UserRound className="w-3.5 h-3.5 text-slate-500" />People</span>
+                        </SelectItem>
+                        <SelectItem value="establishment">
+                          <span className="flex items-center gap-2"><Store className="w-3.5 h-3.5 text-slate-500" />Establishments</span>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
                 {/* Sales Tracker filters — one axis per Excel enum */}
                 <div className="col-span-full pt-3 border-t border-slate-200/80">
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
@@ -1960,6 +2033,15 @@ export default function Leads() {
                       ? 'Unassigned'
                       : `Assigned to ${orgMembersById.get(filterAssignment)?.name ?? 'member'}`}
                   <button type="button" onClick={() => setFilterAssignment('all')} aria-label="Remove assignment filter" className="-my-1 -mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-indigo-100 hover:text-indigo-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+              {filterKind !== 'all' && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-violet-50 text-violet-700 text-xs font-medium border border-violet-200">
+                  {filterKind === 'establishment' ? <Store className="w-3 h-3" /> : <UserRound className="w-3 h-3" />}
+                  {filterKind === 'establishment' ? 'Establishments' : 'People'}
+                  <button type="button" onClick={() => setFilterKind('all')} aria-label="Remove kind filter" className="-my-1 -mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-violet-100 hover:text-violet-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -2080,11 +2162,13 @@ export default function Leads() {
               leading={(l) => (
                 <span className="flex items-center gap-3">
                   {leadPick(l)}
-                  <InitialsAvatar name={l.name} />
+                  <LeadAvatar lead={l} />
                 </span>
               )}
               title={(l) => l.name}
-              subtitle={(l) => [cardCompany(l), l.email].filter(Boolean).join(' · ')}
+              subtitle={(l) => (leadKindOf(l) === 'establishment'
+                ? [establishmentSummary(l), l.contactPersonName].filter(Boolean).join(' · ')
+                : [cardCompany(l), l.email].filter(Boolean).join(' · '))}
               columns={leadColumns.filter((c) => c.id !== 'email')}
             />
           ) : view.layout === 'table' ? (
@@ -2189,7 +2273,9 @@ export default function Leads() {
                     Convert Lead
                   </DialogTitle>
                   <p className="text-white/80 text-sm mt-0.5">
-                    Qualify <span className="font-semibold">{convertDialogLead?.name}</span> into a contact, company, or deal
+                    {convertPlace
+                      ? <>Turn <span className="font-semibold">{convertDialogLead?.name}</span> into a company, its contact person and a deal</>
+                      : <>Qualify <span className="font-semibold">{convertDialogLead?.name}</span> into a contact, company, or deal</>}
                   </p>
                 </div>
               </div>
@@ -2198,18 +2284,30 @@ export default function Leads() {
               <div className="mt-5 flex items-center justify-center gap-2 bg-white/10 backdrop-blur-sm rounded-xl px-4 py-3 border border-white/20">
                 <div className="flex items-center gap-1.5 text-white/90">
                   <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
-                    <User className="w-4 h-4" />
+                    {convertPlace ? <Store className="w-4 h-4" /> : <User className="w-4 h-4" />}
                   </div>
-                  <span className="text-sm font-medium">Lead</span>
+                  <span className="text-sm font-medium">{convertPlace ? 'Establishment' : 'Lead'}</span>
                 </div>
                 <ArrowRight className="w-5 h-5 text-white/60 mx-1" />
-                <div className={`flex items-center gap-1.5 transition-all ${convertForm.createContact ? 'text-white' : 'text-white/40'}`}>
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${convertForm.createContact ? 'bg-white/30' : 'bg-white/10'}`}>
+                {convertPlace && (
+                  <>
+                    <div className="flex items-center gap-1.5 text-white">
+                      <div className="w-8 h-8 rounded-lg bg-white/30 flex items-center justify-center">
+                        <Building2 className="w-4 h-4" />
+                      </div>
+                      <span className="text-sm font-medium">Company</span>
+                    </div>
+                    <span className="text-white/40 text-sm">+</span>
+                  </>
+                )}
+                <div className={`flex min-w-0 items-center gap-1.5 transition-all ${convertForm.createContact || convertForm.existingContactId ? 'text-white' : 'text-white/40'}`}>
+                  <div className={`w-8 h-8 shrink-0 rounded-lg flex items-center justify-center transition-all ${convertForm.createContact || convertForm.existingContactId ? 'bg-white/30' : 'bg-white/10'}`}>
                     <Users className="w-4 h-4" />
                   </div>
-                  <span className="text-sm font-medium">Contact</span>
+                  {/* "Contact" for both: with a deal too, "Contact person" did not fit beside the establishment. */}
+                  <span className="truncate text-sm font-medium">Contact</span>
                 </div>
-                {convertForm.createNewCompany && (
+                {!convertPlace && convertForm.createNewCompany && (
                   <>
                     <span className="text-white/40 text-sm">+</span>
                     <div className="flex items-center gap-1.5 text-white">
@@ -2259,6 +2357,19 @@ export default function Leads() {
                       Conversion qualifies an <strong className="text-slate-700">unqualified lead</strong> into active records you can work with.
                     </p>
                     <ul className="space-y-1.5 text-slate-600">
+                      {convertPlace ? (
+                        <>
+                          <li className="flex items-start gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
+                            <span><strong className="text-slate-700">Company</strong> — The establishment itself, already kept as a company</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <CircleDot className="w-4 h-4 text-purple-500 mt-0.5 shrink-0" />
+                            <span><strong className="text-slate-700">Contact</strong> — The person you speak to there, when you have their email</span>
+                          </li>
+                        </>
+                      ) : (
+                        <>
                       <li className="flex items-start gap-2">
                         <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
                         <span><strong className="text-slate-700">Contact</strong> — The qualified person you'll engage with</span>
@@ -2267,6 +2378,8 @@ export default function Leads() {
                         <CircleDot className="w-4 h-4 text-purple-500 mt-0.5 shrink-0" />
                         <span><strong className="text-slate-700">Company</strong> — Their organization, if applicable</span>
                       </li>
+                        </>
+                      )}
                       <li className="flex items-start gap-2">
                         <CircleDot className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
                         <span><strong className="text-slate-700">Deal</strong> — A sales opportunity, if there's potential revenue</span>
@@ -2282,13 +2395,26 @@ export default function Leads() {
                   <div className="w-6 h-6 rounded-md bg-emerald-100 flex items-center justify-center">
                     <Users className="w-3.5 h-3.5 text-emerald-600" />
                   </div>
-                  <span className="text-sm font-semibold text-slate-700">Contact</span>
-                  <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium">Typical</span>
+                  <span className="text-sm font-semibold text-slate-700">{convertPlace ? 'Contact person' : 'Contact'}</span>
+                  <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium">{convertPlace ? 'Optional' : 'Typical'}</span>
                 </div>
-                
+
+                {convertPlace && (!convertPersonEmail || !convertPersonName) ? (
+                  // Offered only with a name and an email: a contact is someone the team can write to.
+                  <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-xs text-slate-600">
+                    {convertPersonName
+                      ? <>Add {convertPersonName}’s email to the lead to make them a contact. The company and a deal can be made now.</>
+                      : convertPersonEmail
+                        ? <>Add the contact person’s name to the lead to make them a contact. The company and a deal can be made now.</>
+                        : <>No contact person with a name and an email yet. The company and a deal can be made now.</>}
+                  </p>
+                ) : (
                 <button
                   type="button"
-                  onClick={() => setConvertForm((f) => ({ ...f, createContact: true, existingContactId: undefined }))}
+                  aria-pressed={convertForm.createContact}
+                  // For an establishment, pressed again it is taken off, and it converts to a deal
+                  // alone; a person always becomes a contact, this one or one picked below.
+                  onClick={() => setConvertForm((f) => ({ ...f, createContact: convertPlace ? !f.createContact : true, existingContactId: undefined }))}
                   className={`w-full flex items-center gap-3 p-4 rounded-xl border-2 transition-all text-left ${
                     convertForm.createContact
                       ? 'border-emerald-400 bg-emerald-50 shadow-sm'
@@ -2301,11 +2427,16 @@ export default function Leads() {
                     <UserPlus className="w-5 h-5" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className={`font-medium ${convertForm.createContact ? 'text-emerald-800' : 'text-slate-700'}`}>Create new contact</p>
-                    <p className="text-xs text-slate-500 mt-0.5">From lead: {convertDialogLead?.email}</p>
+                    <p className={`font-medium ${convertForm.createContact ? 'text-emerald-800' : 'text-slate-700'}`}>
+                      {convertPlace ? `Make ${convertPersonName || 'the contact person'} a contact` : 'Create new contact'}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {convertPlace ? `${convertPersonEmail}, linked to ${convertDialogLead?.name}` : `From lead: ${convertDialogLead?.email}`}
+                    </p>
                   </div>
                   {convertForm.createContact && <Check className="w-5 h-5 text-emerald-600 shrink-0" />}
                 </button>
+                )}
 
                 {convertOptions.contacts.length > 0 && (
                   <div className="relative">
@@ -2351,6 +2482,17 @@ export default function Leads() {
                   <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-medium">Optional</span>
                 </div>
                 
+                {convertPlace && convertDialogLead?.companyId ? (
+                  <div className="flex items-center gap-3 rounded-xl border-2 border-purple-200 bg-purple-50/60 p-4">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-500 text-white">
+                      <Store className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-purple-800">{companyName(convertDialogLead)}</p>
+                      <p className="mt-0.5 text-xs text-slate-500">The establishment’s company. Pick another below to link to it instead.</p>
+                    </div>
+                  </div>
+                ) : (
                 <button
                   type="button"
                   onClick={() => setConvertForm((f) => ({ ...f, createNewCompany: !f.createNewCompany, existingCompanyId: undefined }))}
@@ -2371,6 +2513,7 @@ export default function Leads() {
                   </div>
                   {convertForm.createNewCompany && <Check className="w-5 h-5 text-purple-600 shrink-0" />}
                 </button>
+                )}
 
                 {convertForm.createNewCompany && (
                   <div className="pl-4 border-l-2 border-purple-200">
@@ -2596,7 +2739,7 @@ export default function Leads() {
                 </Button>
                 <Button
                   type="submit"
-                  disabled={converting || (!convertForm.createContact && !convertForm.existingContactId)}
+                  disabled={converting || !convertChoiceMade}
                   className="flex-[2] h-11 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-700 hover:to-teal-600 text-white font-medium shadow-lg shadow-emerald-200/50 transition-all disabled:opacity-50"
                 >
                   {converting ? (
@@ -2607,7 +2750,7 @@ export default function Leads() {
                   ) : (
                     <span className="flex items-center gap-2">
                       <ArrowRightCircle className="w-4 h-4" />
-                      {welcomeGoes ? 'Preview welcome & convert' : 'Convert Lead'}
+                      {welcomeGoes ? 'Preview welcome & convert' : convertPlace ? 'Convert establishment' : 'Convert Lead'}
                     </span>
                   )}
                 </Button>
@@ -2629,7 +2772,7 @@ export default function Leads() {
         open={welcomeConfirm && Boolean(convertDialogLead)}
         onOpenChange={(open) => { if (!open && !converting) setWelcomeConfirm(false); }}
         request={welcomePreview}
-        recipient={{ name: convertDialogLead?.name, email: convertDialogLead?.email }}
+        recipient={convertDialogLead ? convertRecipient(convertDialogLead) : {}}
         confirmLabel="Convert & send welcome"
         busy={converting}
         onConfirm={() => { void handleConvert({ preventDefault: () => {} } as React.FormEvent); }}

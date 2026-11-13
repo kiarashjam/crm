@@ -28,7 +28,10 @@ public sealed class LeadRepository : ILeadRepository
             l.Email.ToLower().Contains(q) ||
             (l.Phone != null && l.Phone.Contains(q)) ||
             (l.Company != null && l.Company.Name.ToLower().Contains(q)) ||
-            (l.Source != null && l.Source.ToLower().Contains(q)));
+            (l.Source != null && l.Source.ToLower().Contains(q)) ||
+            (l.City != null && l.City.ToLower().Contains(q)) ||
+            (l.ContactPersonName != null && l.ContactPersonName.ToLower().Contains(q)) ||
+            (l.ContactPersonEmail != null && l.ContactPersonEmail.ToLower().Contains(q)));
     }
 
     private static IQueryable<Lead> ApplyFilters(IQueryable<Lead> query, LeadQueryOptions? options)
@@ -54,6 +57,13 @@ public sealed class LeadRepository : ILeadRepository
             query = options.IsConverted.Value
                 ? query.Where(l => l.IsConverted)
                 : query.Where(l => !l.IsConverted);
+        }
+
+        // People or establishments (LeadKinds); anything else is both.
+        if (options.Kind?.Trim().ToLowerInvariant() is LeadKinds.Person or LeadKinds.Establishment)
+        {
+            var kind = options.Kind.Trim().ToLowerInvariant();
+            query = query.Where(l => l.Kind == kind);
         }
 
         return query;
@@ -223,7 +233,9 @@ public sealed class LeadRepository : ILeadRepository
                 .Where(l => l.Name.ToLower().Contains(q) || l.Email.ToLower().Contains(q) ||
                             (l.Phone != null && l.Phone.Contains(q)) ||
                             (l.Company != null && l.Company.Name.ToLower().Contains(q)) ||
-                            (l.Source != null && l.Source.ToLower().Contains(q))),
+                            (l.Source != null && l.Source.ToLower().Contains(q)) ||
+                            (l.City != null && l.City.ToLower().Contains(q)) ||
+                            (l.ContactPersonName != null && l.ContactPersonName.ToLower().Contains(q))),
             new LeadQueryOptions { SortBy = "name", SortDir = "asc" });
         if (take is > 0)
             filtered = filtered.Take(take.Value);
@@ -305,6 +317,17 @@ public sealed class LeadRepository : ILeadRepository
         existing.Country = lead.Country;
         existing.Industry = lead.Industry;
         existing.CompanySize = lead.CompanySize;
+        existing.Kind = lead.Kind;
+        existing.EstablishmentType = lead.EstablishmentType;
+        existing.AddressLine = lead.AddressLine;
+        existing.PostalCode = lead.PostalCode;
+        existing.City = lead.City;
+        existing.Website = lead.Website;
+        existing.Seats = lead.Seats;
+        existing.ContactPersonName = lead.ContactPersonName;
+        existing.ContactPersonRole = lead.ContactPersonRole;
+        existing.ContactPersonEmail = lead.ContactPersonEmail;
+        existing.ContactPersonPhone = lead.ContactPersonPhone;
         existing.ScoreIsManual = lead.ScoreIsManual;
         existing.FirstResponseAtUtc = lead.FirstResponseAtUtc;
         existing.FirstResponseDueAtUtc = lead.FirstResponseDueAtUtc;
@@ -426,6 +449,17 @@ public sealed class LeadRepository : ILeadRepository
             keep.Industry = RecordMerge.Fill(keep.Industry, drop.Industry);
             keep.CompanySize = RecordMerge.Fill(keep.CompanySize, drop.CompanySize);
             keep.EnrichedDomain = RecordMerge.Fill(keep.EnrichedDomain, drop.EnrichedDomain);
+            // The same place entered twice: what one knows of it and the other doesn't is kept.
+            keep.EstablishmentType = RecordMerge.Fill(keep.EstablishmentType, drop.EstablishmentType);
+            keep.AddressLine = RecordMerge.Fill(keep.AddressLine, drop.AddressLine);
+            keep.PostalCode = RecordMerge.Fill(keep.PostalCode, drop.PostalCode);
+            keep.City = RecordMerge.Fill(keep.City, drop.City);
+            keep.Website = RecordMerge.Fill(keep.Website, drop.Website);
+            keep.Seats ??= drop.Seats;
+            keep.ContactPersonName = RecordMerge.Fill(keep.ContactPersonName, drop.ContactPersonName);
+            keep.ContactPersonRole = RecordMerge.Fill(keep.ContactPersonRole, drop.ContactPersonRole);
+            keep.ContactPersonEmail = RecordMerge.Fill(keep.ContactPersonEmail, drop.ContactPersonEmail);
+            keep.ContactPersonPhone = RecordMerge.Fill(keep.ContactPersonPhone, drop.ContactPersonPhone);
             keep.QueueId ??= drop.QueueId;
             keep.TerritoryId ??= drop.TerritoryId;
             if (keep.LeadScore == null && drop.LeadScore != null)

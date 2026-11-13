@@ -22,6 +22,17 @@ internal sealed class LeadConfiguration : IEntityTypeConfiguration<Lead>
         builder.Property(e => e.Industry).HasMaxLength(120);
         builder.Property(e => e.CompanySize).HasMaxLength(40);
         builder.Property(e => e.EnrichedDomain).HasMaxLength(200);
+        // A person until said otherwise: every lead made before kinds were is one.
+        builder.Property(e => e.Kind).HasMaxLength(20).IsRequired().HasDefaultValue(LeadKinds.Person);
+        builder.Property(e => e.EstablishmentType).HasMaxLength(40);
+        builder.Property(e => e.AddressLine).HasMaxLength(200);
+        builder.Property(e => e.PostalCode).HasMaxLength(20);
+        builder.Property(e => e.City).HasMaxLength(100);
+        builder.Property(e => e.Website).HasMaxLength(300);
+        builder.Property(e => e.ContactPersonName).HasMaxLength(200);
+        builder.Property(e => e.ContactPersonRole).HasMaxLength(100);
+        builder.Property(e => e.ContactPersonEmail).HasMaxLength(256);
+        builder.Property(e => e.ContactPersonPhone).HasMaxLength(64);
         // An edit made from an older read of the lead is refused, not written over the newer one. See IVersioned.
         builder.Property(e => e.Version).IsConcurrencyToken();
 

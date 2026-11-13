@@ -188,8 +188,38 @@ export function duplicateContactGroups<T extends Person>(contacts: T[]): Duplica
   return groupDuplicates(contacts, contactRules<T>(), MAX_SHARED);
 }
 
-export function duplicateLeadGroups<T extends Person>(leads: T[]): DuplicateGroup<T>[] {
-  return groupDuplicates(leads, personRules<T>());
+type LeadLike = Person & { kind?: string | null; city?: string | null; website?: string | null };
+
+/**
+ * Establishments are the same with the same email, the same name in the same city, the
+ * same phone or the same website. A restaurant chain's branches share a name, so a name
+ * alone says nothing; and its own email may be empty, so the others count too.
+ */
+function establishmentRules<T extends LeadLike>(): MatchRule<T>[] {
+  return [
+    { reason: 'Same email', key: (l) => norm(l.email) },
+    {
+      reason: 'Same name and city',
+      key: (l) => {
+        const name = nameKey(l.name);
+        const city = normalizeName(l.city);
+        return name && city ? `${name}|${city}` : '';
+      },
+    },
+    { reason: 'Same phone', key: (l) => normalizePhone(l.phone) },
+    { reason: 'Same website', key: (l) => normalizeDomain(l.website) },
+  ];
+}
+
+/** Leads: people as people are matched, establishments as places are; a person is never an establishment's duplicate. */
+export function duplicateLeadGroups<T extends LeadLike>(leads: T[]): DuplicateGroup<T>[] {
+  const places = leads.filter((l) => l.kind === 'establishment');
+  const people = leads.filter((l) => l.kind !== 'establishment');
+  const groups = [
+    ...groupDuplicates(people, personRules<T>()),
+    ...groupDuplicates(places, establishmentRules<T>(), MAX_SHARED),
+  ];
+  return groups.sort((a, b) => b.records.length - a.records.length || a.key.localeCompare(b.key));
 }
 
 type CompanyLike = { id: string; name?: string | null; domain?: string | null; website?: string | null };
@@ -521,6 +551,17 @@ export const LEAD_MERGE_FIELDS: MergeField<Lead>[] = [
   { label: 'Company size', keys: ['companySize'], rule: 'fill' },
   { label: 'Score', keys: ['leadScore', 'scoreIsManual'], rule: 'fill', format: (l) => (l.leadScore == null ? undefined : String(l.leadScore)) },
   { label: 'Description', keys: ['description'], rule: 'fill' },
+  // An establishment's own fields; a person has none, and an empty row is not shown.
+  { label: 'Type', keys: ['establishmentType'], rule: 'fill' },
+  { label: 'Street', keys: ['addressLine'], rule: 'fill' },
+  { label: 'Postal code', keys: ['postalCode'], rule: 'fill' },
+  { label: 'City', keys: ['city'], rule: 'fill' },
+  { label: 'Website', keys: ['website'], rule: 'fill' },
+  { label: 'Seats', keys: ['seats'], rule: 'fill', format: (l) => (l.seats == null ? undefined : String(l.seats)) },
+  { label: 'Contact person', keys: ['contactPersonName'], rule: 'fill' },
+  { label: 'Contact person’s role', keys: ['contactPersonRole'], rule: 'fill' },
+  { label: 'Contact person’s email', keys: ['contactPersonEmail'], rule: 'fill' },
+  { label: 'Contact person’s phone', keys: ['contactPersonPhone'], rule: 'fill' },
   { label: 'Emails opened', keys: ['emailOpenCount'], rule: 'sum', format: (l) => (l.emailOpenCount ? String(l.emailOpenCount) : undefined) },
   { label: 'Last contacted', keys: ['lastContactedAt'], rule: 'latest', format: (l) => date(l.lastContactedAt) },
   { label: 'First seen', keys: ['createdAtUtc'], rule: 'earliest', format: (l) => date(l.createdAtUtc) },

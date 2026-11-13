@@ -24,11 +24,12 @@ import { getLeadSources, getLeadStatuses } from '@/app/api';
 import type { LeadSource, LeadStatus } from '@/app/api/types';
 import {
   analyzeImport, previewImport, readImportFile, runImport,
-  type ImportAction, type ImportAnalysis, type ImportFile, type ImportKind, type ImportOptions, type ImportResult, type ImportRow,
+  type ImportAction, type ImportAnalysis, type ImportField, type ImportFile, type ImportKind, type ImportOptions, type ImportResult, type ImportRow,
 } from '@/app/api/imports';
 import RecentImports, { UndoImportDialog } from './RecentImports';
-import { IMPORT_KINDS, count, type ImportKindInfo } from './importKinds';
+import { IMPORT_KINDS, count, leadImportInfo, type ImportKindInfo } from './importKinds';
 import { currentNumberLocale } from '@/app/i18n/current';
+import { useLeadKinds } from '@/app/lib/leadKinds';
 
 type Step = 'upload' | 'columns' | 'check' | 'importing' | 'done';
 
@@ -63,10 +64,26 @@ const selectClass = 'h-10 w-full rounded-md border border-slate-200 bg-white px-
 const CONNECTION_LOST =
   'The connection to the server was lost before the import finished. The server may still have imported the file: check Recent imports below before importing it again.';
 
-/** What still has to be chosen before the file can be checked, or null when nothing. */
-export function missingChoice(kind: ImportKind, columns: (string | null)[], duplicates: 'skip' | 'update'): string | null {
+/**
+ * What still has to be chosen before the file can be checked, or null when nothing.
+ * `fields` are the server's: where a lead may be an establishment, its email is not
+ * required, and the name is (an establishment has no first and last name).
+ */
+export function missingChoice(
+  kind: ImportKind,
+  columns: (string | null)[],
+  duplicates: 'skip' | 'update',
+  fields?: Pick<ImportField, 'key' | 'label' | 'required'>[],
+): string | null {
   const used = new Set(columns.filter((c): c is string => c !== null));
   if (kind === 'company') return used.has('name') ? null : 'Choose the column that holds the company name.';
+  const emailField = fields?.find((f) => f.key === 'email');
+  if (kind === 'lead' && emailField && !emailField.required) {
+    // Adding needs a name; updating can go by email alone.
+    if (used.has('name') || used.has('firstName') || used.has('lastName') || (duplicates === 'update' && used.has('email'))) return null;
+    const nameLabel = fields?.find((f) => f.key === 'name')?.label ?? 'name';
+    return `Choose the column that holds the ${nameLabel.toLowerCase()}.`;
+  }
   if (!used.has('email')) return 'Choose the column that holds the email address.';
   // Updating can go by email alone; adding someone needs their name.
   if (duplicates === 'skip' && !used.has('name') && !used.has('firstName') && !used.has('lastName'))
@@ -104,7 +121,9 @@ interface ImportPageProps {
 }
 
 export default function ImportPage({ kind }: ImportPageProps) {
-  const info = IMPORT_KINDS[kind];
+  // Where leads can be establishments, the template and the words say so.
+  const { mode: leadMode } = useLeadKinds();
+  const info = kind === 'lead' && leadMode !== 'person' ? leadImportInfo(leadMode) : IMPORT_KINDS[kind];
   const navigate = useNavigate();
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -230,7 +249,7 @@ export default function ImportPage({ kind }: ImportPageProps) {
     }
   };
 
-  const missing = analysis ? missingChoice(kind, columns, duplicates) : null;
+  const missing = analysis ? missingChoice(kind, columns, duplicates, analysis.fields) : null;
   const stepIndex = step === 'importing' ? 3 : STEPS.findIndex((s) => s.step === step);
 
   return (

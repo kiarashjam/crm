@@ -2,7 +2,8 @@ import { FormEvent, useEffect, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { getPublicCaptureForm, submitPublicCapture, PublicCaptureError, type MarketingConsentMode } from '@/app/api/leadOps';
 import { PublicPage } from '@/app/components/PublicPage';
-import { usePageLanguage, useT } from '@/app/i18n';
+import { usePageLanguage, useT, type MessageKey } from '@/app/i18n';
+import { ESTABLISHMENT_TYPES, leadKindsMode, type LeadKindsMode } from '@/app/lib/leadKinds';
 
 /**
  * The public form a stranger fills in on the club's website.
@@ -18,6 +19,20 @@ import { usePageLanguage, useT } from '@/app/i18n';
  * consent record are in the words they read. The workspace's own words stay as written.
  */
 type FormState = 'loading' | 'ready' | 'missing' | 'unreachable';
+type Kind = 'person' | 'establishment';
+
+/** The kinds of establishment in the visitor's language; the app's own screens keep the English labels. */
+const TYPE_KEYS: Record<string, MessageKey> = {
+  restaurant: 'capture.type.restaurant',
+  cafe: 'capture.type.cafe',
+  bar: 'capture.type.bar',
+  hotel: 'capture.type.hotel',
+  bakery: 'capture.type.bakery',
+  catering: 'capture.type.catering',
+  food_truck: 'capture.type.food_truck',
+  shop: 'capture.type.shop',
+  other: 'capture.type.other',
+};
 
 export default function PublicCapture() {
   const { token = '' } = useParams();
@@ -41,6 +56,15 @@ export default function PublicCapture() {
   const [consentMode, setConsentMode] = useState<MarketingConsentMode>('off');
   const [consentText, setConsentText] = useState('');
   const [consent, setConsent] = useState(false);
+  // A workspace whose leads are establishments asks for the place, then who is writing.
+  const [mode, setMode] = useState<LeadKindsMode>('person');
+  const [kind, setKind] = useState<Kind>('person');
+  const [placeName, setPlaceName] = useState('');
+  const [placeType, setPlaceType] = useState('');
+  const [street, setStreet] = useState('');
+  const [postalCode, setPostalCode] = useState('');
+  const [city, setCity] = useState('');
+  const [businessWebsite, setBusinessWebsite] = useState('');
   const [busy, setBusy] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const thanksRef = useRef<HTMLHeadingElement>(null);
@@ -57,12 +81,18 @@ export default function PublicCapture() {
     getPublicCaptureForm(token, language)
       .then((form) => {
         if (cancelled) return;
+        // Only the first load says whom the visitor writes for: a later one (the page turned to
+        // another language) keeps their choice of person or business, as it keeps what they typed.
+        const firstLoad = !loaded.current;
         loaded.current = true;
         setTitle(form.name?.trim() || null);
         setClubLanguage(form.language ?? null);
-        const mode = form.marketingConsent ?? 'off';
-        setConsentMode(mode === 'optional' || mode === 'required' ? mode : 'off');
+        const consentSetting = form.marketingConsent ?? 'off';
+        setConsentMode(consentSetting === 'optional' || consentSetting === 'required' ? consentSetting : 'off');
         setConsentText(form.marketingConsentText?.trim() || '');
+        const m = leadKindsMode(form.leadKinds);
+        setMode(m);
+        if (firstLoad || m !== 'both') setKind(m === 'establishment' ? 'establishment' : 'person');
         setState('ready');
       })
       .catch((err: unknown) => {
@@ -87,8 +117,16 @@ export default function PublicCapture() {
     setBusy(true);
     setError(null);
     try {
+      const place = kind === 'establishment';
       const message = await submitPublicCapture(token, {
-        name, email, phone, company, jobTitle, country, website,
+        name, email, phone, jobTitle, country, website,
+        // A business's own name is the establishment's; "Company" is asked of a person only.
+        ...(place ? {} : { company }),
+        // A people-only form sends what it always did.
+        ...(mode === 'person' ? {} : { kind }),
+        ...(place
+          ? { establishmentName: placeName, establishmentType: placeType || undefined, addressLine: street, postalCode, city, businessWebsite }
+          : {}),
         ...(consentMode === 'off' ? {} : { marketingConsent: consent }),
         language,
       });
@@ -98,7 +136,7 @@ export default function PublicCapture() {
       setError(
         status === 429 ? t('capture.errorBusy')
           : status === 400 && consentMode === 'required' && !consent ? t('capture.errorConsentRequired')
-          : status === 400 ? t('capture.errorInvalid')
+          : status === 400 ? (kind === 'establishment' ? t('capture.errorInvalidEstablishment') : t('capture.errorInvalid'))
           : status === 404 ? t('apply.errorGone')
           : t('apply.errorNetwork'),
       );
@@ -136,14 +174,66 @@ export default function PublicCapture() {
         ) : (
           <form onSubmit={submit} aria-busy={state === 'loading' || busy}>
             <h1 className="text-xl font-semibold text-slate-900">{state === 'loading' ? t('common.loading') : title ?? t('capture.titleDefault')}</h1>
-            <p className="mt-1 text-sm text-slate-500">{t('capture.intro')}</p>
+            <p className="mt-1 text-sm text-slate-500">{kind === 'establishment' ? t('capture.introEstablishment') : t('capture.intro')}</p>
             <fieldset disabled={state !== 'ready' || busy} className="mt-6 space-y-3">
-              <Field label={t('capture.name')} value={name} onChange={setName} autoComplete="name" maxLength={256} required />
-              <Field label={t('capture.email')} value={email} onChange={setEmail} type="email" autoComplete="email" maxLength={256} required />
-              <Field label={t('capture.phone')} value={phone} onChange={setPhone} type="tel" autoComplete="tel" maxLength={64} />
-              <Field label={t('capture.company')} value={company} onChange={setCompany} autoComplete="organization" maxLength={200} />
-              <Field label={t('capture.jobTitle')} value={jobTitle} onChange={setJobTitle} autoComplete="organization-title" maxLength={200} />
-              <Field label={t('capture.country')} value={country} onChange={setCountry} autoComplete="country-name" maxLength={80} />
+              {mode === 'both' && (
+                <div role="radiogroup" aria-label={t('capture.writingAs')} className="grid grid-cols-2 gap-2">
+                  {([['person', t('capture.forMyself')], ['establishment', t('capture.forBusiness')]] as const).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      role="radio"
+                      aria-checked={kind === value}
+                      onClick={() => setKind(value)}
+                      className={`h-10 rounded-xl border text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 ${
+                        kind === value ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {kind === 'establishment' ? (
+                <>
+                  <Field label={t('capture.establishmentName')} value={placeName} onChange={setPlaceName} autoComplete="organization" maxLength={256} required />
+                  <label className="block text-sm text-slate-700">
+                    {t('capture.establishmentType')}
+                    <select
+                      value={placeType}
+                      onChange={(e) => setPlaceType(e.target.value)}
+                      className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                    >
+                      <option value="">{t('capture.chooseType')}</option>
+                      {ESTABLISHMENT_TYPES.map((type) => {
+                        const key = TYPE_KEYS[type.value];
+                        return <option key={type.value} value={type.value}>{key ? t(key) : type.label}</option>;
+                      })}
+                    </select>
+                  </label>
+                  <Field label={t('capture.street')} value={street} onChange={setStreet} autoComplete="street-address" maxLength={256} />
+                  <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-3">
+                    <Field label={t('capture.postalCode')} value={postalCode} onChange={setPostalCode} autoComplete="postal-code" maxLength={20} />
+                    <Field label={t('capture.city')} value={city} onChange={setCity} autoComplete="address-level2" maxLength={120} />
+                  </div>
+                  <Field label={t('capture.country')} value={country} onChange={setCountry} autoComplete="country-name" maxLength={80} />
+                  <Field label={t('capture.establishmentWebsite')} value={businessWebsite} onChange={setBusinessWebsite} autoComplete="url" maxLength={256} />
+                  <p className="pt-2 text-sm font-medium text-slate-900">{t('capture.yourDetails')}</p>
+                  <Field label={t('capture.yourName')} value={name} onChange={setName} autoComplete="name" maxLength={256} required />
+                  <Field label={t('capture.yourRole')} value={jobTitle} onChange={setJobTitle} autoComplete="organization-title" maxLength={200} />
+                  <Field label={t('capture.email')} value={email} onChange={setEmail} type="email" autoComplete="email" maxLength={256} required />
+                  <Field label={t('capture.phone')} value={phone} onChange={setPhone} type="tel" autoComplete="tel" maxLength={64} />
+                </>
+              ) : (
+                <>
+                  <Field label={t('capture.name')} value={name} onChange={setName} autoComplete="name" maxLength={256} required />
+                  <Field label={t('capture.email')} value={email} onChange={setEmail} type="email" autoComplete="email" maxLength={256} required />
+                  <Field label={t('capture.phone')} value={phone} onChange={setPhone} type="tel" autoComplete="tel" maxLength={64} />
+                  <Field label={t('capture.company')} value={company} onChange={setCompany} autoComplete="organization" maxLength={200} />
+                  <Field label={t('capture.jobTitle')} value={jobTitle} onChange={setJobTitle} autoComplete="organization-title" maxLength={200} />
+                  <Field label={t('capture.country')} value={country} onChange={setCountry} autoComplete="country-name" maxLength={80} />
+                </>
+              )}
               {/* Honeypot: hidden from people and from assistive technology. A bot
                   that fills every field fills this one, and nothing is saved. */}
               <div aria-hidden="true" className="absolute left-[-10000px] top-auto h-px w-px overflow-hidden">

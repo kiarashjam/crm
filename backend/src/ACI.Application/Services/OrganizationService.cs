@@ -514,6 +514,9 @@ public sealed class OrganizationService : IOrganizationService
             return DomainErrors.Organization.InvalidTimeZone;
         if (request.StaleDealDays is int staleDays && !StaleDeals.IsValidSetting(staleDays))
             return DomainErrors.Organization.InvalidStaleDealDays;
+        var leadKinds = request.LeadKinds?.Trim().ToLowerInvariant();
+        if (leadKinds != null && !LeadKinds.WorkspaceModes.Contains(leadKinds))
+            return new Error("Organization.InvalidLeadKinds", "A workspace's leads are \"person\", \"establishment\" or \"both\".");
 
         // Deals keep the currency they were priced in. Only new ones take the new one.
         if (currency != null) org.Currency = currency;
@@ -521,6 +524,8 @@ public sealed class OrganizationService : IOrganizationService
         if (zone != null) org.TimeZone = zone;
         if (request.StaleDealDays is int days) org.StaleDealDays = days;
         if (request.CsvSemicolon is bool semicolon) org.CsvSemicolon = semicolon;
+        // Leads already made keep their kind: this says what new ones may be.
+        if (leadKinds != null) org.LeadKinds = leadKinds;
         await _organizationRepository.UpdateAsync(org, ct);
         _logger.LogInformation("Regional settings of organization {OrganizationId} set to {Currency}, {Locale}, {TimeZone}, stale after {StaleDealDays} days, by {UserId}",
             organizationId, org.Currency, org.Locale, org.TimeZone, org.StaleDealDays, userId);
@@ -601,7 +606,7 @@ public sealed class OrganizationService : IOrganizationService
         new(org.Id, org.Name, org.OwnerUserId, org.OwnerUserId == userId, (int)member.Role, org.Currency, org.Locale, org.TimeZone, org.StaleDealDays,
             MemberPermissions.PresetOf(member.Role, member.PermissionPreset).Key, Ordered(Permissions(member)),
             SalesEnabled: !org.SalesModuleOff, ClubEnabled: !org.ClubModuleOff, CsvSemicolon: org.CsvSemicolon,
-            SsoRequired: org.SsoRequired);
+            SsoRequired: org.SsoRequired, LeadKinds: org.LeadKinds);
 
     private static IReadOnlySet<string> Permissions(OrganizationMember member) =>
         MemberPermissions.Effective(member.Role, member.PermissionPreset, member.Permissions);

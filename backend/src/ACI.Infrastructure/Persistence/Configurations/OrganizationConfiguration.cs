@@ -23,6 +23,8 @@ internal sealed class OrganizationConfiguration : IEntityTypeConfiguration<Organ
         builder.Property(e => e.OutboundWebhookSecret).HasMaxLength(200);
         builder.Property(e => e.Currency).HasMaxLength(3).IsRequired().HasDefaultValue("CHF");
         builder.Property(e => e.Locale).HasMaxLength(35).IsRequired().HasDefaultValue("de-CH");
+        // People only for every workspace that existed before: each works as it always has.
+        builder.Property(e => e.LeadKinds).HasMaxLength(20).IsRequired().HasDefaultValue(LeadKinds.Person);
         builder.Property(e => e.TimeZone).HasMaxLength(64).IsRequired().HasDefaultValue("Europe/Zurich");
         builder.Property(e => e.SsoDomains).HasMaxLength(1000);
     }

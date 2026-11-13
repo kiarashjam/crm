@@ -5203,8 +5203,16 @@ namespace ACI.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("AddressLine")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.Property<Guid?>("AssignedToUserId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("City")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<Guid?>("CompanyId")
                         .HasColumnType("uniqueidentifier");
@@ -5212,6 +5220,22 @@ namespace ACI.Infrastructure.Migrations
                     b.Property<string>("CompanySize")
                         .HasMaxLength(40)
                         .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("ContactPersonEmail")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("ContactPersonName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("ContactPersonPhone")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("ContactPersonRole")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<DateTime?>("ConvertedAtUtc")
                         .HasColumnType("datetime2");
@@ -5248,6 +5272,10 @@ namespace ACI.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<string>("EstablishmentType")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
                     b.Property<DateTime?>("FirstResponseAtUtc")
                         .HasColumnType("datetime2");
 
@@ -5267,6 +5295,13 @@ namespace ACI.Infrastructure.Migrations
                     b.Property<string>("JobTitle")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("person");
 
                     b.Property<DateTime?>("LastContactedAt")
                         .HasColumnType("datetime2");
@@ -5302,6 +5337,10 @@ namespace ACI.Infrastructure.Migrations
                     b.Property<string>("PipelineState")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("PostalCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<Guid?>("QueueId")
                         .HasColumnType("uniqueidentifier");
 
@@ -5310,6 +5349,9 @@ namespace ACI.Infrastructure.Migrations
 
                     b.Property<bool>("ScoreIsManual")
                         .HasColumnType("bit");
+
+                    b.Property<int?>("Seats")
+                        .HasColumnType("int");
 
                     b.Property<bool>("SlaBreached")
                         .HasColumnType("bit");
@@ -5341,6 +5383,10 @@ namespace ACI.Infrastructure.Migrations
                     b.Property<Guid>("Version")
                         .IsConcurrencyToken()
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Website")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
 
                     b.HasKey("Id");
 
@@ -6109,6 +6155,13 @@ namespace ACI.Infrastructure.Migrations
                         .HasMaxLength(3)
                         .HasColumnType("nvarchar(3)")
                         .HasDefaultValue("CHF");
+
+                    b.Property<string>("LeadKinds")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("person");
 
                     b.Property<string>("Locale")
                         .IsRequired()

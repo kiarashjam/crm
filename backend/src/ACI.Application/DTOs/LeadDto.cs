@@ -40,7 +40,19 @@ public record LeadDto(
     IReadOnlyList<ContactRelationshipDto>? Relationships = null,
     // The lead as of this read. An edit that sends it back is refused once anyone has
     // saved the lead since (see UpdateLeadRequest.Version).
-    Guid? Version = null);
+    Guid? Version = null,
+    // A person or an establishment (LeadKinds), with what an establishment has.
+    string Kind = "person",
+    string? EstablishmentType = null,
+    string? AddressLine = null,
+    string? PostalCode = null,
+    string? City = null,
+    string? Website = null,
+    int? Seats = null,
+    string? ContactPersonName = null,
+    string? ContactPersonRole = null,
+    string? ContactPersonEmail = null,
+    string? ContactPersonPhone = null);
 
 /// <summary>The lead to fold into the one named in the route.</summary>
 public record MergeLeadsRequest(Guid OtherLeadId);
