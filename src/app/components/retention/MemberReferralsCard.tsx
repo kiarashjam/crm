@@ -9,7 +9,7 @@ import { Link } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Gift, Handshake, Loader2, UserCheck, UserX } from 'lucide-react';
-import { servesDemoData } from '@/app/api/apiClient';
+import { ApiError, servesDemoData } from '@/app/api/apiClient';
 import { PERMISSION } from '@/app/api/organizations';
 import { awardReferralBonus, setReferrer, type ReferralBonus, type ReferralPerson } from '@/app/api/retention';
 import { LoadFailed } from '@/app/components/LoadFailed';
@@ -59,7 +59,11 @@ export function MemberReferralsCard({ memberId }: { memberId: string }) {
         ? `${bonus.referrerName} was given a credit of ${formatClubMoney(bonus.amount, bonus.currency, locale)}.`
         : `${bonus.referrerName} was given ${bonus.points} points.`);
     },
-    onError: (err) => toast.error(message(err, 'The bonus could not be given.')),
+    onError: (err) => {
+      // Someone gave it, or is giving it, at the same moment: show theirs rather than the button.
+      if (err instanceof ApiError && err.status === 409) void client.invalidateQueries({ queryKey: key });
+      toast.error(message(err, 'The bonus could not be given.'));
+    },
   });
 
   if (servesDemoData()) return null;

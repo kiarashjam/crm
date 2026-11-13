@@ -157,6 +157,24 @@ describe("a member's referrals", () => {
     expect(toast.success).toHaveBeenCalledWith('Ana Keller was given 500 points.');
   });
 
+  it('shows the bonus someone else gave at the same moment, instead of offering it again', async () => {
+    const given: ReferralBonus = {
+      id: 'b1', referrerMemberId: 'm-ana', referrerName: 'Ana Keller', referredMemberId: 'm1', referredName: 'Ben Keller', kind: 'points',
+      status: 'awarded', points: 500, amount: 0, currency: 'CHF', createdAtUtc: '2026-11-13T09:00:00Z', awardedAtUtc: '2026-11-13T09:00:00Z',
+    };
+    api.referrals.mockResolvedValueOnce(REFERRALS);
+    api.referrals.mockResolvedValue({ ...REFERRALS, bonusAvailable: false, bonusForThem: given });
+    api.award.mockRejectedValue(new ApiError('This referral bonus was already given.', 409, '/api/members/m1/referral-bonus', true));
+    const user = userEvent.setup();
+    render(withQueries(<MemoryRouter><MemberReferralsCard memberId="m1" /></MemoryRouter>));
+
+    await user.click(await screen.findByRole('button', { name: /Give Ana Keller the referral bonus/ }));
+
+    expect(await screen.findByText(/Referral bonus for Ana Keller: 500 points, given/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Give Ana Keller the referral bonus/ })).not.toBeInTheDocument();
+    expect(toast.error).toHaveBeenCalledWith('This referral bonus was already given.');
+  });
+
   it('takes the referrer off once confirmed', async () => {
     api.referrals.mockResolvedValue(REFERRALS);
     api.setReferrer.mockResolvedValue({ ...REFERRALS, referredBy: undefined, bonusAvailable: false });
