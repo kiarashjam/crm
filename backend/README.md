@@ -453,6 +453,50 @@ click, and flags images that point at a computer or plain http.
 `CADENCE_E2E_PORTAL` (its handoff address, e.g. a local Pavillon 46 in Development) and
 `CADENCE_E2E_PORTAL_SECRET` (its `CADENCE_ONBOARDING_SECRET`) are set; otherwise it is skipped.
 
+### Contracts: from a deal to a member
+
+A contract drafted on a deal (`POST /api/contracts/draft` with `dealId`) takes the deal's value
+and line items as merge fields: `{{deal.name}}`, `{{deal.currency}}`, `{{deal.value}}`,
+`{{deal.lineItems}}` (a fee table: product, quantity, unit price, VAT, total, in the deal's
+currency, set as columns in the PDF), `{{deal.total}}` and `{{deal.vatIncluded}}`; the fee
+(`{{contract.fee}}`) is the deal's total. Line items carry a VAT rate (`vatRate`, 0 to 50, the
+rate included in the price). `GET /api/contracts/for-deal/{dealId}` lists a deal's contracts and
+those of the lead it came from, to whoever may open the deal.
+
+A **membership contract** names the tier it admits its counterparty at (`membershipTier`, one of
+the club's tiers on sale). It can ask a **deposit** paid on signing (`depositAmount`, in the
+club's currency): only by someone who may take payments (money.manage), and only when the club
+can be paid, through Stripe or by Swiss QR-bill. The draft's text says the amount, and a
+contract whose text no longer says it is not sent. Once signed, the signing page offers:
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/public/contracts/{token}` | Now also `deposit { amount, currency, status, payable, methods, qrBill, iban?, reference?, creditor?, failureMessage? }` and `membershipTier` |
+| `POST` | `/api/public/contracts/{token}/deposit/checkout` | Starts (or reuses, while it lasts) Stripe's page for the deposit; `{ url }`. Back to `/sign/{token}?deposit=done` or `?deposit=cancelled`. Rate limited per link |
+| `GET` | `/api/public/contracts/{token}/deposit/qr-bill?lang=` | The deposit's invoice with its QR-bill, whose reference names the deposit |
+
+Stripe's events for a deposit carry `cadence_deposit` in their metadata and go through the same
+webhook as every other payment; a bank file's transfer quoting the deposit's QR reference is
+matched to it. A paid deposit admits nobody: it is held until the club admits the signer, then
+recorded on the new member's account once (keyed by Stripe's payment intent or the bank
+reference), paying the initiation fee and first dues first. Duplicate or late events change
+nothing; a deposit paid back in Stripe before the admission is not recorded; voiding or
+declining the contract cancels one not paid.
+
+**Countersigning** a contract (`POST /api/contracts/{id}/countersign`) now also marks its deal
+won through the deal service (won stage, stage history, `deal.won` rules and webhooks; a deal the
+countersigner may not open is marked won as the contract's drafter), approves the application
+behind it at the signed tier (starting one, source `contract`, for a membership contract with
+none), admits the member the deal's welcome handoff already made rather than a second one, puts
+the held deposit on their account, and fires `contract.countersigned`, each once. Someone who may
+not admit members (a sales rep) leaves the application, at the signed tier, for a reviewer,
+whose approval takes the deposit.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/deals/{dealId}/membership` | The members a deal brought in (handoff or contract), the applications of its lead, contact and contracts, its contact's household (Club module; 404 for a deal the reader may not open) |
+| `GET` | `/api/members/{memberId}/links` | Now also `dealId`, `dealName` and `contracts` (each with its `deposit`), leaving out a deal the reader may not open and the contracts drafted on it |
+
 ### Organizations & Team
 
 | Method | Endpoint | Description |

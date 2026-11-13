@@ -45,8 +45,20 @@ public interface IClubApplications
     /// </summary>
     Task<PersonMembershipDto> MembershipAsync(Guid organizationId, Guid? leadId, Guid? contactId, CancellationToken ct = default);
 
-    /// <summary>A member's lead and contact, and the applications that admitted them: what the member page links to.</summary>
-    Task<Result<MemberLinksDto>> MemberLinksAsync(Guid organizationId, Guid memberId, CancellationToken ct = default);
+    /// <summary>
+    /// A member's lead, contact and deal, the applications that admitted them, and their
+    /// contracts with each one's deposit: what the member page links to. With
+    /// <paramref name="viewerId"/>, a deal the viewer may not open, and the contracts drafted
+    /// on it, are left out.
+    /// </summary>
+    Task<Result<MemberLinksDto>> MemberLinksAsync(Guid organizationId, Guid memberId, Guid? viewerId = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// The members a deal brought in (the deal's handoff, its contracts, or its contact or
+    /// lead), and the applications of its lead, contact and contracts: what the deal's page
+    /// shows of the club.
+    /// </summary>
+    Task<PersonMembershipDto> DealMembershipAsync(Guid organizationId, Guid dealId, CancellationToken ct = default);
 
     Task<Result<ApplicationDto>> CreateAsync(Guid organizationId, Guid userId, ApplicationWriteRequest request, CancellationToken ct = default);
 
@@ -280,8 +292,33 @@ public sealed record MemberLinksDto
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Guid? ContactId { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? ContactName { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? ContactEmail { get; init; }
+
+    /// <summary>The deal they joined through (its handoff, or the contract that admitted them).</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Guid? DealId { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? DealName { get; init; }
+
     public IReadOnlyList<ApplicationDto> Applications { get; init; } = Array.Empty<ApplicationDto>();
+
+    /// <summary>Their contracts once sent (newest first), each with the deposit it asked for.</summary>
+    public IReadOnlyList<MemberContractDto> Contracts { get; init; } = Array.Empty<MemberContractDto>();
+
     public HouseholdDto? Household { get; init; }
+}
+
+/// <summary>A contract of a member's, as their page lists it.</summary>
+public sealed record MemberContractDto
+{
+    public Guid Id { get; init; }
+    public string Title { get; init; } = string.Empty;
+    public string Status { get; init; } = string.Empty;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? MembershipTier { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public DateTime? SentAtUtc { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public DateTime? CounterSignedAtUtc { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Guid? LeadId { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Guid? DealId { get; init; }
+
+    /// <summary>The deposit the contract asked for on signing, and where it went; none when it asked for none.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public ContractDepositDto? Deposit { get; init; }
 }
 
 /// <summary>What an approval did.</summary>

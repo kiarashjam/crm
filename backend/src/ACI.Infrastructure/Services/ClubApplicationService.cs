@@ -140,11 +140,11 @@ public sealed class ClubApplicationService : IClubApplications
         };
     }
 
-    public async Task<Result<MemberLinksDto>> MemberLinksAsync(Guid organizationId, Guid memberId, CancellationToken ct = default)
+    public async Task<Result<MemberLinksDto>> MemberLinksAsync(Guid organizationId, Guid memberId, Guid? viewerId = null, CancellationToken ct = default)
     {
         var member = await _db.ClubMembers.AsNoTracking()
             .Where(m => m.Id == memberId && m.OrganizationId == organizationId)
-            .Select(m => new { m.Id, m.LeadId, m.ContactId }).FirstOrDefaultAsync(ct);
+            .Select(m => new { m.Id, m.LeadId, m.ContactId, m.DealId }).FirstOrDefaultAsync(ct);
         if (member == null) return DomainErrors.Club.MemberNotFound;
         var lead = member.LeadId is { } lid
             ? await _db.Leads.AsNoTracking().Where(l => l.Id == lid && l.OrganizationId == organizationId).Select(l => new { l.Id, l.Name, l.Status }).FirstOrDefaultAsync(ct)
@@ -152,6 +152,38 @@ public sealed class ClubApplicationService : IClubApplications
         var contact = member.ContactId is { } cid
             ? await _db.Contacts.AsNoTracking().Where(c => c.Id == cid && c.OrganizationId == organizationId).Select(c => new { c.Id, c.Name, c.Email }).FirstOrDefaultAsync(ct)
             : null;
+
+        // Their contracts once sent: the ones that admitted them, the ones whose deposit went on
+        // their account, and those of the lead and the deal they came from.
+        var admittedBy = await _db.ClubApplications.AsNoTracking()
+            .Where(a => a.OrganizationId == organizationId && a.MemberId == member.Id && a.ContractId != null)
+            .Select(a => a.ContractId!.Value).ToListAsync(ct);
+        var paidBy = await _db.ContractDeposits.AsNoTracking()
+            .Where(d => d.OrganizationId == organizationId && d.MemberId == member.Id)
+            .Select(d => d.ContractId).ToListAsync(ct);
+        var named = admittedBy.Concat(paidBy).Distinct().ToList();
+        var contracts = await _db.Contracts.AsNoTracking()
+            .Where(c => c.OrganizationId == organizationId && c.Status != ContractStatuses.Draft
+                && (named.Contains(c.Id) || (member.LeadId != null && c.LeadId == member.LeadId) || (member.DealId != null && c.DealId == member.DealId)))
+            .OrderByDescending(c => c.SentAtUtc ?? c.CreatedAtUtc)
+            .Select(c => new { c.Id, c.Title, c.Status, c.MembershipTier, c.SentAtUtc, c.CounterSignedAtUtc, c.LeadId, c.DealId })
+            .ToListAsync(ct);
+
+        // A deal the viewer may not open is not named here, nor are the contracts drafted on it,
+        // as the deal's own contract list does not show them.
+        var dealIds = contracts.Where(c => c.DealId != null).Select(c => c.DealId!.Value)
+            .Concat(member.DealId is { } own ? [own] : Array.Empty<Guid>()).Distinct().ToList();
+        var deals = dealIds.Count == 0 ? new Dictionary<Guid, string>() : await (viewerId is { } viewer
+                ? _db.Deals.AsNoTracking().VisibleTo(_db, viewer, organizationId)
+                : _db.Deals.AsNoTracking().Where(d => d.OrganizationId == organizationId))
+            .Where(d => dealIds.Contains(d.Id))
+            .ToDictionaryAsync(d => d.Id, d => d.Name, ct);
+        var shown = contracts.Where(c => c.DealId is not { } d || deals.ContainsKey(d)).ToList();
+        var shownIds = shown.Select(c => c.Id).ToList();
+        var deposits = shownIds.Count == 0 ? new Dictionary<Guid, ContractDeposit>() : await _db.ContractDeposits.AsNoTracking()
+            .Where(d => d.OrganizationId == organizationId && shownIds.Contains(d.ContractId))
+            .ToDictionaryAsync(d => d.ContractId, ct);
+
         return new MemberLinksDto
         {
             MemberId = member.Id,
@@ -161,9 +193,73 @@ public sealed class ClubApplicationService : IClubApplications
             ContactId = contact?.Id,
             ContactName = contact?.Name,
             ContactEmail = string.IsNullOrWhiteSpace(contact?.Email) ? null : contact.Email,
+            DealId = member.DealId is { } dealId && deals.ContainsKey(dealId) ? dealId : null,
+            DealName = member.DealId is { } shownDeal ? deals.GetValueOrDefault(shownDeal) : null,
             Applications = await ForPersonAsync(organizationId, null, null, member.Id, ct),
+            Contracts = shown.Select(c => new MemberContractDto
+            {
+                Id = c.Id,
+                Title = c.Title,
+                Status = c.Status,
+                MembershipTier = c.MembershipTier,
+                SentAtUtc = Utc(c.SentAtUtc),
+                CounterSignedAtUtc = Utc(c.CounterSignedAtUtc),
+                LeadId = c.LeadId,
+                DealId = c.DealId,
+                Deposit = deposits.GetValueOrDefault(c.Id) is { } d ? DepositOf(d) : null,
+            }).ToList(),
         };
     }
+
+    public async Task<PersonMembershipDto> DealMembershipAsync(Guid organizationId, Guid dealId, CancellationToken ct = default)
+    {
+        // The deal's contact, and the lead it came from: the person the deal is with.
+        var contactId = await _db.Deals.AsNoTracking().Where(d => d.Id == dealId && d.OrganizationId == organizationId)
+            .Select(d => d.ContactId).FirstOrDefaultAsync(ct);
+        var leadId = await _db.Leads.AsNoTracking().Where(l => l.OrganizationId == organizationId && l.ConvertedToDealId == dealId)
+            .OrderByDescending(l => l.UpdatedAtUtc ?? l.CreatedAtUtc).Select(l => (Guid?)l.Id).FirstOrDefaultAsync(ct);
+        var person = await MembershipAsync(organizationId, leadId, contactId, ct);
+
+        // And whoever the deal brought in: by its handoff, or admitted by one of its contracts.
+        var contractIds = await _db.Contracts.AsNoTracking().Where(c => c.OrganizationId == organizationId && c.DealId == dealId)
+            .Select(c => c.Id).ToListAsync(ct);
+        var byContract = contractIds.Count == 0 ? [] : await _db.ClubApplications.AsNoTracking()
+            .Where(a => a.OrganizationId == organizationId && a.ContractId != null && contractIds.Contains(a.ContractId.Value))
+            .ToListAsync(ct);
+        var admitted = byContract.Where(a => a.MemberId != null).Select(a => a.MemberId!.Value).ToList();
+        var known = person.Members.Select(m => m.Id).ToHashSet();
+        var more = await _db.ClubMembers.AsNoTracking()
+            .Where(m => m.OrganizationId == organizationId && (m.DealId == dealId || admitted.Contains(m.Id)))
+            .OrderBy(m => m.JoinedAtUtc)
+            .Select(m => new MemberSummaryDto(m.Id, (m.FirstName + " " + m.LastName).Trim(), m.Email, m.Tier, m.Status, m.JoinedAtUtc))
+            .ToListAsync(ct);
+        var applications = person.Applications.ToList();
+        var unlisted = byContract.Where(a => applications.All(x => x.Id != a.Id)).ToList();
+        if (unlisted.Count > 0) applications.AddRange(await MapAsync(organizationId, unlisted, ct));
+        return person with
+        {
+            Members = person.Members.Concat(more.Where(m => !known.Contains(m.Id))).ToList(),
+            Applications = applications.OrderByDescending(a => a.SubmittedAtUtc).ToList(),
+        };
+    }
+
+    /// <summary>A contract's deposit as the member page shows it.</summary>
+    private static ContractDepositDto DepositOf(ContractDeposit d) => new()
+    {
+        Amount = d.Amount,
+        Currency = d.Currency,
+        Status = d.Status,
+        AmountPaid = d.AmountPaid,
+        AmountRefunded = d.AmountRefunded,
+        PaidAtUtc = Utc(d.PaidAtUtc),
+        Provider = d.Provider,
+        MethodType = d.MethodType,
+        MemberId = d.MemberId,
+        LedgerPaymentId = d.LedgerPaymentId,
+        RecordedAtUtc = Utc(d.RecordedAtUtc),
+    };
+
+    private static DateTime? Utc(DateTime? at) => at is null ? null : DateTime.SpecifyKind(at.Value, DateTimeKind.Utc);
 
     // ── staff changes ────────────────────────────────────────────────────────
 

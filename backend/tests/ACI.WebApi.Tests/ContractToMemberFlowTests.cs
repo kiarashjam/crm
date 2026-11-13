@@ -295,6 +295,49 @@ public class ContractToMemberFlowTests
     }
 
     [Fact]
+    public async Task TheDealAndTheMemberShowTheContract_TheDeposit_AndEachOther_ToWhoeverMayOpenTheDeal()
+    {
+        await using var app = new PaymentsApp();
+        var club = await ClubAsync(app);
+        var (_, _, deal) = await DealAsync(club);
+        var (contract, token) = await SignedOnDealAsync(app, club.Owner, deal);
+        await PayAsync(app, club, token);
+        await Json(await CountersignAsync(club.Owner, contract), "countersign");
+        var member = await Read(app, db => db.ClubMembers.IgnoreQueryFilters().Single());
+
+        // The member's page: the deal they joined through, and the contract with its deposit on their account.
+        var links = await Json(await club.Owner.GetAsync($"/api/members/{member.Id}/links"), "the member's links");
+        (links.GetProperty("dealId").GetGuid(), links.GetProperty("dealName").GetString()).Should().Be((deal, "Gold membership Anna"));
+        var listed = links.GetProperty("contracts").EnumerateArray().Single();
+        (listed.GetProperty("id").GetGuid(), listed.GetProperty("status").GetString(), listed.GetProperty("membershipTier").GetString())
+            .Should().Be((contract, "countersigned", "Gold"));
+        var deposit = listed.GetProperty("deposit");
+        (deposit.GetProperty("amount").GetDecimal(), deposit.GetProperty("status").GetString(), deposit.GetProperty("memberId").GetGuid())
+            .Should().Be((500m, "paid", member.Id));
+        deposit.TryGetProperty("ledgerPaymentId", out _).Should().BeTrue("it is on their account");
+
+        // The deal's page: the member it brought in, and its contracts with the deposit and whose account it went on.
+        var membership = await Json(await club.Owner.GetAsync($"/api/deals/{deal}/membership"), "the deal's membership");
+        membership.GetProperty("members").EnumerateArray().Select(m => m.GetProperty("id").GetGuid()).Should().Equal(member.Id);
+        membership.GetProperty("applications").EnumerateArray().Single().GetProperty("contractId").GetGuid().Should().Be(contract);
+        var contracts = await Json(await club.Owner.GetAsync($"/api/contracts/for-deal/{deal}"), "the deal's contracts");
+        var onDeal = contracts.EnumerateArray().Single();
+        (onDeal.GetProperty("deposit").GetProperty("memberId").GetGuid(), onDeal.GetProperty("deposit").GetProperty("memberName").GetString())
+            .Should().Be((member.Id, "Anna Muster"));
+
+        // Made private, the deal and its contract are shown to nobody who may not open it.
+        await Json(await club.Owner.PutAsync($"/api/deals/{deal}", Body(new { isPrivate = true })), "make the deal private");
+        var (director, directorId) = await SignInAsync(app, "director@pavillon46.ch");
+        await AddMemberAsync(app, club.Org, directorId, OrgMemberRole.Member);
+        await Json(await club.Owner.PutAsync($"/api/organizations/{club.Org}/members/{directorId}/permissions", Body(new { preset = "membership_director" })), "a director");
+        director.In(club.Org);
+        (await director.GetAsync($"/api/deals/{deal}/membership")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        var theirs = await Json(await director.GetAsync($"/api/members/{member.Id}/links"), "the director reads the member's links");
+        theirs.TryGetProperty("dealId", out _).Should().BeFalse();
+        theirs.GetProperty("contracts").GetArrayLength().Should().Be(0);
+    }
+
+    [Fact]
     public async Task AHandoffAfterTheCountersignature_LinksTheMemberItAdmitted_EvenAtANewAddress()
     {
         await using var app = new PaymentsApp();

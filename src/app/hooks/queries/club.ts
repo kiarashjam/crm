@@ -30,7 +30,7 @@ import { getEvent, getEvents } from '@/app/api/events';
 import { getEventAttendees, getMemberRegistrations } from '@/app/api/eventAttendees';
 import { getReservations, getResources } from '@/app/api/reservations';
 import {
-  getApplicationForm, getApplications, getContactMembership, getLeadMembership, getMemberLinks,
+  getApplicationForm, getApplications, getContactMembership, getDealMembership, getLeadMembership, getMemberLinks,
 } from '@/app/api/applications';
 import { getHouseholds, getMemberHousehold } from '@/app/api/households';
 import { queryKeys, workspacePrefix, type WorkspaceScope } from './queryKeys';
@@ -215,12 +215,17 @@ export function useMemberLinks(memberId: string) {
   });
 }
 
-/** What a lead's or a contact's page shows of the club: the member they are, their applications, their household. */
-export function usePersonMembership(kind: 'lead' | 'contact', id: string, enabled = true) {
+/**
+ * What a lead's, a contact's or a deal's page shows of the club: the member they are (for a
+ * deal, the members it brought in), the applications, the household.
+ */
+export function usePersonMembership(kind: 'lead' | 'contact' | 'deal', id: string, enabled = true) {
   const ws = useWorkspaceScope();
   return useQuery({
     queryKey: queryKeys.club.personMembership(ws, kind, id),
-    queryFn: ({ signal }) => timed(signal, (s) => (kind === 'lead' ? getLeadMembership(id, { signal: s }) : getContactMembership(id, { signal: s }))),
+    queryFn: ({ signal }) => timed(signal, (s) => (kind === 'lead'
+      ? getLeadMembership(id, { signal: s })
+      : kind === 'deal' ? getDealMembership(id, { signal: s }) : getContactMembership(id, { signal: s }))),
     enabled: enabled && id.length > 0,
   });
 }
