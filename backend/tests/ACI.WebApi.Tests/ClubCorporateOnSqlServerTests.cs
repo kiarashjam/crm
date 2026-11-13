@@ -223,6 +223,37 @@ public class ClubCorporateOnSqlServerTests
     });
 
     [SqlServerFact]
+    public Task AnInvoicedPartyIsCancelledOnceItsInvoiceIsVoided_AndItsRoomIsFreed() => RunAsync(async (client, _, database) =>
+    {
+        var acme = await CompanyAsync(client, "Acme AG");
+        var room = Id(await Json(await client.PostAsync("/api/resources", Body(new { name = "Library", kind = "Meeting", capacity = 20 })), "add the library"));
+        var start = DateTime.UtcNow.Date.AddDays(20).AddHours(18);
+        var party = await Json(await client.PostAsync("/api/private-events", Body(new
+        {
+            title = "Acme dinner", companyId = acme, startAtUtc = start.ToString("O"), endAtUtc = start.AddHours(4).ToString("O"), resourceIds = new[] { room },
+            lines = new object[]
+            {
+                new { name = "Dinner", quantity = 20m, unitPrice = 90m, vatRate = 8.1m },
+                new { name = "Flowers", quantity = 1m, unitPrice = 200m, vatRate = 2.6m },
+            },
+        })), "make the party");
+        var invoiced = await Json(await client.PostAsync($"/api/private-events/{Id(party)}/invoice", null), "invoice it in advance");
+        var charges = invoiced.GetProperty("money").GetProperty("invoiceChargeIds").EnumerateArray().Select(c => c.GetGuid()).ToList();
+        charges.Should().HaveCount(2, "one charge per VAT rate");
+        (await client.PostAsync($"/api/private-events/{Id(party)}/cancel", Body(new { reason = "Called off" }))).StatusCode
+            .Should().Be(HttpStatusCode.Conflict, "the invoice still stands on Acme's account");
+
+        foreach (var charge in charges)
+            await Json(await client.PostAsync($"/api/charges/{charge}/void", Body(new { reason = "Called off" })), "void an invoice charge");
+        var cancelled = await Json(await client.PostAsync($"/api/private-events/{Id(party)}/cancel", Body(new { reason = "Called off" })), "cancel");
+
+        cancelled.GetProperty("status").GetString().Should().Be("Cancelled");
+        cancelled.GetProperty("money").GetProperty("invoiceVoided").GetBoolean().Should().BeTrue();
+        (await CountAsync(database, $"SELECT COUNT(*) FROM [ClubReservations] WHERE [PrivateEventId] = '{Id(party)}' AND [Status] IN ('Pending', 'Confirmed')"))
+            .Should().Be(0, "the library is free for that evening again");
+    });
+
+    [SqlServerFact]
     public Task ACompanyAndAContactNothingKeepsAreDeleted_WithTheirEmptyAccounts_AndPastEventsStopNamingThem() => RunAsync(async (client, _, database) =>
     {
         var bolt = await CompanyAsync(client, "Bolt GmbH");
