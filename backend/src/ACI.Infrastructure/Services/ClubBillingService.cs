@@ -12,6 +12,7 @@ using ACI.Infrastructure.Persistence;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Overdue = ACI.Infrastructure.Services.OverdueCharge;
 
 namespace ACI.Infrastructure.Services;
 
@@ -284,82 +285,13 @@ public sealed class ClubBillingService : IClubBilling
 
     // ── overdue ──────────────────────────────────────────────────────────────
 
-    /// <summary>A charge past its due date and not paid in full.</summary>
-    private sealed record Overdue(Guid Id, Guid MemberId, string Description, decimal Owed, string Currency, DateTime DueAtUtc, Guid? SubscriptionId);
-
-    /// <summary>The workspace's charges past their due date with something still to pay, oldest first; one member's with <paramref name="memberId"/>.</summary>
-    private async Task<List<Overdue>> OverdueAsync(Guid organizationId, DateTime now, Guid? memberId, CancellationToken ct)
-    {
-        var candidates = await _db.ClubCharges.AsNoTracking()
-            .Where(c => c.OrganizationId == organizationId && (memberId == null || c.MemberId == memberId)
-                && c.ReversesChargeId == null && c.DueAtUtc != null && c.DueAtUtc < now && c.Amount > 0)
-            .Select(c => new { c.Id, c.MemberId, c.Description, c.Amount, c.Currency, Due = c.DueAtUtc!.Value, c.SubscriptionId })
-            .ToListAsync(ct);
-        if (candidates.Count == 0) return [];
-        var ids = candidates.Select(c => c.Id).ToList();
-        var voided = (await _db.ClubCharges.AsNoTracking()
-                .Where(c => c.OrganizationId == organizationId && c.ReversesChargeId != null && ids.Contains(c.ReversesChargeId.Value))
-                .Select(c => c.ReversesChargeId!.Value).ToListAsync(ct))
-            .ToHashSet();
-        var paid = await _db.ClubPaymentAllocations.AsNoTracking()
-            .Where(a => a.OrganizationId == organizationId && ids.Contains(a.ChargeId))
-            .GroupBy(a => a.ChargeId).Select(g => new { ChargeId = g.Key, Sum = g.Sum(a => a.Amount) })
-            .ToDictionaryAsync(g => g.ChargeId, g => g.Sum, ct);
-        var owing = candidates.Where(c => !voided.Contains(c.Id))
-            .Select(c => new Overdue(c.Id, c.MemberId, c.Description, c.Amount - paid.GetValueOrDefault(c.Id), c.Currency, c.Due, c.SubscriptionId))
-            .Where(c => c.Owed > 0)
-            .OrderBy(c => c.DueAtUtc)
-            .ToList();
-        return await LessCreditHeldAsync(organizationId, owing, ct);
-    }
-
     /// <summary>
-    /// The overdue charges less what credit their members already hold, the credit set
-    /// against the charges that fell due first.
+    /// The workspace's charges past their due date with something still to pay, after credit
+    /// the member holds, oldest first; one member's with <paramref name="memberId"/>. Worked out
+    /// by <see cref="ClubOverdue"/>, which a member's at-risk score and the sponsor rule read too.
     /// </summary>
-    /// <remarks>
-    /// Credit on an account (an opening balance in the member's favour, a correction by hand)
-    /// pays no charge until someone applies it to one, so the ledger shows the charge as
-    /// owing; but the member owes the club nothing for the part the credit covers. Chased as
-    /// it stands, a member in credit was sent payment reminders and lapsed. The credit is
-    /// worked out as the ledger works it out when it is applied (each payment or credit, less
-    /// what was taken back from it and what it has paid already).
-    /// </remarks>
-    private async Task<List<Overdue>> LessCreditHeldAsync(Guid organizationId, List<Overdue> overdue, CancellationToken ct)
-    {
-        if (overdue.Count == 0) return overdue;
-        var memberIds = overdue.Select(c => c.MemberId).Distinct().ToList();
-        var payments = await _db.ClubPayments.AsNoTracking()
-            .Where(p => p.OrganizationId == organizationId && memberIds.Contains(p.MemberId))
-            .Select(p => new { p.Id, p.MemberId, p.Amount, p.ReversesPaymentId })
-            .ToListAsync(ct);
-        var originals = payments.Where(p => p.ReversesPaymentId == null).Select(p => p.Id).ToList();
-        var allocated = await _db.ClubPaymentAllocations.AsNoTracking()
-            .Where(a => a.OrganizationId == organizationId && originals.Contains(a.PaymentId))
-            .GroupBy(a => a.PaymentId).Select(g => new { PaymentId = g.Key, Sum = g.Sum(a => a.Amount) })
-            .ToDictionaryAsync(g => g.PaymentId, g => g.Sum, ct);
-        var reversed = payments.Where(p => p.ReversesPaymentId != null)
-            .GroupBy(p => p.ReversesPaymentId!.Value)
-            .ToDictionary(g => g.Key, g => g.Sum(p => p.Amount));
-        var credit = payments.Where(p => p.ReversesPaymentId == null)
-            .GroupBy(p => p.MemberId)
-            .ToDictionary(g => g.Key, g => g.Sum(p => Math.Max(0, p.Amount + reversed.GetValueOrDefault(p.Id) - allocated.GetValueOrDefault(p.Id))));
-
-        var left = new List<Overdue>(overdue.Count);
-        foreach (var charge in overdue)
-        {
-            var held = credit.GetValueOrDefault(charge.MemberId);
-            if (held <= 0)
-            {
-                left.Add(charge);
-                continue;
-            }
-            var covered = Math.Min(held, charge.Owed);
-            credit[charge.MemberId] = held - covered;
-            if (charge.Owed > covered) left.Add(charge with { Owed = charge.Owed - covered });
-        }
-        return left;
-    }
+    private Task<List<Overdue>> OverdueAsync(Guid organizationId, DateTime now, Guid? memberId, CancellationToken ct) =>
+        ClubOverdue.ListAsync(_db, organizationId, now, memberId is Guid one ? [one] : null, ct);
 
     /// <summary>A subscription with dues overdue is past due; one whose dues are all paid is active again.</summary>
     private async Task MarkPastDueAsync(Guid organizationId, IReadOnlyList<Overdue> overdue, Tally tally, CancellationToken ct)

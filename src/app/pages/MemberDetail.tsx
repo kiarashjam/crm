@@ -61,6 +61,8 @@ import EmailMemberDialog from '@/app/pages/members/EmailMemberDialog';
 import { MemberPaymentsCard } from '@/app/components/payments/MemberPaymentsCard';
 import { MemberCodesCard } from '@/app/components/pos/MemberCodesCard';
 import { MemberPortalCard } from '@/app/components/portal/MemberPortalCard';
+import { MemberRetentionCard } from '@/app/components/retention/MemberRetentionCard';
+import { MemberReferralsCard } from '@/app/components/retention/MemberReferralsCard';
 import { currentDateLocale, currentNumberLocale } from '@/app/i18n/current';
 
 const TIER_BADGE: Record<MemberTier, string> = {
@@ -377,6 +379,12 @@ export default function MemberDetail() {
 
                 {/* Whether they were invited to the member portal and have signed in, and a way to sign them out. */}
                 <MemberPortalCard memberId={member.id} />
+
+                {/* Who referred, proposed and seconded them, whom they brought in, and the referral bonus. */}
+                <MemberReferralsCard memberId={member.id} />
+
+                {/* Their at-risk score, each sign it is made of, and the complaints and concerns about them. */}
+                <MemberRetentionCard memberId={member.id} />
 
                 <SectionCard
                   title="Upcoming"

@@ -585,6 +585,12 @@ public sealed class OrganizationCloner
                 portal.PortalKey = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16))
                     .TrimEnd('=').Replace('+', '-').Replace('/', '_');
                 return "The member portal starts off in the copy, at an address of its own";
+            case ClubRetentionSettings retention when retention.SaveEmail:
+                // The members are the same people in both organizations: one found at risk in the
+                // copy would be emailed from it as well as from the original. The rest of the
+                // club's rules (the weights, the task, the referral bonus) come along.
+                retention.SaveEmail = false;
+                return "Members found at risk in the copy are not emailed from it";
             case OnboardingSettings s when s.WebhookUrl != null || s.WebhookSecret != null:
                 // Like its events address: a customer won in the copy is never handed to the
                 // original's portal, signed as the original. The template and choices stay.

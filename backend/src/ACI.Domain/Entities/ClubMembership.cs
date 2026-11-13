@@ -88,7 +88,22 @@ public class ClubApplication : Common.BaseEntity, Common.IVersioned
     /// <summary>The tier asked for: one of the club's tiers in the price catalogue.</summary>
     public string RequestedTier { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Who referred them, as the applicant (or staff) wrote it. Kept beside
+    /// <see cref="ReferredByMemberId"/>: the public form takes a name, and staff link it to the member.
+    /// </summary>
     public string? ReferredByName { get; set; }
+
+    /// <summary>
+    /// The member who referred them. Carried onto the member on approval, and the referral
+    /// bonus (when the club gives one) goes to them once the applicant is admitted.
+    /// </summary>
+    public Guid? ReferredByMemberId { get; set; }
+
+    /// <summary>The member who proposes them, and the one who seconds them: each a member in good standing, by the club's rule.</summary>
+    public Guid? ProposerMemberId { get; set; }
+    public Guid? SeconderMemberId { get; set; }
+
     public string? Occupation { get; set; }
     public string? ReasonForJoining { get; set; }
 

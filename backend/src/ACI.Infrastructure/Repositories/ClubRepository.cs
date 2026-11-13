@@ -81,6 +81,8 @@ public sealed class ClubRepository : IClubRepository
         await MemberPayments.ForgetDeletedMemberAsync(_db, id, organizationId, ct);
         // And no code names them at the POS any more.
         await MemberPos.ForgetDeletedMemberAsync(_db, id, organizationId, ct);
+        // Their score, renewals and concerns go, and nobody is named as referred or sponsored by them.
+        await MemberRetention.ForgetDeletedMemberAsync(_db, id, organizationId, ct);
         _db.ClubMembers.Remove(row);
         await _db.SaveChangesAsync(ct);
         return true;
@@ -199,6 +201,10 @@ public sealed class ClubRepository : IClubRepository
             // Consent answers and messages are the person's, so they move too.
             await MemberCommunications.MoveToKeptMemberAsync(_db, keepId, dropId, organizationId, ct);
             await MemberCommunications.MoveMessagesToKeptMemberAsync(_db, keepId, dropId, organizationId, name, ct);
+
+            // Their concerns and renewals, and the members they referred or sponsored, are the kept member's.
+            await MemberRetention.MoveToKeptMemberAsync(_db, keepId, dropId, organizationId, ct);
+            if (keep.ReferredByMemberId == null && drop.ReferredByMemberId is { } referrer && referrer != keepId) keep.ReferredByMemberId = referrer;
 
             keep.Phone = RecordMerge.Fill(keep.Phone, drop.Phone);
             keep.ContactId ??= drop.ContactId;

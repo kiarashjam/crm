@@ -40,6 +40,7 @@ export const nav = {
   'nav.importMembers': 'Import members',
   'nav.households': 'Households',
   'nav.applications': 'Applications',
+  'nav.renewals': 'Renewals',
   'nav.events': 'Events',
   'nav.reservations': 'Reservations',
   'nav.visits': 'Visits',

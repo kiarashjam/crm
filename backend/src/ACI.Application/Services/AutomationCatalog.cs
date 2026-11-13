@@ -83,6 +83,7 @@ public static class AutomationCatalog
     public const string ReservationCreated = "reservation.created";
     public const string EventRegistered = "event.registered";
     public const string PaymentFailed = "payment.failed";
+    public const string MemberAtRisk = "member.at_risk";
 
     /// <summary>How many days ahead a renewal rule fires when it does not say.</summary>
     public const int DefaultDaysBefore = 14;
@@ -227,6 +228,11 @@ public static class AutomationCatalog
         new("approvedThrough", "Approved through", AutomationFieldTypes.Choice, null, ApprovedVia),
     ];
 
+    private static readonly AutomationField[] RiskFields =
+    [
+        new("riskScore", "At-risk score (0 to 100)", AutomationFieldTypes.Number),
+    ];
+
     private static readonly AutomationField[] PaymentFields =
     [
         new("amount", "Amount", AutomationFieldTypes.Money),
@@ -307,6 +313,9 @@ public static class AutomationCatalog
         new(PaymentFailed, "When an online payment fails", "Club", WorkspaceModules.Club, AutomationRecords.Payment,
             With(PaymentFields, MemberFields), MemberDates, ClubActions,
             "A card or direct debit payment is declined, or a direct debit does not go through."),
+        new(MemberAtRisk, "When a member becomes at risk", "Club", WorkspaceModules.Club, AutomationRecords.Member,
+            With(MemberFields, RiskFields), MemberDates, ClubActions,
+            "The daily scoring finds a member's at-risk score has reached the club's threshold. It fires once each time they become at risk, and not again within the club's cooldown."),
     ];
 
     private static readonly Dictionary<string, AutomationTrigger> ByKey = Triggers.ToDictionary(t => t.Key, StringComparer.Ordinal);

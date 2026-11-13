@@ -187,6 +187,10 @@ public sealed class AutomationRecordReader : IAutomationRecordReader
         var facts = new Dictionary<string, FactValue>(StringComparer.Ordinal);
         var dates = new Dictionary<string, DateTime>(StringComparer.Ordinal);
         AddMember(member, facts, dates);
+        // The member's at-risk score as the daily scoring last worked it out: what a rule on
+        // "When a member becomes at risk" can test ("score at least 80").
+        var risk = await _db.ClubMemberRisks.AsNoTracking().Where(r => r.MemberId == member.Id).Select(r => (int?)r.Score).FirstOrDefaultAsync(ct);
+        facts["riskScore"] = FactValue.OfNumber(risk);
         return ClubView(NameOf(member), member, facts, dates, $"/members/{member.Id}");
     }
 

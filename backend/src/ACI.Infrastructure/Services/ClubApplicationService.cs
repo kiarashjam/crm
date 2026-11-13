@@ -59,14 +59,16 @@ public sealed class ClubApplicationService : IClubApplications
     private readonly IWorkspaceModules _modules;
     private readonly IPrivacySettings? _privacy;
     private readonly IAutomationEngine? _automations;
+    private readonly IClubReferrals? _referrals;
 
     public ClubApplicationService(AppDbContext db, IClubLedger ledger, IClubCatalog catalog, IClubRules rules, IOutbox outbox,
         IConsentRepository consent, IPermissionService permissions, IWorkspaceRecords records, ILeadService leads,
         ILeadOpsService leadOps, INotificationService notifications, ITenantContext tenant, ILogger<ClubApplicationService> logger,
         ILedgerReadObserver reads, IWorkspaceModules modules, IPrivacySettings? privacy = null,
-        IAutomationEngine? automations = null)
+        IAutomationEngine? automations = null, IClubReferrals? referrals = null)
     {
         _automations = automations;
+        _referrals = referrals;
         _db = db;
         _ledger = ledger;
         _catalog = catalog;
@@ -645,6 +647,7 @@ public sealed class ClubApplicationService : IClubApplications
                 await _db.SaveChangesAsync(ct);
                 if (transaction != null) await transaction.CommitAsync(ct);
                 await AnnounceAsync(organizationId, app, outcome.Value.MemberCreated, approval.UserId, ct);
+                if (outcome.Value.Admitted) await RewardReferrerAsync(organizationId, app.Id, approval, outcome.Value.Notes, ct);
                 return await AnswerAsync(organizationId, app, outcome.Value with { Approved = true }, ct);
             }
             finally
@@ -675,6 +678,26 @@ public sealed class ClubApplicationService : IClubApplications
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogWarning(ex, "Application {ApplicationId} was approved, but the workspace's automations for it failed", app.Id);
+        }
+    }
+
+    /// <summary>
+    /// The referral bonus for the member's referrer, once the approval that admitted them is
+    /// committed: points, or a credit through the ledger, by the club's setting (IClubReferrals).
+    /// A bonus that cannot be given is said in the notes; it never undoes the approval.
+    /// </summary>
+    private async Task RewardReferrerAsync(Guid organizationId, Guid applicationId, Approval approval, List<string> notes, CancellationToken ct)
+    {
+        if (_referrals == null) return;
+        try
+        {
+            if (await _referrals.RewardReferrerAsync(organizationId, applicationId, approval.UserId, approval.MayHandleMoney, ct) is { } said)
+                notes.Add(said);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Application {ApplicationId} was approved, but the referral bonus could not be given", applicationId);
+            notes.Add("The referral bonus could not be given just now; it can be given from the member's page.");
         }
     }
 
@@ -720,6 +743,10 @@ public sealed class ClubApplicationService : IClubApplications
             if (household == null && request.HouseholdId != null) return DomainErrors.Household.NotFound;
             householdGone = household == null;
         }
+        // The club's rule on proposers and seconders: with it required, both, each still a member
+        // in good standing (IClubReferrals). Checked before anything is written.
+        if (_referrals != null && await _referrals.CheckApprovalAsync(organizationId, app, ct) is { IsFailure: true } sponsors)
+            return sponsors.Error;
         var rules = await _rules.ReadAsync(organizationId, ct);
         // A member who was never more than Pending (the old approval left them so) pays the fee
         // of joining; someone who was a member before does not pay it again.
@@ -794,6 +821,9 @@ public sealed class ClubApplicationService : IClubApplications
     private sealed record Outcome
     {
         public bool MemberCreated { get; init; }
+
+        /// <summary>This approval made them a member: new, or someone Pending, Lapsed or Cancelled set active again.</summary>
+        public bool Admitted { get; init; }
         public bool Approved { get; init; }
         public bool DuesStarted { get; init; }
         public bool FeeCharged { get; init; }
@@ -863,6 +893,9 @@ public sealed class ClubApplicationService : IClubApplications
         else notes.Add($"{Name(member)} is already an active member: the application is linked to their record, their tier stays {member.Tier}, and nothing was charged or started.");
         // A member the club had already keeps the language staff set; one with none takes the one they applied in.
         if (member.PreferredLanguage == null && AppLanguages.Normalise(app.Language) is { } applied) member.PreferredLanguage = applied;
+        // The member who referred them, as the application names them: what the referrals report
+        // counts. One the member already has (set by hand, or by an earlier application) stays.
+        if (member.ReferredByMemberId == null && app.ReferredByMemberId is { } referrer && referrer != member.Id) member.ReferredByMemberId = referrer;
 
         // The person the sales side has for them, carried onto the member. From the public form
         // the link is by address alone, so it is carried only when the name matches as well.
@@ -938,6 +971,7 @@ public sealed class ClubApplicationService : IClubApplications
         return new Outcome
         {
             MemberCreated = created,
+            Admitted = created || readmitted,
             DuesStarted = duesStarted,
             FeeCharged = feeCharged,
             JoinedHousehold = joined,
@@ -994,6 +1028,9 @@ public sealed class ClubApplicationService : IClubApplications
             app.UpdatedAtUtc = DateTime.UtcNow;
             await _db.SaveChangesAsync(ct);
             if (transaction != null) await transaction.CommitAsync(ct);
+            // A referral credit the first approval could not give (it is money) is given by
+            // whoever finishes the money, once.
+            await RewardReferrerAsync(organizationId, app.Id, approval, notes, ct);
             return await AnswerAsync(organizationId, app, new Outcome
             {
                 Approved = true, DuesStarted = money.Value.DuesStarted, FeeCharged = money.Value.FeeCharged, Notes = notes,
@@ -1569,6 +1606,18 @@ public sealed class ClubApplicationService : IClubApplications
         if (r.HouseholdRole != null && r.HouseholdRole.Trim().Length > 0
             && HouseholdRoles.Normalize(r.HouseholdRole) is null or HouseholdRoles.Primary)
             return DomainErrors.Application.HouseholdRoleInvalid;
+        // The referrer, proposer and seconder: members of this club, as the request leaves them
+        // (an empty id takes one off), held to the club's sponsor rule when named now.
+        static Guid? Named(Guid? sent, Guid? current) => sent == null ? current : sent == Guid.Empty ? null : sent;
+        var referrerId = Named(r.ReferredByMemberId, row.ReferredByMemberId);
+        var proposerId = Named(r.ProposerMemberId, row.ProposerMemberId);
+        var seconderId = Named(r.SeconderMemberId, row.SeconderMemberId);
+        if (_referrals != null)
+        {
+            var sponsors = await _referrals.CheckApplicationAsync(organizationId, row.MemberId, referrerId, proposerId, seconderId,
+                referrerId != row.ReferredByMemberId, proposerId != row.ProposerMemberId, seconderId != row.SeconderMemberId, ct);
+            if (sponsors.IsFailure) return sponsors.Error;
+        }
 
         row.FirstName = first;
         row.LastName = last;
@@ -1582,6 +1631,9 @@ public sealed class ClubApplicationService : IClubApplications
         if (r.ContactId != null) row.ContactId = r.ContactId;
         if (r.HouseholdId != null) row.HouseholdId = r.HouseholdId;
         if (r.HouseholdRole != null) row.HouseholdRole = HouseholdRoles.Normalize(r.HouseholdRole);
+        row.ReferredByMemberId = referrerId;
+        row.ProposerMemberId = proposerId;
+        row.SeconderMemberId = seconderId;
         return Result.Success();
     }
 
@@ -1604,7 +1656,9 @@ public sealed class ClubApplicationService : IClubApplications
         if (rows.Count == 0) return [];
         var leadIds = rows.Where(r => r.LeadId != null).Select(r => r.LeadId!.Value).Distinct().ToList();
         var contactIds = rows.Where(r => r.ContactId != null).Select(r => r.ContactId!.Value).Distinct().ToList();
-        var memberIds = rows.Where(r => r.MemberId != null).Select(r => r.MemberId!.Value).Distinct().ToList();
+        var memberIds = rows.Where(r => r.MemberId != null).Select(r => r.MemberId!.Value)
+            .Concat(rows.SelectMany(r => new[] { r.ReferredByMemberId, r.ProposerMemberId, r.SeconderMemberId }).OfType<Guid>())
+            .Distinct().ToList();
         var householdIds = rows.Where(r => r.HouseholdId != null).Select(r => r.HouseholdId!.Value).Distinct().ToList();
         var leads = await _db.Leads.AsNoTracking().Where(l => l.OrganizationId == organizationId && leadIds.Contains(l.Id))
             .Select(l => new { l.Id, l.Name }).ToDictionaryAsync(l => l.Id, l => l.Name, ct);
@@ -1626,6 +1680,12 @@ public sealed class ClubApplicationService : IClubApplications
             Phone = r.Phone,
             RequestedTier = r.RequestedTier,
             ReferredByName = r.ReferredByName,
+            ReferredByMemberId = r.ReferredByMemberId is { } rb && members.ContainsKey(rb) ? rb : null,
+            ReferredByMemberName = r.ReferredByMemberId is { } rb2 ? members.GetValueOrDefault(rb2) : null,
+            ProposerMemberId = r.ProposerMemberId is { } pr && members.ContainsKey(pr) ? pr : null,
+            ProposerName = r.ProposerMemberId is { } pr2 ? members.GetValueOrDefault(pr2) : null,
+            SeconderMemberId = r.SeconderMemberId is { } se && members.ContainsKey(se) ? se : null,
+            SeconderName = r.SeconderMemberId is { } se2 ? members.GetValueOrDefault(se2) : null,
             Occupation = r.Occupation,
             ReasonForJoining = r.ReasonForJoining,
             Status = r.Status,

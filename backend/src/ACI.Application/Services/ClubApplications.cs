@@ -137,6 +137,15 @@ public sealed class ApplicationWriteRequest
     public string? Phone { get; set; }
     public string? RequestedTier { get; set; }
     public string? ReferredByName { get; set; }
+
+    /// <summary>
+    /// The members who referred, propose and second the applicant, in this workspace. Left out,
+    /// each is kept; sent as an empty id (all zeros), it is taken off.
+    /// </summary>
+    public Guid? ReferredByMemberId { get; set; }
+    public Guid? ProposerMemberId { get; set; }
+    public Guid? SeconderMemberId { get; set; }
+
     public string? Occupation { get; set; }
     public string? ReasonForJoining { get; set; }
     public string? ReviewerNotes { get; set; }
@@ -236,6 +245,15 @@ public sealed record ApplicationDto
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Phone { get; init; }
     public string RequestedTier { get; init; } = string.Empty;
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? ReferredByName { get; init; }
+
+    /// <summary>The member who referred them, and the members who propose and second them, with their names.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Guid? ReferredByMemberId { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? ReferredByMemberName { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Guid? ProposerMemberId { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? ProposerName { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Guid? SeconderMemberId { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? SeconderName { get; init; }
+
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Occupation { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? ReasonForJoining { get; init; }
     public string Status { get; init; } = string.Empty;

@@ -57,6 +57,21 @@ vi.mock('@/app/api/clubReports', async (importOriginal) => ({
   downloadClubReportCsv: (range: unknown) => api.download(range),
 }));
 
+// Who brings members in: the referrals report under the club's figures, for the same period.
+const referrals = vi.hoisted(() => ({
+  report: vi.fn<(range: unknown) => Promise<unknown>>(),
+  download: vi.fn<(range: unknown) => Promise<void>>(),
+}));
+vi.mock('@/app/api/retention', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/app/api/retention')>()),
+  getReferralReport: (range: unknown) => referrals.report(range),
+  downloadReferralReportCsv: (range: unknown) => referrals.download(range),
+}));
+const NO_REFERRALS = {
+  fromUtc: '2026-01-01T00:00:00Z', toUtc: '2027-01-01T00:00:00Z', currency: 'CHF', referrers: [],
+  totals: { referrers: 0, referredAllTime: 0, referredInPeriod: 0, membersJoinedInPeriod: 0, dues: [], spend: [], revenue: [], bonusPoints: 0, bonusCredit: [] },
+};
+
 const REPORT: ClubReport = {
   currency: 'CHF',
   timeZone: 'Europe/Zurich',
@@ -116,6 +131,9 @@ beforeEach(() => {
   api.report.mockReset();
   api.today.mockReset();
   api.download.mockReset();
+  referrals.report.mockReset();
+  referrals.download.mockReset();
+  referrals.report.mockResolvedValue(NO_REFERRALS);
   as([PERMISSION.ExportRecords]);
 });
 
@@ -225,6 +243,42 @@ describe('Club Reports', () => {
     show(<HospitalityReports />);
     await screen.findAllByText(chf(1249.5));
     expect(screen.queryByRole('button', { name: /export csv/i })).toBeNull();
+  });
+});
+
+describe('Who brings members in', () => {
+  it('shows the members who referred others and what those members were charged, for the period shown', async () => {
+    api.report.mockResolvedValue(REPORT);
+    referrals.report.mockResolvedValue({
+      ...NO_REFERRALS,
+      referrers: [{
+        memberId: 'm-ana', name: 'Ana Keller', status: 'Active', tier: 'Gold', referredAllTime: 2, referredInPeriod: 1, proposed: 1, seconded: 0,
+        dues: [{ currency: 'CHF', amount: 299 }], spend: [{ currency: 'CHF', amount: 100 }], revenue: [{ currency: 'CHF', amount: 399 }],
+        bonusPoints: 500, bonusCredit: [],
+        members: [{ memberId: 'm-ben', name: 'Ben Keller', status: 'Active', tier: 'Gold', joinedAtUtc: '2026-08-01T00:00:00Z', dues: [], spend: [] }],
+      }],
+      totals: { ...NO_REFERRALS.totals, referrers: 1, referredAllTime: 2, referredInPeriod: 1, membersJoinedInPeriod: 4, revenue: [{ currency: 'CHF', amount: 399 }] },
+    });
+    referrals.download.mockResolvedValue();
+    show(<HospitalityReports />);
+
+    expect(await screen.findByRole('link', { name: 'Ana Keller' })).toHaveAttribute('href', '/members/m-ana');
+    expect(screen.getByText('Ben Keller')).toBeInTheDocument();
+    expect(screen.getAllByText(chf(399)).length).toBeGreaterThan(0);
+    const asked = api.report.mock.calls[0]![0] as { fromUtc: string; toUtc: string };
+    expect(referrals.report).toHaveBeenCalledWith({ fromUtc: asked.fromUtc, toUtc: asked.toUtc });
+
+    fireEvent.click(screen.getByRole('button', { name: /export referrals/i }));
+    await waitFor(() => expect(referrals.download).toHaveBeenCalledWith({ fromUtc: asked.fromUtc, toUtc: asked.toUtc }));
+  });
+
+  it('offers the referrals spreadsheet only to members who may export records', async () => {
+    as([PERMISSION.ManageMoney]);
+    api.report.mockResolvedValue(REPORT);
+    show(<HospitalityReports />);
+
+    expect(await screen.findByText('No member has referred, proposed or seconded anyone yet.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /export referrals/i })).toBeNull();
   });
 });
 

@@ -10,3 +10,4 @@ export * from './pos';
 export * from './privacy';
 export * from './automations';
 export * from './assistant';
+export * from './retention';

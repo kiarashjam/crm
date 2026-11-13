@@ -363,3 +363,41 @@ describe('what a privacy request changes', () => {
     expect(resourcesChangedBy('PUT', '/api/privacy/settings')).toEqual(['privacy']);
   });
 });
+
+describe('what keeping members changes', () => {
+  it("working a member's score out again refreshes their score, the board, and the task and email it may set off", () => {
+    const changed = resourcesChangedBy('POST', '/api/members/m1/risk/recompute');
+    for (const kind of ['retention', 'renewals', 'tasks', 'communications']) expect(changed).toContain(kind);
+    expect(changed).not.toContain('charges');
+  });
+
+  it('a concern recorded or resolved refreshes only the retention card', () => {
+    expect(resourcesChangedBy('POST', '/api/members/m1/concerns')).toEqual(['retention']);
+    expect(resourcesChangedBy('POST', '/api/members/m1/concerns/c1/resolve')).toEqual(['retention']);
+    expect(resourcesChangedBy('DELETE', '/api/members/m1/concerns/c1')).toEqual(['retention']);
+  });
+
+  it('a renewal marked renewed moves the member on, so the members list is refreshed with the board', () => {
+    expect(resourcesChangedBy('POST', '/api/renewals/stage')).toEqual(expect.arrayContaining(['renewals', 'members']));
+  });
+
+  it("the referrer set by hand and the referrer's bonus refresh referrals, and a bonus the points or the account it lands on", () => {
+    expect(resourcesChangedBy('PUT', '/api/members/m1/referrer')).toEqual(['referrals', 'members']);
+    expect(resourcesChangedBy('POST', '/api/members/m1/referral-bonus')).toEqual(expect.arrayContaining(['referrals', 'loyalty', 'payments', 'statements']));
+  });
+
+  it("the club's rules refresh the referrals card and the board too, and a run the tasks and emails it made", () => {
+    expect(resourcesChangedBy('PUT', '/api/retention/settings')).toEqual(expect.arrayContaining(['retention', 'referrals', 'renewals']));
+    expect(resourcesChangedBy('POST', '/api/retention/run')).toEqual(expect.arrayContaining(['retention', 'renewals', 'tasks', 'communications']));
+  });
+
+  it('an approval can give a referral bonus, a payment can renew a subscription on the board, and a charge moves the referrals report', () => {
+    expect(resourcesChangedBy('POST', '/api/applications/a1/approve')).toEqual(expect.arrayContaining(['referrals', 'loyalty']));
+    expect(resourcesChangedBy('POST', '/api/payments')).toContain('renewals');
+    expect(resourcesChangedBy('POST', '/api/charges')).toContain('referrals');
+  });
+
+  it("a merge moves the duplicate's score, renewals and referrals", () => {
+    expect(resourcesChangedBy('POST', '/api/members/m1/merge')).toEqual(expect.arrayContaining(['retention', 'renewals', 'referrals']));
+  });
+});

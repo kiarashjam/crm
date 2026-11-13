@@ -51,6 +51,7 @@ import { PERMISSION, orgCan } from '@/app/api/organizations';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
 import { servesDemoData } from '@/app/api/apiClient';
 import { PaymentSettingsPanel } from '@/app/components/payments/PaymentSettingsPanel';
+import { RetentionSettingsPanel } from '@/app/components/retention/RetentionSettingsPanel';
 import {
   NONE, useBillingPreview, useBillingRuns, useClubCatalog, useClubReads, useHospitalitySettings, useWorkspaceScope,
 } from '@/app/hooks/queries';
@@ -62,7 +63,7 @@ const CATALOG_EDITORS = [PERMISSION.ManageSettings, PERMISSION.ManageMoney] as c
 const OTHER_KINDS: CatalogKind[] = ['Dues', 'Fee', 'Product', 'Ticket', 'MenuItem'];
 
 /** The page's tabs; `?tab=payments` opens one (the server's messages send people to Payments). */
-const TABS = ['tiers', 'catalog', 'points', 'billing', 'payments'] as const;
+const TABS = ['tiers', 'catalog', 'points', 'billing', 'payments', 'retention'] as const;
 type Tab = (typeof TABS)[number];
 
 const message = (err: unknown, fallback: string) => (err instanceof Error && err.message ? err.message : fallback);
@@ -236,6 +237,7 @@ export default function HospitalitySettings() {
                     <TabsTrigger value="points">Points</TabsTrigger>
                     <TabsTrigger value="billing">Billing</TabsTrigger>
                     <TabsTrigger value="payments">Payments</TabsTrigger>
+                    <TabsTrigger value="retention">Retention &amp; referrals</TabsTrigger>
                   </TabsList>
 
                   <TabsContent value="tiers">
@@ -283,6 +285,10 @@ export default function HospitalitySettings() {
 
                   <TabsContent value="payments">
                     <PaymentSettingsPanel />
+                  </TabsContent>
+
+                  <TabsContent value="retention">
+                    <RetentionSettingsPanel />
                   </TabsContent>
                 </Tabs>
               </>

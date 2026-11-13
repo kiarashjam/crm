@@ -89,6 +89,10 @@ public static class PersonDataInventory
         [typeof(MemberPortalAccount)] = "Deleted: when they were invited to the member portal and when they used it.",
         [typeof(MemberPortalSession)] = "Deleted: their member portal sessions end.",
         [typeof(MemberPortalLink)] = "Deleted: sign-in links not yet used stop working.",
+        [typeof(ClubMemberRisk)] = "Deleted: their at-risk score and the signs behind it.",
+        [typeof(ClubRenewal)] = "Deleted: their renewals and the notes staff wrote on them.",
+        [typeof(ClubMemberConcern)] = "Deleted: the complaints and concerns recorded about them.",
+        [typeof(ClubReferralBonus)] = "Kept with the books: points or a credit between two members' ids, naming nobody (the credit is on the ledger).",
     };
 
     /// <summary>Tables that hold nothing about the people a workspace keeps records of, and why.</summary>
@@ -145,5 +149,7 @@ public static class PersonDataInventory
         [typeof(AiUsage)] = "How many calls to the language model a workspace (or a staff member, outside any organization) made in a month, and their tokens.",
         [typeof(AssistantSettings)] = "Settings: the assistant's monthly limit and whether morning briefs go out.",
         [typeof(AssistantBrief)] = "When a staff member's morning brief went out, and how many things it listed. Its words are in the notification and the email it became, which an erasure handles.",
+        [typeof(ClubRetentionSettings)] = "Settings: how members' at-risk scores are worked out, the save actions, the referral bonus and the sponsor rule.",
+        [typeof(ClubScoringRun)] = "What a scoring run found and did, in counts.",
     };
 }

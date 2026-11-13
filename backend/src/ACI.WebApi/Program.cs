@@ -502,6 +502,8 @@ try
     // Each workspace's retention settings, once a day; nothing runs for one that set no period.
     builder.Services.AddHostedService<ACI.WebApi.Services.RetentionBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.AutomationRunnerBackgroundService>();
+    // Each club's members' at-risk scores, once a day after its billing run, and the save actions.
+    builder.Services.AddHostedService<ACI.WebApi.Services.ClubScoringBackgroundService>();
 
     // HTTP Context accessor for current user service
     builder.Services.AddHttpContextAccessor();

@@ -26,7 +26,8 @@ export type TriggerType =
   | 'application.approved'
   | 'reservation.created'
   | 'event.registered'
-  | 'payment.failed';
+  | 'payment.failed'
+  | 'member.at_risk';
 
 export type ActionType =
   | 'create_task'
@@ -111,6 +112,7 @@ export const TRIGGER_LABELS: Record<TriggerType, string> = {
   'reservation.created': 'When a booking is made',
   'event.registered': 'When someone registers for an event',
   'payment.failed': 'When an online payment fails',
+  'member.at_risk': 'When a member becomes at risk',
 };
 
 export const ACTION_LABELS: Record<ActionType, string> = {
@@ -226,6 +228,11 @@ export const DEMO_CATALOG: AutomationCatalog = {
     },
     { key: 'member.created', label: TRIGGER_LABELS['member.created'], group: 'Club', module: 'club', record: 'member', fields: MEMBER_FIELDS, dates: [], actions: CLUB, description: 'A member is added.' },
     { key: 'reservation.created', label: TRIGGER_LABELS['reservation.created'], group: 'Club', module: 'club', record: 'reservation', fields: MEMBER_FIELDS, dates: [{ key: 'start', label: "The booking's start" }], actions: CLUB, description: 'A space is booked.' },
+    {
+      key: 'member.at_risk', label: TRIGGER_LABELS['member.at_risk'], group: 'Club', module: 'club', record: 'member',
+      fields: [...MEMBER_FIELDS, { key: 'riskScore', label: 'At-risk score (0 to 100)', type: 'number' }], dates: [], actions: CLUB,
+      description: "The daily scoring finds a member's at-risk score has reached the club's threshold. It fires once each time they become at risk, and not again within the club's cooldown.",
+    },
   ],
   ops: {
     text: ['is', 'is_not', 'contains', 'not_contains', 'is_any_of', 'is_none_of', 'is_empty', 'is_not_empty'],

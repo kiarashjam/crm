@@ -127,6 +127,8 @@ internal sealed class ClubMemberConfiguration : IEntityTypeConfiguration<ClubMem
         // A contact or lead page asks which member is that person.
         builder.HasIndex(e => new { e.OrganizationId, e.ContactId }).HasFilter("[ContactId] IS NOT NULL");
         builder.HasIndex(e => new { e.OrganizationId, e.LeadId }).HasFilter("[LeadId] IS NOT NULL");
+        // The referrals report and a member's page ask whom a member brought in.
+        builder.HasIndex(e => new { e.OrganizationId, e.ReferredByMemberId }).HasFilter("[ReferredByMemberId] IS NOT NULL");
     }
 }
 

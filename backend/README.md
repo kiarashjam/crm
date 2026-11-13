@@ -664,6 +664,85 @@ currency apart) and on its calendar (days, Monday weeks or months, in its time z
 | `GET` | `/api/club-reports/export?from=&to=&grain=` | The same as a CSV, one figure per row; text that reads as a formula is kept as text (`records.export`) |
 | `GET` | `/api/club-reports/today` | The day at the club: check-ins, bookings, open tabs, applications waiting, what is past due, this week's events and the fortnight's anniversaries |
 
+### Keeping members: at-risk scores, renewals and referrals
+
+**The at-risk score.** Every active member is scored from 0 to 100 each morning (the
+`ClubScoringBackgroundService`, from 05:00 in the workspace's time zone, once a day: the day
+is claimed by a unique row in `ClubScoringRuns`, so two servers score it once), and on demand
+from their page. Each sign is measured against the member's **own** past, not other members:
+visits and spending (dues left out) in the last 90 days against the 270 before, what they owe
+(read as billing reads it: overdue less credit held) and the reminders it took, events and
+no-shows in the last six months against the six before, open complaints and concerns, and how
+long they have been a member. Each sign has a strength from 0 to 1 and a sentence that says
+why ("6 visits in the last 90 days, against about 12 in a usual 90 days before."); the club
+weighs them in its settings, and the score is the weighted share. A member at or above the
+at-risk threshold is *at risk*, at or above the watch threshold *watch*. A member already at
+risk stays so until their score falls five points under the threshold, so a score near it does
+not flap.
+
+**Save actions.** When a member crosses into at risk, the club's actions run once: a task for
+the member's owner (else the workspace owner), an email through the outbox (marketing, which
+needs their consent, or service, by the club's choice; the club's own text or a standard one in
+the member's language), and the automation trigger `member.at_risk` (with `riskScore` as a
+condition field). The crossing is claimed by one conditional update, so a recompute and the
+daily run at the same moment act once. A member's **first** score is only a baseline (turning
+scoring on emails nobody), and a member at risk again within the cooldown (60 days by default)
+gets no second round. All actions are off until the club turns them on.
+
+**Renewals board.** Each membership end (`RenewsAtUtc`) and each yearly subscription period
+in the window (monthly ones when asked), one card per renewal, in a column worked out from the
+records: *lapsed* (the member lapsed or left, or the end passed without a renewal), *renewed*
+(the end moved on by four weeks or more, or the next period billed and paid), what staff set
+by hand, *at risk* (the score), *contacted* (a message someone at the club wrote to them, not
+one the club sends on its own such as a statement or a payment reminder; a call, meeting or
+email logged on their contact; or marked contacted; in the 90 days before the end), else
+*upcoming*. Marking a membership renewed moves its end on a year (or to the date given) once,
+and never back from a date the member's form set; a member who has left (lapsed, cancelled or
+resigned) is not marked renewed there, but set active on their page first. The daily run notes
+the renewals of the next 90 days, so a renewal done elsewhere still shows as renewed; each
+subscription's renewal is its own record, even when two of a member's end the same day; a
+membership date put right by less than four weeks (or moved back) takes its card with it,
+leaving no card at the old date.
+
+**Referrals and sponsors.** An application names its referrer, proposer and seconder as
+members (not names typed in); the approval carries the referrer onto the new member. With the
+club's sponsor rule *optional* or *required*, a proposer and seconder must be members in good
+standing (active, a member long enough, nothing overdue, by the club's settings), and
+*required* refuses an approval without both. The referral bonus (loyalty points, or a credit
+on the referrer's house account, by setting) is given once when the referred applicant becomes
+a member: one row per member brought in, which the database will not take twice. A credit is
+money: an approval by someone without `money.manage` leaves it pending for whoever finishes
+the money, and it goes through the ledger with its own idempotency key (it appears in the
+accounting export as a correction). While one request gives a bonus it holds the row (two
+minutes at most, taken with one conditional update), so a second press at the same moment is
+answered 409 and a request that stopped part way is finished by the next one.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/retention/settings` | The club's weights, thresholds, save actions, cooldown, referral bonus and sponsor rule (the defaults until saved), with `version` |
+| `PUT` | `/api/retention/settings` | Saves them against `version` (or `If-Match`); an older copy is refused (409) (`settings.manage`) |
+| `GET` | `/api/retention/members?level=at_risk\|watch` | The members at risk (or to watch), highest score first, with their top signs |
+| `GET` | `/api/retention/runs` | The last scoring runs and what each did |
+| `POST` | `/api/retention/run` | Scores every active member now (`settings.manage`) |
+| `GET` | `/api/members/{id}/risk` | The member's score as last worked out, each sign with its sentence |
+| `POST` | `/api/members/{id}/risk/recompute` | Works it out again now; a crossing runs the save actions (`club.members`) |
+| `GET/POST` | `/api/members/{id}/concerns` | Complaints and concerns recorded about the member; recording takes `club.members` |
+| `POST` | `/api/members/{id}/concerns/{concernId}/resolve` | Marks one resolved, with how (`club.members`) |
+| `DELETE` | `/api/members/{id}/concerns/{concernId}` | Removes one (`club.members` and `records.delete`) |
+| `GET` | `/api/members/{id}/referrals` | Who referred, proposed and seconded them, whom they brought in, the bonuses, and their standing as a sponsor |
+| `PUT` | `/api/members/{id}/referrer` | Names (or, with null, takes off) the member who referred them (`club.members`) |
+| `POST` | `/api/members/{id}/referral-bonus` | Gives their referrer the club's bonus by hand, once; a credit also takes `money.manage` (`club.members`) |
+| `GET` | `/api/renewals?days=&pastDays=&owner=me\|{userId}&monthly=true` | The board: columns with counts, value a year per currency, and cards |
+| `POST` | `/api/renewals/stage` | Sets where a renewal stands (contacted, at_risk, renewed, lapsed, or auto), against the card's `version` (`club.members`) |
+| `GET` | `/api/referrals/report?from=&to=` | Members who brought members in: how many, and what those members were charged (dues and the rest, per currency), proposals, secondings and bonuses |
+| `GET` | `/api/referrals/report/export?from=&to=` | The same as a CSV, one row per member brought in (`records.export`) |
+| `GET` | `/api/referrals/standing?memberIds=` | Whether each member may propose or second by the club's rule, and if not why |
+
+A person's export includes their score, renewals, concerns and referral bonuses; their
+erasure deletes the score, renewals and concerns and keeps the bonuses with the books. A
+merged member's concerns, renewals and referrals move to the member kept; a deleted member
+leaves none behind, and nobody named as referred or sponsored by them.
+
 ### Languages and Swiss formats
 
 The app is written in English, German (Swiss spelling, "ss" for the sharp s) and French (as

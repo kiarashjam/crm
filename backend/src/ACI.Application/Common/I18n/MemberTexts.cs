@@ -82,6 +82,20 @@ public static partial class MemberTexts
             "Wir freuen uns, Sie bei uns begrüssen zu dürfen. Bei Fragen antworten Sie einfach auf diese E-Mail.",
             "Nous nous réjouissons de vous accueillir. Pour toute question, répondez simplement à cet e-mail."),
 
+        // ── the retention rules' email, to a member who has just become at risk ──
+        ["retention.subject"] = new(
+            "We would love to see you at {club} again",
+            "Wir würden uns freuen, Sie wieder bei {club} zu sehen",
+            "Nous serions ravis de vous revoir chez {club}"),
+        ["retention.body"] = new(
+            "We have not seen you at {club} for a while, and we wanted to ask how you are. Is there anything we could do better, or something you would like us to offer? Simply reply to this email: we read every answer.",
+            "Wir haben Sie schon eine Weile nicht mehr bei {club} gesehen und möchten gerne wissen, wie es Ihnen geht. Gibt es etwas, das wir besser machen könnten, oder etwas, das Sie sich von uns wünschen? Antworten Sie einfach auf diese E-Mail: Wir lesen jede Antwort.",
+            $"Nous ne vous avons pas vu chez {{club}} depuis un moment et souhaitions prendre de vos nouvelles. Y a-t-il quelque chose que nous pourrions mieux faire, ou que vous aimeriez nous voir proposer{Nb}? Répondez simplement à cet e-mail{Nb}: nous lisons chaque réponse."),
+        ["retention.closing"] = new(
+            "We look forward to seeing you soon.",
+            "Wir freuen uns darauf, Sie bald wiederzusehen.",
+            "Au plaisir de vous revoir bientôt."),
+
         // ── statements by email ────────────────────────────────────────────────
         ["statement.subject"] = new("Your statement for {period}", "Ihr Kontoauszug für {period}", "Votre relevé de compte pour {period}"),
         ["statement.attached"] = new(

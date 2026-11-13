@@ -128,6 +128,7 @@ public class EndpointPermissionTests
         { "CampaignsController", "Delete" }, { "EventsController", "Delete" },
         { "CommunicationsController", "Delete" }, { "ApplicationsController", "Delete" }, { "ReservationsController", "Delete" },
         { "HouseholdsController", "Delete" }, { "SubscriptionsController", "Delete" },
+        { "MemberRetentionController", "DeleteConcern" },
     };
 
     [Theory]
@@ -169,6 +170,15 @@ public class EndpointPermissionTests
         { "TabsController", "Close", MemberPermissions.FrontDesk },
         { "LeadsController", "Create", MemberPermissions.EditRecords },
         { "DealsController", "Update", MemberPermissions.EditRecords },
+        // The rules that score members and set off emails to them are the club's settings.
+        { "RetentionController", "SaveSettings", MemberPermissions.ManageSettings },
+        { "RetentionController", "Run", MemberPermissions.ManageSettings },
+        { "MemberRetentionController", "Recompute", MemberPermissions.ClubMembers },
+        { "MemberRetentionController", "AddConcern", MemberPermissions.ClubMembers },
+        { "MemberRetentionController", "SetReferrer", MemberPermissions.ClubMembers },
+        // A credit bonus also takes money.manage, which the service checks (Permission.Required).
+        { "MemberRetentionController", "AwardBonus", MemberPermissions.ClubMembers },
+        { "RenewalsController", "SetStage", MemberPermissions.ClubMembers },
     };
 
     [Theory]
@@ -183,6 +193,7 @@ public class EndpointPermissionTests
     [Theory]
     [InlineData("ContactsController")]
     [InlineData("CompaniesController")]
+    [InlineData("ReferralsController")]
     public void ExportingAListTakesTheExportPermission(string controller)
     {
         var export = typeof(Program).Assembly.GetTypes().Single(t => t.Name == controller).GetMethod("Export")!;

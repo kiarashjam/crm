@@ -74,6 +74,12 @@ public class ClubMember : Common.BaseEntity
     /// for someone new), from the language they applied in, or from the welcome handoff's.
     /// </summary>
     public string? PreferredLanguage { get; set; }
+
+    /// <summary>
+    /// The member who introduced them: from their application when it named one, or set by
+    /// staff. What the referrals report counts, and who a referral bonus went to.
+    /// </summary>
+    public Guid? ReferredByMemberId { get; set; }
 }
 
 public class ClubVisit : Common.BaseEntity

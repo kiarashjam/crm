@@ -241,6 +241,11 @@ public static class OutboundSources
     /// <see cref="OutboundMessage.SourceId"/> is the brief (AssistantBrief).
     /// </summary>
     public const string Brief = "brief";
+    /// <summary>
+    /// The email the club's retention rules send a member who has just become at risk;
+    /// <see cref="OutboundMessage.SourceId"/> is the member.
+    /// </summary>
+    public const string Retention = "retention";
 }
 
 /// <summary>

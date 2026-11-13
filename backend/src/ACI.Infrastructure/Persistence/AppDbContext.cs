@@ -152,6 +152,15 @@ public partial class AppDbContext : DbContext
     public DbSet<AiUsage> AiUsage => Set<AiUsage>();
     public DbSet<AssistantSettings> AssistantSettings => Set<AssistantSettings>();
     public DbSet<AssistantBrief> AssistantBriefs => Set<AssistantBrief>();
+    // Keeping members and growing through them: the rules, each member's at-risk score, the
+    // renewals board's records, referral bonuses, concerns recorded about members, and the
+    // daily scoring runs.
+    public DbSet<ClubRetentionSettings> ClubRetentionSettings => Set<ClubRetentionSettings>();
+    public DbSet<ClubMemberRisk> ClubMemberRisks => Set<ClubMemberRisk>();
+    public DbSet<ClubRenewal> ClubRenewals => Set<ClubRenewal>();
+    public DbSet<ClubReferralBonus> ClubReferralBonuses => Set<ClubReferralBonus>();
+    public DbSet<ClubMemberConcern> ClubMemberConcerns => Set<ClubMemberConcern>();
+    public DbSet<ClubScoringRun> ClubScoringRuns => Set<ClubScoringRun>();
 
     /// <summary>
     /// Whether saving writes audit lines. Off only while an organization is copied: its
