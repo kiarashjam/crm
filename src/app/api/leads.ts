@@ -1,4 +1,5 @@
 import type { Lead, LeadKind, PagedResult, PaginationParams } from './types';
+import { appendFlexFilters, type FlexFilters } from './flexFilters';
 import type { ContactRelationship } from './relationships';
 import { mockLeads } from './mockData';
 import { servesDemoData, authFetchJson, authFetch, type RequestOptions } from './apiClient';
@@ -135,8 +136,11 @@ export interface LeadListParams extends PaginationParams {
   converted?: 'all' | 'active' | 'converted';
   /** People or establishments alone; left out (or 'all'), both. */
   kind?: 'all' | 'person' | 'establishment';
-  sortBy?: 'name' | 'email' | 'status' | 'createdAt';
+  /** A field of the lead's, or a custom field's key after "cf:". */
+  sortBy?: 'name' | 'email' | 'status' | 'createdAt' | `cf:${string}`;
   sortDir?: 'asc' | 'desc';
+  /** Conditions on the leads' tags and custom fields (the server applies them; demo data has none). */
+  flex?: FlexFilters;
 }
 
 export interface LeadStats {
@@ -219,6 +223,7 @@ export async function getLeadsPaged(params: LeadListParams = {}, req?: RequestOp
     kind,
     sortBy = 'createdAt',
     sortDir = 'desc',
+    flex,
   } = params;
 
   if (!servesDemoData()) {
@@ -233,6 +238,7 @@ export async function getLeadsPaged(params: LeadListParams = {}, req?: RequestOp
     if (source && source !== 'all') queryParams.set('source', source);
     if (converted && converted !== 'all') queryParams.set('converted', converted);
     if (kind && kind !== 'all') queryParams.set('kind', kind);
+    appendFlexFilters(queryParams, flex);
 
     const result = await authFetchJson<ApiPagedResult<LeadRaw>>(`/api/leads?${queryParams}`, req);
     return {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Crown,
   Plus,
@@ -71,6 +71,10 @@ import { currentDateLocale } from '@/app/i18n/current';
 import { asLanguage, LANGUAGES, LANGUAGE_NAMES, type Language } from '@/app/i18n/languages';
 import { useRegional } from '@/app/hooks/useMoney';
 import { translate, useT, type I18nValue, type MessageKey } from '@/app/i18n';
+import { readFlexParams } from '@/app/api/flexFilters';
+import { FlexFilterBar } from '@/app/components/flex/FlexFilterBar';
+import { BulkTagButton } from '@/app/components/flex/BulkTagDialog';
+import { useFlexColumns } from '@/app/components/flex/useFlexColumns';
 
 /** A member's status ("Lapsed") in the reader's language. */
 const statusLabel = (t: I18nValue['t'], status: MemberStatus) => t(`club.status.${status}` as MessageKey);
@@ -123,6 +127,8 @@ interface FormState {
 }
 
 const day = 86_400_000;
+
+const memberIdOf = (m: Member) => m.id;
 
 /** When the membership starts, as a badge: a date, "to be decided", or nothing said. */
 function StartBadge({ member }: { member: Member }) {
@@ -198,9 +204,14 @@ export default function Members() {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // Conditions on the members' tags and custom fields live in the address, and the server applies them.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const flexKey = searchParams.toString();
+  const flex = useMemo(() => readFlexParams(new URLSearchParams(flexKey)), [flexKey]);
+
   const load = async () => {
     try {
-      const list = await getMembers();
+      const list = await getMembers(undefined, flex);
       setMembers(list);
     } catch {
       // Read when shown, in the language of the moment, so the effect below runs once.
@@ -212,13 +223,15 @@ export default function Members() {
 
   useEffect(() => {
     void load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- read again when the tag and field filters change
+  }, [flexKey]);
 
   const stats = useMemo(() => computeMemberStats(members), [members]);
 
   // How this person likes members shown: rows, cards or a table, saved for them.
   const navigate = useNavigate();
   const view = useViewPreference('members', { layouts: ['list', 'grid', 'table'] });
+  const flexColumns = useFlexColumns('member', members, memberIdOf, view);
   const fullName = (m: Member) => `${m.firstName} ${m.lastName}`.trim();
   const memberColumns: RecordColumn<Member>[] = [
     {
@@ -242,6 +255,7 @@ export default function Members() {
     { id: 'joined', label: t('members.colJoined'), byDefault: false, cell: (m) => formatDate(m.joinedAtUtc) },
     { id: 'starts', label: t('members.colStarts'), cell: (m) => (m.startUndetermined || m.startsOnUtc ? <StartBadge member={m} /> : '—') },
   ];
+  const allMemberColumns = [...memberColumns, ...flexColumns];
   /** Open, edit and remove: the same in every layout. */
   const memberActions = (m: Member) => (
     <>
@@ -488,7 +502,13 @@ export default function Members() {
                 ))}
               </SelectContent>
             </Select>
-            <ViewSwitcher view={view} columns={columnChoices(memberColumns)} className="md:ml-auto" />
+            <ViewSwitcher view={view} columns={columnChoices(allMemberColumns)} className="md:ml-auto" />
+          </div>
+
+          {/* The members' tags and the club's own fields: filters the server applies, and tags for those shown. */}
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <FlexFilterBar entity="member" params={searchParams} onChange={(next) => setSearchParams(next)} />
+            <BulkTagButton entityType="member" recordIds={filtered.map((m) => m.id)} what={`the ${filtered.length} shown`} />
           </div>
 
           {/* List */}
@@ -519,7 +539,7 @@ export default function Members() {
                 view={view}
                 getKey={(m) => m.id}
                 href={(m) => `/members/${m.id}`}
-                columns={memberColumns}
+                columns={allMemberColumns}
                 actions={memberActions}
               />
             ) : view.layout === 'grid' ? (

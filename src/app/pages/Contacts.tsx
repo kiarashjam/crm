@@ -12,7 +12,11 @@ import { PageTransition } from '@/app/components/PageTransition';
 import { ContentSkeleton } from '@/app/components/PageSkeleton';
 import DataPagination from '@/app/components/DataPagination';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { getContactById, createContact, updateContact, deleteContact, messages } from '@/app/api';
+import { getContactById, createContact, updateContact, deleteContact, messages, readFlexParams } from '@/app/api';
+import { FlexFilterBar } from '@/app/components/flex/FlexFilterBar';
+import { SavedViewsMenu } from '@/app/components/flex/SavedViewsMenu';
+import { BulkTagButton } from '@/app/components/flex/BulkTagDialog';
+import { useFlexColumns } from '@/app/components/flex/useFlexColumns';
 import { useAllCompanies, useContactStats, useContactsPage, useDealsPage, useTasksList } from '@/app/hooks/queries';
 import { LoadFailed } from '@/app/components/LoadFailed';
 import { showEditConflict } from '@/app/lib/editConflict';
@@ -80,6 +84,14 @@ function parseSort(value: string | null): [ContactSortField, 'asc' | 'desc'] {
     : ['name', 'asc'];
 }
 
+/** "spend:desc" from the address: an order by a custom field; null for none. */
+function parseFieldSort(value: string | null): { key: string; dir: 'asc' | 'desc' } | null {
+  const [key, dir] = (value ?? '').split(':');
+  return key ? { key, dir: dir === 'desc' ? 'desc' : 'asc' } : null;
+}
+
+const contactId = (c: Contact) => c.id;
+
 const NO_CONTACTS: Contact[] = [];
 const NO_COMPANIES: Company[] = [];
 const NO_DEALS: Deal[] = [];
@@ -102,6 +114,11 @@ export default function Contacts() {
   const activityParam = searchParams.get('activity');
   const filterActivity: 'all' | ContactActivity = activityParam === 'recent' || activityParam === 'quiet' ? activityParam : 'all';
   const [sortField, sortDirection] = parseSort(searchParams.get('sort'));
+  // Conditions on tags and custom fields, and an order by a custom field, are in the address too.
+  const paramsKey = searchParams.toString();
+  const flex = useMemo(() => readFlexParams(new URLSearchParams(paramsKey)), [paramsKey]);
+  const cfSortParam = searchParams.get('cfSort');
+  const fieldSort = useMemo(() => parseFieldSort(cfSortParam), [cfSortParam]);
   
   const [exporting, setExporting] = useState(false);
   const [searchQuery, setSearchQuery] = useState(searchFromUrl);
@@ -127,8 +144,15 @@ export default function Contacts() {
   const setStatus = (next: ContactStatus) => setListParam('status', next === 'active' ? null : next);
   const setFilterCompany = (next: string) => setListParam('company', next === 'all' ? null : next);
   const setFilterActivity = (next: 'all' | ContactActivity) => setListParam('activity', next === 'all' ? null : next);
-  const setSort = (field: ContactSortField, dir: 'asc' | 'desc') =>
-    setListParam('sort', field === 'name' && dir === 'asc' ? null : `${field}-${dir}`);
+  const setSort = (field: ContactSortField, dir: 'asc' | 'desc') => {
+    const params = new URLSearchParams(searchParams);
+    if (field === 'name' && dir === 'asc') params.delete('sort');
+    else params.set('sort', `${field}-${dir}`);
+    // A sort of the list's own takes over from one by a custom field.
+    params.delete('cfSort');
+    params.set('page', '1');
+    setSearchParams(params);
+  };
 
   // What the server is asked for, the list and the export alike.
   const listFilters = useMemo<ContactListFilters>(() => ({
@@ -137,9 +161,10 @@ export default function Contacts() {
     companyId: ['all', 'some', 'none'].includes(filterCompany) ? undefined : filterCompany,
     hasCompany: filterCompany === 'some' ? true : filterCompany === 'none' ? false : undefined,
     activity: filterActivity === 'all' ? undefined : filterActivity,
-    sortBy: sortField,
-    sortDir: sortDirection,
-  }), [debouncedSearch, status, filterCompany, filterActivity, sortField, sortDirection]);
+    sortBy: fieldSort ? `cf:${fieldSort.key}` as const : sortField,
+    sortDir: fieldSort ? fieldSort.dir : sortDirection,
+    flex,
+  }), [debouncedSearch, status, filterCompany, filterActivity, sortField, sortDirection, fieldSort, flex]);
 
   // Debounce search input
   useEffect(() => {
@@ -389,6 +414,7 @@ export default function Contacts() {
   // open the filters with that filter set, as their cards did.
   // How this person likes contacts shown: cards, a list or a table, saved for them.
   const view = useViewPreference('contacts', { layouts: ['grid', 'list', 'table'] });
+  const flexColumns = useFlexColumns('contact', contacts, contactId, view);
   const openContact = (c: Contact) => navigate(recordHref(`/contacts/${c.id}`, c.name, 'Contacts'));
   const shortDate = (iso?: string) => {
     if (!iso) return '—';
@@ -418,6 +444,8 @@ export default function Contacts() {
     { id: 'lastActivity', label: 'Last activity', cell: (c) => shortDate(c.lastActivityAtUtc) },
     { id: 'added', label: 'Added', byDefault: false, cell: (c) => shortDate(c.createdAtUtc) },
   ];
+
+  const allContactColumns = [...contactColumns, ...flexColumns];
 
   /** The same menu on a card, a row and a table line. */
   const contactMenu = (contact: Contact, triggerClassName = '') => (
@@ -692,8 +720,22 @@ export default function Contacts() {
               </Select>
               </div>
 
-              <ViewSwitcher view={view} columns={columnChoices(contactColumns)} />
+              <SavedViewsMenu list="contacts" params={searchParams} onChange={(next) => setSearchParams(next)} view={view} columns={columnChoices(allContactColumns)} />
+              <ViewSwitcher view={view} columns={columnChoices(allContactColumns)} />
             </div>
+          </div>
+
+          {/* Tags and custom fields: filters, an order by a field, and tags for the contacts shown. */}
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <FlexFilterBar
+              entity="contact"
+              params={searchParams}
+              onChange={(next) => setSearchParams(next)}
+              sortField={fieldSort?.key ?? null}
+              sortDir={fieldSort?.dir}
+              onSortField={(key, dir) => setListParam('cfSort', key ? `${key}:${dir}` : null)}
+            />
+            <BulkTagButton entityType="contact" recordIds={contacts.map((c) => c.id)} what={`the ${contacts.length} contacts shown`} />
           </div>
 
           {/* Expandable Filter Panel */}
@@ -921,7 +963,7 @@ export default function Contacts() {
               leading={(c) => <InitialsAvatar name={c.name} />}
               title={(c) => c.name}
               subtitle={(c) => [c.jobTitle, c.companyId ? companyName(c.companyId) : ''].filter(Boolean).join(' · ') || c.email}
-              columns={contactColumns}
+              columns={allContactColumns}
               actions={(c) => contactMenu(c)}
             />
           ) : view.layout === 'table' ? (
@@ -931,7 +973,7 @@ export default function Contacts() {
               view={view}
               getKey={(c) => c.id}
               onOpen={openContact}
-              columns={contactColumns}
+              columns={allContactColumns}
               actions={(c) => contactMenu(c)}
             />
           ) : (

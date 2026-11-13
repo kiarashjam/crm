@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import {
@@ -48,7 +49,8 @@ import { Spinner } from '@/app/components/motion/CadenceLoader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { KanbanSkeleton } from '@/app/components/PageSkeleton';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { getDealBoardColumn, getDealById, updateDeal, createDeal, deleteDeal, messages } from '@/app/api';
+import { getDealBoardColumn, getDealById, updateDeal, createDeal, deleteDeal, messages, readFlexParams } from '@/app/api';
+import { FlexFilterBar } from '@/app/components/flex/FlexFilterBar';
 import {
   dealBoardKey, queryKeys, recordActivitiesKey, tasksKey, useAllCompanies, useAllContacts, useAllDeals, useCacheWriter,
   useDealBoard, useOrgMembers, usePipelines, useRecordActivities, useTasksList, useWorkspaceScope,
@@ -283,6 +285,9 @@ export default function Pipeline() {
   const debouncedSearch = useDebounce(searchQuery, 300);
   const debouncedMin = useDebounce(filterValueMin, 300);
   const debouncedMax = useDebounce(filterValueMax, 300);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const flexKey = searchParams.toString();
+  const flex = useMemo(() => readFlexParams(new URLSearchParams(flexKey)), [flexKey]);
   const boardQuery = useMemo<DealBoardQuery>(() => ({
     pipelineId: selectedPipelineId ?? undefined,
     take: BOARD_PAGE,
@@ -296,7 +301,12 @@ export default function Pipeline() {
     closeFrom: filterCloseDateFrom || undefined,
     closeTo: filterCloseDateTo || undefined,
     staleOnly: filterStale || undefined,
-  }), [selectedPipelineId, boardSort, debouncedSearch, filterMyDeals, filterAssignee, debouncedMin, debouncedMax, filterCloseDateFrom, filterCloseDateTo, filterStale]);
+    // Conditions on the deals' tags and custom fields, kept in the address.
+    tag: flex.tags,
+    tagMatch: flex.tagMatch,
+    notTag: flex.notTags,
+    field: flex.fields,
+  }), [selectedPipelineId, boardSort, debouncedSearch, filterMyDeals, filterAssignee, debouncedMin, debouncedMax, filterCloseDateFrom, filterCloseDateTo, filterStale, flex]);
 
   // The board for the pipeline on screen and the filters set, a page of cards per stage.
   // Keyed by those filters, so an older filter's answer can never replace the board for
@@ -1098,6 +1108,10 @@ export default function Pipeline() {
                     <Clock className="w-4 h-4 inline mr-1.5" />
                     Stale
                   </button>
+                )}
+
+                {view.layout === 'board' && (
+                  <FlexFilterBar entity="deal" params={searchParams} onChange={(next) => setSearchParams(next, { replace: true })} />
                 )}
 
                 {view.layout === 'board' && (

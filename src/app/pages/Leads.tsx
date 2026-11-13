@@ -39,8 +39,15 @@ import {
   createActivity,
   setLeadReferral,
   messages,
+  readFlexParams,
+  hasFlexFilters,
   type ConvertLeadRequest,
 } from '@/app/api';
+import { FlexFilterBar } from '@/app/components/flex/FlexFilterBar';
+import { SavedViewsMenu } from '@/app/components/flex/SavedViewsMenu';
+import { BulkTagButton } from '@/app/components/flex/BulkTagDialog';
+import { useFlexColumns } from '@/app/components/flex/useFlexColumns';
+import { flexExportColumns, NO_FLEX_COLUMNS } from '@/app/lib/flexExport';
 import {
   useAllLeads, useLeadSources, useLeadStatuses, useLeadStats, useLeadsPage, useOrgMembers,
 } from '@/app/hooks/queries';
@@ -152,6 +159,14 @@ function saveLeadCreatedAtMap(createdAtByLeadId: Record<string, string>) {
 const NO_STATUSES: LeadStatus[] = [];
 const NO_SOURCES: LeadSource[] = [];
 const NO_MEMBERS: OrgMemberDto[] = [];
+
+/** "budget:desc" from the address: an order by a custom field; null for none. */
+function parseFieldSort(value: string | null): { key: string; dir: 'asc' | 'desc' } | null {
+  const [key, dir] = (value ?? '').split(':');
+  return key ? { key, dir: dir === 'desc' ? 'desc' : 'asc' } : null;
+}
+
+const leadIdOf = (l: Lead) => l.id;
 
 export default function Leads() {
   const money = useMoney();
@@ -272,6 +287,11 @@ export default function Leads() {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(() => {
     return new URLSearchParams(window.location.search).get('dir') === 'asc' ? 'asc' : 'desc';
   });
+  // Conditions on tags and custom fields, and an order by a custom field, live in the address.
+  const flexKey = searchParams.toString();
+  const flex = useMemo(() => readFlexParams(new URLSearchParams(flexKey)), [flexKey]);
+  const cfSortParam = searchParams.get('cfSort');
+  const fieldSort = useMemo(() => parseFieldSort(cfSortParam), [cfSortParam]);
   const [showFilters, setShowFilters] = useState(false);
   const [exporting, setExporting] = useState(false);
   // Sales-tracker filter axes (Excel-parity). Serialised into the URL under
@@ -625,9 +645,10 @@ export default function Leads() {
     source: filterSource !== 'all' ? filterSource : undefined,
     converted: filterConverted,
     kind: filterKind,
-    sortBy: sortField,
-    sortDir: sortDirection,
-  }), [currentPage, pageSize, debouncedSearch, filterStatuses, filterSource, filterConverted, filterKind, sortField, sortDirection]);
+    sortBy: fieldSort ? `cf:${fieldSort.key}` as const : sortField,
+    sortDir: fieldSort ? fieldSort.dir : sortDirection,
+    flex,
+  }), [currentPage, pageSize, debouncedSearch, filterStatuses, filterSource, filterConverted, filterKind, sortField, sortDirection, fieldSort, flex]);
   const pageQuery = useLeadsPage(pageParams, !useClientMode);
   const allLeadsQuery = useAllLeads(useClientMode);
   const listQuery = useClientMode ? allLeadsQuery : pageQuery;
@@ -815,6 +836,16 @@ export default function Leads() {
         );
       }
 
+      // The workspace's own fields and the leads' tags, after the lead's own columns. Without
+      // them the file is still written, and the person is told what it lacks.
+      let exportFlex = NO_FLEX_COLUMNS;
+      try {
+        exportFlex = await flexExportColumns('lead', allLeads.map((l) => l.id));
+      } catch {
+        toast.warning('The custom fields and tags could not be read: the file has the leads without them.');
+      }
+      headers.push(...exportFlex.headers);
+
       const rows = allLeads.map((lead) => [
         lead.id,
         lead.name,
@@ -848,6 +879,7 @@ export default function Leads() {
             lead.contactPersonPhone ?? '',
           ]
           : []),
+        ...exportFlex.cells(lead.id),
       ]);
 
       // The shared cell encoder: names and descriptions arrive from the public form
@@ -1439,6 +1471,7 @@ export default function Leads() {
   // their filter on and off, and say which is on.
   // How this person likes leads shown: the gallery, a list or a table, saved for them.
   const view = useViewPreference('leads', { layouts: ['grid', 'list', 'table'] });
+  const flexColumns = useFlexColumns('lead', filteredLeads, leadIdOf, view);
   const leadDate = (iso?: string) => {
     if (!iso) return '—';
     const d = new Date(iso);
@@ -1507,6 +1540,30 @@ export default function Leads() {
     { id: 'lastContacted', label: 'Last contacted', cell: (l) => leadDate(l.lastContactedAt) },
     { id: 'created', label: 'Added', byDefault: false, cell: (l) => leadDate(l.createdAtUtc) },
   ];
+  const allLeadColumns = [...leadColumns, ...flexColumns];
+
+  /**
+   * Open the list as a saved view has it: the page's own filters live in its state as well
+   * as its address, so they are set from the view's address before it is put in place.
+   */
+  const applyLeadView = (next: URLSearchParams) => {
+    const statuses = next.get('statuses');
+    setFilterStatuses(statuses ? statuses.split(',').map((x) => x.trim()).filter(Boolean) : []);
+    setFilterSource(next.get('source') ?? 'all');
+    const converted = next.get('converted');
+    setFilterConverted(converted === 'all' || converted === 'converted' ? converted : 'active');
+    setFilterAssignment(next.get('assignment') || 'all');
+    const kind = next.get('kind');
+    setFilterKind(kind === 'person' || kind === 'establishment' ? kind : 'all');
+    const sort = next.get('sort');
+    setSortField(sort === 'name' || sort === 'email' || sort === 'status' ? sort : 'createdAt');
+    setSortDirection(next.get('dir') === 'asc' ? 'asc' : 'desc');
+    setSalesFilters(Object.fromEntries((Object.keys(EMPTY_SALES_TRACKER_FILTERS) as (keyof SalesTrackerFilterState)[])
+      .map((key) => [key, next.get(`st.${key}`) ?? EMPTY_SALES_TRACKER_FILTERS[key]])) as unknown as SalesTrackerFilterState);
+    setSearchQuery(next.get('search') ?? '');
+    setDebouncedSearch(next.get('search') ?? '');
+    setSearchParams(next);
+  };
 
   const leadHeroStats: PageStat[] = [
     { label: 'Total leads', value: stats.total, icon: Users, tone: 'orange', hint: `${stats.active.toLocaleString(currentNumberLocale())} active`, progress: shareOf(stats.active) },
@@ -1801,8 +1858,32 @@ export default function Leads() {
               </Select>
               </div>
 
-              <ViewSwitcher view={view} columns={columnChoices(leadColumns)} />
+              <SavedViewsMenu list="leads" params={searchParams} onChange={applyLeadView} view={view} columns={columnChoices(allLeadColumns)} />
+              <ViewSwitcher view={view} columns={columnChoices(allLeadColumns)} />
             </div>
+          </div>
+
+          {/* Tags and custom fields: filters and an order by a field, run by the server over every lead. */}
+          <div className="mt-3 space-y-1">
+            <FlexFilterBar
+              entity="lead"
+              params={searchParams}
+              onChange={(next) => setSearchParams(next)}
+              sortField={fieldSort?.key ?? null}
+              sortDir={fieldSort?.dir}
+              onSortField={(key, dir) => {
+                const params = new URLSearchParams(searchParams);
+                if (key) params.set('cfSort', `${key}:${dir}`);
+                else params.delete('cfSort');
+                params.set('page', '1');
+                setSearchParams(params);
+              }}
+            />
+            {useClientMode && (hasFlexFilters(flex) || fieldSort) && (
+              <p className="text-xs text-amber-800" role="status">
+                Tag and field filters, and an order by a field, apply when no owner, tracker filter or more than one status is chosen.
+              </p>
+            )}
           </div>
 
           {/* Expandable Filter Panel */}
@@ -2148,6 +2229,7 @@ export default function Leads() {
               onClear={clearSelection}
               onBulkDelete={canDelete ? runBulkDelete : undefined}
               onBulkApply={runBulkApply}
+              extra={<BulkTagButton entityType="lead" recordIds={Array.from(selectedIds)} what={`the ${selectedIds.size} chosen`} />}
             />
           )}
           <ViewTransition layout={view.layout}>
@@ -2169,7 +2251,7 @@ export default function Leads() {
               subtitle={(l) => (leadKindOf(l) === 'establishment'
                 ? [establishmentSummary(l), l.contactPersonName].filter(Boolean).join(' · ')
                 : [cardCompany(l), l.email].filter(Boolean).join(' · '))}
-              columns={leadColumns.filter((c) => c.id !== 'email')}
+              columns={allLeadColumns.filter((c) => c.id !== 'email')}
             />
           ) : view.layout === 'table' ? (
             <RecordTable
@@ -2179,7 +2261,7 @@ export default function Leads() {
               getKey={(l) => l.id}
               onOpen={openDetail}
               selected={(l) => selectedIds.has(l.id)}
-              columns={leadColumns}
+              columns={allLeadColumns}
             />
           ) : (
           <div className={`grid md:grid-cols-2 xl:grid-cols-3 ${gridDensity(view, 'gap-4', 'gap-3 2xl:grid-cols-4')}`}>
