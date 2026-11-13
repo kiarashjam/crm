@@ -388,7 +388,7 @@ export function ProposalCard({ proposal, state, readOnly, busy, reduce, onConfir
             <X className="h-4 w-4" aria-hidden="true" />
             Dismiss
           </button>
-          {readOnly && <span className="text-xs text-slate-500">This workspace is read-only for you, so nothing can be confirmed.</span>}
+          {readOnly && <span className="text-xs text-slate-500">Your role here does not let you make this change, so it cannot be confirmed.</span>}
         </div>
       )}
     </motion.div>

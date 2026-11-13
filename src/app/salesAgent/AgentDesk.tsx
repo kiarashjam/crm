@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { ArrowUp, ChevronUp, Maximize2, Minimize2, RotateCcw, ShieldCheck, X } from 'lucide-react';
 import { createActivity, type CreateActivityParams } from '@/app/api/activities';
 import { ApiError } from '@/app/api/apiClient';
-import { askAssistant, type AssistantProposal, type AssistantReply as ModelReply, type AssistantTurn } from '@/app/api/assistant';
+import { askAssistant, type AssistantProposal, type AssistantReply as ModelReply, type AssistantTurn, type ProposalKind } from '@/app/api/assistant';
 import { createCharge, type ChargeInput } from '@/app/api/charges';
 import { createReservation, type ReservationInput } from '@/app/api/reservations';
 import { createContact } from '@/app/api/contacts';
@@ -201,8 +201,9 @@ function lookupName(tool: string): string {
  * written only from a button (a proposal's Confirm), and only once. A draft only opens the
  * sales writer, and a proposed email only the composer.
  */
-export function AgentDesk({ world, readOnly, accountKey, initialOpen = false, modelReady = false, clubOnly = false }: {
+export function AgentDesk({ world, readOnly, accountKey, initialOpen = false, modelReady = false, clubOnly = false, mayConfirm }: {
   world: AgentWorld;
+  /** The built-in rules' changes (tasks, notes, emails, records) are not for this person here. */
   readOnly: boolean;
   accountKey: string;
   /** Open or closed when this browser has no saved choice yet. Closed: the chat opens when asked for. */
@@ -214,6 +215,12 @@ export function AgentDesk({ world, readOnly, accountKey, initialOpen = false, mo
    * have nothing to answer from, so a question the model cannot take is not answered by them.
    */
   clubOnly?: boolean;
+  /**
+   * Whether this person may confirm a proposal of this kind: each is sent to its own endpoint,
+   * which asks for its own permission (a booking the front desk's, a charge the money one).
+   * Without it, a proposal is confirmable wherever the built-in rules' changes are.
+   */
+  mayConfirm?: (kind: ProposalKind) => boolean;
 }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -561,11 +568,16 @@ export function AgentDesk({ world, readOnly, accountKey, initialOpen = false, mo
     setProposalStates((current) => ({ ...current, [proposal.id]: state }));
   }
 
+  /** Whether Confirm may send this proposal: what its own endpoint asks for, not the rules' records.edit. */
+  function confirmable(proposal: AssistantProposal): boolean {
+    return mayConfirm ? mayConfirm(proposal.kind) : !readOnly;
+  }
+
   async function confirm(proposal: AssistantProposal) {
     setNotice(null);
     if (savedActions.current.has(proposal.id) || inflight.current.has(proposal.id)) return;
-    if (readOnly) {
-      setNotice('This workspace is read-only for you, so nothing was saved.');
+    if (!confirmable(proposal)) {
+      setNotice('Your role here does not let you make that change, so nothing was saved.');
       return;
     }
     if (!sameWorkspace()) {
@@ -852,7 +864,7 @@ export function AgentDesk({ world, readOnly, accountKey, initialOpen = false, mo
                           key={proposal.id}
                           proposal={proposal}
                           state={proposalStates[proposal.id] ?? 'open'}
-                          readOnly={readOnly}
+                          readOnly={!confirmable(proposal)}
                           busy={busy}
                           reduce={reduce}
                           onConfirm={(chosen) => void confirm(chosen)}

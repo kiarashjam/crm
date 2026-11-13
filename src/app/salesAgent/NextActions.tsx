@@ -23,7 +23,8 @@ import type { WorkQueue } from '@/app/api/workQueue';
 import { useWorkScope, type WorkScope } from '@/app/lib/workScope';
 import { WorkScopeToggle } from '@/app/components/WorkScopeToggle';
 import type { WriterBrief } from './writerBrief';
-import { orgCan, PERMISSION } from '@/app/api/organizations';
+import { orgCan, PERMISSION, type Permission } from '@/app/api/organizations';
+import type { ProposalKind } from '@/app/api/assistant';
 import { useModelReady } from '@/app/hooks/queries/assistant';
 
 /**
@@ -104,8 +105,30 @@ function askWorld(lists: AgentLists, items: WorkSuggestion[], scope: Exclude<Pag
   };
 }
 
+/**
+ * The permission the endpoint a proposal is confirmed through asks for: the bookings endpoint
+ * the front desk's, the charges endpoint the money one, the rest records.edit. The server
+ * offers each proposal only to someone who holds it, and its card follows the same rule, so
+ * the front desk can confirm a booking without being allowed to edit sales records.
+ */
+const PROPOSAL_PERMISSION: Readonly<Record<ProposalKind, Permission>> = {
+  task: PERMISSION.EditRecords,
+  activity: PERMISSION.EditRecords,
+  'deal-stage': PERMISSION.EditRecords,
+  'email-draft': PERMISSION.EditRecords,
+  booking: PERMISSION.FrontDesk,
+  charge: PERMISSION.ManageMoney,
+};
+
+/** Whether the person may confirm a proposal of this kind in the current workspace. */
+function useMayConfirm(): (kind: ProposalKind) => boolean {
+  const org = useOrgOptional();
+  return (kind) => !(org?.isReadOnly ?? false) && (!org || orgCan(org.currentOrg, PROPOSAL_PERMISSION[kind]));
+}
+
 function AskBox({ lists, gaps, items, scope }: { lists: AgentLists; gaps: string[]; items: WorkSuggestion[]; scope: Exclude<PageScope, { mode: 'hidden' }> }) {
   const modelReady = useContext(ModelReady);
+  const mayConfirm = useMayConfirm();
   const org = useOrgOptional();
   const userId = getCurrentUser()?.id ?? 'session';
   const accountKey = `${userId}:${org?.currentOrgId ?? 'no-org'}`;
@@ -119,6 +142,7 @@ function AskBox({ lists, gaps, items, scope }: { lists: AgentLists; gaps: string
       readOnly={(org?.isReadOnly ?? false) || (org ? !orgCan(org.currentOrg, PERMISSION.EditRecords) : false)}
       accountKey={accountKey}
       modelReady={modelReady}
+      mayConfirm={mayConfirm}
     />
   );
 }
@@ -132,6 +156,7 @@ const NO_PATTERNS: LearnedPatterns = { lines: [], wonDeals: 0, lostDeals: 0, los
  */
 function ClubAsk() {
   const org = useOrgOptional();
+  const mayConfirm = useMayConfirm();
   const userId = getCurrentUser()?.id ?? 'session';
   const accountKey = `${userId}:${org?.currentOrgId ?? 'no-org'}`;
   const world: AgentWorld = { items: [], leads: [], deals: [], page: { mode: 'focus' }, patterns: NO_PATTERNS };
@@ -143,6 +168,7 @@ function ClubAsk() {
       accountKey={accountKey}
       modelReady
       clubOnly
+      mayConfirm={mayConfirm}
     />
   );
 }

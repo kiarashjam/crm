@@ -27,6 +27,7 @@ vi.mock('@/app/lib/auth', () => ({
 import { askAssistant, type AssistantReply } from '@/app/api/assistant';
 import { ApiError } from '@/app/api/apiClient';
 import { createCharge } from '@/app/api/charges';
+import { createReservation } from '@/app/api/reservations';
 import { createTask } from '@/app/api/tasks';
 import { AgentDesk, resetAgentDeskForTests } from './AgentDesk';
 
@@ -242,6 +243,29 @@ describe('with a language model set up', () => {
     fireEvent.click(within(await screen.findByRole('group', { name: 'Proposed: Charge a member' })).getByRole('button', { name: 'Confirm' }));
     expect(await screen.findByText(/Charged to Ada Lovelace/)).toBeTruthy();
     expect(createCharge).toHaveBeenCalledWith(charge.payload, { idempotencyKey: 'p2' });
+  });
+
+  it('each proposal is confirmable as its own endpoint allows, not as the built-in rules are', async () => {
+    const booking = {
+      id: 'p3', kind: 'booking' as const, title: 'Book a resource', details: ['Book Court 1 for Anna Keller'],
+      payload: { resourceId: 'r1', memberId: 'm1', partySize: 2, startAtUtc: '2030-01-15T09:00:00Z', endAtUtc: '2030-01-15T11:00:00Z', status: 'Confirmed' },
+    };
+    ask.mockResolvedValue(reply({ reply: 'Two changes are ready.', proposals: [booking, task] }));
+    vi.mocked(createReservation).mockResolvedValue({ resourceName: 'Court 1', memberName: 'Anna Keller' } as never);
+    // The front desk: no sales records to edit, but bookings to take.
+    open({ modelReady: true, readOnly: true, mayConfirm: (kind) => kind === 'booking' });
+    fireEvent.change(box(), { target: { value: 'Book court 1 for Anna, and remind me to call Ada' } });
+    fireEvent.keyDown(box(), { key: 'Enter' });
+
+    const taskCard = await screen.findByRole('group', { name: 'Proposed: Create a task' });
+    expect(within(taskCard).getByRole('button', { name: 'Confirm' })).toHaveProperty('disabled', true);
+    expect(within(taskCard).getByText(/does not let you make this change/)).toBeTruthy();
+
+    const bookingCard = screen.getByRole('group', { name: 'Proposed: Book a resource' });
+    fireEvent.click(within(bookingCard).getByRole('button', { name: 'Confirm' }));
+    expect(await screen.findByText('Booked: Court 1 for Anna Keller.')).toBeTruthy();
+    expect(createReservation).toHaveBeenCalledWith(booking.payload);
+    expect(createTask).not.toHaveBeenCalled();
   });
 
   it('in a read-only workspace a proposal cannot be confirmed', async () => {
