@@ -306,7 +306,8 @@ public sealed class ClubReferralService : IClubReferrals
         var bonusDtos = await BonusDtosAsync(organizationId, bonuses, ct);
         var named = new[] { member.ReferredByMemberId, application?.ProposerMemberId, application?.SeconderMemberId }.OfType<Guid>().Distinct().ToList();
         var people = await People(organizationId).Where(p => named.Contains(p.Id)).ToDictionaryAsync(p => p.Id, ct);
-        ReferralPersonDto? Person(Guid? id) => id is Guid known && people.TryGetValue(known, out var p) ? p.Dto with { Name = p.ErasedAtUtc != null ? p.Name : p.Name } : null;
+        // An erased member shows under the pseudonym erasure gave them, as everywhere else.
+        ReferralPersonDto? Person(Guid? id) => id is Guid known && people.TryGetValue(known, out var p) ? p.Dto : null;
         var forThem = bonusDtos.FirstOrDefault(b => b.ReferredMemberId == memberId);
         return new MemberReferralsDto
         {
