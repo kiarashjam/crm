@@ -37,6 +37,7 @@ import { LoadFailed } from '@/app/components/LoadFailed';
 import { Button } from '@/app/components/ui/button';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import { useClubReport } from '@/app/hooks/queries/club';
+import { ReferralsReportCard } from '@/app/components/retention/ReferralsReportCard';
 import { useRegional } from '@/app/hooks/useMoney';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
 import { orgCan, PERMISSION } from '@/app/api/organizations';
@@ -185,6 +186,8 @@ export default function HospitalityReports() {
               <ReportBody report={report} money={money} />
             </>
           ) : null}
+
+          {range && <ReferralsReportCard range={{ fromUtc: range.fromUtc, toUtc: range.toUtc }} canExport={canExport} />}
         </main>
       </PageTransition>
     </div>

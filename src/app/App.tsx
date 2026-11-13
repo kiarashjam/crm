@@ -77,6 +77,7 @@ const GiftCards = lazy(() => import('@/app/pages/GiftCards'));
 const Communications = lazy(() => import('@/app/pages/Communications'));
 const MemberPortal = lazy(() => import('@/app/pages/MemberPortal'));
 const Households = lazy(() => import('@/app/pages/Households'));
+const Renewals = lazy(() => import('@/app/pages/Renewals'));
 const Subscriptions = lazy(() => import('@/app/pages/Subscriptions'));
 const Campaigns = lazy(() => import('@/app/pages/Campaigns'));
 const Donations = lazy(() => import('@/app/pages/Donations'));
@@ -265,6 +266,7 @@ export default function App() {
                       <Route path="/communications" element={<Communications />} />
                       <Route path="/portal" element={<MemberPortal />} />
                       <Route path="/households" element={<Households />} />
+                      <Route path="/renewals" element={<Renewals />} />
                       <Route path="/subscriptions" element={<Subscriptions />} />
                       <Route path="/campaigns" element={<Campaigns />} />
                       <Route path="/donations" element={<Donations />} />
