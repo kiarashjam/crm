@@ -49,10 +49,13 @@ internal sealed class CustomFieldEntryConfiguration : IEntityTypeConfiguration<C
         builder.Property(e => e.Currency).HasMaxLength(3);
         builder.HasOne<CustomFieldDefinition>().WithMany().HasForeignKey(e => e.FieldId).OnDelete(DeleteBehavior.Cascade);
 
-        // A record's values, and one row per field (per option for a multi select): a
-        // second save racing the first cannot leave the field with two values. Unfiltered,
-        // so SQL Server allows one NULL TextKey per record and field, which is every field
-        // but text, select and multi select (EF would otherwise leave NULLs out of it).
+        // A record's values, and one row per field (per option for a multi select). Unfiltered,
+        // so SQL Server allows one NULL TextKey per record and field, which is every field but
+        // text, a web address, select and multi select (EF would otherwise leave NULLs out of
+        // it): two saves racing to fill a number, money, date, checkbox or link cannot leave it
+        // two rows, and a multi select cannot hold an option twice. Two first saves of different
+        // texts at the same moment can leave a text field two rows; the next save of the field
+        // keeps one (CustomFieldRepository.ApplyEntriesAsync).
         builder.HasIndex(e => new { e.RecordId, e.FieldId, e.TextKey }).IsUnique().HasFilter(null);
         // Filtering and sorting by a field: the workspace (which the query filter adds),
         // the field, the value, and the record it belongs to, answered from the index.

@@ -361,8 +361,11 @@ workspace query filter scopes it like every other table. The indexes:
   range of one field in one workspace. Its cost depends on how many records match, not on how
   many records or fields the workspace has, and no JSON is parsed (the old design kept one JSON
   document per record, which any filter would have had to read and parse for every record).
-- A unique `(RecordId, FieldId, TextKey)`: one row per value, so two saves racing each other
-  cannot leave a field with two values (the loser gets 409); also how a record's values are read.
+- A unique `(RecordId, FieldId, TextKey)`: one row per value, and how a record's values are
+  read. Two saves racing to fill a number, money, date, checkbox or link field cannot leave it
+  two values (the loser gets 409), and a multi select cannot hold an option twice. Two first
+  saves of different texts at the same moment can leave a text, web address or select field
+  two rows (their text keys differ); the next save of that field keeps one.
 - Tags: `RecordTags` has a unique `(TagId, RecordId)` ("the records with this tag", straight
   from the index) and `(RecordId, TagId)` (a record's tags, removal with the record).
 
