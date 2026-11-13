@@ -4,6 +4,7 @@ import { AlertTriangle, Check, KeyRound, MailCheck, Send, UserRoundCheck } from 
 import { cn } from '@/app/components/ui/utils';
 import { useMotionPreference } from '@/app/hooks/useMotionPreference';
 import { getDealOnboarding, onboardingSettled, type Onboarding } from '@/app/api/onboarding';
+import { currentDateLocale } from '@/app/i18n/current';
 
 /** The four things that happen once someone is handed over, in order. */
 const STAGES = [
@@ -56,7 +57,7 @@ export function stagesOf(o: Onboarding): { state: StageState; at?: string; detai
       return {
         state: 'active',
         detail: retrying
-          ? `The portal did not take it yet${o.delivery?.lastStatusCode ? ` (it answered ${o.delivery.lastStatusCode})` : ''}; trying again${o.delivery?.nextAttemptAtUtc ? ` at ${new Date(o.delivery.nextAttemptAtUtc).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}.`
+          ? `The portal did not take it yet${o.delivery?.lastStatusCode ? ` (it answered ${o.delivery.lastStatusCode})` : ''}; trying again${o.delivery?.nextAttemptAtUtc ? ` at ${new Date(o.delivery.nextAttemptAtUtc).toLocaleTimeString(currentDateLocale(), { hour: '2-digit', minute: '2-digit' })}` : ''}.`
           : undefined,
       };
     }
@@ -69,8 +70,8 @@ function time(iso?: string): string {
   const d = new Date(iso);
   const today = new Date().toDateString() === d.toDateString();
   return today
-    ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) + ', ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    ? d.toLocaleTimeString(currentDateLocale(), { hour: '2-digit', minute: '2-digit' })
+    : d.toLocaleDateString(currentDateLocale(), { day: 'numeric', month: 'short' }) + ', ' + d.toLocaleTimeString(currentDateLocale(), { hour: '2-digit', minute: '2-digit' });
 }
 
 /** The handoff's progress: each stage lights up as the portal reports it. */

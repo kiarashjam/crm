@@ -11,8 +11,8 @@
 // because a signer deserves to know they are giving a simple electronic signature
 // and not a qualified one.
 
-import { useCallback, useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import {
   CheckCircle2, Loader2, PenLine, ShieldCheck, TriangleAlert, XCircle, FileText, Info,
@@ -29,6 +29,24 @@ import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { cn } from '@/app/components/ui/utils';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { LanguageSwitcher } from '@/app/i18n/LanguageSwitcher';
+import { useFormat, useT, type MessageKey } from '@/app/i18n';
+import { DepositBeforeSigning, DepositStep } from '@/app/pages/contracts/SignDeposit';
+
+/** How often, and how many times, the page asks again after Stripe sends the signer back. */
+const RETURN_POLL_MS = 3000;
+const RETURN_POLLS = 10;
+
+/** Bold words inside a translated sentence. */
+const bold = (words: ReactNode) => <strong className="font-semibold text-slate-700">{words}</strong>;
+
+/** What to say when the signature gate stops a signature, in the page's language. */
+const GATE_PROBLEMS: Record<NonNullable<ReturnType<typeof checkSignature>['reason']>, MessageKey> = {
+  closed: 'sign.problemClosed',
+  notReady: 'sign.problemNotReady',
+  name: 'sign.problemName',
+  consent: 'sign.problemConsent',
+};
 
 /**
  * What happens after they sign.
@@ -40,18 +58,19 @@ import { usePageLoading } from '@/app/components/LoadingOverlay';
  * rather than hunting for the catch.
  */
 function WhatHappensNext({ organizationName }: { organizationName: string }) {
+  const { t, tx } = useT();
   const steps = [
-    'You sign below.',
-    `${organizationName} adds their signature.`,
-    'You both get the signed contract by email.',
+    t('sign.nextStep1'),
+    t('sign.nextStep2', { organization: organizationName }),
+    t('sign.nextStep3'),
   ];
   return (
     <section
       className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 sm:p-5"
-      aria-label="What happens next"
+      aria-label={t('sign.nextTitle')}
     >
       <h2 className="text-[11px] font-semibold tracking-[0.12em] text-slate-500 uppercase">
-        What happens next
+        {t('sign.nextTitle')}
       </h2>
       <ol className="mt-3 grid gap-2.5 sm:grid-cols-3 sm:gap-3">
         {steps.map((text, i) => (
@@ -64,8 +83,7 @@ function WhatHappensNext({ organizationName }: { organizationName: string }) {
         ))}
       </ol>
       <p className="mt-3.5 border-t border-slate-200 pt-3 text-[12.5px] text-slate-500">
-        <strong className="font-semibold text-slate-700">Nothing is agreed until you sign.</strong>{' '}
-        If anything looks wrong, reply to the email you received instead of signing.
+        {tx('sign.nextNotAgreed', { b: bold })}
       </p>
     </section>
   );
@@ -73,6 +91,7 @@ function WhatHappensNext({ organizationName }: { organizationName: string }) {
 
 /** Renders the contract body. */
 function ContractBody({ body }: { body: string }) {
+  const { t } = useT();
   return (
     // `whitespace-pre-wrap` rather than a Markdown renderer: the exact characters
     // that were signed are what must appear, and a renderer is a layer that can
@@ -86,7 +105,7 @@ function ContractBody({ body }: { body: string }) {
       // Scrollable region needs to be reachable and announced.
       tabIndex={0}
       role="region"
-      aria-label="Contract text"
+      aria-label={t('sign.contractText')}
     >
       {body}
     </div>
@@ -94,32 +113,35 @@ function ContractBody({ body }: { body: string }) {
 }
 
 function SignedBlock({ contract }: { contract: PublicContract }) {
-  const fmt = (at?: string) => (at ? new Date(at).toLocaleString() : '—');
+  const { t } = useT();
+  const format = useFormat();
+  const fmt = (at?: string) => (at ? format.dateTime(at) : '—');
+  const organization = contract.organizationName;
   return (
     <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
       <div className="flex items-center gap-2.5">
         <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" aria-hidden />
         <h2 className="text-sm font-bold text-emerald-900">
-          {contract.counterSignatureName ? 'Signed by both parties' : 'Your signature is recorded'}
+          {contract.counterSignatureName ? t('sign.signedBoth') : t('sign.signedYours')}
         </h2>
       </div>
       <dl className="mt-3 grid gap-x-6 gap-y-1.5 text-[13px] sm:grid-cols-2">
         <div>
-          <dt className="text-emerald-800/70">You signed as</dt>
+          <dt className="text-emerald-800/70">{t('sign.youSignedAs')}</dt>
           <dd className="font-semibold text-emerald-900">{contract.clientSignatureName ?? '—'}</dd>
         </div>
         <div>
-          <dt className="text-emerald-800/70">On</dt>
+          <dt className="text-emerald-800/70">{t('sign.on')}</dt>
           <dd className="font-semibold text-emerald-900">{fmt(contract.clientSignedAtUtc)}</dd>
         </div>
         {contract.counterSignatureName && (
           <>
             <div>
-              <dt className="text-emerald-800/70">{contract.organizationName} signed as</dt>
+              <dt className="text-emerald-800/70">{t('sign.orgSignedAs', { organization })}</dt>
               <dd className="font-semibold text-emerald-900">{contract.counterSignatureName}</dd>
             </div>
             <div>
-              <dt className="text-emerald-800/70">On</dt>
+              <dt className="text-emerald-800/70">{t('sign.on')}</dt>
               <dd className="font-semibold text-emerald-900">{fmt(contract.counterSignedAtUtc)}</dd>
             </div>
           </>
@@ -132,10 +154,9 @@ function SignedBlock({ contract }: { contract: PublicContract }) {
           // on a deployment where the send had failed, that was an instruction to
           // rely on something that did not exist.
           ? contract.executedCopySentAtUtc
-            ? 'A copy has been emailed to you. Keep that email as your record.'
-            : 'Both signatures are recorded. Your copy has not been emailed yet — '
-              + `download it below, or ask ${contract.organizationName} for it.`
-          : `${contract.organizationName} has been told you signed, and will add their signature. You will be emailed the finished copy.`}
+            ? t('sign.copyEmailed')
+            : t('sign.copyNotEmailed', { organization })
+          : t('sign.orgWillSign', { organization })}
       </p>
     </div>
   );
@@ -143,6 +164,10 @@ function SignedBlock({ contract }: { contract: PublicContract }) {
 
 export default function SignContract() {
   const { token = '' } = useParams<{ token: string }>();
+  const [search] = useSearchParams();
+  // What Stripe's page sent the signer back saying: paid (being confirmed) or given up.
+  const returned = search.get('deposit') === 'done' ? 'done' : search.get('deposit') === 'cancelled' ? 'cancelled' : null;
+  const { t, tx } = useT();
   const [contract, setContract] = useState<PublicContract | null>(null);
   const [loading, setLoading] = useState(true);
   usePageLoading(loading);
@@ -164,13 +189,27 @@ export default function SignContract() {
     } catch (e) {
       // The server's own wording is more use here than a status code — "this link
       // has expired" tells the signer what to do next.
-      setLoadError(e instanceof ContractError ? e.message : 'This signing link could not be opened.');
+      setLoadError(e instanceof ContractError ? e.message : t('sign.loadFailed'));
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, t]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // Back from Stripe's page before Stripe's word reached the club: ask again, quietly, a few
+  // times, so the page turns to paid by itself rather than leave the signer wondering.
+  const depositStatus = contract?.deposit?.status;
+  useEffect(() => {
+    if (returned !== 'done' || !depositStatus || depositStatus === 'paid' || depositStatus === 'refunded' || depositStatus === 'cancelled') return;
+    let polls = 0;
+    const timer = window.setInterval(() => {
+      polls += 1;
+      if (polls > RETURN_POLLS) { window.clearInterval(timer); return; }
+      getPublicContract(token).then(setContract).catch(() => {});
+    }, RETURN_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [returned, depositStatus, token]);
 
   const submit = async () => {
     if (!contract) return;
@@ -180,7 +219,7 @@ export default function SignContract() {
       status: contract.status, action: 'client_sign', name, agreed,
     });
     if (!gate.ok) {
-      setProblem(gate.problem);
+      setProblem(gate.reason ? t(GATE_PROBLEMS[gate.reason]) : gate.problem);
       return;
     }
     setSubmitting(true);
@@ -188,7 +227,7 @@ export default function SignContract() {
     try {
       setContract(await signPublicContract(token, name, agreed));
     } catch (e) {
-      setProblem(e instanceof ContractError ? e.message : 'Your signature could not be recorded.');
+      setProblem(e instanceof ContractError ? e.message : t('sign.recordFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -213,7 +252,7 @@ export default function SignContract() {
     try {
       setContract(await declinePublicContract(token, declineReason.trim() || undefined));
     } catch (e) {
-      setProblem(e instanceof ContractError ? e.message : 'That could not be recorded.');
+      setProblem(e instanceof ContractError ? e.message : t('sign.declineFailed'));
     } finally {
       setDeclining(false);
     }
@@ -224,7 +263,7 @@ export default function SignContract() {
       <Shell>
         <div className="flex items-center justify-center gap-2 py-24 text-sm text-slate-500" role="status">
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-          Opening the contract…
+          {t('sign.opening')}
         </div>
       </Shell>
     );
@@ -237,11 +276,9 @@ export default function SignContract() {
           <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100">
             <TriangleAlert className="h-7 w-7 text-amber-600" aria-hidden />
           </span>
-          <h1 className="mt-5 text-xl font-bold text-slate-900">This link will not open</h1>
+          <h1 className="mt-5 text-xl font-bold text-slate-900">{t('sign.wontOpenTitle')}</h1>
           <p className="mt-2 text-sm leading-relaxed text-slate-600">{loadError}</p>
-          <p className="mt-4 text-xs text-slate-500">
-            Reply to the email you received and ask for a new link.
-          </p>
+          <p className="mt-4 text-xs text-slate-500">{t('sign.askNewLink')}</p>
         </div>
       </Shell>
     );
@@ -267,9 +304,7 @@ export default function SignContract() {
             <h1 className="mt-0.5 text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
               {contract.title}
             </h1>
-            <p className="mt-1 text-sm text-slate-500">
-              For {contract.counterpartyName}. Please read it in full before signing.
-            </p>
+            <p className="mt-1 text-sm text-slate-500">{t('sign.forParty', { name: contract.counterpartyName })}</p>
           </div>
         </div>
 
@@ -290,41 +325,47 @@ export default function SignContract() {
             )}
           >
             <FileDown className="h-3.5 w-3.5" aria-hidden />
-            {alreadySigned ? 'Download your signed copy (PDF)' : 'Download a copy to read (PDF)'}
+            {alreadySigned ? t('sign.downloadSigned') : t('sign.downloadToRead')}
           </a>
         </div>
 
         <div className="mt-6">
           {alreadySigned ? (
-            <SignedBlock contract={contract} />
+            <>
+              <SignedBlock contract={contract} />
+              {contract.deposit && (
+                <DepositStep token={token} deposit={contract.deposit} organizationName={contract.organizationName} returned={returned} />
+              )}
+            </>
           ) : !contract.canSign ? (
             <div className="flex items-start gap-2.5 rounded-2xl border border-slate-200 bg-slate-50 p-5">
               <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-slate-500" aria-hidden />
               <div>
-                <h2 className="text-sm font-bold text-slate-800">Not available for signature</h2>
+                <h2 className="text-sm font-bold text-slate-800">{t('sign.notAvailableTitle')}</h2>
                 <p className="mt-1 text-sm text-slate-600">{contract.blocked}</p>
               </div>
             </div>
           ) : (
             <>
             <WhatHappensNext organizationName={contract.organizationName} />
+            {contract.deposit && <DepositBeforeSigning deposit={contract.deposit} />}
             <form
               className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 sm:p-6"
               onSubmit={(e) => { e.preventDefault(); void submit(); }}
             >
               <div className="flex items-center gap-2">
                 <PenLine className="h-4 w-4 text-orange-500" aria-hidden />
-                <h2 className="text-sm font-bold text-slate-900">Sign this contract</h2>
+                <h2 className="text-sm font-bold text-slate-900">{t('sign.formTitle')}</h2>
               </div>
 
               <label htmlFor="signature" className="mt-4 block text-sm font-medium text-slate-700">
-                Type your full name
+                {t('sign.typeName')}
               </label>
               <Input
                 id="signature"
                 value={name}
                 onChange={(e) => { setName(e.target.value); setProblem(null); }}
-                placeholder="e.g. Jean Dupont"
+                placeholder={t('sign.namePlaceholder')}
                 maxLength={MAX_SIGNATURE_NAME_LENGTH}
                 autoComplete="name"
                 aria-describedby="signature-help"
@@ -335,9 +376,7 @@ export default function SignContract() {
                   problem && !isSignatureNameValid(name) && 'border-rose-300 focus-visible:ring-rose-200',
                 )}
               />
-              <p id="signature-help" className="mt-1.5 text-xs text-slate-500">
-                Typing your name here is your signature.
-              </p>
+              <p id="signature-help" className="mt-1.5 text-xs text-slate-500">{t('sign.nameHelp')}</p>
 
               <label className="mt-4 flex cursor-pointer items-start gap-2.5">
                 <input
@@ -346,9 +385,7 @@ export default function SignContract() {
                   onChange={(e) => { setAgreed(e.target.checked); setProblem(null); }}
                   className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-orange-700"
                 />
-                <span className="text-sm leading-relaxed text-slate-700">
-                  I have read the contract above and I agree to be bound by it.
-                </span>
+                <span className="text-sm leading-relaxed text-slate-700">{t('sign.agree')}</span>
               </label>
 
               {problem && (
@@ -362,8 +399,8 @@ export default function SignContract() {
                   className="h-11 bg-gradient-to-r from-orange-500 to-amber-500 px-6 font-semibold hover:from-orange-400 hover:to-amber-400"
                 >
                   {submitting
-                    ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden /> Recording your signature…</>
-                    : <><ShieldCheck className="mr-2 h-4 w-4" aria-hidden /> Sign the contract</>}
+                    ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden /> {t('sign.recording')}</>
+                    : <><ShieldCheck className="mr-2 h-4 w-4" aria-hidden /> {t('sign.submit')}</>}
                 </Button>
                 {!confirmingDecline && (
                   <button
@@ -371,7 +408,7 @@ export default function SignContract() {
                     onClick={() => setConfirmingDecline(true)}
                     className="text-sm font-medium text-slate-500 underline-offset-4 hover:text-slate-800 hover:underline"
                   >
-                    I do not want to sign this
+                    {t('sign.dontWant')}
                   </button>
                 )}
               </div>
@@ -380,14 +417,12 @@ export default function SignContract() {
                   not something to do by mis-aiming at the button beside Sign. */}
               {confirmingDecline && (
                 <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4">
-                  <h3 className="text-sm font-bold text-rose-900">Decline this contract?</h3>
+                  <h3 className="text-sm font-bold text-rose-900">{t('sign.declineTitle')}</h3>
                   <p className="mt-1 text-[13px] leading-relaxed text-rose-800">
-                    This closes the contract for good — {contract.organizationName} would have
-                    to send you a new one. If you only want a change made, reply to their
-                    email instead.
+                    {t('sign.declineText', { organization: contract.organizationName })}
                   </p>
                   <label htmlFor="decline-reason" className="mt-3 block text-xs font-medium text-rose-900">
-                    Why, if you would like to say? <span className="font-normal opacity-70">(optional)</span>
+                    {t('sign.declineWhy')} <span className="font-normal opacity-70">{t('sign.optional')}</span>
                   </label>
                   <textarea
                     id="decline-reason"
@@ -395,7 +430,7 @@ export default function SignContract() {
                     value={declineReason}
                     onChange={(e) => setDeclineReason(e.target.value)}
                     maxLength={1000}
-                    placeholder="e.g. the fee is more than we budgeted for"
+                    placeholder={t('sign.declinePlaceholder')}
                     className={cn(
                       'mt-1 w-full rounded-lg border border-rose-200 bg-white px-3 py-2 text-sm text-slate-800',
                       'focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100',
@@ -409,8 +444,8 @@ export default function SignContract() {
                       className="h-10 bg-rose-600 px-4 font-semibold hover:bg-rose-500"
                     >
                       {declining
-                        ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden /> Recording…</>
-                        : 'Yes, decline it'}
+                        ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden /> {t('sign.recordingShort')}</>
+                        : t('sign.declineYes')}
                     </Button>
                     <button
                       type="button"
@@ -418,7 +453,7 @@ export default function SignContract() {
                       disabled={declining}
                       className="text-sm font-medium text-slate-600 underline-offset-4 hover:text-slate-900 hover:underline"
                     >
-                      Keep reading
+                      {t('sign.keepReading')}
                     </button>
                   </div>
                 </div>
@@ -436,12 +471,7 @@ export default function SignContract() {
         <div className="mt-7 flex items-start gap-2.5 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
           <Info className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" aria-hidden />
           <p className="text-[12.5px] leading-relaxed text-slate-500">
-            <strong className="font-semibold text-slate-700">About this signature.</strong>{' '}
-            Signing records your typed name together with the date, time, your network
-            address and a fingerprint of this exact text. That is a simple electronic
-            signature. It is not a qualified electronic signature under Swiss ZertES
-            or EU eIDAS, which some kinds of agreement require. If you are unsure
-            whether that matters here, ask {contract.organizationName} before signing.
+            {tx('sign.aboutText', { b: bold, organization: contract.organizationName })}
           </p>
         </div>
       </motion.div>
@@ -449,11 +479,19 @@ export default function SignContract() {
   );
 }
 
-/** Deliberately plain: no CRM navigation for someone who does not work here. */
-function Shell({ children }: { children: React.ReactNode }) {
+/**
+ * Deliberately plain: no CRM navigation for someone who does not work here. The one
+ * control above the contract is the language picker.
+ */
+function Shell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-50 px-4 py-10 sm:py-14">
-      <main className="mx-auto w-full max-w-3xl">{children}</main>
+      <main className="mx-auto w-full max-w-3xl">
+        <div className="mb-4 flex justify-end">
+          <LanguageSwitcher />
+        </div>
+        {children}
+      </main>
     </div>
   );
 }

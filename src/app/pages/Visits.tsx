@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ScanLine,
   Plus,
@@ -36,7 +36,6 @@ import {
   SelectValue,
 } from '@/app/components/ui/select';
 import {
-  getVisits,
   checkIn,
   deleteVisit,
   computeVisitStats,
@@ -44,7 +43,9 @@ import {
   type Visit,
   type VisitVenue,
 } from '@/app/api/visits';
-import { getMembers, type Member } from '@/app/api/members';
+import type { Member } from '@/app/api/members';
+import { ClubReadState } from '@/app/components/ClubReadState';
+import { NONE, useClubMembers, useClubReads, useClubVisits } from '@/app/hooks/queries';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
@@ -54,6 +55,7 @@ import {
 } from '@/app/components/views';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { PERMISSION } from '@/app/api/organizations';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const VENUE_COLOR: Record<VisitVenue, string> = {
   Dining: 'bg-orange-50 text-orange-700 ring-1 ring-orange-200',
@@ -68,7 +70,7 @@ const VENUE_COLOR: Record<VisitVenue, string> = {
 
 function formatDateTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleString(undefined, {
+    return new Date(iso).toLocaleString(currentDateLocale(), {
       month: 'short',
       day: 'numeric',
       hour: 'numeric',
@@ -91,9 +93,15 @@ function timeAgo(iso: string): string {
 }
 
 export default function Visits() {
-  const [visits, setVisits] = useState<Visit[]>([]);
-  const [members, setMembers] = useState<Member[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Check-ins and the members to check in, through the club's shared cache: a check-in made
+  // at the door, or a member added elsewhere, shows here, and a failed read says so with a
+  // retry instead of reading "No check-ins yet".
+  const visitsQuery = useClubVisits();
+  const membersQuery = useClubMembers();
+  const reads = useClubReads(visitsQuery, membersQuery);
+  const visits: Visit[] = visitsQuery.data ?? NONE;
+  const members: Member[] = membersQuery.data ?? NONE;
+  const loading = reads.loading;
   usePageLoading(loading);
   const [search, setSearch] = useState('');
   const [venueFilter, setVenueFilter] = useState<'All' | VisitVenue>('All');
@@ -107,22 +115,6 @@ export default function Visits() {
   });
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-
-  const load = async () => {
-    try {
-      const [v, m] = await Promise.all([getVisits(), getMembers()]);
-      setVisits(v);
-      setMembers(m);
-    } catch {
-      toast.error('Failed to load visits');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void load();
-  }, []);
 
   const stats = useMemo(() => computeVisitStats(visits), [visits]);
 
@@ -168,9 +160,9 @@ export default function Visits() {
         );
       }
       setDialogOpen(false);
-      await load();
-    } catch {
-      toast.error('Failed to check in');
+    } catch (err) {
+      // The server's reason when it gave one (a member who cannot be checked in, say).
+      toast.error(err instanceof Error && err.message ? err.message : 'Failed to check in');
     } finally {
       setSaving(false);
     }
@@ -181,10 +173,9 @@ export default function Visits() {
     setDeletingId(v.id);
     try {
       const ok = await deleteVisit(v.id);
-      if (ok) {
-        toast.success('Visit deleted');
-        await load();
-      }
+      if (ok) toast.success('Visit deleted');
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : 'The visit could not be deleted');
     } finally {
       setDeletingId(null);
     }
@@ -293,6 +284,7 @@ export default function Visits() {
           </div>
 
           {/* Visit feed */}
+          <ClubReadState reads={reads} what="Check-ins">
           {loading ? (
             <div className="flex items-center justify-center py-20 text-slate-500">
               <Loader2 className="h-6 w-6 animate-spin" />
@@ -308,6 +300,7 @@ export default function Visits() {
               }
               actionLabel={visits.length === 0 ? 'Check in' : undefined}
               onAction={visits.length === 0 ? openCheckIn : undefined}
+              actionPermission={PERMISSION.FrontDesk}
               variant="teal"
             />
           ) : (
@@ -412,6 +405,7 @@ export default function Visits() {
             )}
             </ViewTransition>
           )}
+          </ClubReadState>
         </main>
       </PageTransition>
 

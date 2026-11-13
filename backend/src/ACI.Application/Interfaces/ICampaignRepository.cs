@@ -13,6 +13,13 @@ public sealed record OutboundDelivery(
 /// <summary>How many of a campaign's messages share the facts a status is worked out from.</summary>
 public sealed record CampaignTally(Guid CampaignId, string Status, string? OutboundStatus, string? DeliveryStatus, bool Opened, int Count);
 
+/// <summary>
+/// Of some addresses (trimmed and lower-cased, as the outbox compares them): those on the
+/// workspace's suppression list (bounced, complained, unsubscribed), and those a contact
+/// marked do not contact holds.
+/// </summary>
+public sealed record UnreachableAddresses(IReadOnlySet<string> Suppressed, IReadOnlySet<string> DoNotContact);
+
 /// <summary>Campaigns and the messages to members they and staff send.</summary>
 public interface ICampaignRepository
 {
@@ -43,11 +50,28 @@ public interface ICampaignRepository
     /// <summary>The scheduler's claim: a scheduled campaign whose time has come, or a sending whose claim ran out.</summary>
     Task<bool> TryClaimDueAsync(Guid id, DateTime utcNow, DateTime claimedUntilUtc, CancellationToken ct = default);
 
-    /// <summary>Holds the claim longer while a large campaign is still being worked through.</summary>
-    Task ExtendClaimAsync(Guid id, DateTime claimedUntilUtc, CancellationToken ct = default);
+    /// <summary>
+    /// Holds the claim longer while a large campaign is still being worked through. False
+    /// when it is no longer sending: staff stopped it, and the sender stops too.
+    /// </summary>
+    Task<bool> ExtendClaimAsync(Guid id, DateTime claimedUntilUtc, CancellationToken ct = default);
 
-    /// <summary>Lets the claim run out at <paramref name="retryAtUtc"/>, so the scheduler takes it up again then.</summary>
-    Task ReleaseClaimAsync(Guid id, DateTime retryAtUtc, CancellationToken ct = default);
+    /// <summary>
+    /// Lets the claim run out at <paramref name="retryAtUtc"/>, so the scheduler takes it up
+    /// again then, and records that this was pass <paramref name="attempts"/> to end with a
+    /// member's message not queued.
+    /// </summary>
+    Task ReleaseClaimAsync(Guid id, DateTime retryAtUtc, int attempts, CancellationToken ct = default);
+
+    /// <summary>
+    /// Stops a campaign that is sending, in one conditional update (at
+    /// <paramref name="expectedVersion"/> when one is given). False when it was not sending,
+    /// or had changed meanwhile.
+    /// </summary>
+    Task<bool> TryStopAsync(Guid organizationId, Guid id, Guid? expectedVersion, DateTime utcNow, CancellationToken ct = default);
+
+    /// <summary>Where the campaign stands (<see cref="CampaignStatuses"/>), or null when it is not the workspace's.</summary>
+    Task<string?> StatusAsync(Guid organizationId, Guid id, CancellationToken ct = default);
 
     /// <summary>A claimed campaign is sent: every member it was for has a message.</summary>
     Task FinishAsync(Guid id, DateTime sentAtUtc, int recipientCount, CancellationToken ct = default);
@@ -80,6 +104,9 @@ public interface ICampaignRepository
 
     /// <summary>What the outbox says about these messages.</summary>
     Task<IReadOnlyList<OutboundDelivery>> DeliveriesAsync(IReadOnlyCollection<Guid> outboundIds, CancellationToken ct = default);
+
+    /// <summary>Of these addresses, those email may not go to: suppressed, or held by a contact marked do not contact.</summary>
+    Task<UnreachableAddresses> UnreachableAsync(Guid organizationId, IReadOnlyCollection<string> addresses, CancellationToken ct = default);
 
     /// <summary>Counted per campaign, by what each message's status is worked out from.</summary>
     Task<IReadOnlyList<CampaignTally>> TallyAsync(Guid organizationId, IReadOnlyCollection<Guid> campaignIds, CancellationToken ct = default);

@@ -60,6 +60,26 @@ public class ClubMember : Common.BaseEntity
 
     /// <summary>The deal the member joined through, when they came from a converted lead (see DealOnboarding).</summary>
     public Guid? DealId { get; set; }
+    /// <summary>
+    /// When the member was erased: at their request, or by the workspace's retention settings.
+    /// The row stays so the books still add up (their charges and payments name it), but its
+    /// name is a pseudonym ("Erased member 12") and nothing personal is left on it.
+    /// </summary>
+    public DateTime? ErasedAtUtc { get; set; }
+
+    /// <summary>
+    /// The language the club writes to the member in, "en", "de" or "fr": their statements,
+    /// reminders, welcome and event emails. Null means English, as every member was written to
+    /// before languages existed. Set by staff (the member form offers the workspace's language
+    /// for someone new), from the language they applied in, or from the welcome handoff's.
+    /// </summary>
+    public string? PreferredLanguage { get; set; }
+
+    /// <summary>
+    /// The member who introduced them: from their application when it named one, or set by
+    /// staff. What the referrals report counts, and who a referral bonus went to.
+    /// </summary>
+    public Guid? ReferredByMemberId { get; set; }
 }
 
 public class ClubVisit : Common.BaseEntity

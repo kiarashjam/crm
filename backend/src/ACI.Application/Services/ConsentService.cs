@@ -52,6 +52,13 @@ public interface IConsentService
     /// <summary>Records an answer staff were given; the history keeps the one it replaces.</summary>
     Task<Result<MemberConsentDto>> RecordForMemberAsync(Guid organizationId, Guid memberId, Guid userId, RecordConsentRequest request, CancellationToken ct = default);
 
+    /// <summary>
+    /// Records an answer the member gave themselves in the member portal: source member, recorded
+    /// by nobody on the club's side, with the address it was given at. The history keeps the one
+    /// it replaces.
+    /// </summary>
+    Task<Result<MemberConsentDto>> RecordByMemberAsync(Guid organizationId, Guid memberId, string? channel, string? purpose, bool? granted, CancellationToken ct = default);
+
     /// <summary>Which of these members agreed to <paramref name="purpose"/> on <paramref name="channel"/> and have not withdrawn it.</summary>
     Task<IReadOnlySet<Guid>> MembersWhoAgreedAsync(Guid organizationId, IReadOnlyCollection<Guid> memberIds, string channel, string purpose, CancellationToken ct = default);
 
@@ -138,6 +145,37 @@ public sealed class ConsentService : IConsentService, IMemberMailRules
         return await DtoAsync(organizationId, memberId, ct);
     }
 
+    public async Task<Result<MemberConsentDto>> RecordByMemberAsync(Guid organizationId, Guid memberId, string? channel, string? purpose, bool? granted, CancellationToken ct = default)
+    {
+        var on = (channel ?? "").Trim().ToLowerInvariant();
+        if (!ConsentChannels.All.Contains(on))
+            return new Error("Consent.ChannelInvalid", "Consent is recorded for email, SMS or post.");
+        var forWhat = (purpose ?? "").Trim().ToLowerInvariant();
+        if (!ConsentPurposes.All.Contains(forWhat))
+            return new Error("Consent.PurposeInvalid", "Consent is recorded for marketing or for service messages.");
+        if (granted is not bool yes)
+            return new Error("Consent.AnswerRequired", "Say whether you agree or not.");
+        var member = await _club.MemberAsync(memberId, organizationId, ct);
+        if (member == null || member.ErasedAtUtc != null) return DomainErrors.Club.MemberNotFound;
+
+        var record = new ConsentRecord
+        {
+            OrganizationId = organizationId,
+            SubjectType = ConsentSubjects.Member,
+            SubjectId = memberId,
+            Channel = on,
+            Purpose = forWhat,
+            Granted = yes,
+            Source = ConsentSources.Member,
+            Address = AddressFor(member, on),
+            Detail = "Set by the member in the member portal.",
+            RecordedByUserId = null,
+        };
+        if (!await AddAsync(record, ct))
+            return new Error("Consent.Changed.Conflict", "Your choice changed somewhere else at the same moment. Reload and check it.");
+        return await DtoAsync(organizationId, memberId, ct);
+    }
+
     public async Task<IReadOnlySet<Guid>> MembersWhoAgreedAsync(Guid organizationId, IReadOnlyCollection<Guid> memberIds, string channel, string purpose, CancellationToken ct = default)
     {
         var current = await _consent.CurrentAsync(organizationId, ConsentSubjects.Member, memberIds, channel, purpose, ct);
@@ -192,6 +230,9 @@ public sealed class ConsentService : IConsentService, IMemberMailRules
 
     public async Task<bool> MemberExistsAsync(Guid organizationId, Guid memberId, CancellationToken ct = default) =>
         await _club.MemberAsync(memberId, organizationId, ct) != null;
+
+    public async Task<string?> PreferredLanguageAsync(Guid organizationId, Guid memberId, CancellationToken ct = default) =>
+        (await _club.MemberAsync(memberId, organizationId, ct))?.PreferredLanguage;
 
     public async Task<MailRefusal?> MarketingRefusalAsync(Guid organizationId, Guid memberId, string channel, CancellationToken ct = default)
     {

@@ -19,10 +19,25 @@ public sealed class LeadRepository : ILeadRepository
             ? q.Where(l => l.UserId == userId && l.OrganizationId == null)
             : q.Where(l => l.OrganizationId == organizationId);
 
-    private static IQueryable<Lead> ApplySearch(IQueryable<Lead> query, string? search)
+    private static IQueryable<Lead> ApplySearch(IQueryable<Lead> query, string? search, AppDbContext? db = null)
     {
         if (string.IsNullOrWhiteSpace(search)) return query;
         var q = search.Trim().ToLowerInvariant();
+        if (db != null)
+        {
+            // The list's search reaches their custom fields' text and their tags' names too.
+            var flexHits = FlexQueryable.SearchHits(db, q);
+            return query.Where(l =>
+                l.Name.ToLower().Contains(q) ||
+                l.Email.ToLower().Contains(q) ||
+                (l.Phone != null && l.Phone.Contains(q)) ||
+                (l.Company != null && l.Company.Name.ToLower().Contains(q)) ||
+                (l.Source != null && l.Source.ToLower().Contains(q)) ||
+                (l.City != null && l.City.ToLower().Contains(q)) ||
+                (l.ContactPersonName != null && l.ContactPersonName.ToLower().Contains(q)) ||
+                (l.ContactPersonEmail != null && l.ContactPersonEmail.ToLower().Contains(q)) ||
+                flexHits.Contains(l.Id));
+        }
         return query.Where(l =>
             l.Name.ToLower().Contains(q) ||
             l.Email.ToLower().Contains(q) ||
@@ -95,14 +110,17 @@ public sealed class LeadRepository : ILeadRepository
         AppDbContext db,
         Guid userId,
         Guid? organizationId,
-        LeadQueryOptions? options) =>
-        ApplySort(
-            ApplyFilters(
-                ApplySearch(
-                    FilterByUserAndOrg(db.Leads.AsNoTracking(), userId, organizationId),
-                    options?.Search),
-                options),
-            options);
+        LeadQueryOptions? options,
+        FlexPlan plan)
+    {
+        var filtered = FlexQueryable.Filter(
+            ApplyFilters(ApplySearch(FilterByUserAndOrg(db.Leads.AsNoTracking(), userId, organizationId), options?.Search, db), options),
+            db, plan);
+        // A sort by one of the workspace's own fields, newest first among equals.
+        return FlexQueryable.Sort(filtered, db, plan) is { } byField
+            ? byField.ThenByDescending(l => l.CreatedAtUtc).ThenBy(l => l.Id)
+            : ApplySort(filtered, options);
+    }
 
     public async Task<(IReadOnlyList<Lead> Items, int TotalCount)> GetPagedAsync(
         Guid userId,
@@ -112,7 +130,8 @@ public sealed class LeadRepository : ILeadRepository
         LeadQueryOptions? options = null,
         CancellationToken ct = default)
     {
-        var query = BuildFilteredQuery(_db, userId, organizationId, options);
+        var plan = await FlexQueryable.PlanAsync(_db, RecordTypes.Lead, options?.Flex, ct);
+        var query = BuildFilteredQuery(_db, userId, organizationId, options, plan);
 
         var totalCount = await query.CountAsync(ct);
         var items = await MaterializeListAsync(query.Skip(skip).Take(take), ct);
@@ -228,6 +247,8 @@ public sealed class LeadRepository : ILeadRepository
         }
 
         var q = query.Trim().ToLowerInvariant();
+        // Their custom fields' text and their tags' names are searched too.
+        var flexHits = FlexQueryable.SearchHits(_db, q);
         var filtered = ApplySort(
             FilterByUserAndOrg(_db.Leads.AsNoTracking(), userId, organizationId)
                 .Where(l => l.Name.ToLower().Contains(q) || l.Email.ToLower().Contains(q) ||
@@ -235,7 +256,8 @@ public sealed class LeadRepository : ILeadRepository
                             (l.Company != null && l.Company.Name.ToLower().Contains(q)) ||
                             (l.Source != null && l.Source.ToLower().Contains(q)) ||
                             (l.City != null && l.City.ToLower().Contains(q)) ||
-                            (l.ContactPersonName != null && l.ContactPersonName.ToLower().Contains(q))),
+                            (l.ContactPersonName != null && l.ContactPersonName.ToLower().Contains(q)) ||
+                            flexHits.Contains(l.Id)),
             new LeadQueryOptions { SortBy = "name", SortDir = "asc" });
         if (take is > 0)
             filtered = filtered.Take(take.Value);

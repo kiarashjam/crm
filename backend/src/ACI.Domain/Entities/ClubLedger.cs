@@ -60,9 +60,29 @@ public static class GiftCardTransactionTypes
     public const string Adjustment = "Adjustment";
 }
 
+/// <summary>Whose a house account is.</summary>
+public static class ClubAccountHolders
+{
+    /// <summary>A club member's own account: the account every member has.</summary>
+    public const string Member = "member";
+
+    /// <summary>
+    /// A CRM company's account: its corporate membership's dues, its private events' deposits
+    /// and invoices, and what it pays for its nominees.
+    /// </summary>
+    public const string Company = "company";
+
+    /// <summary>A CRM contact's account, for a private client who is not a member: their private events' deposits and invoices.</summary>
+    public const string Contact = "contact";
+
+    /// <summary>The holders who are not members, whose account is opened for them.</summary>
+    public static readonly IReadOnlyList<string> Clients = [Company, Contact];
+}
+
 /// <summary>
-/// A member's house account: the one row per member that every entry on their account
-/// touches, so entries for one member are written one at a time.
+/// A house account: the one row per account that every entry on it touches, so entries for
+/// one account are written one at a time. Usually a member's; a company, or a private client
+/// who is not a member, has one opened for them (<see cref="CompanyId"/>, <see cref="ContactId"/>).
 /// </summary>
 /// <remarks>
 /// It holds no money of its own. The balance is always worked out from the entries;
@@ -71,7 +91,22 @@ public static class GiftCardTransactionTypes
 public class ClubHouseAccount : Common.BaseEntity, Common.IVersioned
 {
     public Guid? OrganizationId { get; set; }
+
+    /// <summary>
+    /// The account's key, which every entry on it names (ClubCharge.MemberId and the rest): the
+    /// member's id, or for a company's or a contact's account that company's or contact's id.
+    /// </summary>
     public Guid MemberId { get; set; }
+
+    /// <summary>
+    /// For a company's account: the CRM company, the same id as <see cref="MemberId"/>. A company
+    /// was not someone the ledger could bill, so a corporate membership's dues or a private
+    /// event's invoice had nowhere to go but some member's account.
+    /// </summary>
+    public Guid? CompanyId { get; set; }
+
+    /// <summary>For a private client's account: the CRM contact, the same id as <see cref="MemberId"/>.</summary>
+    public Guid? ContactId { get; set; }
 
     /// <summary>The currency the account is kept in: the workspace's when it was opened.</summary>
     public string Currency { get; set; } = "CHF";

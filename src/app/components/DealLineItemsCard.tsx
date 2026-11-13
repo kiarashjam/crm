@@ -14,6 +14,33 @@ import {
 import { roundCents } from '@/app/lib/money';
 import { useMoney } from '@/app/hooks/useMoney';
 
+/**
+ * The VAT rates a line can carry: the Swiss rates since 2024 (standard, accommodation,
+ * reduced) and 0 %. A price includes its VAT, as the club's catalogue does; a contract
+ * drafted on the deal prints the rate and the VAT inside each line.
+ */
+const VAT_RATES = [8.1, 3.8, 2.6, 0];
+
+/** The select's value for a rate: "" is "no rate given", which a contract prints as none. */
+const vatValue = (rate: number | null | undefined) => (rate == null ? '' : String(rate));
+const vatFrom = (value: string): number | null => (value === '' ? null : Number(value));
+
+function VatSelect({ value, onChange, label }: { value: number | null | undefined; onChange: (rate: number | null) => void; label: string }) {
+  // A rate set some other way (an import, the API) is still shown, rather than read as none.
+  const rates = value != null && !VAT_RATES.includes(value) ? [...VAT_RATES, value] : VAT_RATES;
+  return (
+    <select
+      aria-label={label}
+      value={vatValue(value)}
+      onChange={(e) => onChange(vatFrom(e.target.value))}
+      className="h-7 w-full rounded-md border border-slate-200 bg-white px-1 text-right text-sm"
+    >
+      <option value="">—</option>
+      {rates.map((r) => <option key={r} value={String(r)}>{r}%</option>)}
+    </select>
+  );
+}
+
 interface DealLineItemsCardProps {
   dealId: string;
   /** The parent deal's currency. Line items are amounts IN that currency, so
@@ -37,6 +64,7 @@ export default function DealLineItemsCard({ dealId, currency, className, onValue
   const [name, setName] = useState('');
   const [qty, setQty] = useState('1');
   const [price, setPrice] = useState('');
+  const [vat, setVat] = useState<number | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -68,7 +96,9 @@ export default function DealLineItemsCard({ dealId, currency, className, onValue
     if (q <= 0) { toast.error('Quantity must be at least 1'); return; }
     setAdding(true);
     try {
-      const res = await addDealLineItem(dealId, { productId: productId || undefined, name: name.trim(), quantity: q, unitPrice: up });
+      const res = await addDealLineItem(dealId, {
+        productId: productId || undefined, name: name.trim(), quantity: q, unitPrice: up, ...(vat != null ? { vatRate: vat } : {}),
+      });
       if (res) {
         setItems((prev) => [...prev, res]);
         setProductId(''); setName(''); setQty('1'); setPrice('');
@@ -144,6 +174,7 @@ export default function DealLineItemsCard({ dealId, currency, className, onValue
                     <th className="px-3 py-2 text-left font-semibold">Item</th>
                     <th className="w-16 px-2 py-2 text-right font-semibold">Qty</th>
                     <th className="w-28 px-2 py-2 text-right font-semibold">Unit</th>
+                    <th className="w-20 px-2 py-2 text-right font-semibold" title="VAT included in the price">VAT</th>
                     <th className="w-28 px-3 py-2 text-right font-semibold">Total</th>
                     <th className="w-8" />
                   </tr>
@@ -168,6 +199,13 @@ export default function DealLineItemsCard({ dealId, currency, className, onValue
                           className="h-7 text-right"
                         />
                       </td>
+                      <td className="px-2 py-1.5">
+                        <VatSelect
+                          value={l.vatRate}
+                          label={`VAT rate of ${l.name}`}
+                          onChange={(rate) => { patchItem(l.id, { vatRate: rate }); void persistItem(l.id, { vatRate: rate }); }}
+                        />
+                      </td>
                       <td className="px-3 py-1.5 text-right font-medium text-slate-800">{fmt(l.quantity * l.unitPrice)}</td>
                       <td className="px-1 py-1.5">
                         <button type="button" onClick={() => remove(l.id)} aria-label={`Remove ${l.name}`} className="rounded p-1 text-slate-300 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
@@ -177,7 +215,7 @@ export default function DealLineItemsCard({ dealId, currency, className, onValue
                 </tbody>
                 <tfoot>
                   <tr className="border-t border-slate-200 bg-slate-50/60">
-                    <td colSpan={3} className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">Total</td>
+                    <td colSpan={4} className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">Total</td>
                     <td className="px-3 py-2 text-right text-base font-bold text-slate-900">{fmt(total)}</td>
                     <td />
                   </tr>
@@ -187,7 +225,7 @@ export default function DealLineItemsCard({ dealId, currency, className, onValue
           )}
 
           {/* Add row */}
-          <div className="mt-3 grid grid-cols-[1fr_auto] gap-2 sm:grid-cols-[1.5fr_3rem_6rem_auto]">
+          <div className="mt-3 grid grid-cols-[1fr_auto] gap-2 sm:grid-cols-[1.5fr_3rem_6rem_5rem_auto]">
             <div className="sm:col-span-1">
               <Select value={productId} onValueChange={pickProduct}>
                 <SelectTrigger aria-label="Product" className="h-9"><SelectValue placeholder="Product or custom…" /></SelectTrigger>
@@ -199,6 +237,7 @@ export default function DealLineItemsCard({ dealId, currency, className, onValue
             </div>
             <Input type="number" min={1} value={qty} onChange={(e) => setQty(e.target.value)} placeholder="Qty" className="h-9" aria-label="Quantity" />
             <Input type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Unit price" className="h-9" aria-label="Unit price" />
+            <div className="flex items-center"><VatSelect value={vat} onChange={setVat} label="VAT rate" /></div>
             <Button onClick={add} disabled={adding} className="h-9 gap-1.5">
               {adding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Add
             </Button>

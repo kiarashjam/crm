@@ -18,6 +18,7 @@ import type { Charge } from '@/app/api/charges';
 import { useRegional } from '@/app/hooks/useMoney';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
 import { formatClubMoney } from '@/app/lib/clubMoney';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const message = (err: unknown, fallback: string) => (err instanceof Error && err.message ? err.message : fallback);
 
@@ -36,7 +37,7 @@ export interface PayOnlineDialogProps {
 
 function formatDay(iso: string): string {
   try {
-    return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+    return new Date(iso).toLocaleDateString(currentDateLocale(), { day: 'numeric', month: 'short', year: 'numeric' });
   } catch {
     return iso;
   }

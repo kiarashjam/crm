@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using ACI.Application.Common;
+using ACI.Application.Common.I18n;
 using ACI.Application.Common.Pdf;
 using ACI.Application.Interfaces;
 using ACI.Application.Services;
@@ -11,6 +12,7 @@ using ACI.Infrastructure.Persistence;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Overdue = ACI.Infrastructure.Services.OverdueCharge;
 
 namespace ACI.Infrastructure.Services;
 
@@ -283,82 +285,13 @@ public sealed class ClubBillingService : IClubBilling
 
     // ── overdue ──────────────────────────────────────────────────────────────
 
-    /// <summary>A charge past its due date and not paid in full.</summary>
-    private sealed record Overdue(Guid Id, Guid MemberId, string Description, decimal Owed, string Currency, DateTime DueAtUtc, Guid? SubscriptionId);
-
-    /// <summary>The workspace's charges past their due date with something still to pay, oldest first; one member's with <paramref name="memberId"/>.</summary>
-    private async Task<List<Overdue>> OverdueAsync(Guid organizationId, DateTime now, Guid? memberId, CancellationToken ct)
-    {
-        var candidates = await _db.ClubCharges.AsNoTracking()
-            .Where(c => c.OrganizationId == organizationId && (memberId == null || c.MemberId == memberId)
-                && c.ReversesChargeId == null && c.DueAtUtc != null && c.DueAtUtc < now && c.Amount > 0)
-            .Select(c => new { c.Id, c.MemberId, c.Description, c.Amount, c.Currency, Due = c.DueAtUtc!.Value, c.SubscriptionId })
-            .ToListAsync(ct);
-        if (candidates.Count == 0) return [];
-        var ids = candidates.Select(c => c.Id).ToList();
-        var voided = (await _db.ClubCharges.AsNoTracking()
-                .Where(c => c.OrganizationId == organizationId && c.ReversesChargeId != null && ids.Contains(c.ReversesChargeId.Value))
-                .Select(c => c.ReversesChargeId!.Value).ToListAsync(ct))
-            .ToHashSet();
-        var paid = await _db.ClubPaymentAllocations.AsNoTracking()
-            .Where(a => a.OrganizationId == organizationId && ids.Contains(a.ChargeId))
-            .GroupBy(a => a.ChargeId).Select(g => new { ChargeId = g.Key, Sum = g.Sum(a => a.Amount) })
-            .ToDictionaryAsync(g => g.ChargeId, g => g.Sum, ct);
-        var owing = candidates.Where(c => !voided.Contains(c.Id))
-            .Select(c => new Overdue(c.Id, c.MemberId, c.Description, c.Amount - paid.GetValueOrDefault(c.Id), c.Currency, c.Due, c.SubscriptionId))
-            .Where(c => c.Owed > 0)
-            .OrderBy(c => c.DueAtUtc)
-            .ToList();
-        return await LessCreditHeldAsync(organizationId, owing, ct);
-    }
-
     /// <summary>
-    /// The overdue charges less what credit their members already hold, the credit set
-    /// against the charges that fell due first.
+    /// The workspace's charges past their due date with something still to pay, after credit
+    /// the member holds, oldest first; one member's with <paramref name="memberId"/>. Worked out
+    /// by <see cref="ClubOverdue"/>, which a member's at-risk score and the sponsor rule read too.
     /// </summary>
-    /// <remarks>
-    /// Credit on an account (an opening balance in the member's favour, a correction by hand)
-    /// pays no charge until someone applies it to one, so the ledger shows the charge as
-    /// owing; but the member owes the club nothing for the part the credit covers. Chased as
-    /// it stands, a member in credit was sent payment reminders and lapsed. The credit is
-    /// worked out as the ledger works it out when it is applied (each payment or credit, less
-    /// what was taken back from it and what it has paid already).
-    /// </remarks>
-    private async Task<List<Overdue>> LessCreditHeldAsync(Guid organizationId, List<Overdue> overdue, CancellationToken ct)
-    {
-        if (overdue.Count == 0) return overdue;
-        var memberIds = overdue.Select(c => c.MemberId).Distinct().ToList();
-        var payments = await _db.ClubPayments.AsNoTracking()
-            .Where(p => p.OrganizationId == organizationId && memberIds.Contains(p.MemberId))
-            .Select(p => new { p.Id, p.MemberId, p.Amount, p.ReversesPaymentId })
-            .ToListAsync(ct);
-        var originals = payments.Where(p => p.ReversesPaymentId == null).Select(p => p.Id).ToList();
-        var allocated = await _db.ClubPaymentAllocations.AsNoTracking()
-            .Where(a => a.OrganizationId == organizationId && originals.Contains(a.PaymentId))
-            .GroupBy(a => a.PaymentId).Select(g => new { PaymentId = g.Key, Sum = g.Sum(a => a.Amount) })
-            .ToDictionaryAsync(g => g.PaymentId, g => g.Sum, ct);
-        var reversed = payments.Where(p => p.ReversesPaymentId != null)
-            .GroupBy(p => p.ReversesPaymentId!.Value)
-            .ToDictionary(g => g.Key, g => g.Sum(p => p.Amount));
-        var credit = payments.Where(p => p.ReversesPaymentId == null)
-            .GroupBy(p => p.MemberId)
-            .ToDictionary(g => g.Key, g => g.Sum(p => Math.Max(0, p.Amount + reversed.GetValueOrDefault(p.Id) - allocated.GetValueOrDefault(p.Id))));
-
-        var left = new List<Overdue>(overdue.Count);
-        foreach (var charge in overdue)
-        {
-            var held = credit.GetValueOrDefault(charge.MemberId);
-            if (held <= 0)
-            {
-                left.Add(charge);
-                continue;
-            }
-            var covered = Math.Min(held, charge.Owed);
-            credit[charge.MemberId] = held - covered;
-            if (charge.Owed > covered) left.Add(charge with { Owed = charge.Owed - covered });
-        }
-        return left;
-    }
+    private Task<List<Overdue>> OverdueAsync(Guid organizationId, DateTime now, Guid? memberId, CancellationToken ct) =>
+        ClubOverdue.ListAsync(_db, organizationId, now, memberId is Guid one ? [one] : null, ct);
 
     /// <summary>A subscription with dues overdue is past due; one whose dues are all paid is active again.</summary>
     private async Task MarkPastDueAsync(Guid organizationId, IReadOnlyList<Overdue> overdue, Tally tally, CancellationToken ct)
@@ -466,29 +399,31 @@ public sealed class ClubBillingService : IClubBilling
         }
 
         var last = reached.Max(r => r.Step);
-        var subject = last == steps.Count && steps.Count > 1 ? "Final payment reminder"
-            : last == 1 ? "Payment reminder"
-            : last == 2 ? "Second payment reminder"
-            : $"Payment reminder ({last})";
+        // In the member's language (English when none is set).
+        var language = LanguageOf(member);
+        string L(string key, params (string, object?)[] args) => MemberTexts.T(language, key, args);
+        var subject = last == steps.Count && steps.Count > 1 ? L("reminder.subjectFinal")
+            : last == 1 ? L("reminder.subjectFirst")
+            : last == 2 ? L("reminder.subjectSecond")
+            : L("reminder.subjectNth", ("step", last));
         var culture = Culture(workspace.Locale);
         var zone = RegionalSettings.ZoneOf(workspace.TimeZone);
         var body = new StringBuilder();
-        body.Append("Dear ").Append(string.IsNullOrWhiteSpace(member.FirstName) ? NameOf(member) : member.FirstName.Trim()).Append(",\n\n");
+        body.Append(L("greeting", ("name", string.IsNullOrWhiteSpace(member.FirstName) ? NameOf(member) : member.FirstName.Trim()))).Append("\n\n");
         body.Append(last == steps.Count && steps.Count > 1
-            ? "This is a final reminder. The following on your account is still unpaid:\n\n"
+            ? L("reminder.introFinal")
             : last == 1
-                ? "This is a reminder that the following on your account has not been paid by its due date:\n\n"
-                : "We have still not received payment for the following on your account:\n\n");
+                ? L("reminder.introFirst")
+                : L("reminder.introLater")).Append("\n\n");
         foreach (var (charge, _) in reached.OrderBy(r => r.Charge.DueAtUtc))
-            body.Append("- ").Append(charge.Description).Append(": ").Append(Money(charge.Owed, charge.Currency, culture))
-                .Append(", due ").Append(Date(charge.DueAtUtc, zone)).Append('\n');
+            body.Append(L("reminder.line", ("description", charge.Description), ("amount", Money(charge.Owed, charge.Currency, culture)),
+                ("date", Date(charge.DueAtUtc, zone, language, workspace.Locale)))).Append('\n');
         var currency = reached[0].Charge.Currency;
         if (reached.All(r => r.Charge.Currency == currency))
-            body.Append("\nTotal overdue: ").Append(Money(reached.Sum(r => r.Charge.Owed), currency, culture)).Append('\n');
+            body.Append('\n').Append(L("reminder.total", ("amount", Money(reached.Sum(r => r.Charge.Owed), currency, culture)))).Append('\n');
         if (rules.Billing.LapseEnabled)
-            body.Append("\nA membership is suspended when a charge is still unpaid ").Append(rules.Billing.GracePeriodDays)
-                .Append(" days after its due date, until it is paid.\n");
-        body.Append("\nIf you have paid in the last few days, thank you, and please ignore this reminder.\n\n").Append(workspace.Name);
+            body.Append('\n').Append(L("reminder.lapse", ("days", rules.Billing.GracePeriodDays))).Append('\n');
+        body.Append('\n').Append(L("reminder.ignore")).Append("\n\n").Append(workspace.Name);
 
         var log = new MemberMessage
         {
@@ -636,10 +571,11 @@ public sealed class ClubBillingService : IClubBilling
         var statement = read.Value;
         var member = await _db.ClubMembers.AsNoTracking().FirstOrDefaultAsync(m => m.Id == memberId && m.OrganizationId == organizationId, ct);
         var workspace = await WorkspaceAsync(organizationId, ct);
+        var language = LanguageOf(member);
         var lines = statement.Lines.Select(l => new StatementPdfLine(
             l.AtUtc,
-            l.Description,
-            Detail(l),
+            Describe(l, language),
+            Detail(l, language),
             l.Debit,
             l.Credit,
             Owed(l.Balance),
@@ -647,7 +583,7 @@ public sealed class ClubBillingService : IClubBilling
         var amountDue = Math.Max(0, Owed(statement.ClosingBalance));
         // The club's QR-bill for what is due, with a reference that names the member and this
         // statement, when its bank details are set; none otherwise.
-        var slip = await _qrBills.ForStatementAsync(organizationId, memberId, statement.FromUtc, statement.ToUtc, amountDue, statement.Currency, ct);
+        var slip = await _qrBills.ForStatementAsync(organizationId, memberId, statement.FromUtc, statement.ToUtc, amountDue, statement.Currency, language, ct);
         var bytes = StatementPdf.Render(new StatementPdfRequest(
             workspace.Name,
             statement.MemberName,
@@ -664,7 +600,8 @@ public sealed class ClubBillingService : IClubBilling
             Owed(statement.ClosingBalance),
             lines,
             DateTime.UtcNow,
-            slip));
+            slip,
+            Language: language));
         return new StatementFile(FileName(statement, workspace), bytes, statement, amountDue);
     }
 
@@ -683,7 +620,8 @@ public sealed class ClubBillingService : IClubBilling
         var statement = read.Value;
         var primary = await _db.ClubMembers.AsNoTracking().FirstOrDefaultAsync(m => m.Id == primaryMemberId && m.OrganizationId == organizationId, ct);
         var workspace = await WorkspaceAsync(organizationId, ct);
-        var lines = statement.Lines.Select(l => new StatementPdfLine(l.AtUtc, l.Description, Detail(l), l.Debit, l.Credit, Owed(l.Balance), l.VatRate)).ToList();
+        var language = LanguageOf(primary);
+        var lines = statement.Lines.Select(l => new StatementPdfLine(l.AtUtc, Describe(l, language), Detail(l, language), l.Debit, l.Credit, Owed(l.Balance), l.VatRate)).ToList();
 
         // What each person ran up in the period on this account: charges less the voids of them.
         var charged = statement.Lines.Where(l => l.Side == "charge")
@@ -703,15 +641,15 @@ public sealed class ClubBillingService : IClubBilling
         // Someone who has left the household since still ran up what the lines say.
         foreach (var gone in statement.Lines.Where(l => l.IncurredByMemberId is { } id && id != primaryMemberId && others.All(o => o.MemberId != id))
                      .GroupBy(l => l.IncurredByMemberId!.Value))
-            people.Add(new StatementPdfHouseholdLine(gone.First().IncurredByName ?? "A former member of the household", "No longer in the household",
-                charged.GetValueOrDefault(gone.Key), null));
+            people.Add(new StatementPdfHouseholdLine(gone.First().IncurredByName ?? MemberTexts.T(language, "pdf.formerHouseholdMember"),
+                MemberTexts.T(language, "pdf.noLongerInHousehold"), charged.GetValueOrDefault(gone.Key), null));
 
         // It is the primary's account statement, so it carries the QR-bill the primary's own
         // statement for the period does: the same reference, which pays the primary's account
         // and with it the household's bills. Without it the page asked for the household's bills
         // with nothing to pay them by.
         var amountDue = Math.Max(0, Owed(statement.ClosingBalance));
-        var slip = await _qrBills.ForStatementAsync(organizationId, primaryMemberId, statement.FromUtc, statement.ToUtc, amountDue, statement.Currency, ct);
+        var slip = await _qrBills.ForStatementAsync(organizationId, primaryMemberId, statement.FromUtc, statement.ToUtc, amountDue, statement.Currency, language, ct);
         var bytes = StatementPdf.Render(new StatementPdfRequest(
             workspace.Name,
             statement.MemberName,
@@ -729,11 +667,63 @@ public sealed class ClubBillingService : IClubBilling
             lines,
             DateTime.UtcNow,
             PaymentSlip: slip,
-            Title: "Household statement",
+            Title: MemberTexts.T(language, "pdf.householdTitle"),
             Household: people,
-            HouseholdName: householdName));
+            HouseholdName: householdName,
+            Language: language));
         var fileName = $"household-{FileName(statement, workspace)}";
         return new StatementFile(fileName, bytes, statement, amountDue);
+    }
+
+    /// <remarks>
+    /// A company that pays its nominees' charges has them on its own account, each saying who ran
+    /// it up (the ledger puts them there at posting), so its statement is the membership's whole
+    /// bill. The table under it adds up what each nominee ran up, and what the company was charged
+    /// for itself (its dues, its private events), as the household statement does for a family.
+    /// </remarks>
+    public async Task<Result<StatementFile>> ClientStatementPdfAsync(Guid organizationId, Guid accountId, DateTime fromUtc, DateTime toUtc,
+        string? language, string? email, CancellationToken ct = default)
+    {
+        var read = await _ledger.StatementAsync(organizationId, accountId, fromUtc, toUtc, ct);
+        if (!read.IsSuccess) return read.Error;
+        var statement = read.Value;
+        var workspace = await WorkspaceAsync(organizationId, ct);
+        var words = AppLanguages.ForMember(language);
+        var lines = statement.Lines.Select(l => new StatementPdfLine(l.AtUtc, Describe(l, words), Detail(l, words), l.Debit, l.Credit, Owed(l.Balance), l.VatRate)).ToList();
+
+        // Who ran up what: the account itself, then each person whose charges it carries.
+        List<StatementPdfHouseholdLine>? people = null;
+        var charged = statement.Lines.Where(l => l.Side == "charge").GroupBy(l => l.IncurredByMemberId).ToList();
+        if (charged.Any(g => g.Key != null))
+        {
+            people = [new(statement.MemberName, "Company", charged.Where(g => g.Key == null).Sum(g => g.Sum(l => l.Debit - l.Credit)), null)];
+            foreach (var person in charged.Where(g => g.Key != null).OrderBy(g => g.First().IncurredByName, StringComparer.OrdinalIgnoreCase))
+                people.Add(new(person.First().IncurredByName ?? MemberTexts.T(words, "pdf.formerNominee"), "Nominee", person.Sum(l => l.Debit - l.Credit), null));
+        }
+
+        var amountDue = Math.Max(0, Owed(statement.ClosingBalance));
+        var slip = await _qrBills.ForStatementAsync(organizationId, accountId, statement.FromUtc, statement.ToUtc, amountDue, statement.Currency, words, ct);
+        var bytes = StatementPdf.Render(new StatementPdfRequest(
+            workspace.Name,
+            statement.MemberName,
+            ValidationHelper.IsValidEmail((email ?? "").Trim()) ? email!.Trim() : null,
+            null,
+            statement.FromUtc,
+            statement.ToUtc,
+            statement.Currency,
+            workspace.Locale,
+            workspace.TimeZone,
+            Owed(statement.OpeningBalance),
+            statement.TotalDebits,
+            statement.TotalCredits,
+            Owed(statement.ClosingBalance),
+            lines,
+            DateTime.UtcNow,
+            PaymentSlip: slip,
+            Title: people != null ? MemberTexts.T(words, "pdf.companyTitle") : null,
+            Household: people,
+            Language: words));
+        return new StatementFile(FileName(statement, workspace), bytes, statement, amountDue);
     }
 
     public async Task<Result<InvoiceFile>> ChargeInvoicePdfAsync(Guid organizationId, Guid chargeId, CancellationToken ct = default)
@@ -747,13 +737,15 @@ public sealed class ClubBillingService : IClubBilling
         if (charge == null) return DomainErrors.Club.ChargeNotFound;
         var member = await _db.ClubMembers.AsNoTracking().FirstOrDefaultAsync(m => m.Id == owner && m.OrganizationId == organizationId, ct);
         var workspace = await WorkspaceAsync(organizationId, ct);
+        var language = LanguageOf(member);
 
         // The charge's document number in the accounting journal.
         var number = "C-" + charge.Id.ToString("N")[..8].ToUpperInvariant();
         var voided = charge.Status == "Voided";
         var amountDue = ChargeInvoicePdf.Owed(charge.Amount, charge.PaidAmount, voided);
         // The club's QR-bill for what is left on the charge, with a reference that names it.
-        var slip = await _qrBills.ForChargeAsync(organizationId, owner, charge.Id, amountDue, charge.Currency, "Invoice " + number, ct);
+        var slip = await _qrBills.ForChargeAsync(organizationId, owner, charge.Id, amountDue, charge.Currency,
+            MemberTexts.T(language, "invoice.qrMessage", ("number", number)), ct);
         var bytes = ChargeInvoicePdf.Render(new ChargeInvoicePdfRequest(
             workspace.Name,
             charge.MemberName,
@@ -761,7 +753,7 @@ public sealed class ClubBillingService : IClubBilling
             member?.Tier,
             number,
             charge.Description,
-            charge.EntryType == "Charge" ? charge.Kind : "Balance brought over",
+            charge.EntryType == "Charge" ? charge.Kind : MemberTexts.T(language, "invoice.balanceBroughtOver"),
             charge.PostedAtUtc,
             charge.DueAtUtc,
             charge.Amount,
@@ -773,7 +765,8 @@ public sealed class ClubBillingService : IClubBilling
             workspace.TimeZone,
             DateTime.UtcNow,
             slip,
-            charge.IncurredByName));
+            charge.IncurredByName,
+            language));
         return new InvoiceFile("invoice-" + number + ".pdf", bytes, amountDue);
     }
 
@@ -853,22 +846,27 @@ public sealed class ClubBillingService : IClubBilling
         var culture = Culture(workspace.Locale);
         var zone = RegionalSettings.ZoneOf(workspace.TimeZone);
         var statement = file.Value.Statement;
-        var period = PeriodWords(fromUtc, toUtc, zone);
+        // In the member's language, as the attached statement is.
+        var language = LanguageOf(member);
+        string L(string key, params (string, object?)[] args) => MemberTexts.T(language, key, args);
+        var period = MemberTexts.Period(language, workspace.Locale,
+            TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(fromUtc, DateTimeKind.Utc), zone),
+            TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(toUtc, DateTimeKind.Utc), zone));
         var address = (member.Email ?? "").Trim();
         var reachable = ValidationHelper.IsValidEmail(address);
         var now = DateTime.UtcNow;
-        var subject = $"Your statement for {period}";
+        var subject = L("statement.subject", ("period", period));
 
         var closing = Owed(statement.ClosingBalance);
         var body = new StringBuilder();
-        body.Append("Dear ").Append(string.IsNullOrWhiteSpace(member.FirstName) ? NameOf(member) : member.FirstName.Trim()).Append(",\n\n");
-        body.Append("Your statement for ").Append(period).Append(" is attached.\n\n");
-        body.Append("Brought forward: ").Append(Money(Owed(statement.OpeningBalance), statement.Currency, culture)).Append('\n');
-        body.Append("Charges: ").Append(Money(statement.TotalDebits, statement.Currency, culture)).Append('\n');
-        body.Append("Payments and credits: ").Append(Money(statement.TotalCredits, statement.Currency, culture)).Append('\n');
-        body.Append(closing > 0 ? "Amount due: " : closing < 0 ? "In credit: " : "Balance: ")
-            .Append(Money(Math.Abs(closing), statement.Currency, culture)).Append("\n\n");
-        body.Append("If you have a question about it, reply to this email.\n\n").Append(workspace.Name);
+        body.Append(L("greeting", ("name", string.IsNullOrWhiteSpace(member.FirstName) ? NameOf(member) : member.FirstName.Trim()))).Append("\n\n");
+        body.Append(L("statement.attached", ("period", period))).Append("\n\n");
+        body.Append(L("statement.broughtForward", ("amount", Money(Owed(statement.OpeningBalance), statement.Currency, culture)))).Append('\n');
+        body.Append(L("statement.charges", ("amount", Money(statement.TotalDebits, statement.Currency, culture)))).Append('\n');
+        body.Append(L("statement.payments", ("amount", Money(statement.TotalCredits, statement.Currency, culture)))).Append('\n');
+        var owedKey = closing > 0 ? "statement.amountDue" : closing < 0 ? "statement.inCredit" : "statement.balance";
+        body.Append(L(owedKey, ("amount", Money(Math.Abs(closing), statement.Currency, culture)))).Append("\n\n");
+        body.Append(L("statement.question")).Append("\n\n").Append(workspace.Name);
 
         var delivery = new ClubStatementDelivery
         {
@@ -1025,30 +1023,20 @@ public sealed class ClubBillingService : IClubBilling
     /// <summary>A balance (negative while owing) as what is owed (positive while owing).</summary>
     private static decimal Owed(decimal balance) => balance == 0 ? 0 : -balance;
 
-    private static string? Detail(StatementLineDto line)
+    private static string? Detail(StatementLineDto line, string language)
     {
         var label = line.EntryType switch
         {
-            ClubEntryTypes.Opening => "Balance brought over",
-            ClubEntryTypes.Adjustment => "Correction",
-            ClubEntryTypes.Void => "Void",
-            ClubEntryTypes.Refund => "Refund",
+            ClubEntryTypes.Opening => MemberTexts.T(language, "line.balanceBroughtOver"),
+            ClubEntryTypes.Adjustment => MemberTexts.T(language, "line.correction"),
+            ClubEntryTypes.Void => MemberTexts.T(language, "line.void"),
+            ClubEntryTypes.Refund => MemberTexts.T(language, "line.refund"),
             _ => null,
         };
         // A household member's charge on the primary's account says whose it was.
-        var incurred = string.IsNullOrWhiteSpace(line.IncurredByName) ? null : $"Incurred by {line.IncurredByName}";
+        var incurred = string.IsNullOrWhiteSpace(line.IncurredByName) ? null : MemberTexts.T(language, "line.incurredBy", ("name", line.IncurredByName));
         var parts = new[] { incurred, label, line.Reason, line.Reference }.Where(p => !string.IsNullOrWhiteSpace(p)).ToList();
         return parts.Count == 0 ? null : string.Join(" · ", parts);
-    }
-
-    /// <summary>"October 2026" for a calendar month in the club's time zone; otherwise its first and last day.</summary>
-    private static string PeriodWords(DateTime fromUtc, DateTime toUtc, TimeZoneInfo zone)
-    {
-        var from = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(fromUtc, DateTimeKind.Utc), zone);
-        var to = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(toUtc, DateTimeKind.Utc), zone);
-        if (from.Day == 1 && from.TimeOfDay == TimeSpan.Zero && to == from.AddMonths(1))
-            return from.ToString("MMMM yyyy", CultureInfo.InvariantCulture);
-        return $"{from:d MMM yyyy} – {to.AddTicks(-1):d MMM yyyy}".Replace("  ", " ");
     }
 
     private static string FileName(AccountStatementDto statement, Workspace workspace)
@@ -1064,8 +1052,35 @@ public sealed class ClubBillingService : IClubBilling
     private static string Money(decimal amount, string currency, CultureInfo culture) =>
         $"{(amount < 0 ? "-" : "")}{currency} {Math.Abs(amount).ToString("N2", culture)}";
 
-    private static string Date(DateTime utc, TimeZoneInfo zone) =>
-        TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), zone).ToString("d MMM yyyy", CultureInfo.InvariantCulture);
+    private static string Date(DateTime utc, TimeZoneInfo zone, string language, string? workspaceLocale) =>
+        MemberTexts.Date(language, workspaceLocale, TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), zone));
+
+    /// <summary>The language the club writes to a member in: the one set on them, else English (see <see cref="AppLanguages.ForMember"/>).</summary>
+    private static string LanguageOf(ClubMember? member) => AppLanguages.ForMember(member?.PreferredLanguage);
+
+    /// <summary>
+    /// What a statement line says. The ledger writes its own entries' words in English ("Payment
+    /// (Wire)", "Voided: …"); a member reading German or French gets them in theirs. What staff
+    /// typed on a charge stays as they typed it.
+    /// </summary>
+    private static string Describe(StatementLineDto line, string language)
+    {
+        if (language == AppLanguages.English) return line.Description;
+        if (line.Side == "payment")
+            return line.EntryType switch
+            {
+                ClubEntryTypes.Payment => line.Method is { } method
+                    ? MemberTexts.T(language, "line.paymentBy", ("method", MemberTexts.Method(language, method)))
+                    : MemberTexts.T(language, "line.payment"),
+                ClubEntryTypes.Void => MemberTexts.T(language, "line.paymentVoided"),
+                ClubEntryTypes.Refund => MemberTexts.T(language, "line.refund"),
+                _ => line.Description,
+            };
+        const string voided = "Voided: ";
+        return line.ReversesId != null && line.Description.StartsWith(voided, StringComparison.Ordinal)
+            ? MemberTexts.T(language, "line.voided", ("description", line.Description[voided.Length..]))
+            : line.Description;
+    }
 
     private static CultureInfo Culture(string locale)
     {

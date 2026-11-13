@@ -14,11 +14,17 @@ namespace ACI.WebApi.Controllers;
 /// Welcome &amp; portal: where new customers are handed over when their lead becomes a
 /// deal, the welcome email that goes with them, and each handoff's progress.
 /// </summary>
+/// <remarks>
+/// In the Sales module: a handoff starts from a deal, so with Sales off there is nothing to
+/// hand over. The portal's own reports on handoffs already made (PublicOnboardingController)
+/// keep being taken.
+/// </remarks>
 [ApiController]
 [Route("api/onboarding")]
 [Authorize]
 [WorkspaceRequired]
 [Produces("application/json")]
+[InModule(WorkspaceModules.Sales)]
 public class OnboardingController : ControllerBase
 {
     private readonly IOnboardingService _onboarding;

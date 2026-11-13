@@ -1,8 +1,10 @@
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
+using ACI.Application.Services;
 using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace ACI.WebApi.Controllers;
 
@@ -80,6 +82,36 @@ public class PublicContractsController : ControllerBase
     }
 
 
+
+    /// <summary>
+    /// Starts Stripe's page for the deposit the contract asks for, once the signer has signed,
+    /// and says where it is. Stripe sends them back to the signing page.
+    /// </summary>
+    /// <response code="400">Not signed yet, no online payments, or the contract was withdrawn.</response>
+    /// <response code="409">The deposit is paid.</response>
+    [HttpPost("{token}/deposit/checkout")]
+    [EnableRateLimiting("public-contract-deposit")]
+    [ProducesResponseType(typeof(CheckoutStartedDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult> DepositCheckout(string token, CancellationToken ct)
+    {
+        var started = await _contracts.StartDepositCheckoutAsync(token, ct);
+        return started.IsSuccess ? Ok(started.Value) : started.Error.ToProblemResult();
+    }
+
+    /// <summary>
+    /// The deposit's invoice with its Swiss QR-bill, for paying by bank transfer, in the language
+    /// the page reads in. Its reference names the deposit, so the bank's payment is matched to it.
+    /// </summary>
+    [HttpGet("{token}/deposit/qr-bill")]
+    [EnableRateLimiting("public-contract-deposit")]
+    [ProducesResponseType(typeof(FileResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> DepositQrBill(string token, [FromQuery] string? lang, CancellationToken ct)
+    {
+        var result = await _contracts.GetDepositQrBillByTokenAsync(token, lang, ct);
+        if (result.IsFailure) return result.Error.ToProblemResult();
+        Response.Headers.ContentDisposition = result.Value.InlineContentDisposition;
+        return File(result.Value.Content, result.Value.ContentType);
+    }
 
     /// <summary>Declines the contract, which closes it.</summary>
     [HttpPost("{token}/decline")]

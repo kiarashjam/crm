@@ -85,6 +85,21 @@ internal static class ImportValues
                 if (option == null) return (null, $"{definition.Label} must be one of: {string.Join(", ", options)}");
                 raw = JsonSerializer.SerializeToElement(option);
                 break;
+            case CustomFieldTypes.MultiSelect:
+                // "Golf, Tennis" or "Golf; Tennis": each one of the options, matched ignoring case.
+                var chosen = text.Split(new[] { ',', ';', '|' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                var allowed = CustomFieldValues.Options(definition);
+                if (chosen.FirstOrDefault(c => !allowed.Contains(c, StringComparer.OrdinalIgnoreCase)) is { } unknown)
+                    return (null, $"{definition.Label}: \"{unknown}\" is not one of {string.Join(", ", allowed)}");
+                raw = JsonSerializer.SerializeToElement(chosen);
+                break;
+            case CustomFieldTypes.Money:
+                // An amount as a spreadsheet holds it, with its currency before or after it or
+                // none (the field's own): "CHF 1'200.50", "1200 EUR", "1 200,50".
+                var (amountText, currencyText) = SplitCurrency(text);
+                if (!TryNumber(amountText, out var amount)) return (null, $"{definition.Label} must be an amount such as 1200.50 or CHF 1'200.50");
+                raw = JsonSerializer.SerializeToElement(new { amount, currency = currencyText });
+                break;
             default:
                 raw = JsonSerializer.SerializeToElement(text);
                 break;
@@ -92,6 +107,17 @@ internal static class ImportValues
 
         var (ok, value, expected) = CustomFieldService.Normalize(definition, raw);
         return ok ? (value, null) : (null, $"{definition.Label} {expected}");
+    }
+
+    /// <summary>A three-letter currency at the start or the end of an amount, taken off it; null when there is none.</summary>
+    private static (string Amount, string? Currency) SplitCurrency(string text)
+    {
+        var t = text.Trim();
+        if (t.Length > 4 && char.IsLetter(t[0]) && char.IsLetter(t[1]) && char.IsLetter(t[2]) && !char.IsLetter(t[3]))
+            return (t[3..].Trim(), t[..3].ToUpperInvariant());
+        if (t.Length > 4 && char.IsLetter(t[^1]) && char.IsLetter(t[^2]) && char.IsLetter(t[^3]) && !char.IsLetter(t[^4]))
+            return (t[..^3].Trim(), t[^3..].ToUpperInvariant());
+        return (t, null);
     }
 
     /// <summary>

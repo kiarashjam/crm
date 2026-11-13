@@ -79,9 +79,13 @@ Add as **Variable** (not Secret): **Settings → Secrets and variables → Actio
 
 ---
 
-## 4. OpenAI API Key (Optional - for Intelligent Sales Writer)
+## 4. OpenAI API Key (Optional - for the assistant and the Intelligent Sales Writer)
 
-The Intelligent Sales Writer works with templates by default. To enable AI-powered generation:
+Without a key, the Intelligent Sales Writer works with templates, the chat ("Ask Cadence")
+answers from its built-in rules, and the morning brief goes out as a plain list. With one, the
+assistant ("Ask Cadence AI") answers from the records as each person may see them and proposes
+changes for them to confirm, the morning brief gets a few sentences written by the model, and
+the writer drafts with AI. To enable it:
 
 ### Local Development
 
@@ -106,6 +110,23 @@ Add to **Azure Portal → Web Apps → \<your-backend\> → Configuration → Ap
 | `OpenAI__Model` | `gpt-4o-mini` (or `gpt-4o` for better quality) |
 
 Or add as GitHub Secret and reference in deployment workflow.
+
+What the model may cost is limited on the server (optional settings; these are the defaults):
+
+| Name | Default | What it does |
+|------|---------|--------------|
+| `Assistant__Enabled` | `true` | `false` turns the assistant off and keeps the key for the writer |
+| `Assistant__Model` | `OpenAI__Model` | The model the assistant asks |
+| `Assistant__DefaultMonthlyLimit` | `300` | Calls to the model a workspace may make each month until a manager sets its own (Settings › Assistant) |
+| `Assistant__MaxMonthlyLimit` | `3000` | The most a workspace may set |
+| `Assistant__PersonalMonthlyLimit` | `100` | A person's AI-writer drafts each month outside any workspace |
+| `Assistant__UserBurst` / `Assistant__UserPerMinute` | `20` / `3` | How fast one person may ask |
+| `Assistant__WorkspaceBurst` / `Assistant__WorkspacePerMinute` | `60` / `30` | How fast a whole team may ask at once |
+| `Assistant__MaxTurnsPerQuestion` | `5` | Steps (each a billed call) the model may take for one question |
+| `Assistant__MaxOutputTokens` / `Assistant__TimeoutSeconds` | `800` / `30` | The length of an answer, and how long to wait for one |
+
+The privacy notice names OpenAI, with what the writer and the assistant send it, once the key
+is set.
 
 ---
 
@@ -293,6 +314,113 @@ commit, treat it as compromised and rotate it in the SendGrid dashboard
 
 ---
 
+## 5b. The privacy notice: who runs the app
+
+The public privacy page (`/privacy`) and the terms print who runs the app from these
+Application settings. Without them the page says the operator has not entered its details
+yet; it never invents any. Each club enters its own details (the controller), its consent
+mode and its retention periods on **Privacy requests -> Settings** in the app.
+
+| Name | Value |
+|------|-------|
+| `Privacy__OperatorName` | The company that runs this deployment |
+| `Privacy__OperatorAddress` | Its postal address (line breaks allowed) |
+| `Privacy__OperatorEmail` | Where privacy questions about the app itself go |
+| `Privacy__DpoContact` | Optional: a data protection officer or advisor, or an EU representative |
+| `Privacy__Hosting` | Optional: where the app and database run. Defaults to Microsoft Azure, West Europe (the Netherlands); set it if the resources are elsewhere |
+
+The page lists only the services actually configured: SendGrid when `Email__SmtpHost` is
+SendGrid's, OpenAI (in the United States) when `OpenAI__ApiKey` is set, and for a club's own
+page Stripe and Lightspeed once that club connected them. The session length it states is
+`Jwt__ExpiryMinutes`.
+
+---
+
+## 5c. Sign in with Google or Microsoft, and with passkeys (optional)
+
+All three are off until set. Nothing else changes: passwords keep working, and every way in
+ends in the same session. Below, `<api>` is the API's public https origin (for example
+`https://<your-api>.azurewebsites.net`) and `<app>` the SPA's (the `Email__FrontendBaseUrl`
+value, for example `https://mango-moss-0804bb403.1.azurestaticapps.net` or your own domain).
+
+### Both providers need these addresses
+
+| Name | Value |
+|------|-------|
+| `Sso__ApiBaseUrl` | `<api>`, no trailing slash. Without it `Email__ApiBaseUrl` is used. Set one of them: left at its default (`http://localhost:5160`), the buttons still show but Google and Microsoft are sent a localhost callback and refuse the sign-in. |
+| `Email__FrontendBaseUrl` | `<app>` (already set for the emails). The API sends people back to `<app>/auth/sso`. |
+
+### Google
+
+1. In the [Google Cloud console](https://console.cloud.google.com/), pick or create a project
+   for Cadence. **APIs & Services → OAuth consent screen**: user type *External* (or
+   *Internal* if only your Google Workspace's accounts should sign in), app name, support
+   email, and the scopes `openid`, `.../auth/userinfo.email`, `.../auth/userinfo.profile`.
+   Publish the app (status *In production*) so it is not limited to test users.
+2. **APIs & Services → Credentials → Create credentials → OAuth client ID**, type *Web
+   application*. Under **Authorized redirect URIs** add exactly
+   `<api>/api/auth/sso/google/callback` (no JavaScript origins are needed: the browser never
+   talks to Google's APIs itself).
+3. Set on the Web App:
+
+| Name | Value |
+|------|-------|
+| `Sso__Google__ClientId` | The client ID (`....apps.googleusercontent.com`) |
+| `Sso__Google__ClientSecret` | The client secret |
+
+Any Google account whose address Google has verified can then sign in as the Cadence account
+with that address (or become a new account with no workspace until someone invites it).
+
+### Microsoft Entra ID
+
+1. In the [Microsoft Entra admin center](https://entra.microsoft.com/), **Applications → App
+   registrations → New registration**: name *Cadence*; **Supported account types**: *Accounts
+   in any organizational directory* (multitenant, matching the default
+   `Sso__Microsoft__Tenant=organizations`), or *this organizational directory only* if only
+   your own tenant may sign in (then set the tenant id below). **Redirect URI**: platform
+   *Web*, value exactly `<api>/api/auth/sso/microsoft/callback`.
+2. **Token configuration → Add optional claim → ID**: tick `email` and `xms_edov` (accept
+   the prompt to add the Microsoft Graph `email` permission). Without `xms_edov` ("email
+   domain owner verified") Cadence believes no Microsoft address and matches nobody by
+   address, because a tenant's admin can type any address into a user's profile.
+3. **API permissions**: Microsoft Graph delegated `openid`, `email`, `profile` (and the
+   default `User.Read`). Grant admin consent if your tenant requires it.
+4. **Certificates & secrets → New client secret**. Copy its **Value** (not the Secret ID) at
+   once; note the expiry date and put a new one in before it lapses, or Microsoft sign-in
+   stops (passwords keep working).
+5. Set on the Web App:
+
+| Name | Value |
+|------|-------|
+| `Sso__Microsoft__ClientId` | The **Application (client) ID** from the Overview page |
+| `Sso__Microsoft__ClientSecret` | The secret's Value |
+| `Sso__Microsoft__Tenant` | `organizations` (default: any work or school account), `common` (those and personal Microsoft accounts), `consumers` (personal only), or your **Directory (tenant) ID** to admit only your own directory |
+
+### Passkeys
+
+Passkeys need no outside account; they belong to one site, the **relying party**. With nothing
+set, it is the host of `Email__FrontendBaseUrl` and its origin the only one allowed, which is
+right when the app is served from one address.
+
+| Name | Value |
+|------|-------|
+| `Passkeys__RelyingPartyId` | The app's host (`app.example.ch`), or a domain it is under (`example.ch`) so passkeys work on every subdomain. Never a domain every Azure static site shares (`azurestaticapps.net`, `1.azurestaticapps.net`): on the default address, use its full host. |
+| `Passkeys__Origins` | The app's origins, comma-separated (`https://app.example.ch`); each must be the relying party or under it. https only (http only for localhost). |
+| `Passkeys__RelyingPartyName` | Optional: the name passkey prompts show (default `Cadence`). |
+
+Decide the relying party **before people add passkeys**: changing it later (for example
+moving from the `*.azurestaticapps.net` address to your own domain) makes every passkey already
+made stop working, and people add new ones in **Settings → Security**.
+
+### What a workspace owner then does
+
+Under **Settings → Team → Single sign-on** the owner can require the team to sign in with
+Google or Microsoft, for the workspace's email domains (for example `pavillon46.ch`) or for
+everyone. Members it holds who signed in another way are asked to sign in again with a provider
+before they can work in that workspace; the owner is never held to it.
+
+---
+
 ## 6. Quick check
 
 - [ ] `AZURE_STATIC_WEB_APPS_API_TOKEN` added  
@@ -300,9 +428,11 @@ commit, treat it as compromised and rotate it in the SendGrid dashboard
 - [ ] `AZURE_WEBAPP_PUBLISH_PROFILE` added (full XML)  
 - [ ] `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `AZURE_CLIENT_SECRET` added  
 - [ ] `VITE_API_URL` added as **variable** (optional)
-- [ ] `OpenAI__ApiKey` added (optional, for Intelligent Sales Writer)
+- [ ] `OpenAI__ApiKey` added (optional: the assistant, the morning brief's summary and the Intelligent Sales Writer); the monthly limit reviewed (`Assistant__DefaultMonthlyLimit`, Settings › Assistant)
 - [ ] `Email__SmtpPassword` set in Azure **or** `SENDGRID_API_KEY` added as a GitHub secret, and `info@pavillon46.ch` verified in SendGrid
 - [ ] `Email__FrontendBaseUrl` set to the deployed SPA origin
+- [ ] `Privacy__OperatorName`, `Privacy__OperatorAddress` and `Privacy__OperatorEmail` set, so the privacy notice names who runs the app
+- [ ] Optional: `Sso__ApiBaseUrl` plus `Sso__Google__*` and/or `Sso__Microsoft__*` set (section 5c) for Google or Microsoft sign-in; `Passkeys__RelyingPartyId` and `Passkeys__Origins` set before anyone adds a passkey
 
 ---
 

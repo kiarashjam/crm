@@ -17,6 +17,7 @@ namespace ACI.WebApi.Controllers;
 [Authorize]
 [Produces("application/json")]
 [Requires(MemberPermissions.EditRecords, WritesOnly = true)]
+[InModule(WorkspaceModules.Sales)]
 public class LeadsController : ControllerBase
 {
     private readonly ILeadService _leadService;
@@ -40,8 +41,9 @@ public class LeadsController : ControllerBase
     /// <param name="status">Filter by status name, or "all".</param>
     /// <param name="source">Filter by source, or "all".</param>
     /// <param name="converted">Filter: "all", "active", or "converted".</param>
-    /// <param name="sortBy">Sort field: name, email, status, createdAt.</param>
+    /// <param name="sortBy">Sort field: name, email, status, createdAt; or cf:&lt;key&gt; to sort by a custom field.</param>
     /// <param name="sortDir">Sort direction: asc or desc.</param>
+    /// <param name="flex">Tag and custom field conditions: tag, tagMatch, notTag and field (see the README).</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A paginated list of leads.</returns>
     /// <response code="200">Returns the paginated list of leads.</response>
@@ -59,6 +61,7 @@ public class LeadsController : ControllerBase
         [FromQuery] string? sortBy = null,
         [FromQuery] string? sortDir = null,
         [FromQuery] string? kind = null,
+        [FromQuery] FlexQueryParams? flex = null,
         CancellationToken ct = default)
     {
         var userId = _currentUser.UserId;
@@ -83,6 +86,8 @@ public class LeadsController : ControllerBase
             Kind = kind,
             SortBy = string.IsNullOrWhiteSpace(sortBy) ? "createdAt" : sortBy,
             SortDir = string.IsNullOrWhiteSpace(sortDir) ? "desc" : sortDir,
+            // Tags and custom fields, and a sort by a field ("cf:key").
+            Flex = (flex ?? new FlexQueryParams()).ToFilter(sortBy, sortDir),
         };
 
         var result = await _leadService.GetLeadsPagedAsync(

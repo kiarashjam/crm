@@ -33,6 +33,12 @@ public static class ApplicationSources
     /// <summary>Started from a lead or a contact in the sales pipeline.</summary>
     public const string Lead = "lead";
 
+    /// <summary>
+    /// Started when a membership contract (one naming a tier) was countersigned with no
+    /// application behind it: for the person who signed, at the tier they signed for.
+    /// </summary>
+    public const string Contract = "contract";
+
     /// <summary>Copied from the old application documents when they moved to this table.</summary>
     public const string Moved = "moved";
 }
@@ -82,9 +88,31 @@ public class ClubApplication : Common.BaseEntity, Common.IVersioned
     /// <summary>The tier asked for: one of the club's tiers in the price catalogue.</summary>
     public string RequestedTier { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Who referred them, as the applicant (or staff) wrote it. Kept beside
+    /// <see cref="ReferredByMemberId"/>: the public form takes a name, and staff link it to the member.
+    /// </summary>
     public string? ReferredByName { get; set; }
+
+    /// <summary>
+    /// The member who referred them. Carried onto the member on approval, and the referral
+    /// bonus (when the club gives one) goes to them once the applicant is admitted.
+    /// </summary>
+    public Guid? ReferredByMemberId { get; set; }
+
+    /// <summary>The member who proposes them, and the one who seconds them: each a member in good standing, by the club's rule.</summary>
+    public Guid? ProposerMemberId { get; set; }
+    public Guid? SeconderMemberId { get; set; }
+
     public string? Occupation { get; set; }
     public string? ReasonForJoining { get; set; }
+
+    /// <summary>
+    /// The language the applicant filled the public form in ("en", "de" or "fr"), carried
+    /// to the member on approval so the welcome email and what follows are in it. Null for
+    /// an application staff entered.
+    /// </summary>
+    public string? Language { get; set; }
 
     /// <summary><see cref="ApplicationStatuses"/>.</summary>
     public string Status { get; set; } = ApplicationStatuses.Submitted;

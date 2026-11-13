@@ -4,11 +4,12 @@
 import type { Activity } from '@/app/api/types';
 import { activityFactsLine, activityTime } from './activityFacts';
 import type { CsvColumn } from './exportCsv';
+import { currentDateLocale } from '@/app/i18n/current';
 
 function fmtDateTime(iso?: string): string {
   if (!iso) return '';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString(currentDateLocale(), { dateStyle: 'medium', timeStyle: 'short' });
 }
 
 export function activityTypeLabel(type?: string): string {
@@ -48,7 +49,7 @@ export function printActivitiesPdf(rows: Activity[], meta: { subtitle?: string }
   const win = window.open('', '_blank', 'width=920,height=720');
   if (!win) return false;
 
-  const exportedAt = new Date().toLocaleString(undefined, { dateStyle: 'long', timeStyle: 'short' });
+  const exportedAt = new Date().toLocaleString(currentDateLocale(), { dateStyle: 'long', timeStyle: 'short' });
   const body = rows
     .map(
       (a) => `

@@ -1,5 +1,7 @@
 import { Shield, Lock, Check } from 'lucide-react';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/app/components/ui/input-otp';
+import { PasskeysCard } from './PasskeysCard';
+import { SsoLinksCard } from './SsoLinksCard';
 
 export interface SecuritySectionProps {
   twoFaEnabled: boolean | null;
@@ -169,6 +171,10 @@ export function SecuritySection({
           </div>
         )}
       </div>
+
+      <PasskeysCard />
+
+      <SsoLinksCard />
     </div>
   );
 }

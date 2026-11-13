@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   CalendarClock,
   Plus,
@@ -71,6 +72,7 @@ import { WriteOnly } from '@/app/components/WriteOnly';
 import { orgCan, PERMISSION } from '@/app/api/organizations';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
 import ResourcesDialog from '@/app/pages/reservations/ResourcesDialog';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const KIND_ICON: Record<ResourceKind, React.ElementType> = {
   Dining: Coffee,
@@ -147,7 +149,7 @@ function toDateTimeLocal(d: Date): string {
 
 function formatDateTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleString(undefined, {
+    return new Date(iso).toLocaleString(currentDateLocale(), {
       weekday: 'short',
       month: 'short',
       day: 'numeric',
@@ -400,7 +402,13 @@ export default function Reservations() {
   };
 
   /** Status, edit and delete: the same on a row, a card and a table line. */
-  const reservationActions = (r: Reservation) => (
+  const reservationActions = (r: Reservation) => (r.privateEventId ? (
+    // A private event's hold follows the event: the server refuses its status, edit and delete
+    // here, so they are not offered; the event's page is where its spaces change.
+    <Link to={`/private-events/${r.privateEventId}`} className="text-xs font-semibold text-amber-800 hover:underline dark:text-amber-300">
+      Held for a private event
+    </Link>
+  ) : (
     <div className="flex items-center gap-2">
       {/* Changing a booking's status is the front desk's; only the moves the server allows are offered. */}
       <WriteOnly permission={PERMISSION.FrontDesk}>
@@ -443,7 +451,7 @@ export default function Reservations() {
         </button>
       </WriteOnly>
     </div>
-  );
+  ));
 
   const reservationColumns: RecordColumn<Reservation>[] = [
     {
@@ -623,6 +631,7 @@ export default function Reservations() {
               }
               actionLabel={reservations.length === 0 && bookable.length > 0 ? 'New booking' : undefined}
               onAction={reservations.length === 0 && bookable.length > 0 ? openCreate : undefined}
+              actionPermission={PERMISSION.FrontDesk}
               variant="teal"
             />
           ) : (

@@ -58,6 +58,7 @@ import { WriteOnly } from '@/app/components/WriteOnly';
 import { orgCan, PERMISSION } from '@/app/api/organizations';
 import { servesDemoData } from '@/app/api/apiClient';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const CAUSE_COLOR: Record<DonationCause, string> = {
   StaffSupport: 'bg-orange-50 text-orange-700 ring-1 ring-orange-200',
@@ -71,7 +72,7 @@ const CAUSE_COLOR: Record<DonationCause, string> = {
 
 function formatDate(iso: string): string {
   try {
-    return new Date(iso).toLocaleDateString(undefined, {
+    return new Date(iso).toLocaleDateString(currentDateLocale(), {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
@@ -162,7 +163,7 @@ export default function Donations() {
 
   const acknowledge = async (d: Donation) => {
     try {
-      await acknowledgeDonation(d.id);
+      await acknowledgeDonation(d.id, d.version);
       toast.success('Acknowledged — thank-you logged');
       await load();
     } catch (err) {
@@ -346,6 +347,7 @@ export default function Donations() {
               }
               actionLabel={donations.length === 0 ? 'Record donation' : undefined}
               onAction={donations.length === 0 ? openCreate : undefined}
+              actionPermission={PERMISSION.ManageMoney}
               variant="orange"
             />
           ) : (

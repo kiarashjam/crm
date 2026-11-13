@@ -4,8 +4,10 @@ import { toast } from 'sonner';
 import { servesDemoData } from '@/app/api/apiClient';
 import { orgCan, PERMISSION, PRESET_LABELS, type InviteDto, type JoinRequestDto, type OrgMemberDto } from '@/app/api/organizations';
 import { RegionalSettingsCard } from './RegionalSettingsCard';
+import { ModulesCard } from './ModulesCard';
 import { LeadKindsCard } from './LeadKindsCard';
 import { EmailSendingCard } from './EmailSendingCard';
+import { SingleSignOnCard } from './SingleSignOnCard';
 
 export interface OrganizationSectionProps {
   organizations: { id: string; name: string; isOwner: boolean; role?: number }[];
@@ -91,11 +93,15 @@ export function OrganizationSection({
         </div>
       )}
 
+      <ModulesCard />
+
       <RegionalSettingsCard />
 
       <LeadKindsCard />
 
       <EmailSendingCard />
+
+      <SingleSignOnCard />
 
       {!servesDemoData() && Boolean(currentOrg) && orgCan(currentOrg, PERMISSION.ManageMembers) && (
         <>

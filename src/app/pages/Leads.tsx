@@ -39,8 +39,15 @@ import {
   createActivity,
   setLeadReferral,
   messages,
+  readFlexParams,
+  hasFlexFilters,
   type ConvertLeadRequest,
 } from '@/app/api';
+import { FlexFilterBar } from '@/app/components/flex/FlexFilterBar';
+import { SavedViewsMenu } from '@/app/components/flex/SavedViewsMenu';
+import { BulkTagButton } from '@/app/components/flex/BulkTagDialog';
+import { useFlexColumns } from '@/app/components/flex/useFlexColumns';
+import { flexExportColumns, NO_FLEX_COLUMNS } from '@/app/lib/flexExport';
 import {
   useAllLeads, useLeadSources, useLeadStatuses, useLeadStats, useLeadsPage, useOrgMembers,
 } from '@/app/hooks/queries';
@@ -52,6 +59,7 @@ import { relationshipLabel } from '@/app/api/relationships';
 import { bulkUpdateLeads } from '@/app/api/leadOps';
 import { getCurrentUser, type AuthUser } from '@/app/lib/auth';
 import { csvCell } from '@/app/lib/exportCsv';
+import { useCsvSeparator } from '@/app/hooks/useCsvSeparator';
 import { useOrg } from '@/app/contexts/OrgContext';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -111,6 +119,7 @@ import type { LeadForm } from './leads/types';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import { useMoney } from '@/app/hooks/useMoney';
 import { AMOUNT_HINT, currencyOptions, parseMoneyInput } from '@/app/lib/money';
+import { currentDateLocale, currentNumberLocale } from '@/app/i18n/current';
 
 const LEAD_CREATED_AT_STORAGE_KEY = 'crm.leadCreatedAt.v1';
 /** Session-scoped scroll position so returning from a lead detail restores it. */
@@ -151,11 +160,20 @@ const NO_STATUSES: LeadStatus[] = [];
 const NO_SOURCES: LeadSource[] = [];
 const NO_MEMBERS: OrgMemberDto[] = [];
 
+/** "budget:desc" from the address: an order by a custom field; null for none. */
+function parseFieldSort(value: string | null): { key: string; dir: 'asc' | 'desc' } | null {
+  const [key, dir] = (value ?? '').split(':');
+  return key ? { key, dir: dir === 'desc' ? 'desc' : 'asc' } : null;
+}
+
+const leadIdOf = (l: Lead) => l.id;
+
 export default function Leads() {
   const money = useMoney();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { currentOrg, isReadOnly: viewOnly } = useOrg();
+  const csvSeparator = useCsvSeparator();
   // What the member's role lets them do here: work leads, delete them, export them.
   const isReadOnly = viewOnly || !orgCan(currentOrg, PERMISSION.EditRecords);
   const canDelete = !viewOnly && orgCan(currentOrg, PERMISSION.DeleteRecords);
@@ -269,6 +287,11 @@ export default function Leads() {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(() => {
     return new URLSearchParams(window.location.search).get('dir') === 'asc' ? 'asc' : 'desc';
   });
+  // Conditions on tags and custom fields, and an order by a custom field, live in the address.
+  const flexKey = searchParams.toString();
+  const flex = useMemo(() => readFlexParams(new URLSearchParams(flexKey)), [flexKey]);
+  const cfSortParam = searchParams.get('cfSort');
+  const fieldSort = useMemo(() => parseFieldSort(cfSortParam), [cfSortParam]);
   const [showFilters, setShowFilters] = useState(false);
   const [exporting, setExporting] = useState(false);
   // Sales-tracker filter axes (Excel-parity). Serialised into the URL under
@@ -622,9 +645,10 @@ export default function Leads() {
     source: filterSource !== 'all' ? filterSource : undefined,
     converted: filterConverted,
     kind: filterKind,
-    sortBy: sortField,
-    sortDir: sortDirection,
-  }), [currentPage, pageSize, debouncedSearch, filterStatuses, filterSource, filterConverted, filterKind, sortField, sortDirection]);
+    sortBy: fieldSort ? `cf:${fieldSort.key}` as const : sortField,
+    sortDir: fieldSort ? fieldSort.dir : sortDirection,
+    flex,
+  }), [currentPage, pageSize, debouncedSearch, filterStatuses, filterSource, filterConverted, filterKind, sortField, sortDirection, fieldSort, flex]);
   const pageQuery = useLeadsPage(pageParams, !useClientMode);
   const allLeadsQuery = useAllLeads(useClientMode);
   const listQuery = useClientMode ? allLeadsQuery : pageQuery;
@@ -812,6 +836,16 @@ export default function Leads() {
         );
       }
 
+      // The workspace's own fields and the leads' tags, after the lead's own columns. Without
+      // them the file is still written, and the person is told what it lacks.
+      let exportFlex = NO_FLEX_COLUMNS;
+      try {
+        exportFlex = await flexExportColumns('lead', allLeads.map((l) => l.id));
+      } catch {
+        toast.warning('The custom fields and tags could not be read: the file has the leads without them.');
+      }
+      headers.push(...exportFlex.headers);
+
       const rows = allLeads.map((lead) => [
         lead.id,
         lead.name,
@@ -845,13 +879,14 @@ export default function Leads() {
             lead.contactPersonPhone ?? '',
           ]
           : []),
+        ...exportFlex.cells(lead.id),
       ]);
 
       // The shared cell encoder: names and descriptions arrive from the public form
       // and the webhook, and one starting with "=" must not run as a formula.
       const csvContent = [
-        headers.map((header) => csvCell(header)).join(','),
-        ...rows.map((row) => row.map((cell) => csvCell(cell)).join(',')),
+        headers.map((header) => csvCell(header, csvSeparator)).join(csvSeparator),
+        ...rows.map((row) => row.map((cell) => csvCell(cell, csvSeparator)).join(csvSeparator)),
       ].join('\n');
 
       const csvWithBom = `\uFEFF${csvContent}`;
@@ -1044,23 +1079,19 @@ export default function Leads() {
 
   // The dialog's save is checked against the version it opened with, and the row may be
   // hours old or behind this page's own inline assignment or referrer. So the dialog
-  // starts from the lead as it is now (see useFreshLeadOnOpen). The row itself is left
+  // starts from the lead as it is now (see useFreshLeadOnOpen): the fresh copy goes into
+  // the form, with its version, while nothing has been typed. The row itself is left
   // to the save: a change to the list re-runs the ?edit hand-over below, which opens
   // the dialog again on the row while its param lingers, over what is being typed.
+  const formOfLead = useCallback(
+    (lead: Lead) => leadEditForm(lead, sourceOptions, statusOptions),
+    [sourceOptions, statusOptions],
+  );
   useFreshLeadOnOpen(
     dialogOpen ? editingLead?.id : undefined,
-    () => !!editingLead && JSON.stringify(form) === JSON.stringify(leadEditForm(editingLead, sourceOptions, statusOptions)),
-    (fresh) => {
-      if (!editingLead) return;
-      const merged: Lead = {
-        ...editingLead,
-        ...fresh,
-        assignedToId: fresh.assignedToId ?? editingLead.assignedToId,
-        relationships: fresh.relationships ?? editingLead.relationships,
-      };
-      setEditingLead(merged);
-      setForm(leadEditForm(merged, sourceOptions, statusOptions));
-    },
+    editingLead ? formOfLead(editingLead) : null,
+    setForm,
+    formOfLead,
   );
 
   // Lead detail lives on its own page (/leads/:id). A click opens that page
@@ -1340,13 +1371,15 @@ export default function Leads() {
           description: form.description.trim() || null,
           lifecycleStage: form.lifecycleStage || null,
           // The dialog sends back every field it shows, so the save is refused, rather
-          // than written over, when someone saved the lead after the list was read.
-          version: editingLead.version,
+          // than written over, when someone saved the lead after the copy its fields came
+          // from was read (the list's, or the fresher one the dialog read as it opened).
+          version: form.version || undefined,
         });
         if (updated) {
-          // The referrer has its own endpoint, saved for the whole team.
+          // The referrer has its own endpoint, saved for the whole team; sent when it was
+          // changed from that copy's.
           const referredByContactId = form.referredByContactId || null;
-          const saved = referredByContactId !== (editingLead.referredByContactId ?? null)
+          const saved = referredByContactId !== (form.referredByContactIdAsRead || null)
             ? await setLeadReferral(editingLead.id, referredByContactId) ?? updated
             : updated;
           handleLeadUpdate({ ...updated, referredByContactId: saved.referredByContactId, referredByContactName: saved.referredByContactName });
@@ -1433,15 +1466,16 @@ export default function Leads() {
     && qualifiedFilterNames.every((name) => filterStatuses.includes(name));
   const convertedHint = stats.converted === 0
     ? 'none became deals'
-    : `${stats.converted.toLocaleString()} became ${stats.converted === 1 ? 'a deal' : 'deals'}`;
+    : `${stats.converted.toLocaleString(currentNumberLocale())} became ${stats.converted === 1 ? 'a deal' : 'deals'}`;
   // The page's numbers, in its header. Active, Converted and Qualified switch
   // their filter on and off, and say which is on.
   // How this person likes leads shown: the gallery, a list or a table, saved for them.
   const view = useViewPreference('leads', { layouts: ['grid', 'list', 'table'] });
+  const flexColumns = useFlexColumns('lead', filteredLeads, leadIdOf, view);
   const leadDate = (iso?: string) => {
     if (!iso) return '—';
     const d = new Date(iso);
-    return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric', year: 'numeric' });
   };
   const statusPill = (status: string) => {
     const c = STATUS_BADGE_COLORS[status] ?? { bg: 'bg-slate-100', text: 'text-slate-600', border: 'border-slate-200', dot: 'bg-slate-400' };
@@ -1506,9 +1540,41 @@ export default function Leads() {
     { id: 'lastContacted', label: 'Last contacted', cell: (l) => leadDate(l.lastContactedAt) },
     { id: 'created', label: 'Added', byDefault: false, cell: (l) => leadDate(l.createdAtUtc) },
   ];
+  const allLeadColumns = [...leadColumns, ...flexColumns];
+
+  /**
+   * Open the list as a saved view has it: its address is put in place first, and once it is,
+   * the page's own filters (kept in its state as well as its address) are read from it. They
+   * used to be set at the same moment as the address: the effects that mirror them into the
+   * address then ran against the address before the view and wrote it back over the view, so
+   * its tag and field conditions and its search were lost. The search follows the address on
+   * its own (the effect that keeps the box in step with it).
+   */
+  const openingViewRef = useRef(false);
+  const applyLeadView = (next: URLSearchParams) => {
+    openingViewRef.current = true;
+    setSearchParams(next);
+  };
+  useEffect(() => {
+    if (!openingViewRef.current) return;
+    openingViewRef.current = false;
+    const statuses = searchParams.get('statuses');
+    setFilterStatuses(statuses ? statuses.split(',').map((x) => x.trim()).filter(Boolean) : []);
+    setFilterSource(searchParams.get('source') ?? 'all');
+    const converted = searchParams.get('converted');
+    setFilterConverted(converted === 'all' || converted === 'converted' ? converted : 'active');
+    setFilterAssignment(searchParams.get('assignment') || 'all');
+    const kind = searchParams.get('kind');
+    setFilterKind(kind === 'person' || kind === 'establishment' ? kind : 'all');
+    const sort = searchParams.get('sort');
+    setSortField(sort === 'name' || sort === 'email' || sort === 'status' ? sort : 'createdAt');
+    setSortDirection(searchParams.get('dir') === 'asc' ? 'asc' : 'desc');
+    setSalesFilters(Object.fromEntries((Object.keys(EMPTY_SALES_TRACKER_FILTERS) as (keyof SalesTrackerFilterState)[])
+      .map((key) => [key, searchParams.get(`st.${key}`) ?? EMPTY_SALES_TRACKER_FILTERS[key]])) as unknown as SalesTrackerFilterState);
+  }, [searchParams]);
 
   const leadHeroStats: PageStat[] = [
-    { label: 'Total leads', value: stats.total, icon: Users, tone: 'orange', hint: `${stats.active.toLocaleString()} active`, progress: shareOf(stats.active) },
+    { label: 'Total leads', value: stats.total, icon: Users, tone: 'orange', hint: `${stats.active.toLocaleString(currentNumberLocale())} active`, progress: shareOf(stats.active) },
     {
       label: 'Active', value: stats.active, icon: Target, tone: 'sky', hint: 'still open', pressed: activeOn, progress: shareOf(stats.active),
       onClick: () => {
@@ -1522,7 +1588,7 @@ export default function Leads() {
     { label: 'Hot', value: stats.hotLeads, icon: Zap, tone: 'rose', hint: 'score 70+', progress: shareOf(stats.hotLeads) },
     {
       label: 'Converted', value: conversionRate, icon: CheckCircle2, tone: 'teal', hint: convertedHint, pressed: convertedOn, progress: conversionRate / 100,
-      format: (n) => `${n === conversionRate ? conversionRate.toLocaleString() : Math.round(n)}%`,
+      format: (n) => `${n === conversionRate ? conversionRate.toLocaleString(currentNumberLocale()) : Math.round(n)}%`,
       onClick: () => {
         setFilterConverted((current) => (current === 'converted' ? 'all' : 'converted'));
         setShowFilters(true);
@@ -1800,8 +1866,32 @@ export default function Leads() {
               </Select>
               </div>
 
-              <ViewSwitcher view={view} columns={columnChoices(leadColumns)} />
+              <SavedViewsMenu list="leads" params={searchParams} onChange={applyLeadView} view={view} columns={columnChoices(allLeadColumns)} />
+              <ViewSwitcher view={view} columns={columnChoices(allLeadColumns)} />
             </div>
+          </div>
+
+          {/* Tags and custom fields: filters and an order by a field, run by the server over every lead. */}
+          <div className="mt-3 space-y-1">
+            <FlexFilterBar
+              entity="lead"
+              params={searchParams}
+              onChange={(next) => setSearchParams(next)}
+              sortField={fieldSort?.key ?? null}
+              sortDir={fieldSort?.dir}
+              onSortField={(key, dir) => {
+                const params = new URLSearchParams(searchParams);
+                if (key) params.set('cfSort', `${key}:${dir}`);
+                else params.delete('cfSort');
+                params.set('page', '1');
+                setSearchParams(params);
+              }}
+            />
+            {useClientMode && (hasFlexFilters(flex) || fieldSort) && (
+              <p className="text-xs text-amber-800" role="status">
+                Tag and field filters, and an order by a field, apply when no owner, tracker filter or more than one status is chosen.
+              </p>
+            )}
           </div>
 
           {/* Expandable Filter Panel */}
@@ -2147,6 +2237,7 @@ export default function Leads() {
               onClear={clearSelection}
               onBulkDelete={canDelete ? runBulkDelete : undefined}
               onBulkApply={runBulkApply}
+              extra={<BulkTagButton entityType="lead" recordIds={Array.from(selectedIds)} what={`the ${selectedIds.size} chosen`} />}
             />
           )}
           <ViewTransition layout={view.layout}>
@@ -2168,7 +2259,7 @@ export default function Leads() {
               subtitle={(l) => (leadKindOf(l) === 'establishment'
                 ? [establishmentSummary(l), l.contactPersonName].filter(Boolean).join(' · ')
                 : [cardCompany(l), l.email].filter(Boolean).join(' · '))}
-              columns={leadColumns.filter((c) => c.id !== 'email')}
+              columns={allLeadColumns.filter((c) => c.id !== 'email')}
             />
           ) : view.layout === 'table' ? (
             <RecordTable
@@ -2178,7 +2269,7 @@ export default function Leads() {
               getKey={(l) => l.id}
               onOpen={openDetail}
               selected={(l) => selectedIds.has(l.id)}
-              columns={leadColumns}
+              columns={allLeadColumns}
             />
           ) : (
           <div className={`grid md:grid-cols-2 xl:grid-cols-3 ${gridDensity(view, 'gap-4', 'gap-3 2xl:grid-cols-4')}`}>

@@ -1,6 +1,8 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { getPublicCaptureForm, submitPublicCapture, PublicCaptureError } from '@/app/api/leadOps';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { getPublicCaptureForm, submitPublicCapture, PublicCaptureError, type MarketingConsentMode } from '@/app/api/leadOps';
+import { PublicPage } from '@/app/components/PublicPage';
+import { usePageLanguage, useT, type MessageKey } from '@/app/i18n';
 import { ESTABLISHMENT_TYPES, leadKindsMode, type LeadKindsMode } from '@/app/lib/leadKinds';
 
 /**
@@ -11,14 +13,35 @@ import { ESTABLISHMENT_TYPES, leadKindsMode, type LeadKindsMode } from '@/app/li
  * in Cadence". It also used to show the same "This form is not active" for a
  * network blip as for a dead link, keep the fields editable on a dead link, and
  * ignore the thank-you message the workspace configured.
+ *
+ * It reads in the visitor's language (one they picked here, the ?lang= on the link, their
+ * browser's, else the workspace's), and says which with the form, so the thank-you and the
+ * consent record are in the words they read. The workspace's own words stay as written.
  */
 type FormState = 'loading' | 'ready' | 'missing' | 'unreachable';
 type Kind = 'person' | 'establishment';
 
+/** The kinds of establishment in the visitor's language; the app's own screens keep the English labels. */
+const TYPE_KEYS: Record<string, MessageKey> = {
+  restaurant: 'capture.type.restaurant',
+  cafe: 'capture.type.cafe',
+  bar: 'capture.type.bar',
+  hotel: 'capture.type.hotel',
+  bakery: 'capture.type.bakery',
+  catering: 'capture.type.catering',
+  food_truck: 'capture.type.food_truck',
+  shop: 'capture.type.shop',
+  other: 'capture.type.other',
+};
+
 export default function PublicCapture() {
   const { token = '' } = useParams();
+  const [search] = useSearchParams();
+  const { t, tx, language } = useT();
   const [state, setState] = useState<FormState>('loading');
-  const [title, setTitle] = useState('Tell us about you');
+  // The form's name as the workspace wrote it; until then, or without one, the standard heading.
+  const [title, setTitle] = useState<string | null>(null);
+  const [clubLanguage, setClubLanguage] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState('');
@@ -28,6 +51,11 @@ export default function PublicCapture() {
   const [jobTitle, setJobTitle] = useState('');
   const [country, setCountry] = useState('');
   const [website, setWebsite] = useState('');
+  // The marketing box: never ticked in advance. Whether it shows, and whether it must be
+  // ticked, is the workspace's privacy setting.
+  const [consentMode, setConsentMode] = useState<MarketingConsentMode>('off');
+  const [consentText, setConsentText] = useState('');
+  const [consent, setConsent] = useState(false);
   // A workspace whose leads are establishments asks for the place, then who is writing.
   const [mode, setMode] = useState<LeadKindsMode>('person');
   const [kind, setKind] = useState<Kind>('person');
@@ -40,28 +68,43 @@ export default function PublicCapture() {
   const [busy, setBusy] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const thanksRef = useRef<HTMLHeadingElement>(null);
+  const loaded = useRef(false);
 
+  usePageLanguage(search.get('lang'));
+  usePageLanguage(clubLanguage, 'club');
+
+  // Asked again when the page turns to another language, so the standard checkbox sentence
+  // is in it; what was typed stays, and only the first load shows "Loading…".
   useEffect(() => {
     let cancelled = false;
-    setState('loading');
-    getPublicCaptureForm(token)
+    if (!loaded.current) setState('loading');
+    getPublicCaptureForm(token, language)
       .then((form) => {
         if (cancelled) return;
-        if (form.name?.trim()) setTitle(form.name.trim());
+        // Only the first load says whom the visitor writes for: a later one (the page turned to
+        // another language) keeps their choice of person or business, as it keeps what they typed.
+        const firstLoad = !loaded.current;
+        loaded.current = true;
+        setTitle(form.name?.trim() || null);
+        setClubLanguage(form.language ?? null);
+        const consentSetting = form.marketingConsent ?? 'off';
+        setConsentMode(consentSetting === 'optional' || consentSetting === 'required' ? consentSetting : 'off');
+        setConsentText(form.marketingConsentText?.trim() || '');
         const m = leadKindsMode(form.leadKinds);
         setMode(m);
-        setKind(m === 'establishment' ? 'establishment' : 'person');
+        if (firstLoad || m !== 'both') setKind(m === 'establishment' ? 'establishment' : 'person');
         setState('ready');
       })
       .catch((err: unknown) => {
         if (cancelled) return;
         // Only a 404 means the link is dead. Anything else is worth retrying.
+        loaded.current = false;
         setState(err instanceof PublicCaptureError && err.status === 404 ? 'missing' : 'unreachable');
       });
     return () => {
       cancelled = true;
     };
-  }, [token, attempt]);
+  }, [token, attempt, language]);
 
   // Move focus to the thank-you, so a screen reader announces it and keyboard
   // focus is not left on a button that no longer exists.
@@ -84,17 +127,18 @@ export default function PublicCapture() {
         ...(place
           ? { establishmentName: placeName, establishmentType: placeType || undefined, addressLine: street, postalCode, city, businessWebsite }
           : {}),
+        ...(consentMode === 'off' ? {} : { marketingConsent: consent }),
+        language,
       });
-      setDone(message ?? "Thanks. We'll be in touch.");
+      setDone(message ?? t('capture.thanks'));
     } catch (err) {
       const status = err instanceof PublicCaptureError ? err.status : 0;
       setError(
-        status === 429 ? 'A lot of messages are arriving right now. Please try again in a minute.'
-          : status === 400 ? (kind === 'establishment'
-            ? 'Please check the establishment’s name, the email address, and that each field is not too long.'
-            : 'Please check the email address and that each field is not too long.')
-          : status === 404 ? 'This form is no longer available.'
-          : 'That could not be sent. Please check your connection and try again.',
+        status === 429 ? t('capture.errorBusy')
+          : status === 400 && consentMode === 'required' && !consent ? t('capture.errorConsentRequired')
+          : status === 400 ? (kind === 'establishment' ? t('capture.errorInvalidEstablishment') : t('capture.errorInvalid'))
+          : status === 404 ? t('apply.errorGone')
+          : t('apply.errorNetwork'),
       );
     } finally {
       setBusy(false);
@@ -102,44 +146,39 @@ export default function PublicCapture() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-16">
-      <div className="mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <PublicPage>
         {done ? (
           <div className="text-center">
             <h1 ref={thanksRef} tabIndex={-1} className="text-xl font-semibold text-slate-900 focus:outline-none">
-              Thank you
+              {t('public.thanksTitle')}
             </h1>
             <p className="mt-2 text-sm text-slate-700">{done}</p>
           </div>
         ) : state === 'missing' ? (
           <>
-            <h1 className="text-xl font-semibold text-slate-900">This form is no longer available</h1>
-            <p className="mt-2 text-sm text-slate-600">The link may be out of date. Please contact the club directly.</p>
+            <h1 className="text-xl font-semibold text-slate-900">{t('public.formMissingTitle')}</h1>
+            <p className="mt-2 text-sm text-slate-600">{t('public.formMissingText')}</p>
           </>
         ) : state === 'unreachable' ? (
           <>
-            <h1 className="text-xl font-semibold text-slate-900">This form could not be loaded</h1>
-            <p className="mt-2 text-sm text-slate-600">Please check your connection.</p>
+            <h1 className="text-xl font-semibold text-slate-900">{t('public.formUnreachableTitle')}</h1>
+            <p className="mt-2 text-sm text-slate-600">{t('common.checkConnection')}</p>
             <button
               type="button"
               onClick={() => setAttempt((n) => n + 1)}
               className="mt-4 h-10 w-full rounded-xl bg-slate-900 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2"
             >
-              Try again
+              {t('common.tryAgain')}
             </button>
           </>
         ) : (
           <form onSubmit={submit} aria-busy={state === 'loading' || busy}>
-            <h1 className="text-xl font-semibold text-slate-900">{state === 'loading' ? 'Loading…' : title}</h1>
-            <p className="mt-1 text-sm text-slate-500">
-              {kind === 'establishment'
-                ? 'Tell us about your establishment and we will get back to you.'
-                : 'Leave your details and we will get back to you.'}
-            </p>
+            <h1 className="text-xl font-semibold text-slate-900">{state === 'loading' ? t('common.loading') : title ?? t('capture.titleDefault')}</h1>
+            <p className="mt-1 text-sm text-slate-500">{kind === 'establishment' ? t('capture.introEstablishment') : t('capture.intro')}</p>
             <fieldset disabled={state !== 'ready' || busy} className="mt-6 space-y-3">
               {mode === 'both' && (
-                <div role="radiogroup" aria-label="You are writing" className="grid grid-cols-2 gap-2">
-                  {([['person', 'For myself'], ['establishment', 'For a business']] as const).map(([value, label]) => (
+                <div role="radiogroup" aria-label={t('capture.writingAs')} className="grid grid-cols-2 gap-2">
+                  {([['person', t('capture.forMyself')], ['establishment', t('capture.forBusiness')]] as const).map(([value, label]) => (
                     <button
                       key={value}
                       type="button"
@@ -157,39 +196,42 @@ export default function PublicCapture() {
               )}
               {kind === 'establishment' ? (
                 <>
-                  <Field label="Establishment name" value={placeName} onChange={setPlaceName} autoComplete="organization" maxLength={256} required />
+                  <Field label={t('capture.establishmentName')} value={placeName} onChange={setPlaceName} autoComplete="organization" maxLength={256} required />
                   <label className="block text-sm text-slate-700">
-                    Type
+                    {t('capture.establishmentType')}
                     <select
                       value={placeType}
                       onChange={(e) => setPlaceType(e.target.value)}
                       className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
                     >
-                      <option value="">Choose…</option>
-                      {ESTABLISHMENT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                      <option value="">{t('capture.chooseType')}</option>
+                      {ESTABLISHMENT_TYPES.map((type) => {
+                        const key = TYPE_KEYS[type.value];
+                        return <option key={type.value} value={type.value}>{key ? t(key) : type.label}</option>;
+                      })}
                     </select>
                   </label>
-                  <Field label="Street and number" value={street} onChange={setStreet} autoComplete="street-address" maxLength={256} />
+                  <Field label={t('capture.street')} value={street} onChange={setStreet} autoComplete="street-address" maxLength={256} />
                   <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-3">
-                    <Field label="Postal code" value={postalCode} onChange={setPostalCode} autoComplete="postal-code" maxLength={20} />
-                    <Field label="City" value={city} onChange={setCity} autoComplete="address-level2" maxLength={120} />
+                    <Field label={t('capture.postalCode')} value={postalCode} onChange={setPostalCode} autoComplete="postal-code" maxLength={20} />
+                    <Field label={t('capture.city')} value={city} onChange={setCity} autoComplete="address-level2" maxLength={120} />
                   </div>
-                  <Field label="Country" value={country} onChange={setCountry} autoComplete="country-name" maxLength={80} />
-                  <Field label="Establishment website" value={businessWebsite} onChange={setBusinessWebsite} autoComplete="url" maxLength={256} />
-                  <p className="pt-2 text-sm font-medium text-slate-900">Your details</p>
-                  <Field label="Your name" value={name} onChange={setName} autoComplete="name" maxLength={256} required />
-                  <Field label="Your role" value={jobTitle} onChange={setJobTitle} autoComplete="organization-title" maxLength={200} />
-                  <Field label="Email" value={email} onChange={setEmail} type="email" autoComplete="email" maxLength={256} required />
-                  <Field label="Phone" value={phone} onChange={setPhone} type="tel" autoComplete="tel" maxLength={64} />
+                  <Field label={t('capture.country')} value={country} onChange={setCountry} autoComplete="country-name" maxLength={80} />
+                  <Field label={t('capture.establishmentWebsite')} value={businessWebsite} onChange={setBusinessWebsite} autoComplete="url" maxLength={256} />
+                  <p className="pt-2 text-sm font-medium text-slate-900">{t('capture.yourDetails')}</p>
+                  <Field label={t('capture.yourName')} value={name} onChange={setName} autoComplete="name" maxLength={256} required />
+                  <Field label={t('capture.yourRole')} value={jobTitle} onChange={setJobTitle} autoComplete="organization-title" maxLength={200} />
+                  <Field label={t('capture.email')} value={email} onChange={setEmail} type="email" autoComplete="email" maxLength={256} required />
+                  <Field label={t('capture.phone')} value={phone} onChange={setPhone} type="tel" autoComplete="tel" maxLength={64} />
                 </>
               ) : (
                 <>
-              <Field label="Name" value={name} onChange={setName} autoComplete="name" maxLength={256} required />
-              <Field label="Email" value={email} onChange={setEmail} type="email" autoComplete="email" maxLength={256} required />
-              <Field label="Phone" value={phone} onChange={setPhone} type="tel" autoComplete="tel" maxLength={64} />
-              <Field label="Company" value={company} onChange={setCompany} autoComplete="organization" maxLength={200} />
-              <Field label="Job title" value={jobTitle} onChange={setJobTitle} autoComplete="organization-title" maxLength={200} />
-              <Field label="Country" value={country} onChange={setCountry} autoComplete="country-name" maxLength={80} />
+                  <Field label={t('capture.name')} value={name} onChange={setName} autoComplete="name" maxLength={256} required />
+                  <Field label={t('capture.email')} value={email} onChange={setEmail} type="email" autoComplete="email" maxLength={256} required />
+                  <Field label={t('capture.phone')} value={phone} onChange={setPhone} type="tel" autoComplete="tel" maxLength={64} />
+                  <Field label={t('capture.company')} value={company} onChange={setCompany} autoComplete="organization" maxLength={200} />
+                  <Field label={t('capture.jobTitle')} value={jobTitle} onChange={setJobTitle} autoComplete="organization-title" maxLength={200} />
+                  <Field label={t('capture.country')} value={country} onChange={setCountry} autoComplete="country-name" maxLength={80} />
                 </>
               )}
               {/* Honeypot: hidden from people and from assistive technology. A bot
@@ -200,18 +242,37 @@ export default function PublicCapture() {
                   <input tabIndex={-1} autoComplete="off" value={website} onChange={(e) => setWebsite(e.target.value)} />
                 </label>
               </div>
+              {consentMode !== 'off' && (
+                <label className="flex items-start gap-2 pt-1 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={consent}
+                    required={consentMode === 'required'}
+                    onChange={(e) => setConsent(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300"
+                  />
+                  <span>
+                    {consentText || t('capture.consentDefault')}
+                    {consentMode === 'required' && <span className="text-red-600" aria-hidden="true"> *</span>}
+                  </span>
+                </label>
+              )}
+              <p className="text-xs text-slate-500">
+                {tx('public.privacyLine', {
+                  link: (words) => <Link to={`/privacy?form=${encodeURIComponent(token)}`} className="underline">{words}</Link>,
+                })}
+              </p>
               <p role="alert" className="min-h-0 text-sm text-red-600">{error}</p>
               <button
                 type="submit"
                 className="h-10 w-full rounded-xl bg-slate-900 text-sm font-medium text-white disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2"
               >
-                {busy ? 'Sending…' : 'Send'}
+                {busy ? t('common.sending') : t('capture.submit')}
               </button>
             </fieldset>
           </form>
         )}
-      </div>
-    </main>
+    </PublicPage>
   );
 }
 

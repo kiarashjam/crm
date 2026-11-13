@@ -41,6 +41,7 @@ import {
 import { cn } from '@/app/components/ui/utils';
 import { DerivedStatusBadge } from './leads/components/DerivedStatusBadge';
 import PageHero, { heroPrimary, heroSecondary } from '@/app/components/PageHero';
+import { PrivacyRequestLink } from '@/app/components/privacy/PrivacyRequestLink';
 import { QuickLogPopover } from './leads/components/QuickLogPopover';
 import { LeadPipelineTracker } from './leads/components/LeadPipelineTracker';
 import { ContractPanel } from './contracts/ContractPanel';
@@ -73,11 +74,13 @@ import { PersonMembershipCard } from '@/app/components/MembershipLinks';
 import AiNextActionCard from '@/app/components/AiNextActionCard';
 import SaveLeadAsContactDialog from '@/app/components/SaveLeadAsContactDialog';
 import CustomFieldsCard from '@/app/components/CustomFieldsCard';
+import RecordTagsEditor from '@/app/components/flex/RecordTagsEditor';
 import AttachmentsCard from '@/app/components/AttachmentsCard';
 import { Confetti } from '@/app/components/Confetti';
 import EmailComposerDialog from '@/app/components/EmailComposerDialog';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import { WriteOnly } from '@/app/components/WriteOnly';
+import { currentDateLocale } from '@/app/i18n/current';
 
 type Tab = 'activity' | 'tasks' | 'notes';
 
@@ -108,14 +111,14 @@ function formatRelative(iso?: string): string | null {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days}d ago`;
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  return d.toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function formatFull(iso?: string): string | null {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return d.toLocaleString(currentDateLocale(), { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 /** A due date is overdue when it's in the past (used to flag open tasks). */
@@ -722,16 +725,22 @@ export default function LeadDetailPage() {
 
   // The editor's save is checked against the version it opened with, and this page's
   // own assignments, referrers and logged calls give the lead new versions it does not
-  // read back. So the editor starts from the lead as it is now (see useFreshLeadOnOpen).
+  // read back. So the editor starts from the lead as it is now (see useFreshLeadOnOpen):
+  // the fresh copy goes into the form, with its version, while nothing has been typed,
+  // and the page shows it either way.
+  const formOfLead = useCallback(
+    (l: Lead) => leadEditForm(l, sourceOptions, statusOptions),
+    [sourceOptions, statusOptions],
+  );
+  const showFreshLead = useCallback((fresh: Lead) => {
+    setLead((prev) => (prev && prev.id === fresh.id ? { ...prev, ...fresh, assignedToId: fresh.assignedToId ?? prev.assignedToId } : prev));
+  }, []);
   useFreshLeadOnOpen(
     editOpen ? lead?.id : undefined,
-    () => !!lead && JSON.stringify(editForm) === JSON.stringify(leadEditForm(lead, sourceOptions, statusOptions)),
-    (fresh) => {
-      if (!lead) return;
-      const merged = { ...lead, ...fresh, assignedToId: fresh.assignedToId ?? lead.assignedToId };
-      setLead(merged);
-      setEditForm(leadEditForm(merged, sourceOptions, statusOptions));
-    },
+    lead ? formOfLead(lead) : null,
+    setEditForm,
+    formOfLead,
+    showFreshLead,
   );
 
   const handleEditSubmit = async (e: React.FormEvent) => {
@@ -767,16 +776,18 @@ export default function LeadDetailPage() {
         description: editForm.description.trim() || null,
         lifecycleStage: editForm.lifecycleStage || null,
         // The editor sends back every field it shows, so the save is refused, rather
-        // than written over, when someone saved the lead after this page read it.
-        version: lead.version,
+        // than written over, when someone saved the lead after the copy its fields came
+        // from was read (this page's, or the fresher one the editor read as it opened).
+        version: editForm.version || undefined,
       });
       if (!updated) {
         toast.error(messages.errors.generic);
         return;
       }
-      // The referrer has its own endpoint: it can change on a converted lead too.
+      // The referrer has its own endpoint: it can change on a converted lead too. Sent
+      // when it was changed from the referrer of the copy the fields came from.
       const referredByContactId = editForm.referredByContactId || null;
-      const withReferral = referredByContactId !== (lead.referredByContactId ?? null)
+      const withReferral = referredByContactId !== (editForm.referredByContactIdAsRead || null)
         ? await setLeadReferral(lead.id, referredByContactId) ?? updated
         : updated;
       setLead((prev) => (prev ? { ...prev, ...updated, ...pickReferral(withReferral), assignedToId: prev.assignedToId } : prev));
@@ -958,6 +969,7 @@ export default function LeadDetailPage() {
                     <Mail className="h-4 w-4" /> Email
                   </Button>
                 ))}
+                <PrivacyRequestLink kind="lead" id={lead.id} className={heroSecondary} />
                 {!isReadOnly && (
                   <>
                     <QuickLogPopover
@@ -1481,7 +1493,7 @@ export default function LeadDetailPage() {
                     <InlineField label="Phone" type="tel" value={lead.phone ?? ''} onSave={savePhone} readOnly={isReadOnly} icon={<Phone className="w-3.5 h-3.5" />} />
                     {lead.firstResponseDueAtUtc && (
                       <p className="text-xs text-slate-500">
-                        First response due {new Date(lead.firstResponseDueAtUtc).toLocaleString()}
+                        First response due {new Date(lead.firstResponseDueAtUtc).toLocaleString(currentDateLocale())}
                         {lead.slaBreached ? ' · late' : lead.firstResponseAtUtc ? ' · answered' : ' · waiting'}
                         {lead.enrichedDomain ? ` · company from ${lead.enrichedDomain}` : ''}
                       </p>
@@ -1563,6 +1575,11 @@ export default function LeadDetailPage() {
                   readOnly={isReadOnly}
                   onSaved={(updated) => setLead((prev) => (prev ? { ...prev, ...updated } : prev))}
                 />
+              </motion.div>
+
+              {/* Tags on the lead */}
+              <motion.div {...card(6)} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <RecordTagsEditor entityType="lead" recordId={lead.id} />
               </motion.div>
 
               {/* Custom fields (renders only when defined for leads) */}

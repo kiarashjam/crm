@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import type { AgentWorld } from './brain/answer';
 import type { WorkSuggestion } from './workspace';
@@ -12,6 +12,9 @@ vi.mock('@/app/api/leads', () => ({ assignLead: vi.fn(), convertLead: vi.fn() })
 vi.mock('@/app/api/sequences', () => ({ enrollInSequence: vi.fn() }));
 vi.mock('@/app/api/tasks', () => ({ addTaskComment: vi.fn(), createTask: vi.fn() }));
 vi.mock('@/app/api/email', () => ({ sendEmail: vi.fn() }));
+vi.mock('@/app/api/assistant', () => ({ askAssistant: vi.fn() }));
+vi.mock('@/app/api/charges', () => ({ createCharge: vi.fn() }));
+vi.mock('@/app/api/reservations', () => ({ createReservation: vi.fn() }));
 vi.mock('@/app/api/settings', () => ({
   getUserSettings: vi.fn(async () => ({})),
   saveUserSettings: vi.fn(async (value: unknown) => value),
@@ -21,7 +24,16 @@ vi.mock('@/app/lib/auth', () => ({
   getCurrentOrganizationId: () => 'org-a',
 }));
 
+import { askAssistant, type AssistantReply } from '@/app/api/assistant';
+import { ApiError } from '@/app/api/apiClient';
+import { createCharge } from '@/app/api/charges';
+import { createReservation } from '@/app/api/reservations';
+import { createTask } from '@/app/api/tasks';
 import { AgentDesk, resetAgentDeskForTests } from './AgentDesk';
+
+const ask = vi.mocked(askAssistant);
+const usage = { used: 1, limit: 300, month: '2026-11-01', resetsOn: '2026-12-01', refused: 0, inputTokens: 100, outputTokens: 20, left: 299 };
+const reply = (over: Partial<AssistantReply>): AssistantReply => ({ reply: '', proposals: [], lookedUp: [], usage, incomplete: false, ...over });
 
 const ada: WorkSuggestion = {
   key: 'lead:a1',
@@ -60,6 +72,7 @@ beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   resetAgentDeskForTests();
+  vi.clearAllMocks();
 });
 
 afterEach(() => {
@@ -67,25 +80,24 @@ afterEach(() => {
 });
 
 describe('the ask box as a chat', () => {
-  it('shows the question at once, thinks, then answers', () => {
-    vi.useFakeTimers();
-    open({ thinkingMs: 600 });
+  it('answers from its rules at once: no pause is staged, and it does not call itself AI', () => {
+    open();
     fireEvent.change(box(), { target: { value: 'what should I do next?' } });
     fireEvent.keyDown(box(), { key: 'Enter' });
 
+    // The question and the answer are both there straight away, with nothing pretending to think.
     expect(screen.getByText('what should I do next?')).toBeTruthy();
-    expect(screen.getByRole('status', { name: 'The agent is thinking' })).toBeTruthy();
-    expect(screen.queryByText(/Make the first call/)).toBeNull();
-
-    act(() => { vi.advanceTimersByTime(650); });
-    // The thinking bubble fades out; the header is ready again and the answer is in.
-    expect(screen.getByText('Ready')).toBeTruthy();
     expect(screen.getAllByText(/Make the first call/).length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'Open Ada Lovelace' })).toBeTruthy();
+    expect(screen.queryByRole('status', { name: 'The assistant is answering' })).toBeNull();
+    expect(screen.getByText('Ready')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Ask Cadence' })).toBeTruthy();
+    expect(screen.queryByText('AI')).toBeNull();
+    expect(ask).not.toHaveBeenCalled();
   });
 
   it('Shift+Enter is a new line, not a send', () => {
-    open({ thinkingMs: 0 });
+    open();
     fireEvent.change(box(), { target: { value: 'who went quiet?' } });
     fireEvent.keyDown(box(), { key: 'Enter', shiftKey: true });
     expect(screen.queryByRole('list', { name: 'Conversation with the agent' })).toBeNull();
@@ -93,7 +105,7 @@ describe('the ask box as a chat', () => {
   });
 
   it('starts with questions that fit the page, and one press asks them', () => {
-    open({ thinkingMs: 0 });
+    open();
     const starters = screen.getByRole('group', { name: 'Questions to start with' });
     expect(starters.textContent).toContain('What should I do next?');
     expect(starters.textContent).toContain('Pipeline value');
@@ -102,13 +114,13 @@ describe('the ask box as a chat', () => {
   });
 
   it('on a lead page the starters are about that lead', () => {
-    open({ thinkingMs: 0, world: world({ page: { mode: 'record', href: '/leads/a1' } }) });
+    open({ world: world({ page: { mode: 'record', href: '/leads/a1' } }) });
     fireEvent.click(screen.getByRole('button', { name: 'Brief this' }));
     expect(screen.getAllByText(/Briefing for Ada Lovelace/).length).toBeGreaterThan(0);
   });
 
   it('after an answer about a record, the follow-ups name it', () => {
-    open({ thinkingMs: 0 });
+    open();
     fireEvent.change(box(), { target: { value: 'brief Ada Lovelace' } });
     fireEvent.submit(box().closest('form') as HTMLFormElement);
     const next = screen.getByRole('group', { name: 'Questions to ask next' });
@@ -118,7 +130,7 @@ describe('the ask box as a chat', () => {
   });
 
   it('a new chat clears the conversation and what it was about', () => {
-    open({ thinkingMs: 0 });
+    open();
     fireEvent.change(box(), { target: { value: 'brief Ada Lovelace' } });
     fireEvent.submit(box().closest('form') as HTMLFormElement);
     fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
@@ -128,16 +140,16 @@ describe('the ask box as a chat', () => {
   });
 
   it('will not send an empty question', () => {
-    open({ thinkingMs: 0 });
+    open();
     expect(screen.getByRole('button', { name: 'Send' })).toHaveProperty('disabled', true);
     fireEvent.keyDown(box(), { key: 'Enter' });
     expect(screen.queryByRole('list', { name: 'Conversation with the agent' })).toBeNull();
   });
 
   it('starts closed, as a bar that opens the chat, and closes again to that bar', async () => {
-    open({ initialOpen: false, thinkingMs: 0 });
+    open({ initialOpen: false });
     expect(screen.queryByLabelText('Ask the agent')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: /Ask CadenceE/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Ask Cadence/ }));
     // The bar animates out first, then the chat opens with the cursor in its box.
     expect(await screen.findByLabelText('Ask the agent')).toBeTruthy();
     expect(document.activeElement).toBe(screen.getByLabelText('Ask the agent'));
@@ -154,11 +166,136 @@ describe('the ask box as a chat', () => {
 
   it('remembers the choice across pages', () => {
     localStorage.setItem('cadence.nextActions.chatOpen', 'true');
-    const first = open({ initialOpen: false, thinkingMs: 0 });
+    const first = open({ initialOpen: false });
     expect(screen.getByLabelText('Ask the agent')).toBeTruthy();
     first.unmount();
     localStorage.setItem('cadence.nextActions.chatOpen', 'false');
-    open({ initialOpen: true, thinkingMs: 0 });
+    open({ initialOpen: true });
     expect(screen.queryByLabelText('Ask the agent')).toBeNull();
+  });
+});
+
+describe('with a language model set up', () => {
+  const task = {
+    id: 'p1', kind: 'task' as const, title: 'Create a task', details: ['Task: Call Ada', 'On lead: Ada Lovelace'],
+    payload: { title: 'Call Ada', leadId: 'a1' }, link: '/leads/a1',
+  };
+
+  it('asks it, with the conversation so far and the page, and calls itself AI', async () => {
+    ask.mockResolvedValue(reply({ reply: 'Ada is new: make the first call.', lookedUp: ['get_lead'] }));
+    open({ modelReady: true });
+    expect(screen.getByRole('heading', { name: /Ask Cadence AI/ })).toBeTruthy();
+
+    fireEvent.change(box(), { target: { value: 'Who is Ada?' } });
+    fireEvent.keyDown(box(), { key: 'Enter' });
+    expect(screen.getByRole('status', { name: 'The assistant is answering' })).toBeTruthy();
+
+    expect(await screen.findByText('Ada is new: make the first call.')).toBeTruthy();
+    expect(screen.getByText('Looked up: get lead')).toBeTruthy();
+    expect(ask).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'Who is Ada?', history: [], page: '/', language: 'en' }),
+      expect.anything(),
+    );
+  });
+
+  it('shows a proposed change as a card, and saves it only on Confirm, once', async () => {
+    ask.mockResolvedValue(reply({ reply: 'I propose a task.', proposals: [task] }));
+    vi.mocked(createTask).mockResolvedValue({ id: 't1', title: 'Call Ada' } as never);
+    open({ modelReady: true });
+    fireEvent.change(box(), { target: { value: 'Remind me to call Ada' } });
+    fireEvent.keyDown(box(), { key: 'Enter' });
+
+    const card = await screen.findByRole('group', { name: 'Proposed: Create a task' });
+    expect(within(card).getByText('Task: Call Ada')).toBeTruthy();
+    expect(createTask).not.toHaveBeenCalled();
+
+    fireEvent.click(within(card).getByRole('button', { name: 'Confirm' }));
+    expect(await screen.findByText('Task saved: Call Ada.')).toBeTruthy();
+    expect(createTask).toHaveBeenCalledTimes(1);
+    expect(createTask).toHaveBeenCalledWith({ title: 'Call Ada', leadId: 'a1' });
+    expect(within(card).queryByRole('button', { name: 'Confirm' })).toBeNull();
+    expect(within(card).getByText('Done.')).toBeTruthy();
+  });
+
+  it('a dismissed proposal changes nothing', async () => {
+    ask.mockResolvedValue(reply({ reply: 'I propose a task.', proposals: [task] }));
+    open({ modelReady: true });
+    fireEvent.change(box(), { target: { value: 'Remind me to call Ada' } });
+    fireEvent.keyDown(box(), { key: 'Enter' });
+
+    const card = await screen.findByRole('group', { name: 'Proposed: Create a task' });
+    fireEvent.click(within(card).getByRole('button', { name: 'Dismiss' }));
+    expect(within(card).getByText('Dismissed. Nothing was changed.')).toBeTruthy();
+    expect(createTask).not.toHaveBeenCalled();
+  });
+
+  it("a proposed charge carries its proposal's id, so a second request cannot charge twice", async () => {
+    const charge = {
+      id: 'p2', kind: 'charge' as const, title: 'Charge a member', details: ['Ada Lovelace: CHF 40.00'],
+      payload: { memberId: 'm1', memberName: 'Ada Lovelace', kind: 'Bar', description: 'Wine', amount: 40 },
+    };
+    ask.mockResolvedValue(reply({ reply: 'Shall I charge it?', proposals: [charge] }));
+    vi.mocked(createCharge).mockResolvedValue({ id: 'c1', memberName: 'Ada Lovelace', description: 'Wine', amount: 40 } as never);
+    open({ modelReady: true });
+    fireEvent.change(box(), { target: { value: 'Charge Ada for the wine' } });
+    fireEvent.keyDown(box(), { key: 'Enter' });
+
+    fireEvent.click(within(await screen.findByRole('group', { name: 'Proposed: Charge a member' })).getByRole('button', { name: 'Confirm' }));
+    expect(await screen.findByText(/Charged to Ada Lovelace/)).toBeTruthy();
+    expect(createCharge).toHaveBeenCalledWith(charge.payload, { idempotencyKey: 'p2' });
+  });
+
+  it('each proposal is confirmable as its own endpoint allows, not as the built-in rules are', async () => {
+    const booking = {
+      id: 'p3', kind: 'booking' as const, title: 'Book a resource', details: ['Book Court 1 for Anna Keller'],
+      payload: { resourceId: 'r1', memberId: 'm1', partySize: 2, startAtUtc: '2030-01-15T09:00:00Z', endAtUtc: '2030-01-15T11:00:00Z', status: 'Confirmed' },
+    };
+    ask.mockResolvedValue(reply({ reply: 'Two changes are ready.', proposals: [booking, task] }));
+    vi.mocked(createReservation).mockResolvedValue({ resourceName: 'Court 1', memberName: 'Anna Keller' } as never);
+    // The front desk: no sales records to edit, but bookings to take.
+    open({ modelReady: true, readOnly: true, mayConfirm: (kind) => kind === 'booking' });
+    fireEvent.change(box(), { target: { value: 'Book court 1 for Anna, and remind me to call Ada' } });
+    fireEvent.keyDown(box(), { key: 'Enter' });
+
+    const taskCard = await screen.findByRole('group', { name: 'Proposed: Create a task' });
+    expect(within(taskCard).getByRole('button', { name: 'Confirm' })).toHaveProperty('disabled', true);
+    expect(within(taskCard).getByText(/does not let you make this change/)).toBeTruthy();
+
+    const bookingCard = screen.getByRole('group', { name: 'Proposed: Book a resource' });
+    fireEvent.click(within(bookingCard).getByRole('button', { name: 'Confirm' }));
+    expect(await screen.findByText('Booked: Court 1 for Anna Keller.')).toBeTruthy();
+    expect(createReservation).toHaveBeenCalledWith(booking.payload);
+    expect(createTask).not.toHaveBeenCalled();
+  });
+
+  it('in a read-only workspace a proposal cannot be confirmed', async () => {
+    ask.mockResolvedValue(reply({ reply: 'I propose a task.', proposals: [task] }));
+    open({ modelReady: true, readOnly: true });
+    fireEvent.change(box(), { target: { value: 'Remind me to call Ada' } });
+    fireEvent.keyDown(box(), { key: 'Enter' });
+
+    const card = await screen.findByRole('group', { name: 'Proposed: Create a task' });
+    expect(within(card).getByRole('button', { name: 'Confirm' })).toHaveProperty('disabled', true);
+  });
+
+  it('when the model cannot answer, the built-in rules do, and the chat says why', async () => {
+    ask.mockRejectedValue(new ApiError('This workspace has used its 300 AI calls for this month.', 429, '/api/agent/chat', true, 'Ai.MonthlyLimit'));
+    open({ modelReady: true });
+    fireEvent.change(box(), { target: { value: 'what should I do next?' } });
+    fireEvent.keyDown(box(), { key: 'Enter' });
+
+    expect((await screen.findAllByText(/Make the first call/)).length).toBeGreaterThan(0);
+    const notice = await screen.findByText(/used its 300 AI calls/);
+    expect(notice.textContent).toContain("Cadence's built-in rules");
+  });
+
+  it('in a workspace with only the club, it offers club questions and leaves the sales rules out of it', async () => {
+    ask.mockRejectedValue(new ApiError('No language model is set up.', 503, '/api/agent/chat', true, 'Assistant.NotConfigured'));
+    open({ modelReady: true, clubOnly: true, world: world({ items: [], leads: [], deals: [] }) });
+    expect(screen.getByRole('group', { name: 'Questions to start with' }).textContent).toContain('What is on at the club today?');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Who is past due on their account?' }));
+    expect(await screen.findByText('The assistant is not set up on the server.')).toBeTruthy();
+    expect(screen.queryByText(/built-in rules/)).toBeNull();
   });
 });

@@ -58,6 +58,7 @@ vi.mock('@/app/api/communications', async (importOriginal) => ({ ...(await impor
 const DUES: Subscription = {
   id: 's1', memberId: 'm1', memberName: 'Jean Dupont', name: 'Gold dues', amount: 299, cadence: 'Monthly', status: 'Active',
   nextChargeAtUtc: '2026-12-01T00:00:00Z', startedAtUtc: '2026-01-01T00:00:00Z', lastChargedAtUtc: '2026-11-01T00:00:00Z',
+  version: 'v-dues',
 };
 const subscriptions = vi.hoisted(() => ({ getSubscriptions: vi.fn(), updateSubscription: vi.fn(), deleteSubscription: vi.fn(), runBillingNow: vi.fn() }));
 vi.mock('@/app/api/subscriptions', async (importOriginal) => ({
@@ -148,7 +149,8 @@ describe('a subscription the server will not change', () => {
     await user.click((await screen.findAllByRole('button', { name: /Pause/ }))[0]!);
 
     await vi.waitFor(() => expect(toast.error).toHaveBeenCalledWith(changed));
-    expect(subscriptions.updateSubscription).toHaveBeenCalledWith('s1', { status: 'Paused' });
+    // Sent with the version the page read, so the server can say someone changed it first.
+    expect(subscriptions.updateSubscription).toHaveBeenCalledWith('s1', { status: 'Paused' }, 'v-dues');
   });
 
   it('says so when billing what is due is refused', async () => {

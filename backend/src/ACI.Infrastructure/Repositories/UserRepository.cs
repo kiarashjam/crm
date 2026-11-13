@@ -45,6 +45,12 @@ public sealed class UserRepository : IUserRepository
         await _db.SaveChangesAsync(ct);
     }
 
+    public async Task RemovePasskeysAsync(Guid userId, CancellationToken ct = default)
+    {
+        _db.UserPasskeys.RemoveRange(await _db.UserPasskeys.Where(k => k.UserId == userId).ToListAsync(ct));
+        await _db.SaveChangesAsync(ct);
+    }
+
     public async Task<UserSettings?> GetSettingsAsync(Guid userId, CancellationToken ct = default) =>
         await _db.UserSettings.FindAsync([userId], ct);
 

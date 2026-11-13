@@ -67,6 +67,33 @@ describe('DealLineItemsCard', () => {
     expect(synced).toHaveBeenCalledWith(99.4);
   });
 
+  it("saves a line's VAT rate, and takes it off with the dash", async () => {
+    // A contract drafted on the deal prints each line's rate in its fee table, so the rate is
+    // kept on the line; "—" is no rate given, which is not the same as 0 %.
+    api.updateDealLineItem.mockResolvedValue({ ...line, vatRate: 8.1 });
+    render(<DealLineItemsCard dealId="deal-1" currency="CHF" />);
+    const rate = await screen.findByLabelText('VAT rate of Growth plan');
+
+    fireEvent.change(rate, { target: { value: '8.1' } });
+    await waitFor(() => expect(api.updateDealLineItem).toHaveBeenCalledWith('li-1', { vatRate: 8.1 }));
+
+    fireEvent.change(rate, { target: { value: '' } });
+    await waitFor(() => expect(api.updateDealLineItem).toHaveBeenLastCalledWith('li-1', { vatRate: null }));
+  });
+
+  it('adds a line with the VAT rate picked for it', async () => {
+    api.addDealLineItem.mockResolvedValue({ id: 'li-2', dealId: 'deal-1', name: 'Locker', quantity: 1, unitPrice: 120, vatRate: 8.1 });
+    render(<DealLineItemsCard dealId="deal-1" currency="CHF" />);
+    await screen.findByLabelText('Quantity of Growth plan');
+
+    fireEvent.change(screen.getByPlaceholderText('Item name'), { target: { value: 'Locker' } });
+    fireEvent.change(screen.getByLabelText('Unit price'), { target: { value: '120' } });
+    fireEvent.change(screen.getByLabelText('VAT rate'), { target: { value: '8.1' } });
+    fireEvent.click(screen.getByRole('button', { name: /add/i }));
+
+    await waitFor(() => expect(api.addDealLineItem).toHaveBeenCalledWith('deal-1', expect.objectContaining({ name: 'Locker', unitPrice: 120, vatRate: 8.1 })));
+  });
+
   it('shows why a new line was refused', async () => {
     api.addDealLineItem.mockRejectedValue(new Error('You have read-only access to this organization.'));
     render(<DealLineItemsCard dealId="deal-1" />);

@@ -67,6 +67,7 @@ import {
 import { useClubMoney } from '@/app/hooks/useClubMoney';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { PERMISSION } from '@/app/api/organizations';
+import { currentDateLocale, currentNumberLocale } from '@/app/i18n/current';
 
 const KIND_BADGE: Record<LoyaltyEntryKind, string> = {
   Earned: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
@@ -104,7 +105,7 @@ function newForm(members: Member[]): FormState {
 
 function formatDateTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleString(undefined, {
+    return new Date(iso).toLocaleString(currentDateLocale(), {
       month: 'short',
       day: 'numeric',
       hour: 'numeric',
@@ -116,7 +117,7 @@ function formatDateTime(iso: string): string {
 }
 
 function formatPoints(n: number): string {
-  return n.toLocaleString();
+  return n.toLocaleString(currentNumberLocale());
 }
 
 export default function Loyalty() {
@@ -388,6 +389,7 @@ export default function Loyalty() {
                   }
                   actionLabel={entries.length === 0 ? 'Add entry' : undefined}
                   onAction={entries.length === 0 ? openCreate : undefined}
+                  actionPermission={PERMISSION.ClubMembers}
                   variant="orange"
                 />
               ) : (

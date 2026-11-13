@@ -1,8 +1,11 @@
-// Hospitality operational dashboard — the staff landing page that aggregates
-// today's signals across every module without touching the existing sales
-// Dashboard.
+// Today at the Club: the staff landing page, with today's signals from every part of the
+// club, counted on the server (GET /api/club-reports/today) on the workspace's calendar.
+//
+// It downloaded every member, booking, event, visit, application, charge, subscription
+// and tab to count today's in this browser, and when any of them failed it showed an
+// empty day ("Everything is on track") that nobody could tell from a quiet one. It now
+// asks the server for the day's figures and lists, and says so when it cannot read them.
 
-import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -24,184 +27,76 @@ import {
 import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { getMembers, type Member } from '@/app/api/members';
-import { getReservations, type Reservation } from '@/app/api/reservations';
-import { getEvents, type ClubEvent } from '@/app/api/events';
-import { getVisits, type Visit } from '@/app/api/visits';
-import { getApplications, type Application } from '@/app/api/applications';
-import { getCharges, type Charge } from '@/app/api/charges';
-import { getSubscriptions, type Subscription } from '@/app/api/subscriptions';
-import { getTabs, VENUE_LABELS as TAB_VENUE_LABELS, type OpenTab } from '@/app/api/tabs';
+import { VENUE_LABELS as TAB_VENUE_LABELS, type TabVenue } from '@/app/api/tabs';
+import type { ClubCurrencyAmount } from '@/app/api/clubReports';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { LoadFailed } from '@/app/components/LoadFailed';
 import { Button } from '@/app/components/ui/button';
 import PageHero, { heroSecondary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
-import { useClubMoney } from '@/app/hooks/useClubMoney';
-
-const day = 86_400_000;
+import { useClubToday } from '@/app/hooks/queries/club';
+import { useRegional } from '@/app/hooks/useMoney';
+import { formatClubMoney } from '@/app/lib/clubMoney';
+import { currentDateLocale } from '@/app/i18n/current';
 
 function formatTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    return new Date(iso).toLocaleTimeString(currentDateLocale(), { hour: 'numeric', minute: '2-digit' });
   } catch {
     return iso;
   }
 }
 
-function isToday(iso: string): boolean {
-  const d = new Date(iso);
-  const now = new Date();
-  return (
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate()
-  );
-}
-
-function isThisWeek(iso: string): boolean {
-  const d = new Date(iso);
-  const now = new Date();
-  const diff = d.getTime() - now.getTime();
-  return diff >= 0 && diff < 7 * day;
-}
-
-interface AnniversaryRow {
-  member: Member;
-  years: number;
-  date: Date;
-}
-
-function thisYearAnniversaries(members: Member[]): AnniversaryRow[] {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const rows: AnniversaryRow[] = [];
-  for (const m of members) {
-    const joined = new Date(m.joinedAtUtc);
-    const thisYear = new Date(now.getFullYear(), joined.getMonth(), joined.getDate());
-    const diff = thisYear.getTime() - today.getTime();
-    if (diff >= 0 && diff < 14 * day) {
-      const years = now.getFullYear() - joined.getFullYear();
-      if (years >= 1) rows.push({ member: m, years, date: thisYear });
-    }
-  }
-  return rows.sort((a, b) => a.date.getTime() - b.date.getTime());
+/** A date-only value (yyyy-MM-dd) as this browser's calendar day, with no time zone to shift it. */
+function dayOf(date: string): Date {
+  const [y, m, d] = date.split('-').map(Number) as [number, number, number];
+  return new Date(y, m - 1, d);
 }
 
 export default function HospitalityDashboard() {
-  const { format: formatCurrency } = useClubMoney();
-  const [members, setMembers] = useState<Member[]>([]);
-  const [reservations, setReservations] = useState<Reservation[]>([]);
-  const [events, setEvents] = useState<ClubEvent[]>([]);
-  const [visits, setVisits] = useState<Visit[]>([]);
-  const [applications, setApplications] = useState<Application[]>([]);
-  const [charges, setCharges] = useState<Charge[]>([]);
-  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
-  const [tabs, setTabs] = useState<OpenTab[]>([]);
-  const [loading, setLoading] = useState(true);
-  usePageLoading(loading);
+  const { locale } = useRegional();
+  const query = useClubToday();
+  const day = query.data;
+  usePageLoading(query.isPending);
   const navigate = useNavigate();
 
-  const load = async () => {
-    try {
-      const [m, r, e, v, a, c, s, t] = await Promise.all([
-        getMembers(),
-        getReservations(),
-        getEvents(),
-        getVisits(),
-        getApplications(),
-        getCharges(),
-        getSubscriptions(),
-        getTabs(),
-      ]);
-      setMembers(m);
-      setReservations(r);
-      setEvents(e);
-      setVisits(v);
-      setApplications(a);
-      setCharges(c);
-      setSubscriptions(s);
-      setTabs(t);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const money = (amount: number, currency: string) => formatClubMoney(amount, currency, locale);
+  const amounts = (rows: ClubCurrencyAmount[]) => (rows.length ? rows.map((r) => money(r.amount, r.currency)).join(' + ') : money(0, day?.currency ?? 'CHF'));
 
-  useEffect(() => {
-    void load();
-  }, []);
-
-  const todayReservations = useMemo(
-    () =>
-      reservations
-        .filter((r) => isToday(r.startAtUtc) && r.status !== 'Cancelled')
-        .sort((a, b) => Date.parse(a.startAtUtc) - Date.parse(b.startAtUtc)),
-    [reservations],
-  );
-
-  const todayVisits = useMemo(() => visits.filter((v) => isToday(v.visitedAtUtc)), [visits]);
-
-  const thisWeekEvents = useMemo(
-    () =>
-      events
-        .filter((e) => e.status === 'Published' && isThisWeek(e.startAtUtc))
-        .sort((a, b) => Date.parse(a.startAtUtc) - Date.parse(b.startAtUtc)),
-    [events],
-  );
-
-  const openTabs = useMemo(() => tabs.filter((t) => t.status === 'Open'), [tabs]);
-
-  const pendingApplications = useMemo(
-    () =>
-      applications.filter((a) => a.status === 'Submitted' || a.status === 'UnderReview'),
-    [applications],
-  );
-
-  const overdueSubscriptions = useMemo(
-    () => subscriptions.filter((s) => s.status === 'PastDue'),
-    [subscriptions],
-  );
-
-  const overdueCharges = useMemo(
-    () => charges.filter((c) => c.status === 'Overdue'),
-    [charges],
-  );
-
-  const anniversaries = useMemo(() => thisYearAnniversaries(members), [members]);
-
-  const todayRevenueOpenTabs = useMemo(
-    () => openTabs.reduce((s, t) => s + t.total, 0),
-    [openTabs],
-  );
-
-  if (loading) {
+  if (query.isPending) {
     return (
       <div className="min-h-screen bg-gradient-subtle">
         <AppHeader />
-        <div className="flex items-center justify-center py-20 text-slate-500">
-          <Loader2 className="h-6 w-6 animate-spin" />
+        <div className="flex items-center justify-center py-20 text-slate-500" role="status">
+          <Loader2 className="h-6 w-6 animate-spin" aria-hidden="true" /> <span className="sr-only">Loading today</span>
         </div>
       </div>
     );
   }
 
+  if (!day) {
+    return (
+      <div className="min-h-screen flex flex-col bg-gradient-subtle">
+        <AppHeader />
+        <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
+          <LoadFailed what="Today at the Club" error={query.error} onRetry={() => void query.refetch()} retrying={query.isFetching} className="mt-6" />
+        </main>
+      </div>
+    );
+  }
+
+  const pastDueCount = day.pastDue.charges + day.pastDue.subscriptions;
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
       <PageTransition>
-        <main
-          id={MAIN_CONTENT_ID}
-          className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]"
-          tabIndex={-1}
-        >
+        <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
           <PageHero
             icon={LayoutDashboard}
             tone="teal"
             title="Today at the Club"
-            subtitle={new Date().toLocaleDateString(undefined, {
-              weekday: 'long',
-              month: 'long',
-              day: 'numeric',
-            })}
+            subtitle={dayOf(day.date).toLocaleDateString(currentDateLocale(), { weekday: 'long', month: 'long', day: 'numeric' })}
             actions={
               <div className="hidden md:flex gap-2">
                 <QuickLinkButton to="/pos" icon={<Calculator className="h-4 w-4" />} label="POS" />
@@ -211,55 +106,52 @@ export default function HospitalityDashboard() {
             }
             stats={[
               {
-                label: 'Check-ins', hint: 'today', value: todayVisits.length, icon: ScanLine, tone: 'cyan',
-                onClick: () => navigate('/visits'), actionLabel: `Check-ins today, ${todayVisits.length}. Open visits.`,
+                label: 'Check-ins', hint: 'today', value: day.checkIns, icon: ScanLine, tone: 'cyan',
+                onClick: () => navigate('/visits'), actionLabel: `Check-ins today, ${day.checkIns}. Open visits.`,
               },
               {
-                label: 'Reservations', hint: 'today', value: todayReservations.length, icon: CalendarClock, tone: 'emerald',
-                onClick: () => navigate('/reservations'), actionLabel: `Reservations today, ${todayReservations.length}. Open reservations.`,
+                label: 'Reservations', hint: 'today', value: day.reservations.count, icon: CalendarClock, tone: 'emerald',
+                onClick: () => navigate('/reservations'), actionLabel: `Reservations today, ${day.reservations.count}. Open reservations.`,
               },
               {
-                label: 'Open tabs', hint: formatCurrency(todayRevenueOpenTabs), value: openTabs.length, icon: Wine, tone: 'amber',
-                onClick: () => navigate('/tabs'), actionLabel: `Open tabs, ${openTabs.length}, ${formatCurrency(todayRevenueOpenTabs)}. Open tabs.`,
+                label: 'Open tabs', hint: amounts(day.openTabs.totals), value: day.openTabs.count, icon: Wine, tone: 'amber',
+                onClick: () => navigate('/tabs'), actionLabel: `Open tabs, ${day.openTabs.count}, ${amounts(day.openTabs.totals)}. Open tabs.`,
               },
               {
-                label: 'Applications', hint: 'awaiting decision', value: pendingApplications.length, icon: ClipboardList, tone: 'blue',
-                onClick: () => navigate('/applications'), actionLabel: `Applications awaiting decision, ${pendingApplications.length}. Open applications.`,
+                label: 'Applications', hint: 'awaiting decision', value: day.applications.count, icon: ClipboardList, tone: 'blue',
+                onClick: () => navigate('/applications'), actionLabel: `Applications awaiting decision, ${day.applications.count}. Open applications.`,
               },
               {
-                label: 'Past due', hint: `${overdueSubscriptions.length} subs · ${overdueCharges.length} charges`,
-                value: overdueSubscriptions.length + overdueCharges.length, icon: AlertTriangle, tone: 'rose',
+                label: 'Past due', hint: `${day.pastDue.subscriptions} subs · ${day.pastDue.charges} charges`,
+                value: pastDueCount, icon: AlertTriangle, tone: 'rose',
                 onClick: () => navigate('/charges'),
-                actionLabel: `Past due, ${overdueSubscriptions.length + overdueCharges.length}: ${overdueSubscriptions.length} subscriptions and ${overdueCharges.length} charges. Open house accounts.`,
+                actionLabel: `Past due, ${pastDueCount}: ${day.pastDue.subscriptions} subscriptions and ${day.pastDue.charges} charges. Open house accounts.`,
               },
               {
-                label: 'Events', hint: '7d', value: thisWeekEvents.length, icon: CalendarHeart, tone: 'pink',
-                onClick: () => navigate('/events'), actionLabel: `Events in the next 7 days, ${thisWeekEvents.length}. Open events.`,
+                label: 'Events', hint: '7d', value: day.eventsThisWeek.count, icon: CalendarHeart, tone: 'pink',
+                onClick: () => navigate('/events'), actionLabel: `Events in the next 7 days, ${day.eventsThisWeek.count}. Open events.`,
               },
             ]}
           />
 
+          {query.isError && (
+            <LoadFailed stale what="Today at the Club" error={query.error} onRetry={() => void query.refetch()} retrying={query.isFetching} className="mb-4" />
+          )}
+
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Today's reservations */}
-            <Card index={0} title="Today's reservations" icon={<CalendarClock />} href="/reservations">
-              {todayReservations.length === 0 ? (
+            <Card index={0} title="Today's reservations" icon={<CalendarClock />} href="/reservations" more={day.reservations.count - day.reservations.items.length}>
+              {day.reservations.items.length === 0 ? (
                 <Empty text="No reservations today." />
               ) : (
                 <ul className="divide-y divide-slate-100">
-                  {todayReservations.slice(0, 8).map((r) => (
+                  {day.reservations.items.map((r) => (
                     <li key={r.id} className="py-2.5 flex items-center justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-slate-900 truncate">
-                          {r.memberName}
-                        </p>
-                        <p className="text-xs text-slate-500 truncate">
-                          {r.resourceName} · party of {r.partySize}
-                        </p>
+                        <p className="text-sm font-medium text-slate-900 truncate">{r.memberName}</p>
+                        <p className="text-xs text-slate-500 truncate">{r.resourceName} · party of {r.partySize}</p>
                       </div>
                       <div className="text-right shrink-0">
-                        <p className="text-sm font-semibold text-emerald-700">
-                          {formatTime(r.startAtUtc)}
-                        </p>
+                        <p className="text-sm font-semibold text-emerald-700">{formatTime(r.startAtUtc)}</p>
                         <p className="text-xs text-slate-500">{r.status}</p>
                       </div>
                     </li>
@@ -268,70 +160,54 @@ export default function HospitalityDashboard() {
               )}
             </Card>
 
-            {/* Open tabs */}
-            <Card index={1} title="Open tabs" icon={<Wine />} href="/tabs">
-              {openTabs.length === 0 ? (
+            <Card index={1} title="Open tabs" icon={<Wine />} href="/tabs" more={day.openTabs.count - day.openTabs.items.length}>
+              {day.openTabs.items.length === 0 ? (
                 <Empty text="No open tabs." />
               ) : (
                 <ul className="divide-y divide-slate-100">
-                  {openTabs.slice(0, 8).map((t) => (
+                  {day.openTabs.items.map((t) => (
                     <li key={t.id} className="py-2.5 flex items-center justify-between gap-2">
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-slate-900 truncate">{t.memberName}</p>
-                        <p className="text-xs text-slate-500">
-                          {TAB_VENUE_LABELS[t.venue]} · {t.items.length} items
-                        </p>
+                        <p className="text-xs text-slate-500">{TAB_VENUE_LABELS[t.venue as TabVenue] ?? t.venue} · {t.items} item{t.items === 1 ? '' : 's'}</p>
                       </div>
-                      <p className="text-sm font-semibold text-amber-700 shrink-0">
-                        {formatCurrency(t.total)}
-                      </p>
+                      <p className="text-sm font-semibold text-amber-700 shrink-0">{money(t.total, t.currency)}</p>
                     </li>
                   ))}
                 </ul>
               )}
             </Card>
 
-            {/* Anniversaries / birthdays */}
             <Card index={2} title="Anniversaries this fortnight" icon={<Cake />} href="/members">
-              {anniversaries.length === 0 ? (
+              {day.anniversaries.length === 0 ? (
                 <Empty text="No upcoming anniversaries." />
               ) : (
                 <ul className="divide-y divide-slate-100">
-                  {anniversaries.map(({ member, years, date }) => (
-                    <li key={member.id} className="py-2.5 flex items-center justify-between gap-2">
+                  {day.anniversaries.map((a) => (
+                    <li key={a.memberId} className="py-2.5 flex items-center justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-slate-900 truncate">
-                          {member.firstName} {member.lastName}
-                        </p>
+                        <p className="text-sm font-medium text-slate-900 truncate">{a.firstName} {a.lastName}</p>
                         <p className="text-xs text-slate-500">
-                          {date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}{' '}
-                          · {member.tier}
+                          {dayOf(a.date).toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric' })} · {a.tier}
                         </p>
                       </div>
-                      <span className="text-sm font-semibold text-amber-700 shrink-0">
-                        {years} yr{years > 1 ? 's' : ''}
-                      </span>
+                      <span className="text-sm font-semibold text-amber-700 shrink-0">{a.years} yr{a.years > 1 ? 's' : ''}</span>
                     </li>
                   ))}
                 </ul>
               )}
             </Card>
 
-            {/* Pending applications */}
-            <Card index={3} title="Pending applications" icon={<ClipboardList />} href="/applications">
-              {pendingApplications.length === 0 ? (
+            <Card index={3} title="Pending applications" icon={<ClipboardList />} href="/applications" more={day.applications.count - day.applications.items.length}>
+              {day.applications.items.length === 0 ? (
                 <Empty text="No applications awaiting review." />
               ) : (
                 <ul className="divide-y divide-slate-100">
-                  {pendingApplications.slice(0, 6).map((a) => (
+                  {day.applications.items.map((a) => (
                     <li key={a.id} className="py-2.5 flex items-center justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-slate-900 truncate">
-                          {a.firstName} {a.lastName}
-                        </p>
-                        <p className="text-xs text-slate-500 truncate">
-                          {a.requestedTier} · {a.occupation ?? '—'}
-                        </p>
+                        <p className="text-sm font-medium text-slate-900 truncate">{a.firstName} {a.lastName}</p>
+                        <p className="text-xs text-slate-500 truncate">{a.requestedTier} · {a.occupation ?? '—'}</p>
                       </div>
                       <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-medium">
                         {a.status === 'UnderReview' ? 'Reviewing' : 'New'}
@@ -342,24 +218,19 @@ export default function HospitalityDashboard() {
               )}
             </Card>
 
-            {/* This week events */}
-            <Card index={4} title="Events this week" icon={<CalendarHeart />} href="/events">
-              {thisWeekEvents.length === 0 ? (
+            <Card index={4} title="Events this week" icon={<CalendarHeart />} href="/events" more={day.eventsThisWeek.count - day.eventsThisWeek.items.length}>
+              {day.eventsThisWeek.items.length === 0 ? (
                 <Empty text="No events scheduled this week." />
               ) : (
                 <ul className="divide-y divide-slate-100">
-                  {thisWeekEvents.slice(0, 6).map((e) => (
+                  {day.eventsThisWeek.items.map((e) => (
                     <li key={e.id} className="py-2.5 flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 min-w-0">
                         <span className="text-xl shrink-0">{e.coverEmoji}</span>
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-slate-900 truncate">{e.name}</p>
                           <p className="text-xs text-slate-500">
-                            {new Date(e.startAtUtc).toLocaleDateString(undefined, {
-                              weekday: 'short',
-                              month: 'short',
-                              day: 'numeric',
-                            })}
+                            {new Date(e.startAtUtc).toLocaleDateString(currentDateLocale(), { weekday: 'short', month: 'short', day: 'numeric' })}
                           </p>
                         </div>
                       </div>
@@ -373,45 +244,36 @@ export default function HospitalityDashboard() {
               )}
             </Card>
 
-            {/* Past due */}
             <Card index={5} title="Needs attention" icon={<AlertTriangle />} href="/charges">
               <div className="space-y-3">
-                {overdueCharges.length === 0 && overdueSubscriptions.length === 0 && (
-                  <Empty text="Everything is on track." />
+                {pastDueCount === 0 && <Empty text="Nothing is past due." />}
+                {day.pastDue.charges > 0 && (
+                  <p className="text-xs text-rose-700">
+                    {day.pastDue.charges} charge{day.pastDue.charges === 1 ? '' : 's'} past due: {amounts(day.pastDue.owed)} still owed.
+                  </p>
                 )}
-                {overdueCharges.slice(0, 4).map((c) => (
-                  <div
-                    key={c.id}
-                    className="flex items-center justify-between gap-2 rounded-lg bg-rose-50 px-3 py-2"
-                  >
+                {day.pastDue.chargeItems.map((c) => (
+                  <div key={c.id} className="flex items-center justify-between gap-2 rounded-lg bg-rose-50 px-3 py-2">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-rose-900 truncate">{c.memberName}</p>
                       <p className="text-xs text-rose-700 truncate">{c.description}</p>
                     </div>
-                    <p className="text-sm font-semibold text-rose-700 shrink-0">
-                      {formatCurrency(c.amount - c.paidAmount)}
-                    </p>
+                    <p className="text-sm font-semibold text-rose-700 shrink-0">{money(c.owed, c.currency)}</p>
                   </div>
                 ))}
-                {overdueSubscriptions.slice(0, 4).map((s) => (
-                  <div
-                    key={s.id}
-                    className="flex items-center justify-between gap-2 rounded-lg bg-amber-50 px-3 py-2"
-                  >
+                {day.pastDue.subscriptionItems.map((s) => (
+                  <div key={s.id} className="flex items-center justify-between gap-2 rounded-lg bg-amber-50 px-3 py-2">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-amber-900 truncate">{s.memberName}</p>
                       <p className="text-xs text-amber-700 truncate">{s.name}</p>
                     </div>
-                    <p className="text-sm font-semibold text-amber-700 shrink-0">
-                      {formatCurrency(s.amount)}
-                    </p>
+                    <p className="text-sm font-semibold text-amber-700 shrink-0">{money(s.amount, s.currency)}</p>
                   </div>
                 ))}
               </div>
             </Card>
           </div>
 
-          {/* Quick links footer */}
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mt-8">
             <QuickLink index={0} to="/members" icon={<Crown />} label="Members" />
             <QuickLink index={1} to="/calendar" icon={<CalendarHeart />} label="Calendar" />
@@ -426,17 +288,13 @@ export default function HospitalityDashboard() {
   );
 }
 
-function Card({
-  title,
-  icon,
-  href,
-  index,
-  children,
-}: {
+function Card({ title, icon, href, index, more = 0, children }: {
   title: string;
   icon: React.ReactNode;
   href?: string;
   index: number;
+  /** How many more there are than the card lists. */
+  more?: number;
   children: React.ReactNode;
 }) {
   return (
@@ -446,11 +304,8 @@ function Card({
           <span className="text-slate-500">{icon}</span> {title}
         </h2>
         {href && (
-          <Link
-            to={href}
-            className="text-xs text-slate-500 hover:text-slate-700 inline-flex items-center gap-0.5"
-          >
-            Open <ChevronRight className="w-3 h-3" />
+          <Link to={href} className="text-xs text-slate-500 hover:text-slate-700 inline-flex items-center gap-0.5">
+            {more > 0 ? `${more} more` : 'Open'} <ChevronRight className="w-3 h-3" />
           </Link>
         )}
       </div>

@@ -110,6 +110,78 @@ For org-scoped data, include:
 X-Organization-Id: your-org-guid
 ```
 
+### Single sign-on (Google, Microsoft) and passkeys
+
+Besides the password, a person can sign in with Google or Microsoft Entra ID (OpenID Connect,
+authorization code flow with PKCE) and with passkeys (WebAuthn). Every way ends in the same
+session token as a password sign-in: signed with `Jwt:SecretKey`, carrying the user's security
+stamp, so a password reset or a 2FA change ends it like any other (removing a passkey or
+unlinking a provider does not end the sessions they began; a reset does). The token says how the session began in its `signin` claim (`password`, `sso` or `passkey`); a token
+from before this claim reads as `password`. `GET /api/auth/sign-in-options` answers
+`{ "sso": [{ "id": "google", "name": "Google" }, ...], "passkeys": true }` for the sign-in
+page: a provider appears only once it is configured (see SECRETS_SETUP.md, section 5c).
+
+**Single sign-on.** The code flow is done by hand (`SingleSignOnService`), not with ASP.NET
+Core's OpenIdConnect handler, which signs people in to a cookie: this API has only bearer
+tokens. The id token's signature, issuer, audience and lifetime are checked by
+Microsoft.IdentityModel against the provider's published keys (read again when a new key turns
+up); it must carry the round trip's nonce. The round trip:
+
+| Step | Request | What happens |
+|------|---------|--------------|
+| 1 | `GET /api/auth/sso/{google\|microsoft}/start?challenge=<S256 of a secret the app keeps>` | 302 to the provider with `state`, `nonce` and a PKCE `code_challenge`; the state, nonce, verifier and the app's challenge are kept server-side (AuthChallenges, 10 minutes, used once). |
+| 2 | `GET /api/auth/sso/{provider}/callback?code=...&state=...` | The redirect URI registered with the provider. Takes the state once, redeems the code with the verifier and client secret, checks the id token, finds or makes the account, and sends the browser to `{FrontendBaseUrl}/auth/sso#code=<one-time code>` (or `#error=<reason>`). |
+| 3 | `POST /api/auth/sso/complete` `{ "code", "verifier" }` | Trades the one-time code (2 minutes, used once) and the secret whose hash came at step 1 for the session, or for the 2FA step token when 2FA is on. A code opened in another browser is refused. |
+
+Who signs in: the account already linked to that provider account (its issuer and subject);
+else the account with the address the provider vouches for (Google's `email_verified`,
+Entra's `xms_edov` optional claim), which is then linked; else a new account with a confirmed
+address and no workspace, as a sign-up. An unconfirmed account with the address is taken back
+by its proven owner: its password, 2FA and passkeys go, with every session. A password reset
+through the emailed link makes the same claim: when it confirms the address, the 2FA and
+passkeys whoever registered it first had added go too. An address the
+provider does not vouch for signs nobody in (`#error=email_not_verified`). 2FA still holds:
+someone who turned it on is asked for the code (or a passkey) after single sign-on.
+`GET /api/auth/sso/links` lists the person's linked accounts; `DELETE /api/auth/sso/links/{id}`
+unlinks one unless it is their only way in. Start, callback and hand-back share a limit of 150
+requests per address per ten minutes.
+
+**A workspace that requires single sign-on.** The owner (only) sets it with
+`PUT /api/organizations/{id}/sso` `{ "required": true, "domains": ["pavillon46.ch"] }`;
+`GET` shows it, with each member and whether it holds them, to the owner and to those who
+manage settings or the team. With domains, it holds members whose address is at one of them
+(an outside accountant keeps signing in as before); without, every member. The owner is never
+held, so a broken provider cannot lock the workspace out, and it cannot be turned on while the
+server offers no provider. The workspace holds it, not the sign-in: accounts are shared between
+workspaces, so the password still signs in and works in the person's other workspaces, while
+this workspace answers every request from a session that did not begin with single sign-on
+with `403` and `errorCode` `Sso.Required` (plus `organizationId`) — by `X-Organization-Id`, by
+its id in the route, and through its invitations and join requests. The person's own account
+(`/api/auth/*`, `/api/settings`, their workspace list and invitations) stays open, and
+`GET /api/organizations` marks the workspaces that would refuse the session
+(`ssoSignInNeeded`). Sessions already open are refused at once (the policy is cached for 30
+seconds per instance).
+
+**Passkeys.** Each ceremony is two calls: options for `navigator.credentials`, then the
+browser's answer with the ceremony's id (binary fields base64url). Fido2NetLib verifies the
+answer against the options kept server-side (challenge, origin, relying party, signature).
+
+| Endpoint | Who | What |
+|----------|-----|------|
+| `GET /api/auth/passkeys` | signed in | Their passkeys. |
+| `POST /api/auth/passkeys/registration/options` `{ "password" }` | signed in | Starts adding one: takes the account's password, or for an account without one a sign-in in the last 15 minutes. At most 20. |
+| `POST /api/auth/passkeys/registration` `{ ceremonyId, name, credential }` | signed in | Stores the credential id, public key and signature counter. |
+| `DELETE /api/auth/passkeys/{id}` | signed in | Removes one of theirs. |
+| `POST /api/auth/passkeys/sign-in/options`, `POST /api/auth/passkeys/sign-in` | anonymous | Signs in with any passkey the browser holds. The device must have verified the person (PIN, biometrics) and the answer must carry its user handle; that makes it two factors, so no 2FA code follows. |
+| `POST /api/auth/passkeys/second-factor/options`, `.../second-factor` `{ twoFactorToken, ... }` | the 2FA step | A passkey of the person's in place of the authenticator code, after the password or single sign-on; the session keeps how it began. |
+
+A counter that does not rise (when either value is not 0) is refused as a copied key
+(`Passkeys.CounterWentBack`); passkeys that sync between devices report 0 and pass. Failed
+passkey sign-ins count against the account like wrong passwords (5 per 15 minutes), failed
+second factors against the code's allowance, and the anonymous endpoints are limited to 30
+requests per address per minute. Passkeys are on once the app's address is known
+(`Passkeys:RelyingPartyId` and `Passkeys:Origins`, else `Email:FrontendBaseUrl`).
+
 ### Editing a lead, deal, contact or company
 
 Every read of one of these returns its `version`, and `GET /api/{records}/{id}` and the
@@ -228,14 +300,24 @@ What follows from it:
 - **Duplicates.** The same name in the same city is the same place. Two leads without an
   email are never duplicates of each other.
 - **Email.** Sequences and automations write to the contact person, else to the
-  establishment's own address, and greet the contact person by name.
+  establishment's own address, and greet the contact person by name. The assistant's email
+  drafts (`propose_email_draft`) go to the same address, and their card names the contact person.
 - **Webhook.** `POST /api/webhook/leads` takes `kind` and the same fields.
 - **Capture form.** The public form (`GET /api/public/capture/{token}`) tells the page
   which kinds the workspace takes (`leadKinds`). For an establishment, the name and email
   are the person filling it in, who becomes the contact person, and `establishmentName` is
   the place. Its own website comes as `businessWebsite`, because `website` is the honeypot.
+  Where the form asks for marketing consent, the answer is the contact person's, recorded
+  on the place's lead.
 - **Import.** A lead import in an establishment workspace offers the establishment's
-  columns, and matches a place by its name and city.
+  columns, and matches a place by its name and city. A row whose contact person's address
+  belongs to someone erased at their request is skipped, as a row with such an email is.
+- **Privacy requests.** The person behind an establishment is its contact person. Finding
+  someone never offers a place as one of their records, unless staff start from it. Their
+  export lists what each place holds about them as its contact person. An erasure on request
+  takes them off each place (name, role, email, phone), and the place stays with its history.
+- **Automations.** Rules on the lead triggers can test "Person or establishment", "Type of
+  establishment" and "City".
 
 ### Imports (leads, contacts, companies)
 
@@ -250,6 +332,133 @@ An import still running cannot be undone: both undo calls answer 409 until it ha
 | `GET` | `/api/imports?kind=lead` | The workspace's latest imports |
 | `GET` | `/api/imports/{id}/undo` | What undoing would remove, and what it keeps and why |
 | `POST` | `/api/imports/{id}/undo` | Remove what the import created that nobody has touched since |
+
+### Custom fields, tags and saved views
+
+**Custom fields.** Each workspace defines its own fields for leads, contacts, companies, deals
+and, in an organization, club members. A field is one of these kinds: text, number, money (in
+its own currency, by default the workspace's), date, select, multi select, checkbox, web
+address, or a link to another record (a lead, contact, company, deal or member of the same
+workspace). A field can be **required**: a save cannot empty a required field that has a
+value, but a record still without one (made before the field was required, or an import's
+empty cell) does not block saving its other fields. A field can have a **default**: every new
+record starts with it, however it is made (a form, an import, the website, a converted lead,
+an approved application), unless that same save gives the field a value. A field with values
+cannot change kind (409), and deleting a field deletes its values.
+
+**How values are kept, and why filtering by them stays fast.** Values live in
+`CustomFieldEntries`, one typed row per value: `TextValue` (up to 2,000 characters) with
+`TextKey` (its first 200, which an index can hold), `NumberValue` (`decimal(28,8)`, also the
+amount of a money value, with `Currency`), `DateValue`, `BoolValue` or `LinkId`. A multi select
+keeps one row per option chosen. Each row carries the workspace (`OrganizationId`), so the
+workspace query filter scopes it like every other table. The indexes:
+
+- `(OrganizationId, FieldId, TextKey)`, `(OrganizationId, FieldId, NumberValue)`,
+  `(OrganizationId, FieldId, DateValue)` and `(OrganizationId, FieldId, LinkId)`, each
+  `INCLUDE (RecordId)`: a list condition such as `budget:gte:1000` becomes
+  `EXISTS (SELECT 1 FROM CustomFieldEntries e WHERE e.OrganizationId = @ws AND e.FieldId = @f
+  AND e.NumberValue >= 1000 AND e.RecordId = r.Id)`, an index seek that reads only the matching
+  range of one field in one workspace. Its cost depends on how many records match, not on how
+  many records or fields the workspace has, and no JSON is parsed (the old design kept one JSON
+  document per record, which any filter would have had to read and parse for every record).
+- A unique `(RecordId, FieldId, TextKey)`: one row per value, and how a record's values are
+  read. Two saves racing to fill a number, money, date, checkbox or link field cannot leave it
+  two values (the loser gets 409), and a multi select cannot hold an option twice. Two first
+  saves of different texts at the same moment can leave a text, web address or select field
+  two rows (their text keys differ); the next save of that field keeps one.
+- Tags: `RecordTags` has a unique `(TagId, RecordId)` ("the records with this tag", straight
+  from the index) and `(RecordId, TagId)` (a record's tags, removal with the record).
+
+Sorting by a field orders by the record's row for it (MIN or MAX for a multi select), records
+without a value last either way, then by the list's own order. Two paths do not seek: a text
+`contains` condition and a list's free-text search read `TextValue` with `LIKE`, so they scan
+the workspace's rows (of that one field for `contains`); at tens of thousands of records with
+a handful of text fields each that is still a small read, and it is the place to add a
+full-text index if a workspace ever needs one.
+
+The table that kept values as one JSON document per record (`CustomFieldValues`) is left as it
+was and no longer written: the migration `AddFlexibleData` copied its values into typed rows
+(idempotently, values that no longer fit their field are left behind there), and a person's
+data export still includes anything left in it.
+
+**Tags** are the workspace's own, each with a name (unique in the workspace) and one of twelve
+colours (`slate`, `red`, `orange`, `amber`, `lime`, `green`, `teal`, `sky`, `blue`, `indigo`,
+`violet`, `pink`). The same tags go on leads, contacts, companies, deals and members.
+
+**List parameters.** `GET /api/leads`, `/api/contacts`, `/api/companies`, `/api/deals/board`
+(and `/board/column`), `/api/members`, and the contact and company exports take:
+
+| Parameter | Meaning |
+|-----------|---------|
+| `tag=<id>`, repeated | Records with any of these tags; all of them with `tagMatch=all` |
+| `notTag=<id>`, repeated | Records with none of these tags |
+| `field=<key>:<op>[:<value>]`, repeated | Records whose field passes the test; every condition must hold |
+| `sortBy=cf:<key>` with `sortDir` | Sort by a custom field (leads, contacts, companies); not a link field |
+
+| Field kind | `op` (and value) |
+|------------|------------------|
+| any | `empty`, `set` |
+| text, web address, select | `is`, `not`, `any` / `none` (values joined by `\|`), `contains` |
+| multi select | as select (one of its options), and `all` (`interests:all:Golf\|Tennis`) |
+| number, money | `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `between` (`budget:between:500..6000`) |
+| date | `is`, `before`, `after`, `gte`, `lte`, `between` (`yyyy-MM-dd`, `joined:between:2026-01-01..2026-06-30`) |
+| checkbox | `true`, `false` (`vip:true`; false includes records never ticked) |
+| link | `is`, `not` (the linked record's id) |
+
+At most 20 tags, 20 excluded tags and 20 field conditions are read. A condition on a field
+that no longer exists, or that cannot be read, is left out rather than refused, so a saved view
+still opens after a field it named was deleted. A list's `search` also finds records by their
+custom field text and their tag names. Exports add one column per custom field, in the
+workspace's order, then `Tags` when the workspace has any tags (a workspace without tags
+exports the columns it always did). Imports offer the custom fields as `custom:<key>` and read
+each kind as its form does: a multi select from options separated by `,`, `;` or `|`, money as
+`CHF 1'200.50`, `1200 EUR` or a bare amount in the field's currency, a link as the record's id.
+
+**Saved views.** A view is a name, a list (`leads`, `contacts`, `companies`, `deals`, `members`),
+the list's parameters (`query`, an object of strings and string arrays, at most 40 keys, such as
+`{"tag": ["…"], "field": ["tier:is:Gold"], "sort": "name-desc"}`) and the columns shown (up to 60). A view
+is private, or shared with the workspace by someone who may change something in it. Only its
+owner changes a view (with its `version`, 409 when it changed meanwhile); its owner, or whoever
+manages the workspace's settings, deletes it. Each person has at most one default view per list
+and workspace (a unique index), which may be a shared one; a view made private again stops being
+anyone else's default.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/custom-fields?entityType=contact` | The workspace's fields of that kind, in order (any member) |
+| `POST`/`PUT`/`DELETE` | `/api/custom-fields`, `/api/custom-fields/{id}` | Define, change or delete a field (`settings.manage`) |
+| `PUT` | `/api/custom-fields/order` | Put a kind's fields in order (`settings.manage`) |
+| `GET` | `/api/custom-fields/values?entityType=&recordId=` | One record's values |
+| `POST` | `/api/custom-fields/values/batch` | The values of a page of records (up to 500), for list columns and exports |
+| `PUT` | `/api/custom-fields/values` | Save a record's values (`records.edit`; a member's: `club.members`) |
+| `GET` | `/api/tags` | The workspace's tags with how many records carry each |
+| `POST` | `/api/tags` | Add a tag (`records.edit` or `club.members`: whoever may put tags on records) |
+| `PUT`/`DELETE` | `/api/tags/{id}` | Rename, recolour or delete a tag, taking it off every record (`settings.manage`) |
+| `GET`/`PUT` | `/api/tags/records` | One record's tags; set them (`records.edit`; a member's: `club.members`) |
+| `POST` | `/api/tags/records/batch` | The tags of a page of records |
+| `POST` | `/api/tags/bulk` | Put tags on and take tags off up to 1,000 records (up to 20 tags); records the caller cannot see are skipped and counted, and running it twice changes nothing more |
+| `GET` | `/api/saved-views?list=contacts` | The caller's views and the shared ones, with the caller's default |
+| `POST` | `/api/saved-views` | Save a view |
+| `PUT`/`DELETE` | `/api/saved-views/{id}` | Change or delete a view |
+| `PUT` | `/api/saved-views/default` | Set (or with `viewId: null` clear) the caller's default view of a list |
+
+**Automations.** The catalogue (`GET /api/automations/catalog`) adds the workspace's own
+fields to each trigger whose record carries them: `tags` (a choice of the workspace's tags:
+is, is not, any of, none of, empty, set) and `cf:<key>` for each custom field of the record's
+kind, tested as the value it holds (numbers and money compared, checkboxes yes or no, selects
+and multi selects by option, text and web addresses as text, a link by the linked record's
+name, a date as the days from today to it). A lead's or deal's rule tests its own; a rule on a
+club record (a member, a renewal, a booking, an event registration, an application, a payment)
+tests its member's, labelled "Member's …". A wait can also wait until a custom date field
+("1 day before the deal's Renewal"). Saving a rule checks its conditions against the catalogue
+as the workspace has it then.
+
+**Workspaces and privacy.** `CustomFieldEntries`, `Tags`, `RecordTags`, `SavedViews` and
+`SavedViewDefaults` each carry the workspace and have its query filter, with tests that another
+workspace's rows are never read. Deleting a record deletes its values and tags; merging
+duplicates moves them onto the record kept; a person's data export includes their field values
+and tags, and erasing a person removes them. A new organization made from another copies its
+fields, values, tags and views.
 
 ### Tasks
 
@@ -326,15 +535,24 @@ messages to the kept member.
 Reading needs a workspace member; writing needs `club.members` (and `records.delete` to
 delete).
 
+Send answers at once: it claims the campaign and hands it to the campaign scheduler, which
+works through its members in the background (a large club's campaign used to run inside
+the request, past the ~230 seconds Azure's front end waits). A member whose message cannot
+be queued is tried again a little later each time (1, 2, 4, 8 minutes); after five tries
+they are recorded as `failed`, with why, and the campaign finishes for everyone else. Staff
+can stop a campaign while it sends: members it has not reached get nothing, and its emails
+still waiting in the outbox are not sent (they read `cancelled`).
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/api/campaigns` | Campaigns, newest first, each with its totals |
-| `GET` | `/api/campaigns/audience?purpose=&tiers=&statuses=` | Who a campaign for that segment would reach now: matching, with an address, agreed to marketing, emails it makes |
+| `GET` | `/api/campaigns/audience?purpose=&tiers=&statuses=` | Who a campaign for that segment would reach now: matching, with an address, agreed to marketing, those the outbox would still refuse (`suppressed`: on the suppression list; `doNotContact`: for marketing, an address a contact marked do not contact holds), and the emails it makes |
 | `GET` | `/api/campaigns/{id}/recipients` | Every member it was for and where their message stands |
 | `POST` | `/api/campaigns` | A draft, or a scheduled campaign with `scheduledAtUtc` |
 | `PUT` | `/api/campaigns/{id}` | Change a draft or scheduled one (merge-patch; `scheduledAtUtc: null` unschedules); 409 once it has started sending or changed meanwhile |
 | `DELETE` | `/api/campaigns/{id}` | Delete a draft or scheduled one; 409 once it has started sending |
-| `POST` | `/api/campaigns/{id}/send` | Send it now, once (`If-Match` with its version); 409 when it is being sent or has been |
+| `POST` | `/api/campaigns/{id}/send` | Send it now, once (`If-Match` with its version): 202 with the campaign `Sending`, sent in the background; 409 when it is being sent or has been |
+| `POST` | `/api/campaigns/{id}/stop` | Stop a campaign that is sending (`If-Match` honoured): it becomes `Stopped`; 409 when it is not sending |
 | `POST` | `/api/campaigns/{id}/test` | A copy marked as a test to the signed-in person |
 | `GET` | `/api/communications?memberId=` | The communications log, the club's or one member's |
 | `POST` | `/api/communications/send` | Email one member: `{ memberId, category, purpose, subject, body }`; a refusal comes back as a `suppressed` message with its reason |
@@ -409,6 +627,121 @@ click, and flags images that point at a computer or plain http.
 `CADENCE_E2E_PORTAL` (its handoff address, e.g. a local Pavillon 46 in Development) and
 `CADENCE_E2E_PORTAL_SECRET` (its `CADENCE_ONBOARDING_SECRET`) are set; otherwise it is skipped.
 
+### Member portal
+
+The club's members sign in to their own club account at `{Email:FrontendBaseUrl}/member-portal/{portalKey}`
+(the frontend's `MemberPortalSite`), in French, German or English. It is part of the Club module
+and **off in every workspace until someone with Manage settings turns it on** (Settings ›
+Welcome & portal). A copied workspace starts with it off, at an address of its own. When the
+workspace also hands new members to its own portal (the handoff above), the settings say so: its
+members then have two places to sign in.
+
+**Signing in.** A member asks for a link by email; the answer is the same whether or not the
+address is a member's, and at most 3 links go to one address of one club in 15 minutes (with
+per-IP limits on top). The link carries a 256-bit secret in the address's fragment (`#token=…`),
+stored only as its SHA-256; it works once, for 15 minutes (an invitation's for 3 days, a handoff's
+for 2 minutes), and is spent by deleting it, so of two uses at once only one signs in. Using it opens
+a **member session** of 30 days: a JWT of its own scheme (`MemberPortal`, its own audience and key,
+naming the organization, the member and the session), sent as `Authorization: Bearer` to
+`/api/portal/*` only. A member token is refused by every staff endpoint and a staff token by every
+portal endpoint. The session is checked on every request, so signing out, signing out everywhere,
+staff ending the member's sessions, turning the portal off, and erasing the member all end it at
+once. While the Club module is off every portal request is refused (403 `Module.Off`, whatever
+`X-Organization-Id` a member sends) and the page says the portal is closed; the session answers
+again once the module is back on. An erased member is never sent a link. Invitations and links go
+through the outbox from the Welcome & portal sender (its name, its from address when the workspace's
+verified domain allows it, its reply-to), in the member's language.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/public/portal/{key}` | The club's name, language and whether the portal is open (404 for no such portal) |
+| `POST` | `/api/public/portal/{key}/sign-in-link` | `{ email }`: emails a sign-in link if the address is a member's; 202 either way, 429 past the limit |
+| `POST` | `/api/public/portal/{key}/sign-in` | `{ token }`: uses a link once; returns `{ token, expiresAtUtc, memberId, firstName, clubName, language }` |
+| `POST` | `/api/public/portal/handoff/{onboardingId}/link` | The club's own portal asks for a sign-in link for the member a handoff added (below) |
+| `GET`/`PATCH` | `/api/portal/me` | Who they are to the club (status, start date or "still to be decided", household); `PATCH` changes only `phone` and `preferredLanguage` (merge-patch: a `phone` sent as null is taken off) |
+| `POST` | `/api/portal/sign-out`, `/api/portal/sign-out-everywhere` | Ends this session, or every session of theirs (and their unused links) |
+| `GET` | `/api/portal/account` | Balance, what is owed or in credit, open charges, the months with statements |
+| `GET` | `/api/portal/statements/{yyyy-MM}` (`/pdf`, `/household-pdf`) | A month's statement, its PDF, and the household's for its primary |
+| `GET`/`DELETE` | `/api/portal/card`; `POST /api/portal/card/setup` | Their saved card; saving one (and paying dues with it) goes through the club's pay page |
+| `POST` | `/api/portal/pay` | `{ chargeIds? }`: a pay page for those open charges, or everything owed |
+| `GET` | `/api/portal/events`; `POST /events/{id}/register`, `/registrations/{id}/cancel` | Published events to come, signing up (the event's capacity, waitlist and member price) and cancelling up to the club's cut-off |
+| `GET` | `/api/portal/resources`, `/api/portal/reservations`; `POST /reservations`, `/reservations/{id}/cancel` | What the club opens to members' bookings, their bookings (a primary also sees the household's), booking by the resource's rules and cancelling up to the cut-off |
+| `GET`/`PUT` | `/api/portal/consent` | Marketing and service, per channel; `{ channel, purpose, granted }` is recorded with the member as its source |
+| `GET` | `/api/portal/points` | Their points and how they came |
+| `GET`/`PUT` | `/api/member-portal/settings` | On or off, the cancel cut-off in hours (0 to 720), the address; `PUT` takes `{ enabled?, memberCancelHours?, version }` or `If-Match` (Manage settings). Turning it off ends every session |
+| `GET` | `/api/member-portal/members`, `/api/members/{id}/portal` | Who was invited, who has signed in and on how many devices |
+| `POST` | `/api/member-portal/invite-all`, `/api/members/{id}/portal/invite`, `/api/members/{id}/portal/revoke` | Inviting everyone not invited yet (200 addresses a request; the answer says how many remain), one member, and ending a member's sessions (Club members) |
+
+Every portal endpoint answers only from the member's own records (and, for a household's primary,
+the household's): a record of another member, another household or another workspace is "not
+found", the same as one that does not exist. A refusal by the club's rules is 403
+`Portal.NotAllowed.<reason>` (`TooLate`, `NotActive`, `EventNotOpen`, `Started`, `NotYours`,
+`NotPrimary`), so the portal can say it in the member's language. A resource is bookable in the
+portal only when its `memberBooking` is `request` (the club confirms) or `instant`; every existing
+resource starts `off`. A member's portal actions run the workspace's automations as any booking or
+registration does.
+
+**The club's own portal opening a session here.** A member added through the welcome handoff may
+also use the club's own portal. It can send them here without a second sign-in: it posts a small
+JSON body naming the handoff, with a random nonce, `{ "onboardingId": "…", "nonce": "…" }`, to
+`/api/public/portal/handoff/{onboardingId}/link`, signed as the handoff itself is
+(`X-Cadence-Timestamp`: Unix seconds; `X-Cadence-Signature-256`: `sha256=` + hex HMAC-SHA256 of
+`{timestamp}.{body}` with the handoff's secret), and gets back `{ url, expiresAtUtc }`, a sign-in
+link for that handoff's member that works once, for two minutes, to send the member's browser to.
+The signature covers the body, not the address, so the body's `onboardingId` must be the one in
+the address. A request more than five minutes from now, a signature already used, a body naming
+another handoff (or none), or one signed with a secret since replaced is refused (401, the same
+answer as an unknown handoff); the portal being off is 403. The handoff's own contract (its payload, signatures,
+callback and events) is unchanged.
+
+### Contracts: from a deal to a member
+
+A contract drafted on a deal (`POST /api/contracts/draft` with `dealId`) takes the deal's value
+and line items as merge fields: `{{deal.name}}`, `{{deal.currency}}`, `{{deal.value}}`,
+`{{deal.lineItems}}` (a fee table: product, quantity, unit price, VAT, total, in the deal's
+currency, set as columns in the PDF), `{{deal.total}}` and `{{deal.vatIncluded}}`; the fee
+(`{{contract.fee}}`) is the deal's total. Line items carry a VAT rate (`vatRate`, 0 to 50, the
+rate included in the price). `GET /api/contracts/for-deal/{dealId}` lists a deal's contracts and
+those of the lead it came from, to whoever may open the deal.
+
+A **membership contract** names the tier it admits its counterparty at (`membershipTier`, one of
+the club's tiers on sale). It can ask a **deposit** paid on signing (`depositAmount`, in the
+club's currency): only by someone who may take payments (money.manage), and only when the club
+can be paid, through Stripe or by Swiss QR-bill. The draft's text says the amount, and a
+contract whose text no longer says it is not sent. Once signed, the signing page offers:
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/public/contracts/{token}` | Now also `deposit { amount, currency, status, payable, methods, qrBill, iban?, reference?, creditor?, failureMessage? }` and `membershipTier` |
+| `POST` | `/api/public/contracts/{token}/deposit/checkout` | Starts (or reuses, while it lasts) Stripe's page for the deposit; `{ url }`. Back to `/sign/{token}?deposit=done` or `?deposit=cancelled`. Rate limited per link |
+| `GET` | `/api/public/contracts/{token}/deposit/qr-bill?lang=` | The deposit's invoice with its QR-bill, whose reference names the deposit |
+
+Stripe's events for a deposit carry `cadence_deposit` in their metadata and go through the same
+webhook as every other payment; a bank file's transfer quoting the deposit's QR reference is
+matched to it. A paid deposit admits nobody: it is held until the club admits the signer, then
+recorded on the new member's account once (keyed by Stripe's payment intent or the bank
+reference), paying the initiation fee and first dues first. Duplicate or late events change
+nothing; a deposit paid back in full in Stripe before the admission is not recorded, and one
+paid back in part goes on the account whole with each of Stripe's refunds against it (keyed by
+the refund's id, so a later refund takes off only what is new); voiding or
+declining the contract cancels one not paid. One paid on a contract that was then voided (or
+paid on Stripe's page after the void) is never put on anyone's account: it stays paid, and the
+contract's trail (`deposit_to_refund`) tells staff to pay it back.
+
+**Countersigning** a contract (`POST /api/contracts/{id}/countersign`) now also marks its deal
+won through the deal service (won stage, stage history, `deal.won` rules and webhooks; a deal the
+countersigner may not open is marked won as the contract's drafter), approves the application
+behind it at the signed tier (starting one, source `contract`, for a membership contract with
+none), admits the member the deal's welcome handoff already made rather than a second one, puts
+the held deposit on their account, and fires `contract.countersigned`, each once. Someone who may
+not admit members (a sales rep) leaves the application, at the signed tier, for a reviewer,
+whose approval takes the deposit.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/deals/{dealId}/membership` | The members a deal brought in (handoff or contract), the applications of its lead, contact and contracts, its contact's household (Club module; 404 for a deal the reader may not open) |
+| `GET` | `/api/members/{memberId}/links` | Now also `dealId`, `dealName` and `contracts` (each with its `deposit`), leaving out a deal the reader may not open and the contracts drafted on it |
+
 ### Organizations & Team
 
 | Method | Endpoint | Description |
@@ -419,6 +752,308 @@ click, and flags images that point at a computer or plain http.
 | `GET` | `/api/invites/pending` | List pending invites |
 | `POST` | `/api/invites/accept` | Accept invite |
 | `POST` | `/api/joinrequests/{orgId}` | Request to join org |
+
+### Modules: Sales and Club
+
+A workspace can turn its Sales module (leads, deals, pipelines, outreach, contracts, sales
+reports, the welcome & portal handoff) or its Club module (members, households and
+applications, house accounts and payments, events and bookings, campaigns, the house-charge
+screen and the POS, the club's reports) off. Both are on for every workspace until someone turns one off; nothing is
+deleted, and turning it on again brings everything back. Contacts, companies, tasks,
+activities, the calendar, the team, automations and settings belong to both.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `PUT` | `/api/organizations/{id}/modules` | `{ sales?, club? }` (`settings.manage`); one module always stays on (400 `Module.OneStaysOn`), and a module whose own work still runs (the club's automatic billing, reminders, lapsing or monthly statements, a campaign scheduled or sending, the import of POS tickets; leads in outreach sequences) is not turned off until that stops (409 `Module.StillRunning.Conflict`, saying what) |
+
+Every endpoint of a module that is off answers one refusal, before anything else and the
+same for everyone: 403 with `errorCode: "Module.Off"` and the `module` named. Endpoints
+people outside the workspace use keep answering (pay links, the payment webhook, public
+forms, unsubscribe links, contracts sent for signing, a portal's handoff reports, email
+images). `GET /api/organizations` says which modules each workspace has on
+(`salesEnabled`, `clubEnabled`).
+
+What one module does to the other's records stops with it too. With the club off, a deal's
+handoff adds nobody to the club's members, a countersigned contract admits nobody (the
+application stays open for when the club is on again), no saved card is charged for dues
+(they are charged once the club is on again), and the scheduled POS import leaves the
+workspace alone (it carries on from where it stopped once the club is on again). With Sales off, an automation puts no
+lead in an outreach sequence (leads a website form posts are still kept), search leaves out
+leads and deals, and the weekly digest leaves the workspace out.
+
+### Club reports
+
+Summed by the database from the ledger, in the workspace's currency first (any other
+currency apart) and on its calendar (days, Monday weeks or months, in its time zone).
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/club-reports?from=&to=&grain=` | Cash revenue (payments received, less refunds and payments taken back), accrual revenue by kind (what was charged, less voids), receivables by days past due (current, 1-30, 31-60, 61-90, over 90) at the end of the period, what is left on gift cards, loyalty points held (at 100 points a unit), monthly recurring revenue of running subscriptions, event fill and no-show rates, members active, lapsed, by tier and joined, check-ins by venue and the top spenders |
+| `GET` | `/api/club-reports/export?from=&to=&grain=` | The same as a CSV, one figure per row; text that reads as a formula is kept as text (`records.export`) |
+| `GET` | `/api/club-reports/today` | The day at the club: check-ins, bookings, open tabs, applications waiting, what is past due, this week's events and the fortnight's anniversaries |
+
+### Keeping members: at-risk scores, renewals and referrals
+
+**The at-risk score.** Every active member is scored from 0 to 100 each morning (the
+`ClubScoringBackgroundService`, from 05:00 in the workspace's time zone, once a day: the day
+is claimed by a unique row in `ClubScoringRuns`, so two servers score it once), and on demand
+from their page. Each sign is measured against the member's **own** past, not other members:
+visits and spending (dues left out) in the last 90 days against the 270 before, what they owe
+(read as billing reads it: overdue less credit held) and the reminders it took, events and
+no-shows in the last six months against the six before, open complaints and concerns, and how
+long they have been a member. Each sign has a strength from 0 to 1 and a sentence that says
+why ("6 visits in the last 90 days, against about 12 in a usual 90 days before."); the club
+weighs them in its settings, and the score is the weighted share. A member at or above the
+at-risk threshold is *at risk*, at or above the watch threshold *watch*. A member already at
+risk stays so until their score falls five points under the threshold, so a score near it does
+not flap.
+
+**Save actions.** When a member crosses into at risk, the club's actions run once: a task for
+the member's owner (else the workspace owner), an email through the outbox (marketing, which
+needs their consent, or service, by the club's choice; the club's own text or a standard one in
+the member's language), and the automation trigger `member.at_risk` (with `riskScore` as a
+condition field). The crossing is claimed by one conditional update, so a recompute and the
+daily run at the same moment act once. A member's **first** score is only a baseline (turning
+scoring on emails nobody), and a member at risk again within the cooldown (60 days by default)
+gets no second round. All actions are off until the club turns them on.
+
+**Renewals board.** Each membership end (`RenewsAtUtc`) and each yearly subscription period
+in the window (monthly ones when asked), one card per renewal, in a column worked out from the
+records: *lapsed* (the member lapsed or left, or the end passed without a renewal), *renewed*
+(the end moved on by four weeks or more, or the next period billed and paid), what staff set
+by hand, *at risk* (the score), *contacted* (a message someone at the club wrote to them, not
+one the club sends on its own such as a statement or a payment reminder; a call, meeting or
+email logged on their contact; or marked contacted; in the 90 days before the end), else
+*upcoming*. Marking a membership renewed moves its end on a year (or to the date given) once,
+and never back from a date the member's form set; a member who has left (lapsed, cancelled or
+resigned) is not marked renewed there, but set active on their page first. The daily run notes
+the renewals of the next 90 days, so a renewal done elsewhere still shows as renewed; each
+subscription's renewal is its own record, even when two of a member's end the same day; a
+membership date put right by less than four weeks (or moved back) takes its card with it,
+leaving no card at the old date.
+
+**Referrals and sponsors.** An application names its referrer, proposer and seconder as
+members (not names typed in); the approval carries the referrer onto the new member. With the
+club's sponsor rule *optional* or *required*, a proposer and seconder must be members in good
+standing (active, a member long enough, nothing overdue, by the club's settings), and
+*required* refuses an approval without both. The referral bonus (loyalty points, or a credit
+on the referrer's house account, by setting) is given once when the referred applicant becomes
+a member: one row per member brought in, which the database will not take twice. A credit is
+money: an approval by someone without `money.manage` leaves it pending for whoever finishes
+the money, and it goes through the ledger with its own idempotency key (it appears in the
+accounting export as a correction). While one request gives a bonus it holds the row (two
+minutes at most, taken with one conditional update), so a second press at the same moment is
+answered 409 and a request that stopped part way is finished by the next one.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/retention/settings` | The club's weights, thresholds, save actions, cooldown, referral bonus and sponsor rule (the defaults until saved), with `version` |
+| `PUT` | `/api/retention/settings` | Saves them against `version` (or `If-Match`); an older copy is refused (409) (`settings.manage`) |
+| `GET` | `/api/retention/members?level=at_risk\|watch` | The members at risk (or to watch), highest score first, with their top signs |
+| `GET` | `/api/retention/runs` | The last scoring runs and what each did |
+| `POST` | `/api/retention/run` | Scores every active member now (`settings.manage`) |
+| `GET` | `/api/members/{id}/risk` | The member's score as last worked out, each sign with its sentence |
+| `POST` | `/api/members/{id}/risk/recompute` | Works it out again now; a crossing runs the save actions (`club.members`) |
+| `GET/POST` | `/api/members/{id}/concerns` | Complaints and concerns recorded about the member; recording takes `club.members` |
+| `POST` | `/api/members/{id}/concerns/{concernId}/resolve` | Marks one resolved, with how (`club.members`) |
+| `DELETE` | `/api/members/{id}/concerns/{concernId}` | Removes one (`club.members` and `records.delete`) |
+| `GET` | `/api/members/{id}/referrals` | Who referred, proposed and seconded them, whom they brought in, the bonuses, and their standing as a sponsor |
+| `PUT` | `/api/members/{id}/referrer` | Names (or, with null, takes off) the member who referred them (`club.members`) |
+| `POST` | `/api/members/{id}/referral-bonus` | Gives their referrer the club's bonus by hand, once; a credit also takes `money.manage` (`club.members`) |
+| `GET` | `/api/renewals?days=&pastDays=&owner=me\|{userId}&monthly=true` | The board: columns with counts, value a year per currency, and cards |
+| `POST` | `/api/renewals/stage` | Sets where a renewal stands (contacted, at_risk, renewed, lapsed, or auto), against the card's `version` (`club.members`) |
+| `GET` | `/api/referrals/report?from=&to=` | Members who brought members in: how many, and what those members were charged (dues and the rest, per currency), proposals, secondings and bonuses |
+| `GET` | `/api/referrals/report/export?from=&to=` | The same as a CSV, one row per member brought in (`records.export`) |
+| `GET` | `/api/referrals/standing?memberIds=` | Whether each member may propose or second by the club's rule, and if not why |
+
+A person's export includes their score, renewals, concerns and referral bonuses; their
+erasure deletes the score, renewals and concerns and keeps the bonuses with the books. A
+merged member's concerns, renewals and referrals move to the member kept; a deleted member
+leaves none behind, and nobody named as referred or sponsored by them.
+
+### Companies and private clients: house accounts, corporate memberships, private events
+
+**House accounts for companies and private clients.** A CRM company, or a CRM contact as a
+private client, can hold a house account on the club's ledger like a member's: charges,
+payments, credit, voids and statements go through the same ledger (`IClubLedger`). The
+account's key is the company's or contact's id, so `POST /api/charges` and `POST /api/payments`
+take it as `memberId`, and every entry says whose account it is on (`accountType`: `company` or
+`contact`; left out for a member's). An account is opened by whoever handles the money
+(`money.manage`); a contact who is a member is billed on their member account instead, so
+opening a separate one for them is refused. The company's statement (PDF, in the membership's
+language, with the Swiss QR-bill when the club's bank is set) lists who ran up each charge when
+it pays its nominees' charges.
+
+**Corporate memberships.** A membership held by a company: a number of seats, filled by
+members as its nominees (Active or Pending members; one seat per member at a time, which a
+filtered unique index enforces; never more nominees than seats, decided against the
+membership's row so two seats taken at once are one after the other). Nominees are seated,
+swapped (one step, the old nominee kept in the history with who took over) and removed by
+whoever runs the members (`club.members`). The nominee rule decides whose account a nominee's
+own charges go on while the membership is active: `company` (the company's account, each charge
+saying which nominee ran it up) or `nominee` (their own). A private event a nominee hires for
+themselves is theirs, not the company's (an event the company hires is linked to it). A nominee's own dues are never moved;
+the card says when they still run beside the company's, for the club to stop. The company's
+dues are a subscription on the company's own account (`money.manage`), billed by the daily
+billing run like any other; dues set twice at once start one subscription. Renewal is on the company: *due* within 60 days of the renewal date,
+*overdue* after it, *not renewing* when marked so; renewing moves the date on by the term (12
+months by default). Ending a membership frees its seats and stops its dues (which takes
+`money.manage` while they run). Nominees leave the members' own renewals board, since the
+company renews for them.
+
+**Private events.** A client's hire of the club's spaces: linked to a company, a contact or
+both, and to the deal it was sold through. Its spaces are held as bookings of the club's
+resources for its time, taking each resource's whole capacity: a member cannot book the room
+under the party (in a shared room too, whatever its capacity is set to since), and a booking in
+the way refuses the event (409, saying what is in the way). The bookings page links a hold to its event.
+The diary cannot move or delete a hold; it follows the event when it moves, is confirmed with
+it, and is released when it is cancelled or completed. The event's row and its holds are saved
+in one transaction, so a clash leaves the event as it was. Its menu and services come from the
+price catalogue (price and VAT copied, as a charge would take them) or are typed in. The deposit
+is a charge on the client's account (the company's, else the contact's member account, else
+the contact's own); once money is on an account, the client cannot change. The final invoice
+posts one charge per VAT rate, and the deposit is set against it: its charge is taken back and
+what was paid on it pays the invoice. Nothing on the menu changes once invoiced; an invoiced
+event is cancelled once every charge of its invoice has been voided on the client's account.
+Cancelling asks whether a deposit is kept or given back
+as credit (giving it back takes `money.manage`, as asking the deposit and invoicing do). The
+contract is drafted on the deal from a private event template (spaces, menu, total, deposit);
+countersigning it confirms the event and admits nobody, even when the deal's contact has
+applied to join. With Sales turned off no contract is drafted. The guest list is kept on the
+event; the front desk (`club.frontdesk`) adds walk-ins and checks guests in, once.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/club-accounts/{companies\|contacts}/{id}` | The client's account (not open until opened): balance, owed, credit, open charges |
+| `POST` | `/api/club-accounts/{companies\|contacts}/{id}` | Opens it (`money.manage`) |
+| `GET` | `/api/club-accounts/{companies\|contacts}/{id}/statement?from=&to=` | The statement as data |
+| `GET` | `/api/club-accounts/{companies\|contacts}/{id}/statement.pdf?from=&to=&language=&email=` | The statement as a PDF |
+| `GET` | `/api/corporate-memberships?companyId=&status=&renewingWithinDays=` | The workspace's corporate memberships, with seats, nominees, dues, renewal and the company's account |
+| `GET/POST` | `/api/corporate-memberships`, `/api/corporate-memberships/{id}` | Reads one; makes one (and opens the company's account); dues sent with it take `money.manage` (`club.members`) |
+| `PUT` | `/api/corporate-memberships/{id}` | Changes its details against `version` (or `If-Match`) (`club.members`) |
+| `PUT` | `/api/corporate-memberships/{id}/dues` | Starts or changes the company's dues (`money.manage`) |
+| `POST` | `/api/corporate-memberships/{id}/nominees` | Seats a member (`club.members`) |
+| `POST` | `/api/corporate-memberships/{id}/nominees/{nomineeId}/swap` | Gives the seat to another member (`club.members`) |
+| `POST` | `/api/corporate-memberships/{id}/nominees/{nomineeId}/remove` | Takes the nominee off, with a reason (`club.members`) |
+| `POST` | `/api/corporate-memberships/{id}/renew` | Renews for another term, against `version` (`club.members`) |
+| `POST` | `/api/corporate-memberships/{id}/not-renewing` | Marks it not renewing, with why (`club.members`) |
+| `POST` | `/api/corporate-memberships/{id}/end` | Ends it: seats freed, dues stopped (`club.members`; `money.manage` while dues run) |
+| `GET` | `/api/corporate-memberships/{id}/statement.pdf?from=&to=` | The company's statement, its nominees' charges included |
+| `GET` | `/api/members/{id}/corporate` | The seat the member holds (204 when none) |
+| `GET` | `/api/private-events?from=&to=&status=&companyId=&contactId=` | Private events, soonest first |
+| `GET/POST` | `/api/private-events`, `/api/private-events/{id}` | Reads one; makes one and holds its spaces (`club.members`) |
+| `PUT` | `/api/private-events/{id}` | Changes its details, time or spaces against `version` (or `If-Match`) (`club.members`) |
+| `POST/PUT/DELETE` | `/api/private-events/{id}/lines[/{lineId}]` | Its menu and services (`club.members`); nothing changes once invoiced |
+| `POST` | `/api/private-events/{id}/confirm`, `/complete` | Confirms it (its holds with it), or marks it completed (holds released) (`club.members`) |
+| `POST` | `/api/private-events/{id}/cancel` | Cancels it with a reason and `deposit: keep\|release` when one was asked; an invoiced one once its invoice's charges are voided (`club.members`; release takes `money.manage`) |
+| `POST` | `/api/private-events/{id}/deposit` | Asks the deposit on the client's account (`money.manage`) |
+| `POST` | `/api/private-events/{id}/invoice` | Posts the final invoice, the deposit set against it (`money.manage`) |
+| `POST` | `/api/private-events/{id}/contract` | Drafts its contract on its deal (`club.members` and `records.edit`; Sales on) |
+| `POST/DELETE` | `/api/private-events/{id}/guests[/{guestId}]` | Adds a guest (`club.members` or `club.frontdesk`); removing takes `club.members` |
+| `POST` | `/api/private-events/{id}/guests/{guestId}/check-in`, `/undo-check-in` | The door's check-in, once (`club.members` or `club.frontdesk`) |
+
+A company is not deleted while it has a corporate membership, money on its house account or a
+private event still to come (409): merge it into the company it duplicates instead, which moves
+its memberships, events and account with every entry on it, the QR references printed for it
+(one printed for the same month as the kept company's stops being that month's) and the bank
+transfers recorded as its. A contact is kept the same way for
+money on their account or an event to come, and merged likewise. A merged member's seat moves to
+the member kept (when both hold one, the duplicate's ends), and their guest list places move; a
+deleted member's seat is freed. A person's export includes the private events they hired as a
+private client and the guest lists they are on; their erasure takes them off guest lists and
+keeps the events they hired for the books, without the link to them and with their names out of
+the title, notes and the diary's holds. A company's corporate membership stays when the person it
+names as its billing contact or address is erased; they are taken off it. The retention run's
+stale-lead rule keeps the contact made for the lead when they are the club's private client (an
+event to come or held since, money on their account since, or a running corporate membership's
+bills to look after).
+
+Not done yet: monthly statements, reminders and the lapse after the grace period run for
+members' accounts only (a company's statement is made on demand); a bank transfer the import
+could not match is allocated to members only, and online payment links are for members only;
+corporate renewals and private events have no automation triggers of their own.
+
+### Languages and Swiss formats
+
+The app is written in English, German (Swiss spelling, "ss" for the sharp s) and French (as
+written in Romandy). The browser's words are in `src/app/i18n/locales/{en,de,fr}`; what the
+server writes to a member (statement and invoice PDFs with the QR-bill's SIX headings, the
+statement, reminder, welcome, event and pay-link emails, the marketing footer, the public
+forms' standard words) is in `ACI.Application/Common/I18n/MemberTexts.cs`. A test fails when
+German or French lacks a key, a placeholder or a plural form, on either side.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/settings/language` | The signed-in person's language (`en`, `de`, `fr`), or null when they have not chosen: the app then follows the workspace's locale, then the browser |
+| `PUT` | `/api/settings/language` | `{ language }`: keep it on the account; null or empty follows the workspace again; anything else is 400 |
+| `PUT` | `/api/members/{id}` | `preferredLanguage` (`en`, `de`, `fr`): the language the club writes to the member in. Null (the default) is English, as every member was written to before; an applicant's form language and the welcome handoff's language are carried onto the member they become |
+| `GET/POST` | `/api/public/apply/{token}`, `/api/public/capture/{token}` | `?lang=` on the form and `language` on the post: the standard words, the thank-you and the consent record are in the language the visitor read; a form that says none is answered in English |
+| `PUT` | `/api/organizations/{id}/settings` | `csvSemicolon`: the workspace's CSV exports (contacts, companies, Club Reports, and the browser's own) split columns by a semicolon, as Excel set up for Switzerland reads them; comma by default. Every export starts with the UTF-8 byte order mark |
+
+Dates are written in the person's language with the workspace's region (`fr-CH` writes
+"31 décembre 2026" and 31.12.2026), numbers and money in the workspace's number format, and
+the club's date fields read days in the region's order (31.12.2026 in Switzerland).
+
+### Assistant and morning brief
+
+The chat and the morning brief, behind a provider-neutral model interface
+(`IAssistantModel`, implemented for OpenAI on `OpenAI:ApiKey`). Without a key the assistant
+is "not configured": `POST /api/agent/chat` answers 503 `Assistant.NotConfigured`, the app's
+chat answers from its built-in rules, and the morning brief goes out as a plain list.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/agent/chat` | Ask: `{ message, history[{role,text}], page, language }`. The model calls tools that read the records **as the caller sees them** (the MCP tools run as the caller, plus club reads and `my_brief`), the tools offered following the caller's permissions and the workspace's modules. Record text reaches the model fenced as data with a fresh marker per question. Changes come back as `proposals` (task, activity, deal-stage with the version read, email-draft, booking, charge): nothing is written until the person confirms one in the app, which sends it to the endpoint the app's own form uses. 429 when asked too fast (per person, `assistant` policy), when the team asks too much at once, or when the month's allowance is used up (`Ai.MonthlyLimit`); 502 `Assistant.ModelFailed` when the model did not answer properly |
+| `GET` | `/api/agent/settings` | Whether a model is set up, the month's calls against the limit, the limits, and the workspace's morning-briefs switch (anyone in the workspace) |
+| `PUT` | `/api/agent/settings` | Change the monthly limit (0 up to `Assistant:MaxMonthlyLimit`, or `useDefaultLimit`) and `morningBriefs` (settings.manage, version in body or If-Match; 409 when stale) |
+| `GET` | `/api/agent/brief` | The caller's brief now (sections by role and module) and the one sent this morning |
+
+Every call to the model is counted against the workspace's month (`AiUsage`, one row per
+workspace and month, taken with a conditional UPDATE so racing calls cannot pass the limit):
+each turn of an answer, each brief the model writes, and each AI-writer draft
+(`/api/copy/*`, which had no limit before). Outside any organization a person's AI-writer
+drafts are held to `Assistant:PersonalMonthlyLimit`.
+
+The **morning brief** (`MorningBriefService`, run every 15 minutes by
+`MorningBriefBackgroundService`) goes from 07:00 to noon on each workspace's calendar to each
+member whose workspace has briefs on and who has not turned theirs off: their tasks due and
+overdue, their open deals gone quiet (the board's stale days), and with the Club module on,
+as their role allows, members past due (money or members), today's bookings and events (front
+desk or members) and renewals in the next 14 days (members or money), leaving out a membership
+marked "not renewing" on the renewals board. Erased members are left out. One per person,
+workspace and day (a unique `AssistantBriefs` row is the claim; one left half done is taken
+over after 15 minutes), as a notification linking to `/brief`, and by email
+through the outbox (`Source = brief`, for their own team) to those who turned that on in their
+settings (`morningBriefEnabled`, `morningBriefEmail` on `/api/settings`). With a model set up,
+the model writes a few sentences on top of the plain list while at least half of the month's
+allowance is left: every person's brief is a call every day, so past that point the briefs go
+as plain lists and the rest of the month stays for the people asking the assistant.
+
+```json
+{
+  "OpenAI": { "ApiKey": "", "Model": "gpt-4o-mini" },
+  "Assistant": {
+    "Enabled": true,
+    "Provider": "OpenAI",
+    "Model": null,
+    "MaxOutputTokens": 800,
+    "Temperature": 0.2,
+    "TimeoutSeconds": 30,
+    "DefaultMonthlyLimit": 300,
+    "MaxMonthlyLimit": 3000,
+    "PersonalMonthlyLimit": 100,
+    "UserBurst": 20,
+    "UserPerMinute": 3,
+    "WorkspaceBurst": 60,
+    "WorkspacePerMinute": 30,
+    "MaxTurnsPerQuestion": 5
+  }
+}
+```
+
+`Assistant:Model` falls back to `OpenAI:Model`. `Assistant:Enabled=false` turns the assistant
+off while the AI writer keeps the key. Set `Temperature` to null for models that take only
+their default.
 
 ### Configuration (Owner/Manager only)
 
@@ -485,6 +1120,31 @@ backend/
 ```
 
 > **Important:** Change `Jwt:SecretKey` in production. Must be at least 32 characters.
+
+Signing in another way (all off until set; SECRETS_SETUP.md, section 5c, says what to register):
+
+```json
+{
+  "Sso": {
+    "ApiBaseUrl": "https://api.example.ch",
+    "Google": { "ClientId": "", "ClientSecret": "" },
+    "Microsoft": { "ClientId": "", "ClientSecret": "", "Tenant": "organizations" }
+  },
+  "Passkeys": {
+    "RelyingPartyId": "app.example.ch",
+    "RelyingPartyName": "Cadence",
+    "Origins": "https://app.example.ch"
+  }
+}
+```
+
+`Sso:ApiBaseUrl` falls back to `Email:ApiBaseUrl`; the providers send people back to
+`{ApiBaseUrl}/api/auth/sso/{google|microsoft}/callback`, and the API sends them on to
+`{Email:FrontendBaseUrl}/auth/sso`, so both must be absolute for any provider to be offered.
+Both have localhost defaults (`http://localhost:5160` and `http://localhost:5173`), which count
+as absolute: on a server, set them, or the providers are sent a callback they refuse.
+`Sso:Microsoft:Tenant` is `organizations` (any work or school account, the default), `common`
+(those and personal Microsoft accounts), `consumers`, or one tenant's id (only that directory).
 
 ---
 

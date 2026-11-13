@@ -316,6 +316,24 @@ describe('member counts', () => {
   });
 });
 
+describe('a workspace that asks for single sign-on', () => {
+  it('says so on its tile, and does not ask it for a member list it would refuse', async () => {
+    ctx.organizations = [
+      ORGS[0]!,
+      org('o-p46', 'Pavillon 46', { isOwner: false, role: 1, ssoRequired: true, ssoSignInNeeded: true }),
+    ];
+    await renderPage();
+
+    const p46 = screen.getByRole('button', { name: 'Open Pavillon 46 (asks you to sign in with single sign-on)' });
+    expect(within(p46).getByText('Single sign-on')).toBeInTheDocument();
+    expect(within(p46).getByText('Sign in with Google or Microsoft to open it')).toBeInTheDocument();
+    await waitFor(() => expect(getOrgMembers).toHaveBeenCalledWith('o-lac'));
+    expect(getOrgMembers).not.toHaveBeenCalledWith('o-p46');
+    expect(screen.queryByText(/could not be loaded/i)).not.toBeInTheDocument();
+    expect(within(tile('Lac Léman SA')).queryByText('Single sign-on')).not.toBeInTheDocument();
+  });
+});
+
 describe('what it offers whom', () => {
   it('offers workspace settings to an owner', async () => {
     ctx.currentOrgId = 'o-p46';

@@ -1,3 +1,4 @@
+using ACI.Application.Common;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using ACI.Application.Services;
@@ -30,6 +31,7 @@ public class OrganizationsController : ControllerBase
     /// <summary>
     /// Lists all organizations the current user is a member of.
     /// </summary>
+    /// <param name="sso">Says which of them would refuse this session for want of single sign-on.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>List of organizations.</returns>
     /// <response code="200">Returns the list of organizations.</response>
@@ -37,13 +39,15 @@ public class OrganizationsController : ControllerBase
     [HttpGet]
     [ProducesResponseType(typeof(IReadOnlyList<OrganizationDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<ActionResult<IReadOnlyList<OrganizationDto>>> ListMy(CancellationToken ct)
+    public async Task<ActionResult<IReadOnlyList<OrganizationDto>>> ListMy([FromServices] IOrganizationSso sso, CancellationToken ct)
     {
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
         
         var list = await _organizationService.ListMyOrganizationsAsync(userId.Value, ct);
-        return Ok(list);
+        // The workspaces that would refuse this session, so the app can say so and offer single sign-on.
+        var refusing = await sso.RefusingAsync(list.Select(o => o.Id).ToList(), userId.Value, SignInMethods.Of(User), ct);
+        return Ok(list.Select(o => o with { SsoSignInNeeded = refusing.Contains(o.Id) }).ToList());
     }
 
     /// <summary>
@@ -122,6 +126,77 @@ public class OrganizationsController : ControllerBase
 
         var result = await _organizationService.UpdateSettingsAsync(id, userId.Value, request, ct);
         return result.ToActionResult();
+    }
+
+    /// <summary>
+    /// Turns the workspace's Sales or Club module on or off. A field left out keeps its value.
+    /// </summary>
+    /// <remarks>
+    /// A module that is off leaves every member's menu, its pages say it is turned off, and
+    /// its endpoints refuse (Module.Off); nothing is deleted, and turning it on brings it all
+    /// back. One module always stays on. A module is not turned off while work of its own is
+    /// still switched on (the club's automatic billing, reminders, lapsing or monthly
+    /// statements, a campaign scheduled or sending, or the import of POS tickets; leads in
+    /// outreach sequences), as nobody could see or stop that work once its pages were gone.
+    /// Takes managing the workspace's settings.
+    /// </remarks>
+    /// <response code="200">Which modules are on now.</response>
+    /// <response code="400">Both modules would be off.</response>
+    /// <response code="403">The caller's role does not let them manage the workspace's settings.</response>
+    /// <response code="409">The module still has work of its own switched on; the answer says what.</response>
+    [HttpPut("{id:guid}/modules")]
+    [ProducesResponseType(typeof(WorkspaceModulesDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<WorkspaceModulesDto>> UpdateModules(
+        Guid id, [FromBody] SetWorkspaceModulesRequest request, [FromServices] IWorkspaceModules modules, CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        return (await modules.SetAsync(id, userId.Value, request, ct)).ToActionResult();
+    }
+
+    /// <summary>
+    /// Whether the workspace requires its team to sign in with Google or Microsoft, for whom,
+    /// and who has signed in that way before.
+    /// </summary>
+    /// <remarks>
+    /// The owner and those who manage the workspace's settings or team can see it; only the
+    /// owner can change it.
+    /// </remarks>
+    [HttpGet("{id:guid}/sso")]
+    [ProducesResponseType(typeof(OrganizationSsoDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<OrganizationSsoDto>> GetSso(Guid id, [FromServices] IOrganizationSso sso, CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        return (await sso.GetAsync(id, userId.Value, ct)).ToActionResult();
+    }
+
+    /// <summary>
+    /// Requires single sign-on of the team, or stops requiring it, and sets the workspace's
+    /// email domains it applies to. A field left out keeps its value. The owner's alone.
+    /// </summary>
+    /// <remarks>
+    /// Sessions that began another way (a password, a passkey) are refused at once by this
+    /// workspace for the members it applies to, and keep working in their other workspaces.
+    /// The owner is never held to it. It cannot be turned on while this server offers no
+    /// single sign-on provider.
+    /// </remarks>
+    /// <response code="200">The requirement as it now is.</response>
+    /// <response code="400">A domain that is not one, or no provider set up on the server.</response>
+    /// <response code="403">The caller is not the owner.</response>
+    [HttpPut("{id:guid}/sso")]
+    [ProducesResponseType(typeof(OrganizationSsoDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<OrganizationSsoDto>> UpdateSso(Guid id, [FromBody] UpdateOrganizationSsoRequest request, [FromServices] IOrganizationSso sso, CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        return (await sso.UpdateAsync(id, userId.Value, request, ct)).ToActionResult();
     }
 
     /// <summary>

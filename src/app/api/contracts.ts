@@ -61,6 +61,57 @@ export interface Contract {
    */
   bodyMatchesHashAtSend?: boolean;
   events: ContractEvent[];
+  /** The club tier it admits its counterparty at: a membership contract. */
+  membershipTier?: string | null;
+  /** The deposit it asks for on signing, in the club's currency. */
+  depositAmount?: number | null;
+  depositCurrency?: string | null;
+  /** That deposit once the contract is sent: whether it is paid, and whose account it went on. */
+  deposit?: ContractDeposit | null;
+}
+
+export type DepositStatus = 'awaiting' | 'processing' | 'paid' | 'refunded' | 'cancelled';
+
+/** A contract's deposit as the CRM sees it. */
+export interface ContractDeposit {
+  amount: number;
+  currency: string;
+  status: DepositStatus;
+  amountPaid?: number;
+  amountRefunded: number;
+  paidAtUtc?: string;
+  /** stripe or bank. */
+  provider?: string;
+  /** card, twint, sepa_debit or bank. */
+  methodType?: string;
+  failureMessage?: string;
+  /** The member whose account it went on, once the club admitted them. */
+  memberId?: string;
+  memberName?: string;
+  ledgerPaymentId?: string;
+  recordedAtUtc?: string;
+  /** The reference printed on its QR-bill, once one was. */
+  reference?: string;
+}
+
+/** What the signing page shows of a deposit: no ids, nothing of anyone's account. */
+export interface PublicDeposit {
+  amount: number;
+  currency: string;
+  status: DepositStatus;
+  paidAtUtc?: string | null;
+  /** Whether it can be paid now: signed, not paid, not withdrawn. */
+  payable: boolean;
+  /** What Stripe's page offers (card, twint, sepa_debit); empty without online payments. */
+  methods: string[];
+  /** Whether the club takes it by bank transfer with a QR-bill. */
+  qrBill: boolean;
+  iban?: string;
+  reference?: string;
+  creditor?: string;
+  failureMessage?: string;
+  /** The club's number format. */
+  locale?: string;
 }
 
 /** What the counterparty sees. Narrower on purpose. */
@@ -80,6 +131,9 @@ export interface PublicContract {
   canSign: boolean;
   /** Why not, when it cannot be signed. */
   blocked?: string;
+  /** The deposit asked for on signing; absent when none is. */
+  deposit?: PublicDeposit | null;
+  membershipTier?: string | null;
 }
 
 export interface SendResult {
@@ -117,6 +171,13 @@ export async function listContractsForLead(leadId: string): Promise<Contract[]> 
   return Array.isArray(list) ? list : [];
 }
 
+/** A deal's contracts: those drafted on it and those of the lead it came from. */
+export async function listContractsForDeal(dealId: string): Promise<Contract[]> {
+  if (servesDemoData()) return [];
+  const list = await authFetchJson<Contract[]>(`/api/contracts/for-deal/${dealId}`);
+  return Array.isArray(list) ? list : [];
+}
+
 export async function getContract(id: string): Promise<Contract | null> {
   requireApi();
   return await authFetchJson<Contract>(`/api/contracts/${id}`);
@@ -124,6 +185,12 @@ export async function getContract(id: string): Promise<Contract | null> {
 
 export interface DraftArgs {
   leadId?: string;
+  /** The deal it is for: its value and line items are merged in. */
+  dealId?: string;
+  /** The club tier it admits the counterparty at. */
+  membershipTier?: string;
+  /** The deposit paid on signing (needs a tier, and money.manage). */
+  depositAmount?: number;
   title?: string;
   templateOverride?: string;
   /** Values for placeholders the CRM cannot know — fee, term, jurisdiction. */
@@ -140,7 +207,13 @@ export async function createContractDraft(args: DraftArgs): Promise<Contract | n
 
 export async function updateContract(
   id: string,
-  patch: { title?: string; body?: string; counterpartyName?: string; counterpartyEmail?: string },
+  patch: {
+    title?: string; body?: string; counterpartyName?: string; counterpartyEmail?: string;
+    /** Null takes it off. */
+    membershipTier?: string | null;
+    /** Null takes it off. */
+    depositAmount?: number | null;
+  },
 ): Promise<Contract | null> {
   requireApi();
   return await authFetchJson<Contract>(`/api/contracts/${id}`, {
@@ -287,6 +360,17 @@ export function declinePublicContract(token: string, reason?: string): Promise<P
     method: 'POST',
     body: JSON.stringify({ reason }),
   });
+}
+
+/** Starts Stripe's page for the deposit, once signed, and says where it is. */
+export function startDepositCheckout(token: string): Promise<{ url: string }> {
+  return publicCall<{ url: string }>(`/api/public/contracts/${encodeURIComponent(token)}/deposit/checkout`, { method: 'POST' });
+}
+
+/** The deposit's invoice with its QR-bill, in the page's language, for paying by bank transfer. */
+export function publicDepositQrBillUrl(token: string, language?: string): string {
+  const lang = language ? `?lang=${encodeURIComponent(language)}` : '';
+  return publicUrl(`/api/public/contracts/${encodeURIComponent(token)}/deposit/qr-bill${lang}`);
 }
 
 /**

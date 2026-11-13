@@ -70,6 +70,8 @@ internal sealed class ClubResourceConfiguration : IEntityTypeConfiguration<ClubR
         builder.Property(e => e.DepositAmount).HasPrecision(18, 2);
         builder.Property(e => e.NoShowFee).HasPrecision(18, 2);
         builder.Property(e => e.Currency).HasMaxLength(3).IsRequired();
+        // Every resource there is stays out of the member portal until the club offers it there.
+        builder.Property(e => e.MemberBooking).HasMaxLength(10).IsRequired().HasDefaultValue(MemberBookingModes.Off);
         builder.Property(e => e.Version).IsConcurrencyToken();
         builder.HasIndex(e => e.OrganizationId);
     }
@@ -97,5 +99,7 @@ internal sealed class ClubReservationConfiguration : IEntityTypeConfiguration<Cl
         // What a conflict check reads: one resource's bookings around a time.
         builder.HasIndex(e => new { e.OrganizationId, e.ResourceId, e.StartAtUtc });
         builder.HasIndex(e => new { e.OrganizationId, e.MemberId });
+        // The spaces a private event holds.
+        builder.HasIndex(e => new { e.OrganizationId, e.PrivateEventId }).HasFilter("[PrivateEventId] IS NOT NULL");
     }
 }

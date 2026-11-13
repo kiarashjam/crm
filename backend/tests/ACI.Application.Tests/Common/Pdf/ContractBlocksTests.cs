@@ -33,7 +33,8 @@ public class ContractBlocksTests
                 ["contract.term"] = "twelve months",
                 ["contract.noticePeriod"] = "two months'",
                 ["contract.jurisdiction"] = "Geneva",
-            });
+                ["contract.depositClause"] = "",
+            }, ContractTemplate.OptionalFields);
         merged.UnresolvedFields.Should().BeEmpty("the fixture must fill the whole template");
 
         var blocks = ContractBlocks.Parse(merged.Body);
@@ -175,6 +176,37 @@ public class ContractBlocksTests
         blocks[0].Kind.Should().Be(ContractBlockKind.Definition);
         blocks[0].Label.Should().Be("Email");
         blocks[0].Text.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ReadsAFeeTableAsRowsOfCells_WithItsHeaderAndTotalsRules()
+    {
+        var body = string.Join('\n',
+            "2. FEES",
+            "-------",
+            "Item    | Qty |  Total",
+            "--------+-----+-------",
+            "Gold    |   1 | 480.00",
+            "Locker: | 2.5 |  60.00",
+            "--------+-----+-------",
+            "Total   |     | 540.00",
+            "",
+            "The Member agrees to pay CHF 540.00.");
+
+        var blocks = ContractBlocks.Parse(body);
+
+        blocks.Select(b => b.Kind).Should().Equal(ContractBlockKind.Clause, ContractBlockKind.Table, ContractBlockKind.Paragraph);
+        var table = blocks[1];
+        table.Rows!.Select(r => string.Join("/", r)).Should().Equal("Item/Qty/Total", "Gold/1/480.00", "Locker:/2.5/60.00", "Total//540.00");
+        table.RulesBefore.Should().BeEquivalentTo([1, 3], "a rule under the header and one above the totals");
+    }
+
+    [Fact]
+    public void ALoneLineWithABarInIt_StaysProse()
+    {
+        // One row is not a table: a sentence such as "Fees | see the annex" must not become one.
+        var blocks = ContractBlocks.Parse("Fees | see the annex attached to this agreement.");
+        blocks.Should().ContainSingle().Which.Kind.Should().Be(ContractBlockKind.Paragraph);
     }
 
     [Theory]

@@ -163,6 +163,40 @@ public class WeeklyDigestTests
     }
 
     [Fact]
+    public async Task AWorkspaceThatTurnedSalesOffIsLeftOutOfTheDigest()
+    {
+        // The digest is the Sales module's figures. With Sales turned off its Reports page and
+        // endpoints refuse, but the digest kept emailing them every Monday.
+        using var factory = new CustomWebApplicationFactory();
+        var (_, ownerId) = await SignInAsync(factory, "owner@example.ch");
+        var sales = await CreateAsync(factory, ownerId, "Pavillon46");
+        var clubOnly = await CreateAsync(factory, ownerId, "Cercle du Lac");
+        await OptInAsync(factory.Services, ownerId);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            (await db.Organizations.SingleAsync(o => o.Id == clubOnly)).SalesModuleOff = true;
+            await db.SaveChangesAsync();
+        }
+        var outbox = new Outbox();
+
+        (await SendDueAsync(factory.Services, outbox, MondayMorning)).Should().Be(1);
+        var body = outbox.Sent.Single().Body;
+        body.Should().Contain("Pavillon46");
+        body.Should().NotContain("Cercle du Lac", "that workspace has turned Sales off");
+
+        // With Sales off in every workspace they answer for, there is nothing to send them.
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            (await db.Organizations.SingleAsync(o => o.Id == sales)).SalesModuleOff = true;
+            await db.SaveChangesAsync();
+        }
+        (await SendDueAsync(factory.Services, outbox, MondayMorning.AddDays(7))).Should().Be(0);
+        outbox.Sent.Should().HaveCount(1);
+    }
+
+    [Fact]
     public async Task AWeekThatCouldNotBeSentIsTriedAgain()
     {
         using var factory = new CustomWebApplicationFactory();

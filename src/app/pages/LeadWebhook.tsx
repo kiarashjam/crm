@@ -25,6 +25,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/ta
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
+import { currentDateLocale } from '@/app/i18n/current';
 
 /** An establishment sent by webhook: the place's own fields, and the person to speak to there. */
 const ESTABLISHMENT_SAMPLE = `{
@@ -202,7 +203,7 @@ export default function LeadWebhook() {
   const formatDate = (dateStr: string | null): string => {
     if (!dateStr) return '';
     try {
-      return new Date(dateStr).toLocaleDateString(undefined, {
+      return new Date(dateStr).toLocaleDateString(currentDateLocale(), {
         year: 'numeric',
         month: 'long',
         day: 'numeric',

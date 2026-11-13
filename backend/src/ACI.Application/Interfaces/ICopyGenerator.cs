@@ -7,6 +7,12 @@ namespace ACI.Application.Interfaces;
 public interface ICopyGenerator
 {
     /// <summary>
+    /// Whether a draft is a call to a paid language model, which the workspace's monthly AI
+    /// allowance counts (IAiBudget). The template generator costs nothing and says no.
+    /// </summary>
+    bool CallsModel => false;
+
+    /// <summary>
     /// Generate copy based on parameters.
     /// </summary>
     Task<string> GenerateAsync(

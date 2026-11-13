@@ -64,6 +64,22 @@ describe('editing a member', () => {
     await waitFor(() => expect(membersApi.updateMember).toHaveBeenCalledTimes(1));
     expect(membersApi.updateMember.mock.calls[0]![1]).toMatchObject({ phone: '+41 79 765 43 21', notes: 'Prefers texts' });
   });
+
+  it('leaves a member’s language alone unless it was changed, and sends it when it was', async () => {
+    const phone = await openEdit();
+    // Jean has none set: shown as English, the language he is written to in.
+    expect(screen.getByLabelText('Writes to them in')).toHaveValue('en');
+    fireEvent.change(phone, { target: { value: '+41 79 765 43 21' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(membersApi.updateMember).toHaveBeenCalledTimes(1));
+    expect(membersApi.updateMember.mock.calls[0]![1]).not.toHaveProperty('preferredLanguage');
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Edit member' }))[0]!);
+    fireEvent.change(await screen.findByLabelText('Writes to them in'), { target: { value: 'de' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(membersApi.updateMember).toHaveBeenCalledTimes(2));
+    expect(membersApi.updateMember.mock.calls[1]![1]).toMatchObject({ preferredLanguage: 'de' });
+  });
 });
 
 // Radix Select asks the browser about pointer capture and scrolling, which happy-dom lacks.
@@ -98,6 +114,18 @@ describe('adding a member', () => {
     expect(membersApi.createMember.mock.calls[0]![0].chargeInitiationFee).toBeUndefined();
     // Nothing was charged: the first period is billed by the billing run, or "Bill what is due".
     expect(toast.success).toHaveBeenCalledWith('Member added: their dues start today');
+  });
+
+  it('writes to a new member in the workspace’s language unless staff pick another', async () => {
+    const user = await openAdd();
+
+    // The workspace works in de-CH (the default), so a new member is written to in German.
+    expect(screen.getByLabelText('Writes to them in')).toHaveValue('de');
+    await user.selectOptions(screen.getByLabelText('Writes to them in'), 'fr');
+    await user.click(screen.getByRole('button', { name: 'Add member' }));
+
+    await waitFor(() => expect(membersApi.createMember).toHaveBeenCalledTimes(1));
+    expect(membersApi.createMember.mock.calls[0]![0]).toMatchObject({ preferredLanguage: 'fr' });
   });
 
   it('says the initiation fee was charged when it was', async () => {

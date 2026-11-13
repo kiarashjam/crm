@@ -276,6 +276,39 @@ public class OutboxServiceTests
         message.MessageIdHeader.Should().EndWith(from == null ? "@pavillon46.ch>" : "@acme.example>");
     }
 
+    [Theory]
+    [InlineData("pavillon46.ch={org}", "members@pavillon46.ch")]
+    // A sender a request names (the member portal's, from Welcome & portal) is any address
+    // someone typed: on a domain not verified for this workspace it is left out, and the email
+    // goes from the usual address, still under the name and reply-to it names.
+    [InlineData("pavillon46.ch={other}", null)]
+    [InlineData("", null)]
+    public async Task ASenderTheRequestNames_StandsIn_ItsAddressOnlyOnADomainVerifiedForTheWorkspace(string verified, string? from)
+    {
+        _settings.VerifiedSendingDomains = verified.Replace("{org}", Org.ToString()).Replace("{other}", Guid.NewGuid().ToString());
+
+        var message = await QueueAndDispatchAsync(Email() with
+        {
+            FromName = "Pavillon 46 Members\r\nBcc: someone@example.ch",
+            FromAddress = "Members@Pavillon46.ch",
+            ReplyTo = "concierge@pavillon46.ch",
+        });
+
+        var sent = _sent.Single();
+        sent.FromAddress.Should().Be(from);
+        sent.FromName.Should().Be("Pavillon 46 Members Bcc: someone@example.ch", "a name stays on one header line");
+        sent.ReplyTo.Should().Equal("concierge@pavillon46.ch");
+        message.MessageIdHeader.Should().EndWith("@pavillon46.ch>");
+    }
+
+    [Fact]
+    public async Task AReplyToTheRequestNamesThatIsNoAddress_LeavesTheUsualOne()
+    {
+        await QueueAndDispatchAsync(Email() with { ReplyTo = "not an address" });
+
+        _sent.Single().ReplyTo.Should().Equal("anna@pavillon46.ch");
+    }
+
     [Fact]
     public async Task PlaceholdersAreFilledFromTheRecord_InTheSubjectToo()
     {

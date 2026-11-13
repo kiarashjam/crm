@@ -3,6 +3,7 @@
 // email of this deal's own instead of the workspace's template.
 
 import type { OnboardingLanguage, OnboardingPreviewRequest, OnboardingSettings, StartOnboardingRequest } from '@/app/api/onboarding';
+import { currentDateLocale } from '@/app/i18n/current';
 
 export interface WelcomeDraft {
   /** Hand them to the portal with the conversion. */
@@ -76,5 +77,5 @@ export function toPreviewRequest(
 export function startLabel(startsOnUtc?: string | null, undetermined?: boolean): string {
   if (!startsOnUtc || undetermined) return 'To be decided';
   const d = new Date(startsOnUtc.length === 10 ? `${startsOnUtc}T00:00:00` : startsOnUtc);
-  return Number.isNaN(d.getTime()) ? 'To be decided' : d.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
+  return Number.isNaN(d.getTime()) ? 'To be decided' : d.toLocaleDateString(currentDateLocale(), { day: 'numeric', month: 'long', year: 'numeric' });
 }

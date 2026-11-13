@@ -43,6 +43,27 @@ public class ContractSchemaTests
         return db.Model;
     }
 
+    /// <summary>
+    /// The contract tables as the baseline migration made them, which is what the start-up DDL
+    /// in Program.cs describes.
+    /// </summary>
+    /// <remarks>
+    /// Not the model as it is now: the DDL stopped growing at the baseline ("add nothing to it")
+    /// and only brings a database made the old way up to the baseline, and a column added since
+    /// (Contract.MembershipTier, say) is made by its migration, which SchemaCoverageTests holds
+    /// to the model and SchemaMigrationTests runs on SQL Server.
+    /// </remarks>
+    private static IEntityType BaselineEntity<T>()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseSqlServer("Server=not-connected;Database=none;")
+            .Options;
+        using var db = new AppDbContext(options);
+        var entity = ACI.WebApi.SchemaBaseline.BaselineModel(db).FindEntityType(typeof(T).FullName!);
+        entity.Should().NotBeNull($"the baseline makes {typeof(T).Name}");
+        return entity!;
+    }
+
     /// <summary>The DDL block from Program.cs, which is what really creates the table.</summary>
     private static string ProgramDdl()
     {
@@ -126,14 +147,17 @@ public class ContractSchemaTests
         // table; a column added to the entity but not to the DDL would work
         // locally against a scaffolded database and fail in production, where the
         // DDL is the only thing that ever runs.
+        //
+        // Held to the baseline's table, which the DDL brings an old database up to; a column
+        // added since is made by its migration (see BaselineEntity).
         var ddl = ProgramDdl();
         var contractsBlock = Between(ddl, "CREATE TABLE [Contracts]", ");");
-        var entity = BuildModel().FindEntityType(typeof(Contract))!;
+        var entity = BaselineEntity<Contract>();
 
         foreach (var column in entity.GetProperties().Select(p => p.GetColumnName()))
         {
             contractsBlock.Should().Contain($"[{column}]",
-                $"the DDL in Program.cs must create the column the model maps: {column}");
+                $"the DDL in Program.cs must create the column the baseline maps: {column}");
         }
     }
 
@@ -142,7 +166,7 @@ public class ContractSchemaTests
     {
         var ddl = ProgramDdl();
         var block = Between(ddl, "CREATE TABLE [ContractEvents]", ");");
-        var entity = BuildModel().FindEntityType(typeof(ContractEvent))!;
+        var entity = BaselineEntity<ContractEvent>();
 
         foreach (var column in entity.GetProperties().Select(p => p.GetColumnName()))
         {
@@ -157,7 +181,7 @@ public class ContractSchemaTests
         // A column narrower in the DDL than in the model truncates or throws on
         // real data while every local test passes.
         var block = Between(ProgramDdl(), "CREATE TABLE [Contracts]", ");");
-        var entity = BuildModel().FindEntityType(typeof(Contract))!;
+        var entity = BaselineEntity<Contract>();
 
         foreach (var property in entity.GetProperties())
         {
@@ -196,9 +220,10 @@ public class ContractSchemaTests
         //
         // Compared against EF's OWN generated script rather than against a list
         // maintained here, so a future column cannot be added to one and forgotten
-        // in the other.
+        // in the other. The script is the baseline migration's (ClubSchemaTests.EfCreateScript
+        // says why): a column added since is made by its own migration.
         var block = Between(ProgramDdl(), "CREATE TABLE [Contracts]", ");");
-        var expected = Between(EfCreateScript(), "CREATE TABLE [Contracts]", "CONSTRAINT");
+        var expected = Between(ClubSchemaTests.EfCreateScript(), "CREATE TABLE [Contracts]", "CONSTRAINT");
 
         foreach (var line in expected.Split('\n'))
         {
@@ -218,16 +243,6 @@ public class ContractSchemaTests
             found.Groups["null"].Value.Should().Be(nullability,
                 $"the DDL and the model disagree about whether {column} is nullable");
         }
-    }
-
-    /// <summary>What EF itself would write for this model, with no database involved.</summary>
-    private static string EfCreateScript()
-    {
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlServer("Server=not-connected;Database=none;Trusted_Connection=True;")
-            .Options;
-        using var db = new AppDbContext(options);
-        return db.Database.GenerateCreateScript();
     }
 
     /// <summary>Text between the first <paramref name="start"/> and the next <paramref name="end"/>.</summary>

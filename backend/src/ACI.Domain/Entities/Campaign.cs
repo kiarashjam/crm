@@ -63,6 +63,14 @@ public class Campaign : Common.BaseEntity, Common.IVersioned
     /// <summary>The members it was for: every message, sent or not. For a campaign logged before, the members it was logged for.</summary>
     public int RecipientCount { get; set; }
 
+    /// <summary>
+    /// Passes over its members that ended with someone's message not queued (a save that
+    /// failed). Each is retried later, a little later each time; after
+    /// <c>CampaignService.MaxSendAttempts</c> those members are recorded as failed and the
+    /// campaign finishes, instead of being taken up every minute for ever.
+    /// </summary>
+    public int SendAttempts { get; set; }
+
     public DateTime CreatedAtUtc { get; set; }
     public Guid? CreatedByUserId { get; set; }
     public DateTime UpdatedAtUtc { get; set; }
@@ -85,6 +93,12 @@ public static class CampaignStatuses
 
     /// <summary>Every member it was for has a message; the outbox delivers them. Locked.</summary>
     public const string Sent = "Sent";
+
+    /// <summary>
+    /// Stopped by staff while it was sending: members it had not reached by then get nothing,
+    /// and its emails still waiting in the outbox do not go. Locked, like a sent one.
+    /// </summary>
+    public const string Stopped = "Stopped";
 
     /// <summary>
     /// Recorded as sent before Cadence could deliver campaigns: a log entry per member, and
@@ -176,4 +190,7 @@ public static class MemberMessageStatuses
 
     /// <summary>Recorded by staff (or by Cadence before it could send): it went out some other way, or not at all.</summary>
     public const string Logged = "logged";
+
+    /// <summary>Not sent: a campaign's message to the member could not be queued, try after try, so the campaign went on without it.</summary>
+    public const string Failed = "failed";
 }

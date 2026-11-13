@@ -49,6 +49,10 @@ export function AddLeadDialog({
   onSubmit,
   saving,
 }: AddLeadDialogProps) {
+  // The value is read as it is typed and only then handed to the form's update: React
+  // may apply that update after the event, when the input can already hold something else.
+  const typed = (field: 'name' | 'email' | 'phone' | 'leadScore' | 'description', value: string) =>
+    setForm((f) => ({ ...f, [field]: value }));
   const [activeStep, setActiveStep] = useState<WizardStep>('contact');
   const { choose, defaultKind } = useLeadKinds();
   // An establishment is asked where it is and who to speak to there; a person, as always.
@@ -293,7 +297,7 @@ export function AddLeadDialog({
                 <Input
                   id="lead-name"
                   value={form.name}
-                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                  onChange={(e) => typed('name', e.target.value)}
                   placeholder="Enter lead's full name"
                   className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-orange-300 focus:ring-orange-100 transition-all"
                   required
@@ -313,7 +317,7 @@ export function AddLeadDialog({
                   id="lead-email"
                   type="email"
                   value={form.email}
-                  onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                  onChange={(e) => typed('email', e.target.value)}
                   placeholder="lead@company.com"
                   className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-orange-300 focus:ring-orange-100 transition-all"
                   required
@@ -333,7 +337,7 @@ export function AddLeadDialog({
                 <Input
                   id="lead-phone"
                   value={form.phone}
-                  onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+                  onChange={(e) => typed('phone', e.target.value)}
                   placeholder="+1 (555) 000-0000"
                   className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-orange-300 focus:ring-orange-100 transition-all"
                 />
@@ -583,7 +587,7 @@ export function AddLeadDialog({
                   min="0"
                   max="100"
                   value={form.leadScore}
-                  onChange={(e) => setForm((f) => ({ ...f, leadScore: e.target.value }))}
+                  onChange={(e) => typed('leadScore', e.target.value)}
                   placeholder="e.g. 75"
                   className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-orange-300 focus:ring-orange-100 transition-all"
                 />
@@ -615,7 +619,7 @@ export function AddLeadDialog({
                 <textarea
                   id="lead-description"
                   value={form.description}
-                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                  onChange={(e) => typed('description', e.target.value)}
                   placeholder="Add any notes or context about this lead...
 
 Examples:

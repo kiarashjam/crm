@@ -23,6 +23,7 @@ namespace ACI.WebApi.Controllers;
 [Authorize]
 [Produces("application/json")]
 [Requires(MemberPermissions.ManageSettings, WritesOnly = true)]
+[InModule(WorkspaceModules.Sales)]
 public class PipelinesController : ControllerBase
 {
     private readonly IPipelineService _pipelineService;

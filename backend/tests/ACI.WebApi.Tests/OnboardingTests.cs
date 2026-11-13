@@ -155,6 +155,56 @@ public class OnboardingTests
     }
 
     [Fact]
+    public async Task TheMemberAHandoffAdds_IsWrittenToInTheLanguageThePortalWelcomesThemIn_AndOneTheClubHadKeepsTheirs()
+    {
+        await using var app = new App();
+        var (owner, _, _, dealId) = await SetUpAsync(app);
+
+        var started = await owner.PostAsync($"/api/deals/{dealId}/onboarding", Body(new { startUndetermined = true, language = "fr", addToClubMembers = true }));
+        started.StatusCode.Should().Be(HttpStatusCode.Created, await started.Content.ReadAsStringAsync());
+        // The portal is still sent "fr", the contract's own value.
+        await app.DispatchOutboxAsync();
+        JsonDocument.Parse(app.Hook.Posts.Single().Body).RootElement.GetProperty("payload").GetProperty("language").GetString().Should().Be("fr");
+        (await app.Services.Read(db => db.ClubMembers.Single())).PreferredLanguage.Should().Be("fr", "their statements and reminders follow the welcome's language");
+
+        // A second deal for someone the club already writes to in German: their language stays.
+        var member = await app.Services.Read(db => db.ClubMembers.Single());
+        (await owner.PutAsync($"/api/members/{member.Id}", Body(new { preferredLanguage = "de" }))).StatusCode.Should().Be(HttpStatusCode.OK);
+        var second = await JsonAsync(await owner.PostAsync("/api/deals", Body(new { name = "Second Jean", value = "100", contactId = member.ContactId })));
+        (await owner.PostAsync($"/api/deals/{second.GetProperty("id").GetGuid()}/onboarding", Body(new { startUndetermined = true, language = "en", addToClubMembers = true })))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+        (await app.Services.Read(db => db.ClubMembers.Single())).PreferredLanguage.Should().Be("de", "staff set it; a handoff does not overwrite it");
+    }
+
+    [Fact]
+    public async Task WithTheClubTurnedOff_AHandoffAddsNobodyToTheClubsMembers_AndWithSalesOffThereIsNoHandoff()
+    {
+        await using var app = new App();
+        var (owner, org, _, dealId) = await SetUpAsync(app);
+
+        (await owner.PutAsync($"/api/organizations/{org}/modules", Body(new { club = false }))).StatusCode.Should().Be(HttpStatusCode.OK);
+        var started = await owner.PostAsync($"/api/deals/{dealId}/onboarding", Body(new { startUndetermined = true, language = "fr", addToClubMembers = true }));
+        started.StatusCode.Should().Be(HttpStatusCode.Created, await started.Content.ReadAsStringAsync());
+        (await JsonAsync(started)).GetProperty("clubMemberId").ValueKind.Should().Be(JsonValueKind.Null);
+        (await app.Services.Read(db => db.ClubMembers.IgnoreQueryFilters().Count()))
+            .Should().Be(0, "a workspace without its club has no members list to show them on");
+        await app.DispatchOutboxAsync();
+        app.Hook.Posts.Should().ContainSingle("the handoff itself, which is what was asked for, goes on");
+
+        (await owner.PutAsync($"/api/organizations/{org}/modules", Body(new { club = true, sales = false }))).StatusCode.Should().Be(HttpStatusCode.OK);
+        foreach (var refused in new[]
+        {
+            await owner.GetAsync("/api/onboarding/settings"),
+            await owner.GetAsync($"/api/deals/{dealId}/onboarding"),
+            await owner.PostAsync($"/api/deals/{dealId}/onboarding", Body(new { startUndetermined = true })),
+        })
+        {
+            refused.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+            (await JsonAsync(refused)).GetProperty("errorCode").GetString().Should().Be("Module.Off", "a handoff starts from a deal, which is Sales");
+        }
+    }
+
+    [Fact]
     public async Task ThePortalsReportsMoveItAlong_OnlyWithTheHandoffsToken()
     {
         await using var app = new App();

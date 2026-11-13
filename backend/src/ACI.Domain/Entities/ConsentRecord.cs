@@ -118,7 +118,11 @@ public static class ConsentSources
     /// <summary>Recorded by staff on their own judgement, a correction say.</summary>
     public const string Staff = "staff";
 
-    /// <summary>The person told the club (at the desk, by phone, by email) and staff recorded it.</summary>
+    /// <summary>
+    /// The person themselves: they told the club (at the desk, by phone, by email) and staff
+    /// recorded it, or they set it in the member portal, where nobody on the club's side
+    /// recorded it (RecordedByUserId is empty).
+    /// </summary>
     public const string Member = "member";
 
     /// <summary>The unsubscribe link in an email, followed by the person it was sent to.</summary>

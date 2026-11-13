@@ -26,8 +26,8 @@ public interface ICompanyService
     /// <summary>The figures above the companies list, over the whole workspace.</summary>
     Task<CompanySummaryDto> GetSummaryAsync(Guid userId, Guid? organizationId, CancellationToken ct = default);
 
-    /// <summary>Every company the list would show with these filters, as a CSV file.</summary>
-    Task<ExportFile> ExportAsync(Guid userId, Guid? organizationId, CompanyQueryOptions options, CancellationToken ct = default);
+    /// <summary>Every company the list would show with these filters, as a CSV file split by <paramref name="separator"/>.</summary>
+    Task<ExportFile> ExportAsync(Guid userId, Guid? organizationId, CompanyQueryOptions options, char separator = CsvExport.Comma, CancellationToken ct = default);
 
     /// <summary>
     /// Gets all companies for a user within an organization.

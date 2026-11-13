@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   History, Loader2, Plus, Pencil, Trash2, ArrowRightCircle, Mail, GitMerge, UserPlus, RefreshCw,
-  Clock, CalendarDays, Ban,
+  Clock, CalendarDays, Ban, Download, UserX, Eraser,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import AppHeader from '@/app/components/AppHeader';
@@ -12,6 +12,7 @@ import { StaggerItem } from '@/app/components/motion/Stagger';
 import { cn } from '@/app/components/ui/utils';
 import { getAuditLog, type AuditEvent, type AuditEntity, type AuditAction } from '@/app/api';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const ACTION_META: Record<AuditAction, { icon: React.ElementType; tone: string }> = {
   created: { icon: Plus, tone: 'bg-emerald-100 text-emerald-700' },
@@ -23,6 +24,9 @@ const ACTION_META: Record<AuditAction, { icon: React.ElementType; tone: string }
   merged: { icon: GitMerge, tone: 'bg-teal-100 text-teal-700' },
   converted: { icon: ArrowRightCircle, tone: 'bg-cyan-100 text-cyan-600' },
   voided: { icon: Ban, tone: 'bg-rose-100 text-rose-700' },
+  exported: { icon: Download, tone: 'bg-sky-100 text-sky-700' },
+  erased: { icon: UserX, tone: 'bg-slate-200 text-slate-700' },
+  purged: { icon: Eraser, tone: 'bg-slate-200 text-slate-700' },
 };
 
 const ENTITY_ROUTE: Partial<Record<AuditEntity, string>> = {
@@ -35,7 +39,15 @@ const FILTERS: { id: AuditEntity | 'all'; label: string }[] = [
   { id: 'contact', label: 'Contacts' },
   { id: 'company', label: 'Companies' },
   { id: 'deal', label: 'Deals' },
+  { id: 'privacy', label: 'Privacy' },
 ];
+
+/** What a line is about: the record's name when it was written, or what kind of line it is. */
+function labelOf(e: AuditEvent): string {
+  if (e.entityLabel) return e.entityLabel;
+  // The retention settings take the names off older lines; the line still says what was done.
+  return e.entityType === 'privacy' ? 'a person' : `a ${e.entityType.replace('_', ' ')}`;
+}
 
 function relTime(iso: string): string {
   const t = Date.parse(iso);
@@ -44,7 +56,7 @@ function relTime(iso: string): string {
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
   const d = Math.floor(h / 24);
-  return d < 7 ? `${d}d ago` : new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return d < 7 ? `${d}d ago` : new Date(t).toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric' });
 }
 
 export default function AuditLog() {
@@ -115,7 +127,7 @@ export default function AuditLog() {
                   const M = ACTION_META[e.action] ?? ACTION_META.updated;
                   const link = detailLink(e);
                   const label = (
-                    <span className="font-medium text-slate-800">{e.entityLabel ?? e.entityType}</span>
+                    <span className="font-medium text-slate-800">{labelOf(e)}</span>
                   );
                   return (
                     <StaggerItem as="li" key={e.id} index={index} className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-slate-50">

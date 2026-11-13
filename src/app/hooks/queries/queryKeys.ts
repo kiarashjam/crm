@@ -74,7 +74,6 @@ export const queryKeys = {
   activities: {
     page: (s: WorkspaceScope, params: object) => key(s, 'activities', 'page', params),
     forRecord: (s: WorkspaceScope, kind: 'lead' | 'deal' | 'contact', id: string) => key(s, 'activities', kind, id),
-    forLeads: (s: WorkspaceScope, leadIds: readonly string[]) => key(s, 'activities', 'leads', leadIds),
   },
   pipelines: {
     all: (s: WorkspaceScope) => key(s, 'pipelines', 'all'),
@@ -94,13 +93,40 @@ export const queryKeys = {
     all: (s: WorkspaceScope) => key(s, 'sequences', 'all'),
     enrollments: (s: WorkspaceScope) => key(s, 'sequences', 'enrollments'),
   },
+  // The rules, what the builder is drawn from, and what the rules did: every write under
+  // /api/automations (a rule saved, a run tried again or stopped) refreshes them all.
   automations: {
     all: (s: WorkspaceScope) => key(s, 'automations', 'all'),
+    catalog: (s: WorkspaceScope) => key(s, 'automations', 'catalog'),
+    runs: (s: WorkspaceScope, query: object) => key(s, 'automations', 'runs', query),
+    run: (s: WorkspaceScope, id: string) => key(s, 'automations', 'run', id),
   },
   duplicates: {
     notSame: (s: WorkspaceScope) => key(s, 'duplicates', 'not-same'),
   },
+  // The workspace's own fields and their values. A value saved, a field added or changed,
+  // refreshes them, and the lists whose columns and filters show them (api/dataChanged).
+  customFields: {
+    definitions: (s: WorkspaceScope, entity: string) => key(s, 'custom-fields', 'definitions', entity),
+    values: (s: WorkspaceScope, entity: string, id: string) => key(s, 'custom-fields', 'values', entity, id),
+    batch: (s: WorkspaceScope, entity: string, ids: readonly string[]) => key(s, 'custom-fields', 'batch', entity, ids),
+  },
+  tags: {
+    all: (s: WorkspaceScope) => key(s, 'tags', 'all'),
+    record: (s: WorkspaceScope, entity: string, id: string) => key(s, 'tags', 'record', entity, id),
+    batch: (s: WorkspaceScope, entity: string, ids: readonly string[]) => key(s, 'tags', 'batch', entity, ids),
+  },
+  savedViews: {
+    list: (s: WorkspaceScope, list: string) => key(s, 'saved-views', list),
+  },
   workQueue: (s: WorkspaceScope, scope: WorkScope) => key(s, 'work-queue', scope),
+  /**
+   * The calendar's six weeks of tasks and meetings. It shows the same work as the work
+   * queue (tasks with a time, meetings logged, a lead's meeting date), so it is kept under
+   * that kind and read again whenever a write changes it.
+   */
+  calendar: (s: WorkspaceScope, scope: WorkScope, fromIso: string, toIso: string) =>
+    key(s, 'work-queue', 'calendar', scope, fromIso, toIso),
   templates: {
     all: (s: WorkspaceScope) => key(s, 'templates', 'all'),
   },
@@ -146,6 +172,37 @@ export const queryKeys = {
     households: (s: WorkspaceScope) => key(s, 'households', 'all'),
     memberHousehold: (s: WorkspaceScope, memberId: string) => key(s, 'households', 'member', memberId),
     memberLinks: (s: WorkspaceScope, memberId: string) => key(s, 'members', 'links', memberId),
-    personMembership: (s: WorkspaceScope, kind: 'lead' | 'contact', id: string) => key(s, 'members', 'membership', kind, id),
+    personMembership: (s: WorkspaceScope, kind: 'lead' | 'contact' | 'deal', id: string) => key(s, 'members', 'membership', kind, id),
+    // The club's figures, summed on the server from the ledger, the events and the members:
+    // every write that moves money, a member, a booking or a check-in refreshes them
+    // (api/dataChanged).
+    report: (s: WorkspaceScope, range: object) => key(s, 'club-reports', 'report', range),
+    today: (s: WorkspaceScope) => key(s, 'club-reports', 'today'),
+    // The member portal: whether it is on, who was invited and has used it.
+    portalSettings: (s: WorkspaceScope) => key(s, 'member-portal', 'settings'),
+    portalUsage: (s: WorkspaceScope) => key(s, 'member-portal', 'members'),
+    portalUse: (s: WorkspaceScope, memberId: string) => key(s, 'member-portal', 'member', memberId),
+  },
+  // Keeping members: each member's score and the concerns recorded about them, the club's
+  // retention and referral rules, and the night's scoring runs. Working a score out again can
+  // make a task and queue an email (logged in the member's communications), so it refreshes
+  // those too (api/dataChanged).
+  retention: {
+    settings: (s: WorkspaceScope) => key(s, 'retention', 'settings'),
+    member: (s: WorkspaceScope, memberId: string) => key(s, 'retention', 'member', memberId),
+    concerns: (s: WorkspaceScope, memberId: string) => key(s, 'retention', 'concerns', memberId),
+    atRisk: (s: WorkspaceScope, level: string) => key(s, 'retention', 'at-risk', level),
+    runs: (s: WorkspaceScope) => key(s, 'retention', 'runs'),
+  },
+  // The renewals board: renewal dates, payments, contacts and scores decide its columns, so
+  // the writes that move any of those refresh it.
+  renewals: {
+    board: (s: WorkspaceScope, query: object) => key(s, 'renewals', 'board', query),
+  },
+  // Who referred, proposed and seconded whom, the bonus, and the report of what referred
+  // members bring in.
+  referrals: {
+    member: (s: WorkspaceScope, memberId: string) => key(s, 'referrals', 'member', memberId),
+    report: (s: WorkspaceScope, range: object) => key(s, 'referrals', 'report', range),
   },
 } as const;

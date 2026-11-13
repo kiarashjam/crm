@@ -47,4 +47,10 @@ public static class EmailSuppressionReasons
     /// workspace's (which marks them do not contact instead).
     /// </summary>
     public const string Unsubscribed = "unsubscribed";
+    /// <summary>
+    /// The person was erased at their request. The address is kept only as a fingerprint
+    /// (see <c>ErasedAddresses</c>), never as itself: enough to recognise it if it comes
+    /// back, so it is neither emailed nor imported again without anyone noticing.
+    /// </summary>
+    public const string Erased = "erased";
 }

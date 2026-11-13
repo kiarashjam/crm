@@ -22,6 +22,7 @@ namespace ACI.WebApi.Controllers;
 [Route("api/[controller]")]
 [Authorize]
 [Produces("application/json")]
+[InModule(WorkspaceModules.Sales)]
 public class ReportingController : ControllerBase
 {
     private readonly IReportingService _reportingService;

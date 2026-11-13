@@ -12,6 +12,8 @@
 //   Phase 4  Signature     — signed yes / pending / no
 //   Phase 5  Deposit        — paid yes / no  → when paid, the lead becomes a deal
 
+import { currentDateLocale } from '@/app/i18n/current';
+
 export type OutreachStatus = 'attempted_no_answer' | 'contacted';
 export type ContactOutcome = 'meeting_scheduled' | 'follow_up' | 'not_interested';
 export type ContractStatus = 'yes' | 'to_be_sent' | 'profile_rejected' | 'no_longer_interested';
@@ -465,7 +467,6 @@ export function pipelineBadge(p: LeadPipeline): { label: string; tone: PipelineB
   return { label: `Phase ${n} · ${PHASE_TITLES[n - 1]}`, tone: 'active' };
 }
 
-
 /** `Aug 20`, or null for a missing/unparseable date. */
 function shortDate(iso?: string): string | null {
   if (!iso) return null;
@@ -473,7 +474,7 @@ function shortDate(iso?: string): string | null {
   // in any negative-offset timezone. Pinning the time keeps it local.
   const d = new Date(`${iso}T00:00:00`);
   if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return d.toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric' });
 }
 
 export interface ReasonByStageRow {

@@ -68,9 +68,10 @@ public sealed partial class ClubLedgerService : IClubLedger
             .ToListAsync(ct);
         var voids = rows.Where(r => r.ReversesChargeId != null).GroupBy(r => r.ReversesChargeId!.Value).ToDictionary(g => g.Key, g => g.First());
         var paid = await PaidByChargeAsync(organizationId, memberId, ct);
+        var clients = await ClientAccountKindsAsync(organizationId, ct);
         var now = DateTime.UtcNow;
         return rows.Where(r => r.ReversesChargeId == null)
-            .Select(r => ToDto(r, voids.GetValueOrDefault(r.Id), paid.GetValueOrDefault(r.Id), now))
+            .Select(r => ToDto(r, voids.GetValueOrDefault(r.Id), paid.GetValueOrDefault(r.Id), now) with { AccountType = clients.GetValueOrDefault(r.MemberId) })
             .OrderByDescending(c => c.PostedAtUtc).ThenByDescending(c => c.CreatedAtUtc)
             .ToList();
     }
@@ -90,16 +91,17 @@ public sealed partial class ClubLedgerService : IClubLedger
             .ToListAsync(ct);
         var byPayment = allocations.GroupBy(a => a.PaymentId).ToDictionary(g => g.Key, g => g.ToList());
         var reversals = rows.Where(r => r.ReversesPaymentId != null).GroupBy(r => r.ReversesPaymentId!.Value).ToDictionary(g => g.Key, g => g.ToList());
+        var clients = await ClientAccountKindsAsync(organizationId, ct);
         return rows.Where(r => r.ReversesPaymentId == null)
-            .Select(r => ToDto(r, reversals.GetValueOrDefault(r.Id) ?? [], byPayment.GetValueOrDefault(r.Id) ?? []))
+            .Select(r => ToDto(r, reversals.GetValueOrDefault(r.Id) ?? [], byPayment.GetValueOrDefault(r.Id) ?? []) with { AccountType = clients.GetValueOrDefault(r.MemberId) })
             .OrderByDescending(p => p.ReceivedAtUtc).ThenByDescending(p => p.CreatedAtUtc)
             .ToList();
     }
 
     public async Task<Result<HouseBalanceDto>> BalanceAsync(Guid? organizationId, Guid memberId, DateTime? asOfUtc = null, CancellationToken ct = default)
     {
-        var member = await MemberAsync(organizationId, memberId, ct);
-        var name = member != null ? NameOf(member) : await LastNameOnAccountAsync(organizationId, memberId, ct);
+        var holder = await HolderAsync(organizationId, memberId, ct);
+        var name = holder?.Name ?? await LastNameOnAccountAsync(organizationId, memberId, ct);
         if (name == null) return DomainErrors.Club.MemberNotFound;
         var asOf = asOfUtc ?? DateTime.UtcNow;
         var balance = await BalanceOfAsync(organizationId, memberId, asOf, ct);
@@ -128,8 +130,8 @@ public sealed partial class ClubLedgerService : IClubLedger
     public async Task<Result<AccountStatementDto>> StatementAsync(Guid? organizationId, Guid memberId, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default)
     {
         if (fromUtc >= toUtc || toUtc - fromUtc > TimeSpan.FromDays(5 * 366)) return DomainErrors.Club.PeriodInvalid;
-        var member = await MemberAsync(organizationId, memberId, ct);
-        var name = member != null ? NameOf(member) : await LastNameOnAccountAsync(organizationId, memberId, ct);
+        var holder = await HolderAsync(organizationId, memberId, ct);
+        var name = holder?.Name ?? await LastNameOnAccountAsync(organizationId, memberId, ct);
         if (name == null) return DomainErrors.Club.MemberNotFound;
 
         var openingCredits = await _db.ClubPayments.Where(p => p.OrganizationId == organizationId && p.MemberId == memberId && p.ReceivedAtUtc < fromUtc).SumAsync(p => p.Amount, ct);
@@ -203,10 +205,14 @@ public sealed partial class ClubLedgerService : IClubLedger
         else if (Money(request.Amount) is { } typed) amount = typed;
         else return DomainErrors.Club.AmountInvalid;
 
-        var incurredBy = await MemberAsync(organizationId, request.MemberId, ct);
-        if (incurredBy == null) return DomainErrors.Club.MemberNotFound;
-        // The account it goes on: the household primary's when this member's bills roll up to them.
-        var (member, rolledUpFrom) = await BillToAsync(organizationId, incurredBy, ct);
+        var named = await HolderAsync(organizationId, request.MemberId, ct);
+        if (named == null) return DomainErrors.Club.MemberNotFound;
+        // The account it goes on: for a member, the household primary's when their bills roll up
+        // to them, or their company's when it pays its nominees' charges (not for what they hired
+        // as a private client). A company's or a client's own account is billed as it is.
+        var (holder, rolledUpFrom) = named.Member is { } incurredBy
+            ? await BillToAsync(organizationId, incurredBy, forDues: false, ct, companyMayPay: !request.PrivateHire)
+            : (named, null);
         var kind = item?.ChargeKind ?? (request.Kind ?? "").Trim();
         if (kind.Length == 0) kind = "Other";
         if (!ChargeKinds.Contains(kind)) return DomainErrors.Club.ChargeKindInvalid;
@@ -221,10 +227,10 @@ public sealed partial class ClubLedgerService : IClubLedger
         if (item == null && request.VatRate is { } typedVat && (typedVat is < 0 or > 100 || typedVat != Math.Round(typedVat, 2)))
             return DomainErrors.Catalog.VatInvalid;
 
-        var account = await AccountAsync(organizationId, member.Id, ct);
+        var account = await AccountAsync(organizationId, holder.Id, ct);
         if (item != null && !string.Equals(item.Currency, account.Currency, StringComparison.OrdinalIgnoreCase))
             return DomainErrors.Club.CurrencyMismatch(item.Currency, account.Currency);
-        var charge = NewCharge(organizationId, member, account, ClubEntryTypes.Charge, kind, description, amount);
+        var charge = NewCharge(organizationId, holder, account, ClubEntryTypes.Charge, kind, description, amount);
         charge.DueAtUtc = due;
         charge.Reference = reference;
         charge.IdempotencyKey = key;
@@ -235,7 +241,7 @@ public sealed partial class ClubLedgerService : IClubLedger
         var saved = await SaveAsync(DomainErrors.Club.AccountChanged, ct, async () =>
         {
             _db.ClubCharges.Add(charge);
-            await StageBalanceAsync(organizationId, member, -amount, ct);
+            await StageBalanceAsync(organizationId, holder, -amount, ct);
         });
         if (!saved.IsSuccess)
         {
@@ -243,7 +249,7 @@ public sealed partial class ClubLedgerService : IClubLedger
             if (key != null && await ChargeByKeyAsync(organizationId, key, ct) is { } raced) return await ChargeDtoAsync(organizationId, raced, ct);
             return saved.Error;
         }
-        return ToDto(charge, null, default, DateTime.UtcNow);
+        return ToDto(charge, null, default, DateTime.UtcNow) with { AccountType = holder.ClientKind };
     }
 
     /// <remarks>
@@ -388,7 +394,7 @@ public sealed partial class ClubLedgerService : IClubLedger
             if (charges.Count > 0 && charge.MemberId != charges[0].MemberId) return DomainErrors.Club.ChargeOfAnotherMember;
             charges.Add(charge);
         }
-        var member = await MemberAsync(organizationId, charges[0].MemberId, ct);
+        var member = await HolderAsync(organizationId, charges[0].MemberId, ct);
         if (member == null) return DomainErrors.Club.MemberNotFound;
         // The account first: what the charges owe is read after it, and the save is checked
         // against it, so of two payments of one charge at once the second is refused.
@@ -409,7 +415,7 @@ public sealed partial class ClubLedgerService : IClubLedger
             Id = Guid.NewGuid(),
             OrganizationId = organizationId,
             MemberId = member.Id,
-            MemberName = NameOf(member),
+            MemberName = member.Name,
             EntryType = ClubEntryTypes.Payment,
             Method = method,
             Amount = amount,
@@ -433,7 +439,7 @@ public sealed partial class ClubLedgerService : IClubLedger
             if (key != null && await PaymentByKeyAsync(organizationId, key, ct) is { } raced) return await PaymentDtoAsync(organizationId, raced, ct);
             return saved.Error;
         }
-        return ToDto(payment, [], allocations);
+        return ToDto(payment, [], allocations) with { AccountType = member.ClientKind };
     }
 
     /// <summary>
@@ -445,7 +451,7 @@ public sealed partial class ClubLedgerService : IClubLedger
     /// "House credit" used to be recorded as one more payment, so a member with 50 of
     /// credit who paid a 50 charge from it ended up 50 in credit still, and the charge paid.
     /// </remarks>
-    private async Task<Result<PaymentDto>> ApplyCreditAsync(Guid? organizationId, ClubMember member, ClubHouseAccount account,
+    private async Task<Result<PaymentDto>> ApplyCreditAsync(Guid? organizationId, Holder member, ClubHouseAccount account,
         List<(Guid ChargeId, decimal Amount)> wanted, decimal amount, CancellationToken ct)
     {
         var credits = await UnallocatedCreditAsync(organizationId, member.Id, ct);
@@ -478,7 +484,8 @@ public sealed partial class ClubLedgerService : IClubLedger
         {
             Id = made[0].Id,
             MemberId = member.Id,
-            MemberName = NameOf(member),
+            MemberName = member.Name,
+            AccountType = member.ClientKind,
             EntryType = "CreditApplied",
             Amount = amount,
             Currency = account.Currency,
@@ -606,7 +613,7 @@ public sealed partial class ClubLedgerService : IClubLedger
         var target = Math.Round(newBalance, 2, MidpointRounding.AwayFromZero);
         var why = Trimmed(reason);
         if (why?.Length > 500) return DomainErrors.Club.TooLong("A reason", 500);
-        var member = await MemberAsync(organizationId, memberId, ct);
+        var member = await HolderAsync(organizationId, memberId, ct);
         if (member == null) return DomainErrors.Club.MemberNotFound;
 
         var account = await AccountAsync(organizationId, member.Id, ct);
@@ -630,7 +637,7 @@ public sealed partial class ClubLedgerService : IClubLedger
     {
         if (openingBalance is <= -MaxMoney or >= MaxMoney) return DomainErrors.Club.AmountInvalid;
         var opening = Math.Round(openingBalance, 2, MidpointRounding.AwayFromZero);
-        var member = await MemberAsync(organizationId, memberId, ct);
+        var member = await HolderAsync(organizationId, memberId, ct);
         if (member == null) return DomainErrors.Club.MemberNotFound;
         var account = await AccountAsync(organizationId, member.Id, ct);
         Touch(account);
@@ -644,13 +651,13 @@ public sealed partial class ClubLedgerService : IClubLedger
     }
 
     /// <summary>An opening or hand-set balance as an entry: a credit when positive, an amount owed when negative.</summary>
-    private void AddBalanceEntry(Guid? organizationId, ClubMember member, ClubHouseAccount account, string entryType, decimal amount, string words, string? reason)
+    private void AddBalanceEntry(Guid? organizationId, Holder member, ClubHouseAccount account, string entryType, decimal amount, string words, string? reason)
     {
         if (amount > 0)
         {
             var credit = new ClubPayment
             {
-                Id = Guid.NewGuid(), OrganizationId = organizationId, MemberId = member.Id, MemberName = NameOf(member),
+                Id = Guid.NewGuid(), OrganizationId = organizationId, MemberId = member.Id, MemberName = member.Name,
                 EntryType = entryType, Amount = amount, Currency = account.Currency, ReceivedAtUtc = DateTime.UtcNow,
                 Description = words, Reason = reason,
             };
@@ -679,19 +686,39 @@ public sealed partial class ClubLedgerService : IClubLedger
     /// and the overdue chasing all follow the bill without knowing about households. What is
     /// already posted stays where it is when the switch changes: an entry is never moved.
     /// </remarks>
-    private async Task<(ClubMember BillTo, ClubMember? IncurredBy)> BillToAsync(Guid? organizationId, ClubMember member, CancellationToken ct)
+    private async Task<(Holder BillTo, ClubMember? IncurredBy)> BillToAsync(Guid? organizationId, ClubMember member, bool forDues, CancellationToken ct,
+        bool companyMayPay = true)
     {
+        var self = Holder.Of(member);
+        // A nominee of a corporate membership whose company pays its nominees' charges: on the
+        // company's account. Not their own dues: the company pays for the seat, not for each
+        // member's subscription, so a subscription a nominee still has stays theirs to pay (or
+        // for the club to pause). Nor what they hire as a private client (a party of their own):
+        // that is theirs, not something they ran up in the club for the company. The company's
+        // rule comes before a household's roll-up, as it is the agreement the company made for
+        // what its people spend.
+        if (!forDues && companyMayPay)
+        {
+            var company = await _db.ClubCorporateNominees.AsNoTracking()
+                .Where(n => n.OrganizationId == organizationId && n.MemberId == member.Id && n.RemovedAtUtc == null)
+                .Join(_db.ClubCorporateMemberships.AsNoTracking()
+                        .Where(c => c.Status == CorporateMembershipStatuses.Active && c.NomineeCharges == NomineeChargeRules.Company),
+                    n => n.CorporateMembershipId, c => c.Id, (n, c) => (Guid?)c.CompanyId)
+                .FirstOrDefaultAsync(ct);
+            if (company is Guid companyId && await HolderAsync(organizationId, companyId, ct) is { Kind: ClubAccountHolders.Company } payer)
+                return (payer, member);
+        }
         var link = await _db.ClubHouseholdMembers.AsNoTracking()
             .FirstOrDefaultAsync(l => l.OrganizationId == organizationId && l.MemberId == member.Id, ct);
-        if (link is not { RollUpBilling: true, IsPrimary: false }) return (member, null);
+        if (link is not { RollUpBilling: true, IsPrimary: false }) return (self, null);
         var primaryId = await _db.ClubHouseholdMembers.AsNoTracking()
             .Where(l => l.OrganizationId == organizationId && l.HouseholdId == link.HouseholdId && l.IsPrimary)
             .Select(l => l.MemberId)
             .FirstOrDefaultAsync(ct);
         // A household whose primary is not a member (yet) has nobody to bill but the member.
-        if (primaryId is not { } id || id == member.Id) return (member, null);
+        if (primaryId is not { } id || id == member.Id) return (self, null);
         var primary = await MemberAsync(organizationId, id, ct);
-        return primary == null ? (member, null) : (primary, member);
+        return primary == null ? (self, null) : (Holder.Of(primary), member);
     }
 
     /// <summary>Records on the charge who ran it up, when it is on someone else's account.</summary>
@@ -701,6 +728,57 @@ public sealed partial class ClubLedgerService : IClubLedger
         charge.IncurredByMemberId = member.Id;
         charge.IncurredByName = NameOf(member);
     }
+
+    /// <summary>
+    /// Whose house account entries go on: a member, or a client who is not one (a company, a
+    /// contact) whose account was opened for them. <see cref="Id"/> is the key every entry on
+    /// the account names; <see cref="Name"/> is what each entry calls it.
+    /// </summary>
+    private sealed record Holder(Guid Id, string Name, ClubMember? Member, string Kind)
+    {
+        public static Holder Of(ClubMember member) => new(member.Id, NameOf(member), member, ClubAccountHolders.Member);
+
+        /// <summary>The account's kind as the answers say it: null for a member's own account, as the screens have always read one.</summary>
+        public string? ClientKind => Kind == ClubAccountHolders.Member ? null : Kind;
+    }
+
+    /// <summary>
+    /// The member whose account <paramref name="id"/> is, or the company or contact whose account
+    /// was opened under it; null for anything else. A company or a contact is billed only once
+    /// someone has opened their account (<see cref="OpenClientAccountAsync"/>), so a stray id in a
+    /// request never becomes an account of its own.
+    /// </summary>
+    private async Task<Holder?> HolderAsync(Guid? organizationId, Guid? id, CancellationToken ct)
+    {
+        if (id is not { } key) return null;
+        var member = await MemberAsync(organizationId, key, ct);
+        if (member != null) return Holder.Of(member);
+        var client = await _db.ClubHouseAccounts.AsNoTracking()
+            .Where(a => a.MemberId == key && a.OrganizationId == organizationId && (a.CompanyId != null || a.ContactId != null))
+            .Select(a => new { a.CompanyId, a.ContactId })
+            .FirstOrDefaultAsync(ct);
+        if (client == null) return null;
+        var kind = client.CompanyId != null ? ClubAccountHolders.Company : ClubAccountHolders.Contact;
+        return new Holder(key, await ClientNameAsync(organizationId, kind, key, ct), null, kind);
+    }
+
+    /// <summary>The company's or contact's name now, or the name its entries carry when the record has gone.</summary>
+    private async Task<string> ClientNameAsync(Guid? organizationId, string kind, Guid id, CancellationToken ct)
+    {
+        var name = kind == ClubAccountHolders.Company
+            ? await _db.Companies.AsNoTracking().Where(c => c.Id == id && c.OrganizationId == organizationId).Select(c => c.Name).FirstOrDefaultAsync(ct)
+            : await _db.Contacts.AsNoTracking().Where(c => c.Id == id && c.OrganizationId == organizationId).Select(c => c.Name).FirstOrDefaultAsync(ct);
+        if (!string.IsNullOrWhiteSpace(name)) return Truncate(name.Trim(), 200);
+        return await LastNameOnAccountAsync(organizationId, id, ct) ?? (kind == ClubAccountHolders.Company ? "Company" : "Client");
+    }
+
+    /// <summary>The workspace's accounts that are a company's or a contact's, by key, with their kind.</summary>
+    private async Task<Dictionary<Guid, string>> ClientAccountKindsAsync(Guid? organizationId, CancellationToken ct) =>
+        (await _db.ClubHouseAccounts.AsNoTracking()
+            .Where(a => a.OrganizationId == organizationId && (a.CompanyId != null || a.ContactId != null))
+            .Select(a => new { a.MemberId, a.CompanyId })
+            .ToListAsync(ct))
+        .ToDictionary(a => a.MemberId, a => a.CompanyId != null ? ClubAccountHolders.Company : ClubAccountHolders.Contact);
 
     /// <summary>
     /// The member's account row, read at the version this write is checked against. A
@@ -737,6 +815,10 @@ public sealed partial class ClubLedgerService : IClubLedger
         if (member == null) return;
         member.HouseAccountBalance = await BalanceOfAsync(organizationId, member.Id, null, ct) + change;
     }
+
+    /// <summary>As for a member; a company's or a contact's account keeps no figure anywhere but its entries.</summary>
+    private Task StageBalanceAsync(Guid? organizationId, Holder holder, decimal change, CancellationToken ct) =>
+        StageBalanceAsync(organizationId, holder.Member, change, ct);
 
     private async Task<decimal> BalanceOfAsync(Guid? organizationId, Guid memberId, DateTime? asOfUtc, CancellationToken ct)
     {
@@ -870,14 +952,14 @@ public sealed partial class ClubLedgerService : IClubLedger
 
     // ── building rows ────────────────────────────────────────────────────────
 
-    private ClubCharge NewCharge(Guid? organizationId, ClubMember member, ClubHouseAccount account, string entryType, string kind, string description, decimal amount)
+    private ClubCharge NewCharge(Guid? organizationId, Holder member, ClubHouseAccount account, string entryType, string kind, string description, decimal amount)
     {
         var charge = new ClubCharge
         {
             Id = Guid.NewGuid(),
             OrganizationId = organizationId,
             MemberId = member.Id,
-            MemberName = NameOf(member),
+            MemberName = member.Name,
             EntryType = entryType,
             Kind = kind,
             Description = description,

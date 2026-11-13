@@ -60,6 +60,42 @@ public class Organization : Common.BaseEntity
     /// </summary>
     public string LeadKinds { get; set; } = Entities.LeadKinds.Person;
 
+    /// <summary>
+    /// Whether the Sales module is turned off (see <see cref="Common.WorkspaceModules"/>):
+    /// its pages leave the menu and its endpoints refuse. Kept as "off" rather than "on" so
+    /// the column's plain default, false, leaves every workspace that existed before the
+    /// switch, and every new one, with the module on.
+    /// </summary>
+    public bool SalesModuleOff { get; set; }
+
+    /// <summary>Whether the Club module is turned off, as <see cref="SalesModuleOff"/> is for Sales.</summary>
+    public bool ClubModuleOff { get; set; }
+
+    /// <summary>
+    /// Whether the workspace's CSV exports put a semicolon between columns instead of a
+    /// comma. Excel set up for Switzerland (and most of continental Europe) splits a CSV
+    /// it opens on semicolons, so a comma file opened there is one column. Off by default,
+    /// as exports always were.
+    /// </summary>
+    public bool CsvSemicolon { get; set; }
+
+    /// <summary>
+    /// Whether the owner requires the team to sign in with Google or Microsoft (single
+    /// sign-on) to work here. A session signed in another way (a password, a passkey) is
+    /// refused by this workspace, for the members it applies to (see <see cref="SsoDomains"/>);
+    /// it still works in the person's other workspaces. The owner is never held to it, so a
+    /// sign-in provider that stops working cannot lock the workspace out.
+    /// </summary>
+    public bool SsoRequired { get; set; }
+
+    /// <summary>
+    /// The workspace's own email domains, lower case and comma-separated ("pavillon46.ch").
+    /// When set, <see cref="SsoRequired"/> applies to members whose address is at one of them
+    /// (an outside accountant on a private address keeps signing in as before); when empty,
+    /// to every member but the owner.
+    /// </summary>
+    public string? SsoDomains { get; set; }
+
     public User OwnerUser { get; set; } = null!;
     public ICollection<OrganizationMember> Members { get; set; } = new List<OrganizationMember>();
     public ICollection<Invite> Invites { get; set; } = new List<Invite>();

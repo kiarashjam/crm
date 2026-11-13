@@ -23,16 +23,19 @@ public sealed class ContactRepository : IContactRepository
             ? q.Where(l => l.UserId == userId && l.OrganizationId == null)
             : q.Where(l => l.OrganizationId == organizationId);
 
-    private static IQueryable<Contact> ApplySearch(IQueryable<Contact> query, string? search)
+    private IQueryable<Contact> ApplySearch(IQueryable<Contact> query, string? search)
     {
         if (string.IsNullOrWhiteSpace(search)) return query;
         var q = search.Trim().ToLowerInvariant();
+        // Their custom fields' text and their tags' names too.
+        var flexHits = FlexQueryable.SearchHits(_db, q);
         return query.Where(c =>
             c.Name.ToLower().Contains(q) ||
             c.Email.ToLower().Contains(q) ||
             (c.Phone != null && c.Phone.Contains(q)) ||
             (c.JobTitle != null && c.JobTitle.ToLower().Contains(q)) ||
-            (c.Company != null && c.Company.Name.ToLower().Contains(q)));
+            (c.Company != null && c.Company.Name.ToLower().Contains(q)) ||
+            flexHits.Contains(c.Id));
     }
 
     /// <summary>
@@ -54,9 +57,9 @@ public sealed class ContactRepository : IContactRepository
     /// filter missed everyone on later pages and "recently active" reordered only the
     /// alphabetically first twenty.
     /// </summary>
-    private IQueryable<Contact> Query(Guid userId, Guid? organizationId, ContactQueryOptions options)
+    private IQueryable<Contact> Query(Guid userId, Guid? organizationId, ContactQueryOptions options, FlexPlan plan)
     {
-        var query = FilterByUserAndOrg(_db.Contacts.AsNoTracking(), userId, organizationId);
+        var query = FlexQueryable.Filter(FilterByUserAndOrg(_db.Contacts.AsNoTracking(), userId, organizationId), _db, plan);
         query = options.NormalizedStatus switch
         {
             ContactQueryOptions.Archived => query.Where(c => c.IsArchived),
@@ -84,6 +87,7 @@ public sealed class ContactRepository : IContactRepository
 
         // Every order ends on the id, so a page boundary falls in the same place each time
         // and nobody is shown twice or skipped between pages.
+        if (FlexQueryable.Sort(query, _db, plan) is { } byField) return byField.ThenBy(c => c.Name).ThenBy(c => c.Id);
         var desc = string.Equals(options.SortDir?.Trim(), "desc", StringComparison.OrdinalIgnoreCase);
         return (options.SortBy?.Trim().ToLowerInvariant()) switch
         {
@@ -113,7 +117,7 @@ public sealed class ContactRepository : IContactRepository
         ContactQueryOptions options,
         CancellationToken ct = default)
     {
-        var query = Query(userId, organizationId, options);
+        var query = Query(userId, organizationId, options, await FlexQueryable.PlanAsync(_db, RecordTypes.Contact, options.Flex, ct));
         var totalCount = await query.CountAsync(ct);
         var items = await query
             .Include(c => c.Company)
@@ -155,12 +159,13 @@ public sealed class ContactRepository : IContactRepository
     public async Task<(IReadOnlyList<ContactExportRow> Rows, int Total)> GetExportRowsAsync(
         Guid userId, Guid? organizationId, ContactQueryOptions options, int max, CancellationToken ct = default)
     {
-        var query = Query(userId, organizationId, options);
+        var query = Query(userId, organizationId, options, await FlexQueryable.PlanAsync(_db, RecordTypes.Contact, options.Flex, ct));
         var total = await query.CountAsync(ct);
         var activities = ActivitiesSeenBy(userId, organizationId);
         var rows = await query
             .Take(max)
             .Select(c => new ContactExportRow(
+                c.Id,
                 c.Name,
                 c.Email,
                 c.Phone,
@@ -202,13 +207,16 @@ public sealed class ContactRepository : IContactRepository
         var q = query.Trim().ToLowerInvariant();
         var baseQuery = FilterByUserAndOrg(_db.Contacts.AsNoTracking(), userId, organizationId);
         if (!includeArchived) baseQuery = baseQuery.Where(c => !c.IsArchived);
+        // Their custom fields' text and their tags' names are searched too.
+        var flexHits = FlexQueryable.SearchHits(_db, q);
         var matches = baseQuery
             .Where(c =>
                 c.Name.ToLower().Contains(q) ||
                 c.Email.ToLower().Contains(q) ||
                 (c.Phone != null && c.Phone.Contains(q)) ||
                 (c.JobTitle != null && c.JobTitle.ToLower().Contains(q)) ||
-                (c.Company != null && c.Company.Name.ToLower().Contains(q)))
+                (c.Company != null && c.Company.Name.ToLower().Contains(q)) ||
+                flexHits.Contains(c.Id))
             .Include(c => c.Company)
             .OrderBy(c => c.Name);
         if (take is > 0)
@@ -293,10 +301,15 @@ public sealed class ContactRepository : IContactRepository
             lead.PersonContactRemovedAtUtc ??= now;
         }
 
+        // Nothing of the club's keeps them (ContactService asked): an empty account, past events and billing let them go.
+        await ClubClientRecords.ForgetDeletedContactAsync(_db, id, organizationId, ct);
         _db.Contacts.Remove(entity);
         await _db.SaveChangesAsync(ct);
         return true;
     }
+
+    public Task<string?> KeptByClubAsync(Guid id, Guid? organizationId, CancellationToken ct = default) =>
+        ClubClientRecords.WhyContactIsKeptAsync(_db, id, organizationId, ct);
 
     public async Task<bool> ArchiveAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default)
     {
@@ -558,6 +571,8 @@ public sealed class ContactRepository : IContactRepository
                 lead.ReferredByContactId = keepId;
             await MoveRelationshipsAsync(keepId, dropId, ct);
             await MoveClubLinksAsync(keepId, dropId, ct);
+            // As the club's private client: their events, the memberships billed to them and their house account.
+            await ClubClientRecords.MoveContactAsync(_db, keepId, dropId, organizationId, keep.Name, ct);
             await RecordMerge.MoveEnrollmentsAsync(_db, "contact", keepId, dropId, ct);
             // The dropped record is archived rather than deleted, so its files and
             // custom fields would otherwise stay on a contact nobody sees.

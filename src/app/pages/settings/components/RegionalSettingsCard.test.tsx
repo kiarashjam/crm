@@ -119,6 +119,24 @@ describe('the workspace currency, number format and time zone', () => {
     expect(screen.queryByText(/lists by day/)).toBeNull();
   });
 
+  it('lets the workspace choose semicolons for its CSV exports, as Excel in Switzerland reads them', async () => {
+    const user = userEvent.setup();
+    render(<RegionalSettingsCard />);
+
+    expect(screen.getByLabelText('CSV exports')).toHaveValue('comma');
+    await user.selectOptions(screen.getByLabelText('CSV exports'), 'semicolon');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(state.update).toHaveBeenCalledWith('org-1', { csvSemicolon: true }));
+  });
+
+  it('shows a workspace that chose semicolons as such', () => {
+    state.org = workspace({ csvSemicolon: true });
+    render(<RegionalSettingsCard />);
+    expect(screen.getByLabelText('CSV exports')).toHaveValue('semicolon');
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+  });
+
   it('is not offered in the demo, which has no server to keep it', () => {
     state.demo = true;
     const { container } = render(<RegionalSettingsCard />);

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { getPayPage, PayLinkError, startCheckout, type PublicPayPage } from '@/app/api/payments';
-import { METHOD_LABEL } from '@/app/components/payments/paymentLabels';
+import { PublicPage } from '@/app/components/PublicPage';
 import { formatClubMoney } from '@/app/lib/clubMoney';
 import { leaveFor } from '@/app/lib/leavePage';
+import { usePageLanguage, useT, type I18nValue, type MessageKey } from '@/app/i18n';
 
 /**
  * Where a club's pay link leads: a member, with no account here, pays what they owe (or
@@ -13,13 +14,22 @@ import { leaveFor } from '@/app/lib/leavePage';
  * now, so a payment made since the link was sent is not asked for again. The button asks
  * the server for Stripe's page and goes there. Coming back, the page thanks them and says
  * the payment shows once Stripe confirms it; it does not offer to pay again meanwhile.
+ *
+ * It reads in the member's language (the one the club writes to them in), and the amount
+ * is written in the club's number format, as on its statements.
  */
 type PageState = 'loading' | 'ready' | 'missing' | 'unreachable';
 
-function methodsText(methods: string[]): string {
-  const names = methods.map((m) => METHOD_LABEL[m] ?? m);
-  if (names.length <= 1) return names[0] ?? 'card';
-  return `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}`;
+const METHOD_KEYS: Record<string, MessageKey> = {
+  card: 'pay.method.card',
+  twint: 'pay.method.twint',
+  sepa_debit: 'pay.method.sepa_debit',
+};
+
+function methodsText(methods: string[], t: I18nValue['t']): string {
+  const names = methods.map((m) => (METHOD_KEYS[m] ? t(METHOD_KEYS[m]) : m));
+  if (names.length <= 1) return names[0] ?? t('pay.method.card');
+  return `${names.slice(0, -1).join(', ')} ${t('common.or')} ${names[names.length - 1]}`;
 }
 
 export default function PayPage() {
@@ -32,6 +42,8 @@ export default function PayPage() {
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const { t } = useT();
+  usePageLanguage(page?.language);
 
   useEffect(() => {
     let cancelled = false;
@@ -65,64 +77,62 @@ export default function PayPage() {
     } catch (err) {
       const status = err instanceof PayLinkError ? err.status : 0;
       setError(
-        status === 429 ? 'Too many attempts. Please try again in a minute.'
+        status === 429 ? t('pay.errorTooMany')
           : err instanceof PayLinkError && status !== 0 && err.message !== 'Not available' ? err.message
-          : 'That did not go through. Please check your connection and try again.',
+          : t('pay.errorNetwork'),
       );
       setBusy(false);
     }
   };
 
-  const club = page?.clubName?.trim() || 'The club';
+  const club = page?.clubName?.trim() || t('pay.theClub');
   const setup = page?.purpose === 'setup';
-  const amount = page ? formatClubMoney(page.amount, page.currency || 'CHF') : '';
+  // In the club's number format when the server says it, as its statements write amounts.
+  const amount = page ? formatClubMoney(page.amount, page.currency || 'CHF', page.locale ?? undefined) : '';
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-16">
-      <div className="mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <PublicPage>
         {state === 'missing' ? (
           <>
-            <h1 className="text-xl font-semibold text-slate-900">This payment link is not valid</h1>
-            <p className="mt-2 text-sm text-slate-600">
-              It may have expired, or been copied incompletely. Please ask the club for a new one.
-            </p>
+            <h1 className="text-xl font-semibold text-slate-900">{t('pay.missingTitle')}</h1>
+            <p className="mt-2 text-sm text-slate-600">{t('pay.missingText')}</p>
           </>
         ) : state === 'unreachable' ? (
           <>
-            <h1 className="text-xl font-semibold text-slate-900">This page could not be loaded</h1>
-            <p className="mt-2 text-sm text-slate-600">Please check your connection.</p>
+            <h1 className="text-xl font-semibold text-slate-900">{t('public.pageUnreachableTitle')}</h1>
+            <p className="mt-2 text-sm text-slate-600">{t('common.checkConnection')}</p>
             <button
               type="button"
               onClick={() => setAttempt((n) => n + 1)}
               className="mt-4 h-10 w-full rounded-xl bg-slate-900 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2"
             >
-              Try again
+              {t('common.tryAgain')}
             </button>
           </>
         ) : state === 'loading' || !page ? (
           <div aria-busy="true">
-            <h1 className="text-xl font-semibold text-slate-900">Loading…</h1>
+            <h1 className="text-xl font-semibold text-slate-900">{t('common.loading')}</h1>
           </div>
         ) : returned === 'done' ? (
           <>
             <h1 ref={headingRef} tabIndex={-1} className="text-xl font-semibold text-slate-900 focus:outline-none">
-              {setup ? 'Your card is saved' : 'Thank you'}
+              {setup ? t('pay.cardSavedTitle') : t('public.thanksTitle')}
             </h1>
             <p className="mt-2 text-sm text-slate-700">
               {setup
-                ? `${club} can now charge your card${page.autoPay ? ' for your membership dues when they are billed' : ' when you ask'}. Stripe keeps the card's details; the club sees only its last digits.`
-                : `Your payment to ${club} went through Stripe. It shows on your account as soon as Stripe confirms it, usually within a minute; a direct debit takes a few days.`}
+                ? t(page.autoPay ? 'pay.cardSavedAutoPay' : 'pay.cardSavedOnRequest', { club })
+                : t('pay.paidText', { club })}
             </p>
           </>
         ) : (
           <div aria-busy={busy}>
             <p className="text-sm font-medium text-slate-500">{club}</p>
             <h1 className="mt-1 text-xl font-semibold text-slate-900">
-              {setup ? `Save a card, ${page.memberFirstName}` : `Hello ${page.memberFirstName}`}
+              {setup ? t('pay.saveCardHeading', { name: page.memberFirstName }) : t('pay.hello', { name: page.memberFirstName })}
             </h1>
             {returned === 'cancelled' && (
               <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                {setup ? 'No card was saved.' : 'The payment was not made.'} You can try again below.
+                {setup ? t('pay.cancelledSetup') : t('pay.cancelledPayment')}
               </p>
             )}
             <p className="mt-3 text-sm text-slate-700">{page.description}</p>
@@ -131,14 +141,11 @@ export default function PayPage() {
               <>
                 <p className="mt-2 text-sm text-slate-500">
                   {setup
-                    ? `On Stripe's secure page, with a ${methodsText(page.methods)}.`
-                    : `Pay by ${methodsText(page.methods)} on Stripe's secure page.`}
+                    ? t('pay.setupMethods', { methods: methodsText(page.methods, t) })
+                    : t('pay.payBy', { methods: methodsText(page.methods, t) })}
                 </p>
                 {setup && page.autoPay && (
-                  <p className="mt-2 text-sm text-slate-700">
-                    By saving it you agree that {club} charges your membership dues to it when they are billed. You can ask
-                    the club to stop at any time.
-                  </p>
+                  <p className="mt-2 text-sm text-slate-700">{t('pay.autoPayAgreement', { club })}</p>
                 )}
                 <p role="alert" className="mt-3 min-h-0 text-sm text-red-600">{error}</p>
                 <button
@@ -147,7 +154,7 @@ export default function PayPage() {
                   disabled={busy}
                   className="mt-4 h-11 w-full rounded-xl bg-slate-900 text-sm font-medium text-white disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2"
                 >
-                  {busy ? 'Opening Stripe…' : setup ? 'Save a card' : `Pay ${amount}`}
+                  {busy ? t('pay.opening') : setup ? t('pay.saveCard') : t('pay.payAmount', { amount })}
                 </button>
               </>
             ) : (
@@ -155,7 +162,6 @@ export default function PayPage() {
             )}
           </div>
         )}
-      </div>
-    </main>
+    </PublicPage>
   );
 }

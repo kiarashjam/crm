@@ -29,7 +29,40 @@ internal sealed class CustomFieldDefinitionConfiguration : IEntityTypeConfigurat
         builder.Property(e => e.Key).HasMaxLength(64).IsRequired();
         builder.Property(e => e.Label).HasMaxLength(120).IsRequired();
         builder.Property(e => e.Type).HasMaxLength(16).IsRequired();
+        builder.Property(e => e.Currency).HasMaxLength(3);
+        builder.Property(e => e.LinkEntityType).HasMaxLength(16);
         builder.HasIndex(e => new { e.OrganizationId, e.EntityType });
+    }
+}
+
+internal sealed class CustomFieldEntryConfiguration : IEntityTypeConfiguration<CustomFieldEntry>
+{
+    public void Configure(EntityTypeBuilder<CustomFieldEntry> builder)
+    {
+        builder.ToTable("CustomFieldEntries");
+        builder.HasKey(e => e.Id);
+        builder.Property(e => e.EntityType).HasMaxLength(16).IsRequired();
+        builder.Property(e => e.TextValue).HasMaxLength(2000);
+        builder.Property(e => e.TextKey).HasMaxLength(CustomFieldEntry.TextKeyLength);
+        // Numbers as people type them (a share, a measurement) and money to the cent alike.
+        builder.Property(e => e.NumberValue).HasPrecision(28, 8);
+        builder.Property(e => e.Currency).HasMaxLength(3);
+        builder.HasOne<CustomFieldDefinition>().WithMany().HasForeignKey(e => e.FieldId).OnDelete(DeleteBehavior.Cascade);
+
+        // A record's values, and one row per field (per option for a multi select). Unfiltered,
+        // so SQL Server allows one NULL TextKey per record and field, which is every field but
+        // text, a web address, select and multi select (EF would otherwise leave NULLs out of
+        // it): two saves racing to fill a number, money, date, checkbox or link cannot leave it
+        // two rows, and a multi select cannot hold an option twice. Two first saves of different
+        // texts at the same moment can leave a text field two rows; the next save of the field
+        // keeps one (CustomFieldRepository.ApplyEntriesAsync).
+        builder.HasIndex(e => new { e.RecordId, e.FieldId, e.TextKey }).IsUnique().HasFilter(null);
+        // Filtering and sorting by a field: the workspace (which the query filter adds),
+        // the field, the value, and the record it belongs to, answered from the index.
+        builder.HasIndex(e => new { e.OrganizationId, e.FieldId, e.TextKey }).IncludeProperties(e => e.RecordId);
+        builder.HasIndex(e => new { e.OrganizationId, e.FieldId, e.NumberValue }).IncludeProperties(e => new { e.RecordId, e.BoolValue });
+        builder.HasIndex(e => new { e.OrganizationId, e.FieldId, e.DateValue }).IncludeProperties(e => e.RecordId);
+        builder.HasIndex(e => new { e.OrganizationId, e.FieldId, e.LinkId }).IncludeProperties(e => e.RecordId);
     }
 }
 

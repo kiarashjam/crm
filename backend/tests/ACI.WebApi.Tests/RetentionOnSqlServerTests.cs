@@ -1,0 +1,124 @@
+using System.Net;
+using System.Text.Json;
+using ACI.Domain.Entities;
+using ACI.WebApi.Tests.Helpers;
+using static ACI.WebApi.Tests.Helpers.Workspaces;
+
+namespace ACI.WebApi.Tests;
+
+/// <summary>
+/// The retention rules' queries, run on a real SQL Server: the in-memory provider evaluates
+/// them in C#, and a rule that SQL Server cannot translate (or translates differently) would
+/// only fail in production.
+/// </summary>
+public class RetentionOnSqlServerTests
+{
+    private static async Task<JsonElement> Json(HttpResponseMessage res, string step)
+    {
+        var body = await res.Content.ReadAsStringAsync();
+        res.IsSuccessStatusCode.Should().BeTrue($"{step} should succeed — got {(int)res.StatusCode}: {body}");
+        return JsonDocument.Parse(body).RootElement.Clone();
+    }
+
+    [SqlServerFact]
+    public async Task EveryRulePreviewsAndRunsOnSqlServer_AndASecondRunFindsNothing()
+    {
+        await SqlServerApp.WaitForServerAsync();
+        var database = await SqlServerApp.NewDatabaseAsync();
+        try
+        {
+            using var app = SqlServerApp.Start(database);
+            var (owner, ownerId) = await SignInAsync(app, $"{Guid.NewGuid():N}@example.com");
+            var org = (await Json(await owner.PostAsync("/api/organizations", Body(new { name = "Pavillon" })), "create the club")).GetProperty("id").GetGuid();
+            owner.In(org);
+
+            var old = DateTime.UtcNow.AddYears(-3);
+            var ancient = DateTime.UtcNow.AddYears(-12);
+            await using (var db = app.Services.EveryWorkspace())
+            {
+                db.RecordsAuditTrail = false;
+                var lead = new Lead { Id = Guid.NewGuid(), UserId = ownerId, OrganizationId = org, Name = "Old Prospect", Email = "old@example.ch", Status = "New", CreatedAtUtc = old };
+                db.Leads.Add(lead);
+                // Just as old, but a guest at next week's gala under the same address: not stale.
+                var guestLead = new Lead { Id = Guid.NewGuid(), UserId = ownerId, OrganizationId = org, Name = "Gala Guest", Email = "Guest@Example.ch", Status = "New", CreatedAtUtc = old };
+                var gala = new ClubEvent
+                {
+                    Id = Guid.NewGuid(), OrganizationId = org, Name = "Gala", StartAtUtc = DateTime.UtcNow.AddDays(7), EndAtUtc = DateTime.UtcNow.AddDays(7).AddHours(3),
+                    Capacity = 40, Status = ClubEventStatuses.Published, CreatedAtUtc = old, UpdatedAtUtc = old,
+                };
+                db.AddRange(guestLead, gala, new ClubEventRegistration
+                {
+                    Id = Guid.NewGuid(), OrganizationId = org, EventId = gala.Id, Name = "Gala Guest", Email = " guest@example.ch", TicketTier = TicketTiers.Guest,
+                    Status = RegistrationStatuses.Reserved, RegisteredAtUtc = old, CreatedAtUtc = old, UpdatedAtUtc = old,
+                });
+                db.Activities.Add(new Activity { Id = Guid.NewGuid(), UserId = ownerId, OrganizationId = org, Type = "note", Body = "Long ago", LeadId = lead.Id, CreatedAtUtc = old, OccurredAtUtc = old });
+                // Just as old, but an automation still waits to write to them: not stale. And a run
+                // that finished long ago, whose log goes with the old details.
+                var nurtured = new Lead { Id = Guid.NewGuid(), UserId = ownerId, OrganizationId = org, Name = "Nurtured Prospect", Email = "nurtured@example.ch", Status = "New", CreatedAtUtc = old };
+                var rule = new AutomationRule { Id = Guid.NewGuid(), OrganizationId = org, OwnerUserId = ownerId, Name = "Nurture", Trigger = "lead.created", ActionsJson = "[]", CreatedAtUtc = old, Version = Guid.NewGuid() };
+                var finished = new AutomationRun
+                {
+                    Id = Guid.NewGuid(), OrganizationId = org, RuleId = rule.Id, RuleName = rule.Name, Trigger = rule.Trigger, SourceKey = "finished", Status = AutomationRunStatuses.Completed,
+                    ActorUserId = ownerId, RecordType = "lead", RecordName = "Someone", Email = "someone@example.ch", StepsJson = "[]", CurrentPath = "1",
+                    StartedAtUtc = old, UpdatedAtUtc = old, FinishedAtUtc = old,
+                };
+                db.AddRange(nurtured, rule, finished,
+                    new AutomationRun
+                    {
+                        Id = Guid.NewGuid(), OrganizationId = org, RuleId = rule.Id, RuleName = rule.Name, Trigger = rule.Trigger, SourceKey = nurtured.Id.ToString(),
+                        Status = AutomationRunStatuses.Waiting, ActorUserId = ownerId, RecordType = "lead", RecordId = nurtured.Id, LeadId = nurtured.Id, RecordName = nurtured.Name,
+                        Email = nurtured.Email, StepsJson = "[]", CurrentPath = "1", NextAttemptAtUtc = DateTime.UtcNow.AddDays(10), WaitingFor = "10 days",
+                        StartedAtUtc = old, UpdatedAtUtc = old,
+                    },
+                    new AutomationRunStep
+                    {
+                        Id = Guid.NewGuid(), OrganizationId = org, RunId = finished.Id, Path = "0", StepType = "send_email", Outcome = AutomationStepOutcomes.Done,
+                        Summary = "Queued the email to someone@example.ch.", Attempt = 1, AtUtc = old,
+                    });
+                db.ClubMembers.Add(new ClubMember
+                {
+                    Id = Guid.NewGuid(), OrganizationId = org, OwnerUserId = ownerId, FirstName = "Gone", LastName = "Former", Email = "gone@example.ch",
+                    Tier = "Gold", Status = "Cancelled", JoinedAtUtc = ancient, RenewsAtUtc = ancient.AddYears(1),
+                });
+                var message = new OutboundMessage { Id = Guid.NewGuid(), OrganizationId = org, Status = OutboundStatuses.Sent, To = "x@example.ch", Subject = "Old", Body = "Old words", TextBody = "Old words", CreatedAtUtc = old };
+                db.OutboundMessages.Add(message);
+                db.OutboundAttachments.Add(new OutboundAttachment { Id = Guid.NewGuid(), OrganizationId = org, OutboundMessageId = message.Id, FileName = "a.pdf", Content = [1], CreatedAtUtc = old });
+                db.AuditEvents.Add(new AuditEvent { Id = Guid.NewGuid(), OrganizationId = org, OwnerUserId = ownerId, EntityType = "contact", EntityLabel = "Someone", Action = "updated", Summary = "Updated phone", ActorName = "Olga", CreatedAtUtc = old });
+                db.Notifications.Add(new Notification { Id = Guid.NewGuid(), UserId = ownerId, OrganizationId = org, Title = "Old news", CreatedAtUtc = old });
+                await db.SaveChangesAsync();
+            }
+
+            await Json(await owner.PutAsync("/api/privacy/settings", Body(new
+            {
+                marketingConsent = "optional", leadRetentionMonths = 24, memberRetentionYears = 10, mailRetentionMonths = 12, detailRetentionMonths = 12,
+            })), "set the periods");
+            var preview = await Json(await owner.GetAsync("/api/privacy/retention/preview"), "preview");
+            preview.GetProperty("rules").EnumerateArray().ToDictionary(r => r.GetProperty("rule").GetString()!, r => r.GetProperty("count").GetInt32())
+                .Should().BeEquivalentTo(new Dictionary<string, int> { ["leads"] = 1, ["members"] = 1, ["mail"] = 1, ["details"] = 3 });
+
+            var run = await Json(await owner.PostAsync("/api/privacy/retention/run", null), "run");
+            (run.GetProperty("leadsDeleted").GetInt32(), run.GetProperty("membersAnonymised").GetInt32(), run.GetProperty("messagesPurged").GetInt32(), run.GetProperty("detailsPurged").GetInt32())
+                .Should().Be((1, 1, 1, 3));
+            run.GetProperty("status").GetString().Should().Be(RetentionRunStatuses.Succeeded, run.GetProperty("failures").ToString());
+
+            async Task<int> Count(string sql) => Convert.ToInt32(await SqlServerApp.ScalarAsync(database, sql));
+            (await Count($"SELECT COUNT(*) FROM [Leads] WHERE [OrganizationId] = '{org}'")).Should().Be(2, "only the gala guest's lead and the one still being nurtured stay");
+            (await Count($"SELECT COUNT(*) FROM [AutomationRuns] WHERE [OrganizationId] = '{org}'")).Should().Be(1, "the waiting run stays; the old finished one went");
+            (await Count($"SELECT COUNT(*) FROM [AutomationRunSteps] WHERE [OrganizationId] = '{org}'")).Should().Be(0, "with its log");
+            (await Count($"SELECT COUNT(*) FROM [ClubEventRegistrations] WHERE [OrganizationId] = '{org}' AND [Status] = N'Reserved'")).Should().Be(1);
+            (await Count($"SELECT COUNT(*) FROM [Activities] WHERE [OrganizationId] = '{org}'")).Should().Be(0);
+            (await Count($"SELECT COUNT(*) FROM [ClubMembers] WHERE [OrganizationId] = '{org}' AND [ErasedAtUtc] IS NOT NULL AND [Email] = N''")).Should().Be(1);
+            (await Count($"SELECT COUNT(*) FROM [OutboundMessages] WHERE [OrganizationId] = '{org}' AND [TextBody] IS NULL")).Should().Be(1);
+            (await Count($"SELECT COUNT(*) FROM [OutboundAttachments] WHERE [OrganizationId] = '{org}'")).Should().Be(0);
+            (await Count($"SELECT COUNT(*) FROM [Notifications] WHERE [OrganizationId] = '{org}'")).Should().Be(0);
+
+            var again = await Json(await owner.PostAsync("/api/privacy/retention/run", null), "run again");
+            (again.GetProperty("leadsDeleted").GetInt32() + again.GetProperty("membersAnonymised").GetInt32()
+                + again.GetProperty("messagesPurged").GetInt32() + again.GetProperty("detailsPurged").GetInt32()).Should().Be(0);
+        }
+        finally
+        {
+            await SqlServerApp.DropDatabaseAsync(database);
+        }
+    }
+}

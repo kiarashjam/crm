@@ -7,6 +7,7 @@
 // offline so the UI is fully exercisable without server changes.
 
 import { apiWithFallback, authFetch, authFetchJson, ensureOk, type RequestOptions } from './apiClient';
+import { appendFlexFilters, type FlexFilters } from './flexFilters';
 import { createMockStore, demoPatch, mockId } from './mockStore';
 import { getCatalog, tierNamed } from './catalog';
 
@@ -44,6 +45,11 @@ export interface Member {
   /** The deal and contact they joined through, when they came from a converted lead. */
   dealId?: string | null;
   contactId?: string | null;
+  /**
+   * The language the club writes to them in (en, de, fr): statements, reminders, the welcome
+   * and event emails. Null: English, as every member was written to before.
+   */
+  preferredLanguage?: string | null;
 }
 
 /** The tiers every club starts with, in order: what demo data and a club with no catalogue yet show. */
@@ -144,10 +150,15 @@ const memberStore = createMockStore<Member>({
   idOf: (m) => m.id,
 });
 
-export async function getMembers(req?: RequestOptions): Promise<Member[]> {
+/**
+ * The club's members; with `flex`, only those whose tags and custom fields meet its
+ * conditions, worked out by the server (demo data has neither, so all are kept).
+ */
+export async function getMembers(req?: RequestOptions, flex?: FlexFilters): Promise<Member[]> {
   return apiWithFallback(
     async () => {
-      const res = await authFetchJson<Member[]>('/api/members', { signal: req?.signal });
+      const query = appendFlexFilters(new URLSearchParams(), flex).toString();
+      const res = await authFetchJson<Member[]>(`/api/members${query ? `?${query}` : ''}`, { signal: req?.signal });
       return Array.isArray(res) ? res : [];
     },
     async () => {
@@ -166,6 +177,11 @@ export type MemberInput = Omit<Member, 'id' | 'houseAccountBalance' | 'duesAmoun
   startDues?: boolean;
   /** Charge the tier's initiation fee (money.manage). */
   chargeInitiationFee?: boolean;
+  /**
+   * 'import' for a row of a members file: someone the club already has, so the server
+   * sets off no "When a member is added" automations for them.
+   */
+  origin?: 'import';
 };
 
 export async function createMember(input: MemberInput): Promise<Member | null> {
@@ -173,7 +189,7 @@ export async function createMember(input: MemberInput): Promise<Member | null> {
     () => authFetchJson<Member>('/api/members', { method: 'POST', body: JSON.stringify(input) }),
     async () => {
       await delay(160);
-      const { startDues: _startDues, chargeInitiationFee: _chargeFee, ...fields } = input;
+      const { startDues: _startDues, chargeInitiationFee: _chargeFee, origin: _origin, ...fields } = input;
       // As the server does: dues left out are the tier's, from the catalogue.
       const tier = tierNamed(await getCatalog('Membership'), fields.tier);
       return memberStore.add({

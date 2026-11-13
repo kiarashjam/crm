@@ -59,6 +59,20 @@ public interface IClubReservations
 
     /// <summary>Deletes a booking with no money on the ledger; one with a deposit or a fee is cancelled instead (409).</summary>
     Task<Result> DeleteAsync(Guid? organizationId, Guid reservationId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Holds <paramref name="resourceIds"/> for a private event from <paramref name="startUtc"/> to
+    /// <paramref name="endUtc"/>, each whole (the hold takes its full capacity), as bookings of its
+    /// own in <paramref name="status"/> (Pending while it is an enquiry, Confirmed once agreed). The
+    /// event's holds are made to match in one step: new spaces held, held ones moved, dropped ones
+    /// released. A clash with another booking refuses the whole change (409, naming the booking in
+    /// the way) and leaves the event's holds as they were.
+    /// </summary>
+    Task<Result<IReadOnlyList<ReservationDto>>> HoldForPrivateEventAsync(Guid? organizationId, Guid privateEventId, string label,
+        IReadOnlyList<Guid> resourceIds, DateTime startUtc, DateTime endUtc, string status, CancellationToken ct = default);
+
+    /// <summary>Lets go of a private event's holds: cancelled with the event, or completed with it (<paramref name="status"/>).</summary>
+    Task<Result> ReleasePrivateEventAsync(Guid? organizationId, Guid privateEventId, string status, CancellationToken ct = default);
 }
 
 public sealed class ReservationQuery
@@ -88,6 +102,10 @@ public sealed class ResourceWriteRequest
     public decimal? DepositAmount { get; set; }
     public decimal? NoShowFee { get; set; }
     public bool? Active { get; set; }
+
+    /// <summary>off, request (members ask, staff confirm) or instant: whether members book it in the member portal.</summary>
+    public string? MemberBooking { get; set; }
+
     public int? SortOrder { get; set; }
     public Guid? Version { get; set; }
 }
@@ -141,6 +159,10 @@ public sealed record ClubResourceDto
     public decimal NoShowFee { get; init; }
     public string Currency { get; init; } = string.Empty;
     public bool Active { get; init; }
+
+    /// <summary>off, request or instant: whether members book it in the member portal (MemberBookingModes).</summary>
+    public string MemberBooking { get; init; } = "off";
+
     public int SortOrder { get; init; }
 
     /// <summary>The version to edit the resource's settings from (If-Match); a booking does not change it.</summary>
@@ -178,6 +200,9 @@ public sealed record ReservationDto
 
     /// <summary>charged or reversed (they came after all); left out when no fee was posted.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? NoShowFeeState { get; init; }
+
+    /// <summary>For a space a private event holds: the event, where the hold is changed.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Guid? PrivateEventId { get; init; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? CreatedByName { get; init; }
     public DateTime CreatedAtUtc { get; init; }

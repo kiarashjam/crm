@@ -22,6 +22,9 @@ describe('which writes count as a record change', () => {
     expect(changesRecords('POST', 'https://api.example.com/api/auth/login')).toBe(false);
     expect(changesRecords('PUT', '/api/notifications/read-all')).toBe(false);
     expect(changesRecords('POST', '/api/copy/generate')).toBe(false);
+    // Asking the assistant: what it proposes is made by a confirm, through that record's endpoint.
+    expect(changesRecords('POST', '/api/agent/chat')).toBe(false);
+    expect(changesRecords('PUT', '/api/agent/settings')).toBe(true);
     expect(changesRecords('PUT', '/api/settings')).toBe(false);
   });
 
@@ -75,6 +78,15 @@ describe('what a write changes', () => {
     expect(resourcesChangedBy('POST', '/api/contracts/c-1/countersign')).toContain('tasks');
   });
 
+  it('a member added, a booking, an event place and an approval change tasks: the automations they start add some', () => {
+    expect(resourcesChangedBy('POST', '/api/members')).toContain('tasks');
+    expect(resourcesChangedBy('POST', '/api/reservations')).toContain('tasks');
+    expect(resourcesChangedBy('POST', '/api/events/e-1/registrations')).toContain('tasks');
+    expect(resourcesChangedBy('POST', '/api/applications/a-1/approve')).toContain('tasks');
+    // Checking someone in starts none.
+    expect(resourcesChangedBy('POST', '/api/visits')).not.toContain('tasks');
+  });
+
   it("removing a member changes the leads, deals and tasks handed to whoever takes them over", () => {
     expect(resourcesChangedBy('DELETE', '/api/organizations/o-1/members/u-2?handOverTo=u-3'))
       .toEqual(expect.arrayContaining(['team', 'leads', 'deals', 'tasks', 'work-queue', 'reports']));
@@ -86,9 +98,41 @@ describe('what a write changes', () => {
     }
   });
 
+  it("every merge refreshes the custom values and tags it moved, beside the club's records a merge moves", () => {
+    // Two groups add to what a merge changes. The club: a company's or contact's merge moves
+    // its corporate membership, private events and house account, and a member's merge their
+    // seat. The workspace's own fields: every merge moves the duplicate's custom values and
+    // tags to the record kept. Neither may push the other's out.
+    for (const path of ['/api/leads/l-1/merge', '/api/contacts/c-1/merge', '/api/companies/co-1/merge', '/api/deals/d-1/merge', '/api/members/m-1/merge']) {
+      expect(resourcesChangedBy('POST', path)).toEqual(expect.arrayContaining(['custom-fields', 'tags']));
+    }
+    expect(resourcesChangedBy('POST', '/api/companies/co-1/merge')).toEqual(
+      expect.arrayContaining(['companies', 'club-accounts', 'corporate', 'private-events', 'custom-fields', 'tags']),
+    );
+    expect(resourcesChangedBy('POST', '/api/members/m-1/merge')).toEqual(expect.arrayContaining(['members', 'corporate', 'private-events', 'tags']));
+  });
+
   it('a club write changes only its own records, whatever the query string', () => {
-    // A check-in writes the points it earns with the visit, so the loyalty ledger moves too.
-    expect(resourcesChangedBy('POST', 'https://api.example.com/api/visits?memberId=m-1')).toEqual(['visits', 'loyalty']);
+    // A check-in writes the points it earns with the visit, so the loyalty ledger moves too,
+    // and the day's check-ins on Today at the Club.
+    expect(resourcesChangedBy('POST', 'https://api.example.com/api/visits?memberId=m-1')).toEqual(['visits', 'loyalty', 'club-reports']);
+    expect(resourcesChangedBy('POST', '/api/donations')).toEqual(['donations']);
+  });
+
+  it("refreshes the club's reports after every write that moves the figures they sum", () => {
+    for (const [method, path] of [
+      ['POST', '/api/charges'], ['POST', '/api/payments'], ['POST', '/api/tabs/t-1/close'], ['POST', '/api/subscriptions/s-1/bill'],
+      ['POST', '/api/billing/run'], ['POST', '/api/events/e-1/attendees'], ['POST', '/api/reservations'],
+      ['POST', '/api/applications/a-1/approve'], ['POST', '/api/bank/imports'], ['POST', '/api/gift-cards/g-1/redeem'],
+      ['POST', '/api/loyalty/ledger'], ['POST', '/api/members'], ['POST', '/api/members/m-1/merge'], ['POST', '/api/members/m-1/card/charge'],
+      ['PUT', '/api/catalog/c-1'],
+      // A sale rung up at the house-charge screen, and POS tickets imported, matched or tried
+      // again, post charges, payments and points through the ledger.
+      ['POST', '/api/sales'], ['POST', '/api/pos/import'], ['POST', '/api/pos/tickets/t-1/match'], ['POST', '/api/pos/tickets/t-1/retry'],
+    ] as const) {
+      expect(resourcesChangedBy(method, path), `${method} ${path}`).toContain('club-reports');
+    }
+    expect(resourcesChangedBy('POST', '/api/donations')).not.toContain('club-reports');
   });
 
   it("the club's money is one ledger: a charge, a payment or a tab moves balances and statements", () => {
@@ -153,8 +197,9 @@ describe('what a write changes', () => {
     expect(resourcesChangedBy('POST', '/api/reservations')).toEqual(
       expect.arrayContaining(['reservations', 'charges', 'payments', 'members', 'statements']),
     );
-    expect(resourcesChangedBy('PUT', '/api/resources/r-1')).toEqual(['resources', 'reservations']);
-    expect(resourcesChangedBy('POST', '/api/resources/defaults')).toEqual(['resources', 'reservations']);
+    // A private event's spaces are bookings of the club's resources, under the resource's name.
+    expect(resourcesChangedBy('PUT', '/api/resources/r-1')).toEqual(['resources', 'reservations', 'private-events']);
+    expect(resourcesChangedBy('POST', '/api/resources/defaults')).toEqual(['resources', 'reservations', 'private-events']);
   });
 
   it("a club member's merge moves their registrations too", () => {
@@ -169,6 +214,18 @@ describe('what a write changes', () => {
     );
     expect(resourcesChangedBy('PUT', '/api/members/m-1')).not.toContain('events');
     expect(resourcesChangedBy('PUT', '/api/members/m-1')).not.toContain('reservations');
+  });
+
+  it('deleting a club member takes them out of their household, which the households list then shows', () => {
+    expect(resourcesChangedBy('DELETE', '/api/members/m-1')).toContain('households');
+  });
+
+  it("billing's reminders and statements are logged in members' communications", () => {
+    expect(resourcesChangedBy('POST', '/api/billing/run')).toEqual(expect.arrayContaining(['billing', 'charges', 'communications']));
+  });
+
+  it("the workspace's currency and time zone refresh the club's reports, which they count in", () => {
+    expect(resourcesChangedBy('PUT', '/api/organizations/o-1')).toContain('club-reports');
   });
 
   it('an approval refreshes the member it made, their dues, fee and welcome, and the lead and contact pages', () => {
@@ -190,6 +247,26 @@ describe('what a write changes', () => {
     expect(resourcesChangedBy('POST', '/api/contacts/c-1/relationships')).toContain('households');
     expect(resourcesChangedBy('DELETE', '/api/leads/l-1/relationships/r-1')).toContain('households');
     expect(resourcesChangedBy('PUT', '/api/contacts/c-1')).not.toContain('households');
+  });
+
+  it("countersigning a contract refreshes the member and the money its admission makes", () => {
+    expect(resourcesChangedBy('POST', '/api/contracts/k-1/countersign')).toEqual(expect.arrayContaining([
+      'contracts', 'deals', 'applications', 'members', 'charges', 'subscriptions', 'communications', 'households', 'club-reports',
+    ]));
+    expect(resourcesChangedBy('POST', '/api/contracts/k-1/send')).not.toContain('members');
+  });
+
+  it('inviting members to the member portal logs their invitations, and nothing on their accounts', () => {
+    expect(resourcesChangedBy('POST', '/api/members/m-1/portal/invite')).toEqual(['member-portal', 'communications']);
+    expect(resourcesChangedBy('POST', '/api/members/m-1/portal/revoke')).not.toContain('charges');
+    expect(resourcesChangedBy('POST', '/api/member-portal/invite-all')).toEqual(['member-portal', 'communications']);
+    // Setting up the hand-over to the club's own portal changes what the member portal's settings say.
+    expect(resourcesChangedBy('PUT', '/api/onboarding/settings')).toContain('member-portal');
+  });
+
+  it("handing a deal's contact to the portal can add them to the club's members", () => {
+    expect(resourcesChangedBy('POST', '/api/deals/d-1/onboarding')).toEqual(expect.arrayContaining(['deals', 'activities', 'contacts', 'members', 'club-reports']));
+    expect(resourcesChangedBy('PUT', '/api/deals/d-1')).not.toContain('members');
   });
 
   it("a club member's merge moves their applications and household links", () => {
@@ -237,6 +314,33 @@ describe('what the signal carries', () => {
   });
 });
 
+describe('what a sale and the POS change', () => {
+  it('refreshes the money lists, the balance, the statement and the points after a sale', () => {
+    const changed = resourcesChangedBy('POST', '/api/sales');
+    for (const kind of ['sales', 'charges', 'payments', 'members', 'statements', 'loyalty']) expect(changed).toContain(kind);
+  });
+
+  it('refreshes them after a POS import or match, which post tickets as sales', () => {
+    for (const path of ['/api/pos/import', '/api/pos/tickets/t1/match', '/api/pos/tickets/t1/retry']) {
+      const changed = resourcesChangedBy('POST', path);
+      for (const kind of ['pos', 'sales', 'charges', 'members', 'loyalty']) expect(changed).toContain(kind);
+    }
+  });
+
+  it("refreshes the member's codes after a match, which remembers the POS customer as one", () => {
+    expect(resourcesChangedBy('POST', '/api/pos/tickets/t1/match')).toContain('member-codes');
+  });
+
+  it("refreshes only the member's codes when one is given or taken away", () => {
+    expect(resourcesChangedBy('POST', '/api/members/m1/codes')).toEqual(['member-codes']);
+    expect(resourcesChangedBy('DELETE', '/api/members/m1/codes/c1')).toEqual(['member-codes']);
+  });
+
+  it("moves the duplicate's codes, sales and POS tickets on a member merge", () => {
+    expect(resourcesChangedBy('POST', '/api/members/m1/merge')).toEqual(expect.arrayContaining(['sales', 'pos', 'member-codes']));
+  });
+});
+
 describe('the signal', () => {
   it('reaches listeners, and stops after unsubscribing', () => {
     const heard = vi.fn();
@@ -246,5 +350,69 @@ describe('the signal', () => {
     off();
     announceDataChanged();
     expect(heard).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('what a privacy request changes', () => {
+  it('a lookup, the dry run of an erasure and a download change no record', () => {
+    // POSTs because they carry an email address, which does not belong in a URL.
+    expect(changesRecords('POST', '/api/privacy/find')).toBe(false);
+    expect(changesRecords('POST', '/api/privacy/erasure/preview')).toBe(false);
+    expect(changesRecords('POST', '/api/privacy/export')).toBe(false);
+  });
+
+  it('an erasure, and a retention run, reach every record the person had', () => {
+    for (const path of ['/api/privacy/erasure', '/api/privacy/retention/run']) {
+      expect(changesRecords('POST', path)).toBe(true);
+      expect(resourcesChangedBy('POST', path)).toEqual(expect.arrayContaining([
+        'leads', 'contacts', 'deals', 'tasks', 'activities', 'sequences', 'members', 'charges', 'payments',
+        'reservations', 'events', 'subscriptions', 'households', 'applications', 'communications', 'campaigns', 'privacy',
+        // The automation runs about them go, and the rules page counts and lists runs.
+        'automations',
+      ]));
+    }
+  });
+
+  it('saving the privacy settings changes only them', () => {
+    expect(changesRecords('PUT', '/api/privacy/settings')).toBe(true);
+    expect(resourcesChangedBy('PUT', '/api/privacy/settings')).toEqual(['privacy']);
+  });
+});
+
+describe('what keeping members changes', () => {
+  it("working a member's score out again refreshes their score, the board, and the task and email it may set off", () => {
+    const changed = resourcesChangedBy('POST', '/api/members/m1/risk/recompute');
+    for (const kind of ['retention', 'renewals', 'tasks', 'communications']) expect(changed).toContain(kind);
+    expect(changed).not.toContain('charges');
+  });
+
+  it('a concern recorded or resolved refreshes only the retention card', () => {
+    expect(resourcesChangedBy('POST', '/api/members/m1/concerns')).toEqual(['retention']);
+    expect(resourcesChangedBy('POST', '/api/members/m1/concerns/c1/resolve')).toEqual(['retention']);
+    expect(resourcesChangedBy('DELETE', '/api/members/m1/concerns/c1')).toEqual(['retention']);
+  });
+
+  it('a renewal marked renewed moves the member on, so the members list is refreshed with the board', () => {
+    expect(resourcesChangedBy('POST', '/api/renewals/stage')).toEqual(expect.arrayContaining(['renewals', 'members']));
+  });
+
+  it("the referrer set by hand and the referrer's bonus refresh referrals, and a bonus the points or the account it lands on", () => {
+    expect(resourcesChangedBy('PUT', '/api/members/m1/referrer')).toEqual(['referrals', 'members']);
+    expect(resourcesChangedBy('POST', '/api/members/m1/referral-bonus')).toEqual(expect.arrayContaining(['referrals', 'loyalty', 'payments', 'statements']));
+  });
+
+  it("the club's rules refresh the referrals card and the board too, and a run the tasks and emails it made", () => {
+    expect(resourcesChangedBy('PUT', '/api/retention/settings')).toEqual(expect.arrayContaining(['retention', 'referrals', 'renewals']));
+    expect(resourcesChangedBy('POST', '/api/retention/run')).toEqual(expect.arrayContaining(['retention', 'renewals', 'tasks', 'communications']));
+  });
+
+  it('an approval can give a referral bonus, a payment can renew a subscription on the board, and a charge moves the referrals report', () => {
+    expect(resourcesChangedBy('POST', '/api/applications/a1/approve')).toEqual(expect.arrayContaining(['referrals', 'loyalty']));
+    expect(resourcesChangedBy('POST', '/api/payments')).toContain('renewals');
+    expect(resourcesChangedBy('POST', '/api/charges')).toContain('referrals');
+  });
+
+  it("a merge moves the duplicate's score, renewals and referrals", () => {
+    expect(resourcesChangedBy('POST', '/api/members/m1/merge')).toEqual(expect.arrayContaining(['retention', 'renewals', 'referrals']));
   });
 });

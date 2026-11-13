@@ -12,4 +12,7 @@ public sealed class LeadQueryOptions
     public string? Kind { get; init; }
     public string SortBy { get; init; } = "createdAt";
     public string SortDir { get; init; } = "desc";
+
+    /// <summary>The leads' tags and custom fields the list filters and sorts by.</summary>
+    public FlexFilter Flex { get; init; } = FlexFilter.None;
 }

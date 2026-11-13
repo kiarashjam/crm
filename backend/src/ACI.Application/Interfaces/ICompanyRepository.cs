@@ -39,6 +39,12 @@ public interface ICompanyRepository
     Task<bool> DeleteAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default);
 
     /// <summary>
+    /// What the club keeps the company for (a corporate membership, money on its house account, a
+    /// private event still to come), in words for refusing to delete it; null when nothing.
+    /// </summary>
+    Task<string?> KeptByClubAsync(Guid id, Guid? organizationId, CancellationToken ct = default);
+
+    /// <summary>
     /// Moves every record that pointed at <paramref name="dropId"/> onto <paramref name="keepId"/>,
     /// fills blank fields on the company that is kept, and deletes the other company.
     /// </summary>

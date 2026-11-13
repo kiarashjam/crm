@@ -42,9 +42,17 @@ export interface Resource {
   /** Whether it takes bookings. One with bookings is made not bookable rather than deleted. */
   active?: boolean;
   sortOrder?: number;
+  /**
+   * Whether members book it themselves in the member portal: off (only staff book it), on
+   * request (the club confirms), or at once when it is free.
+   */
+  memberBooking?: MemberBooking;
   /** The version to edit the settings from; a booking does not change it. */
   version?: string;
 }
+
+export type MemberBooking = 'off' | 'request' | 'instant';
+export const MEMBER_BOOKING_MODES: readonly MemberBooking[] = ['off', 'request', 'instant'];
 
 export interface Reservation {
   id: string;
@@ -67,6 +75,8 @@ export interface Reservation {
   noShowFee?: number;
   noShowChargeId?: string;
   noShowFeeState?: 'charged' | 'reversed';
+  /** For a space a private event holds: the event, which moves, confirms and releases the hold. */
+  privateEventId?: string;
   createdByName?: string;
   version?: string;
 }

@@ -57,9 +57,10 @@ export const NOT_RECORDS: Readonly<Record<string, readonly string[]>> = {
 /**
  * Screens where a sales queue has no place: the till at the bar, and the preview
  * of what a club MEMBER sees. Both render the staff header, so without this the
- * panel sat on top of them listing leads and deals.
+ * panel sat on top of them listing leads and deals. The morning brief is a person's
+ * whole day already: the queue on top of it would say the same twice.
  */
-export const HIDDEN_ON: readonly string[] = ['/pos', '/portal'];
+export const HIDDEN_ON: readonly string[] = ['/pos', '/portal', '/brief'];
 
 export function pageScope(pathname: string): PageScope {
   const path = (pathname.split('?')[0] || '/').replace(/\/+$/, '') || '/';

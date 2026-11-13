@@ -45,6 +45,7 @@ import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
+import { currentDateLocale, currentNumberLocale } from '@/app/i18n/current';
 
 const TIER_BAR: Record<MemberTier, string> = {
   Bronze: 'from-amber-300 to-amber-500',
@@ -55,7 +56,7 @@ const TIER_BAR: Record<MemberTier, string> = {
 
 function formatDate(iso: string): string {
   try {
-    return new Date(iso).toLocaleDateString(undefined, {
+    return new Date(iso).toLocaleDateString(currentDateLocale(), {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
@@ -67,7 +68,7 @@ function formatDate(iso: string): string {
 
 function formatDateTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleString(undefined, {
+    return new Date(iso).toLocaleString(currentDateLocale(), {
       weekday: 'short',
       month: 'short',
       day: 'numeric',
@@ -374,7 +375,7 @@ export default function MemberPortal() {
                           }`}
                         >
                           {e.points >= 0 ? '+' : ''}
-                          {e.points.toLocaleString()} pts
+                          {e.points.toLocaleString(currentNumberLocale())} pts
                         </span>
                       </li>
                     ))}

@@ -4,6 +4,7 @@
 // on a later page, an export of one page, and no way to list archived contacts at all.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import type { Contact } from '@/app/api/types';
 import type { ContactStats } from '@/app/api/contacts';
@@ -22,7 +23,8 @@ const stats: ContactStats = {
 };
 
 const api = vi.hoisted(() => ({
-  getContactsPaged: vi.fn(), getCompanies: vi.fn(), getDealsPaged: vi.fn(), updateContact: vi.fn(), getContactById: vi.fn(),
+  getContactsPaged: vi.fn(), getCompanies: vi.fn(), getDealsPaged: vi.fn(), updateContact: vi.fn(), getContactById: vi.fn(), deleteContact: vi.fn(),
+  getSavedViews: vi.fn(),
 }));
 vi.mock('@/app/api', async () => ({ ...(await vi.importActual<typeof import('@/app/api')>('@/app/api')), ...api }));
 const contactsApi = vi.hoisted(() => ({
@@ -44,6 +46,9 @@ vi.mock('@/app/hooks/useMotionPreference', () => ({ useMotionPreference: () => t
 vi.mock('@/app/components/duplicates', () => ({ DuplicateMerge: () => null, CONTACT_DUPLICATES: {} }));
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn(), message: vi.fn() }));
 vi.mock('sonner', () => ({ toast }));
+// Which modules the workspace has on; both, unless a test turns one off.
+const modules = vi.hoisted(() => ({ sales: true, club: true }));
+vi.mock('@/app/hooks/useModules', () => ({ useModules: () => modules }));
 
 const Contacts = (await import('./Contacts')).default;
 
@@ -61,6 +66,8 @@ beforeEach(() => {
   for (const fn of [...Object.values(api), ...Object.values(contactsApi)]) fn.mockReset();
   for (const fn of Object.values(toast)) fn.mockReset();
   localStorage.clear();
+  modules.sales = true;
+  modules.club = true;
   api.getContactsPaged.mockImplementation(async (q: { status?: string }) => (q.status === 'archived'
     ? { items: [archivedPerson], totalCount: 1, page: 1, pageSize: 20, totalPages: 1, hasNextPage: false, hasPreviousPage: false }
     : { items: people, totalCount: 640, page: 1, pageSize: 20, totalPages: 32, hasNextPage: true, hasPreviousPage: false }));
@@ -68,9 +75,27 @@ beforeEach(() => {
   api.getDealsPaged.mockResolvedValue({ items: [], totalCount: 0, page: 1, pageSize: 100, totalPages: 0, hasNextPage: false, hasPreviousPage: false });
   contactsApi.getContactStats.mockResolvedValue(stats);
   contactsApi.exportContacts.mockResolvedValue({ exported: 640, total: 640 });
+  api.getSavedViews.mockResolvedValue([]);
 });
 
 describe('Contacts', () => {
+  it('opens a saved view with its search, in the box and in what the server is asked', async () => {
+    api.getSavedViews.mockResolvedValue([{
+      id: 'v1', list: 'contacts', name: 'The Kellers', shared: false, mine: true, isDefault: false,
+      query: { search: 'Keller', status: 'archived' }, columns: null, version: 'v1', updatedAtUtc: '2026-11-13T00:00:00Z',
+    }]);
+    const user = userEvent.setup();
+    show();
+    await screen.findByText('Anna Keller');
+    await user.click(screen.getByRole('button', { name: /^views$/i }));
+    await user.click(await screen.findByRole('menuitem', { name: /^The Kellers/ }));
+    await waitFor(() => expect(lastQuery()).toMatchObject({ search: 'Keller', status: 'archived' }));
+    // And it stays so once the page has written its search into the address.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(lastQuery()).toMatchObject({ search: 'Keller', status: 'archived' });
+    expect(screen.getByLabelText('Search contacts')).toHaveValue('Keller');
+  });
+
   it("shows the workspace's figures, not one page's", async () => {
     show();
     expect(await screen.findByRole('button', { name: /Archived, 3/ })).toBeTruthy();
@@ -78,6 +103,24 @@ describe('Contacts', () => {
     await waitFor(() => expect(tile('Total Contacts').textContent).toContain('640'));
     expect(tile('Total Contacts').textContent).not.toContain('20');
     await waitFor(() => expect(screen.getByRole('button', { name: /Need attention, 400/ }).textContent).toContain('400'));
+  });
+
+  it('reads the deals beside each contact, and shows how many in the table', async () => {
+    show();
+    await screen.findByText('Anna Keller');
+    fireEvent.click(screen.getByRole('button', { name: 'Show as table' }));
+    expect(await screen.findByRole('columnheader', { name: 'Deals' })).toBeTruthy();
+    await waitFor(() => expect(api.getDealsPaged).toHaveBeenCalled());
+  });
+
+  it('asks the server for no deals while Sales is turned off, which would refuse them, and drops their column', async () => {
+    modules.sales = false;
+    show();
+    await screen.findByText('Anna Keller');
+    fireEvent.click(screen.getByRole('button', { name: 'Show as table' }));
+    expect(await screen.findByRole('columnheader', { name: 'Email' })).toBeTruthy();
+    expect(screen.queryByRole('columnheader', { name: 'Deals' })).toBeNull();
+    expect(api.getDealsPaged).not.toHaveBeenCalled();
   });
 
   it('asks the server for the filters and the order kept in the address', async () => {
@@ -115,6 +158,20 @@ describe('Contacts', () => {
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("An active contact already uses 'old@example.ch', so this one cannot be restored beside it."));
     expect(contactsApi.unarchiveContact).toHaveBeenCalledWith('c9');
+  });
+
+  it("says why a contact the club keeps cannot be deleted, in the server's words", async () => {
+    const refusal = 'This contact has money on their house account at the club, and the club’s records would be left naming nobody, so they can’t be deleted. Merge them into the contact they duplicate instead.';
+    api.deleteContact.mockRejectedValue(new Error(refusal));
+    show();
+    await screen.findByText('Anna Keller');
+    fireEvent.pointerDown(screen.getByText('Actions for Anna Keller').closest('button')!, { button: 0, ctrlKey: false });
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Delete/ }));
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(refusal));
+    expect(api.deleteContact).toHaveBeenCalledWith('c1');
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it('exports every contact the list shows, through the server', async () => {

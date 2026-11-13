@@ -7,8 +7,9 @@ import type { SupportedLanguage } from '@/app/api/copyGenerator';
 export type { DashboardStats, CurrencyTotal } from '@/app/api/types';
 
 export interface CopyStats {
-  sentThisWeek: number;
-  totalSent: number;
+  /** Null until the writer's history has been read, or when it could not be. Never a zero. */
+  sentThisWeek: number | null;
+  totalSent: number | null;
   /** Null until the template list has actually been read. Never a placeholder. */
   templateCount: number | null;
 }

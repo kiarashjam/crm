@@ -41,6 +41,9 @@ namespace ACI.Application.Services;
 /// <item><b>Gift cards</b>: issue, redeem, top up, void and expire, each a transaction on the
 /// card; <see cref="GiftCardBalanceAsync"/> at any date.</item>
 /// <item><b>Tabs</b>: open, add and remove items, close (one charge and the points, once) and void.</item>
+/// <item><b>Sales</b>: <see cref="PostSaleAsync"/> posts what a member bought at the till or on a POS
+/// ticket, line by line: a charge for each VAT rate on it, a payment for what was paid there, and
+/// the points it earns, together or not at all (ClubSales.cs).</item>
 /// <item><b>Subscriptions</b>: <see cref="BillSubscriptionAsync(Guid?, Guid, bool, CancellationToken)"/>
 /// bills a period once (a second bill of the same period is refused by the database), and
 /// <see cref="BillDueAsync"/> bills every period that has started, which the daily billing
@@ -56,7 +59,7 @@ namespace ACI.Application.Services;
 /// were read at, from the body or If-Match, and refuse a save from an older one.
 /// </para>
 /// </remarks>
-public interface IClubLedger
+public partial interface IClubLedger
 {
     // ── house accounts ────────────────────────────────────────────────────────
     Task<IReadOnlyList<ChargeDto>> ChargesAsync(Guid? organizationId, Guid? memberId = null, CancellationToken ct = default);
@@ -171,6 +174,26 @@ public interface IClubLedger
     /// <summary>Deletes a subscription that never billed anything; one that did is cancelled instead (409).</summary>
     Task<Result> DeleteSubscriptionAsync(Guid? organizationId, Guid subscriptionId, CancellationToken ct = default);
 
+    // ── clients' accounts ─────────────────────────────────────────────────────
+    // A company (a corporate membership's dues, its private events, what it pays for its
+    // nominees) or a private client who is not a member (their private events) has a house
+    // account of its own, opened for it. Its key is the company's or the contact's id, which
+    // every entry on it names as the members' entries name their member: charges, payments,
+    // voids, refunds, statements and the money from outside all work on it as on a member's,
+    // through the same calls and routes.
+
+    /// <summary>
+    /// The account of a company (<paramref name="holderKind"/> "company") or a contact ("contact"),
+    /// open or not, with its balance as a member's balance reads. A record of another workspace is not found.
+    /// </summary>
+    Task<Result<ClientAccountDto>> ClientAccountAsync(Guid? organizationId, string holderKind, Guid holderId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Opens the company's or the contact's account, once: a second open answers the account as
+    /// it is. A contact who is a member is billed on their member's account, so theirs is refused.
+    /// </summary>
+    Task<Result<ClientAccountDto>> OpenClientAccountAsync(Guid? organizationId, string holderKind, Guid holderId, CancellationToken ct = default);
+
     // ── donations ─────────────────────────────────────────────────────────────
     Task<IReadOnlyList<DonationDto>> DonationsAsync(Guid? organizationId, CancellationToken ct = default);
     Task<Result<DonationDto>> RecordDonationAsync(Guid? organizationId, RecordDonationRequest request, CancellationToken ct = default);
@@ -187,7 +210,8 @@ public interface IClubLedger
 /// The events and bookings services (IClubEvents, IClubReservations) report here too, once a
 /// change to an event's list or a resource's bookings has read what it decides on, and the
 /// approval of an application (IClubApplications) once it has read the open application and
-/// decided what to do, before it claims it.
+/// decided what to do, before it claims it. The automation runner reports "automations" when it
+/// has seen a run due, before it claims it.
 /// </remarks>
 public interface ILedgerReadObserver
 {
@@ -233,6 +257,16 @@ public sealed class PostChargeRequest
     /// club wants it on the statement. A catalogue item's own rate is used instead of this.
     /// </summary>
     public decimal? VatRate { get; set; }
+
+    /// <summary>
+    /// For what a member hired as a private client (a private event's deposit and invoice): it
+    /// stays off the account of a company that pays its nominees' charges. The company agreed to
+    /// pay what its nominees run up in the club, not a party one of them hires for themselves; an
+    /// event the company hires is linked to it and billed to it. Set by the server only: a request
+    /// cannot send it.
+    /// </summary>
+    [JsonIgnore]
+    public bool PrivateHire { get; set; }
 }
 
 public sealed class PaymentAllocationRequest
@@ -397,8 +431,14 @@ public sealed class RecordDonationRequest
 public sealed record ChargeDto
 {
     public Guid Id { get; init; }
+
+    /// <summary>The account it is on: a member's id, or a company's or a contact's (see <see cref="AccountType"/>).</summary>
     public Guid MemberId { get; init; }
+
     public string MemberName { get; init; } = string.Empty;
+
+    /// <summary>"company" or "contact" for a charge on a client's account; left out for a member's, as the screens have always read one.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? AccountType { get; init; }
 
     /// <summary>Charge, Opening or Adjustment: an opening balance owed is paid like any charge.</summary>
     public string EntryType { get; init; } = string.Empty;
@@ -449,8 +489,14 @@ public sealed record PaymentRefundDto(Guid Id, decimal Amount, string? Reason, s
 public sealed record PaymentDto
 {
     public Guid Id { get; init; }
+
+    /// <summary>The account it is on: a member's id, or a company's or a contact's (see <see cref="AccountType"/>).</summary>
     public Guid MemberId { get; init; }
+
     public string MemberName { get; init; } = string.Empty;
+
+    /// <summary>"company" or "contact" for a payment on a client's account; left out for a member's.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? AccountType { get; init; }
 
     /// <summary>Payment; or, for a house credit applied to a charge, CreditApplied.</summary>
     public string EntryType { get; init; } = string.Empty;
@@ -500,6 +546,14 @@ public sealed record PaymentDto
 public sealed record HouseBalanceDto(
     Guid MemberId, string MemberName, string Currency, decimal Balance, DateTime AsOfUtc,
     decimal Owed, decimal Credit, int OpenCharges);
+
+/// <summary>
+/// A company's or a contact's house account: whether it is open, and its balance (negative
+/// while they owe the club), what is owed, the credit held and the charges still open.
+/// </summary>
+public sealed record ClientAccountDto(
+    string Kind, Guid Id, string Name, bool Open, string Currency, decimal Balance, decimal Owed, decimal Credit, int OpenCharges,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] DateTime? OpenedAtUtc);
 
 /// <summary>One entry on a statement, with the balance after it.</summary>
 public sealed record StatementLineDto

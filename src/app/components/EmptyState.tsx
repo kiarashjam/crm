@@ -1,5 +1,7 @@
 import { Link } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
+import type { Permission } from '@/app/api/organizations';
+import { useMay } from '@/app/hooks/useMay';
 
 interface EmptyStateProps {
   icon: LucideIcon;
@@ -8,6 +10,13 @@ interface EmptyStateProps {
   actionLabel?: string;
   actionHref?: string;
   onAction?: () => void;
+  /**
+   * What the primary action needs (any one of a list), as WriteOnly asks it: without it,
+   * a read-only member or one without the permission is offered "Add member" on an empty
+   * page, and the server refuses whatever they fill in. Leave it out for an action that
+   * reads ("Clear filters").
+   */
+  actionPermission?: Permission | readonly Permission[];
   /** Optional second CTA (e.g. "Import from CRM") */
   secondaryActionLabel?: string;
   secondaryActionHref?: string;
@@ -37,13 +46,15 @@ export default function EmptyState({
   actionLabel,
   actionHref,
   onAction,
+  actionPermission,
   secondaryActionLabel,
   secondaryActionHref,
   onSecondaryAction,
   className = '',
   variant = 'orange',
 }: EmptyStateProps) {
-  const hasPrimary = actionLabel && (actionHref || onAction);
+  const may = useMay();
+  const hasPrimary = actionLabel && (actionHref || onAction) && (actionPermission === undefined || may(actionPermission));
   const hasSecondary = secondaryActionLabel && (secondaryActionHref || onSecondaryAction);
   const styles = variantStyles[variant];
   return (

@@ -194,6 +194,8 @@ export interface ViewPreference {
   setLayout: (layout: ViewLayout) => void;
   setDensity: (density: ViewDensity) => void;
   setColumn: (columnId: string, shown: boolean) => void;
+  /** Turn several columns on or off at once, as a saved view does; the others keep their choice. */
+  setColumns: (columns: Record<string, boolean>) => void;
   /** Back to how the page comes. */
   reset: () => void;
   /** Whether anything differs from how the page comes. */
@@ -221,6 +223,10 @@ export function useViewPreference(page: string, defaults: ViewDefaults): ViewPre
     const view = current();
     setPage(page, { ...view, columns: { ...(view.columns ?? {}), [columnId]: shown } });
   }, [page, current]);
+  const setColumns = useCallback((columns: Record<string, boolean>) => {
+    const view = current();
+    setPage(page, { ...view, columns: { ...(view.columns ?? {}), ...columns } });
+  }, [page, current]);
   const reset = useCallback(() => setPage(page, undefined), [page]);
   const shows = useCallback((columnId: string, byDefault = true) => saved?.columns?.[columnId] ?? byDefault, [saved?.columns]);
 
@@ -232,7 +238,8 @@ export function useViewPreference(page: string, defaults: ViewDefaults): ViewPre
     setLayout,
     setDensity,
     setColumn,
+    setColumns,
     reset,
     customised: !!saved,
-  }), [layout, density, layoutsKey, shows, setLayout, setDensity, setColumn, reset, saved]);
+  }), [layout, density, layoutsKey, shows, setLayout, setDensity, setColumn, setColumns, reset, saved]);
 }

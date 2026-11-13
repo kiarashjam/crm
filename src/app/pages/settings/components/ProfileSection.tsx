@@ -1,21 +1,22 @@
-import { User, Clock, Globe } from 'lucide-react';
-import type { UserSettings, UpdateUserSettingsRequest, TimezoneOption, LanguageOption } from '@/app/api/types';
+import { User, Clock } from 'lucide-react';
+import type { UserSettings, UpdateUserSettingsRequest, TimezoneOption } from '@/app/api/types';
 import { useRegional } from '@/app/hooks/useMoney';
+import { useT } from '@/app/i18n';
+import { LanguageSwitcher } from '@/app/i18n/LanguageSwitcher';
 
 export interface ProfileSectionProps {
   settings: UserSettings;
   updateSettings: (updates: UpdateUserSettingsRequest) => void;
   timezones: TimezoneOption[];
-  languages: LanguageOption[];
 }
 
 export function ProfileSection({
   settings,
   updateSettings,
   timezones,
-  languages,
 }: ProfileSectionProps) {
   const workspace = useRegional();
+  const { t } = useT();
   return (
     <div className="p-6 space-y-8">
       <div>
@@ -107,21 +108,15 @@ export function ProfileSection({
           </p>
         </div>
 
+        {/* The language the app is in, applied at once and kept on the account. It replaces a
+            select that offered sixteen languages, saved one, and changed nothing. */}
         <div>
-          <label htmlFor="language" className="block text-sm font-medium text-slate-700 mb-2">
-            <Globe className="w-4 h-4 inline mr-1" />
-            Language
-          </label>
-          <select
-            id="language"
-            value={settings.language}
-            onChange={(e) => updateSettings({ language: e.target.value })}
-            className="w-full h-11 px-4 border border-slate-300 rounded-xl bg-white text-slate-900 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none"
-          >
-            {languages.map((lang) => (
-              <option key={lang.code} value={lang.code}>{lang.name} ({lang.nativeName})</option>
-            ))}
-          </select>
+          <LanguageSwitcher
+            withAutomatic
+            showLabel
+            className="flex flex-wrap items-center gap-2 text-sm text-slate-600 [&_select]:h-11 [&_select]:rounded-xl [&_select]:px-4"
+          />
+          <p className="mt-1.5 text-xs text-slate-500">{t('language.automaticHint')}</p>
         </div>
       </div>
 

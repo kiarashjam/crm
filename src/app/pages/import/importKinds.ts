@@ -6,6 +6,7 @@ import type { ElementType } from 'react';
 import { Building2, UserCircle, Users } from 'lucide-react';
 import type { HeroTone } from '@/app/components/PageHero';
 import type { ImportKind } from '@/app/api/imports';
+import { currentNumberLocale } from '@/app/i18n/current';
 
 export interface ImportKindInfo {
   kind: ImportKind;
@@ -123,5 +124,5 @@ export function leadImportInfo(mode: 'establishment' | 'both'): ImportKindInfo {
 
 /** "1 lead", "3 leads". */
 export function count(n: number, info: Pick<ImportKindInfo, 'one' | 'many'>): string {
-  return `${n.toLocaleString()} ${n === 1 ? info.one : info.many}`;
+  return `${n.toLocaleString(currentNumberLocale())} ${n === 1 ? info.one : info.many}`;
 }

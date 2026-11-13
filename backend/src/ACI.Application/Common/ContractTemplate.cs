@@ -59,8 +59,12 @@ public static class ContractTemplate
     /// is unresolved, that contract could never be sent at all.
     /// </para>
     /// </remarks>
+    /// <remarks>
+    /// <c>contract.depositClause</c> is the same kind of field: the sentence about the deposit
+    /// paid on signing, or nothing for a contract that asks for none.
+    /// </remarks>
     public static readonly IReadOnlySet<string> OptionalFields =
-        new HashSet<string>(StringComparer.Ordinal) { "lead.phoneClause" };
+        new HashSet<string>(StringComparer.Ordinal) { "lead.phoneClause", "contract.depositClause", "event.depositClause" };
 
     /// <summary>
     /// Substitutes every field present in <paramref name="values"/>.
@@ -167,7 +171,7 @@ public static class ContractTemplate
 
         2. FEES
         -------
-        The Member agrees to pay {{contract.fee}}, payable {{contract.paymentTerms}}.
+        The Member agrees to pay {{contract.fee}}, payable {{contract.paymentTerms}}.{{contract.depositClause}}
 
 
         3. TERM AND RENEWAL
@@ -204,4 +208,130 @@ public static class ContractTemplate
         ------------------------------------------------------------------
         By signing below, both parties agree to be bound by this agreement.
         """;
+
+    /// <summary>
+    /// The starting template for a contract drafted on a deal that has line items: the same
+    /// skeleton as <see cref="DefaultTemplate"/>, with its fees taken from the deal.
+    /// </summary>
+    /// <remarks>
+    /// The deal's lines become the fee table (<c>deal.lineItems</c>) and their total the sum
+    /// the member agrees to pay (<c>deal.total</c>), in the deal's currency, so what was
+    /// quoted on the deal and what is signed are the same figures and nobody types them twice.
+    /// A deal without lines drafts from the default template, with its value as the fee.
+    /// </remarks>
+    public const string DealTemplate = """
+        MEMBERSHIP AGREEMENT
+        ====================
+
+        Between:   {{org.name}} ("the Club")
+        And:       {{lead.name}} ("the Member")
+        Date:      {{today}}
+
+
+        1. MEMBERSHIP
+        -------------
+        The Club grants the Member access to its facilities and services on the
+        terms set out in this agreement, beginning on {{contract.startDate}}.
+
+
+        2. FEES
+        -------
+        {{deal.lineItems}}
+
+        The Member agrees to pay {{deal.total}}, payable {{contract.paymentTerms}}.{{contract.depositClause}}
+
+
+        3. TERM AND RENEWAL
+        -------------------
+        This agreement runs for {{contract.term}} from the start date and renews on
+        the terms described in the Club's rules unless either party gives notice as
+        set out in clause 4.
+
+
+        4. NOTICE AND CANCELLATION
+        --------------------------
+        Either party may end this agreement by giving {{contract.noticePeriod}}
+        written notice. Fees already paid are treated as described in the Club's
+        rules.
+
+
+        5. CLUB RULES
+        -------------
+        The Member agrees to observe the Club's rules as published from time to
+        time. The Club will give reasonable notice of any material change.
+
+
+        6. CONTACT DETAILS
+        ------------------
+        Member:    {{lead.name}}
+        Email:     {{lead.email}}{{lead.phoneClause}}
+
+
+        7. GOVERNING LAW
+        ----------------
+        This agreement is governed by the laws of {{contract.jurisdiction}}.
+
+
+        ------------------------------------------------------------------
+        By signing below, both parties agree to be bound by this agreement.
+        """;
+
+    /// <summary>
+    /// The private event template: a hire of the club's spaces, drafted on the event's deal
+    /// (IPrivateEvents.DraftContractAsync) with the event's date, spaces, guests, menu and
+    /// services, and totals filled in.
+    /// </summary>
+    /// <remarks>
+    /// Plain text for the same reasons as <see cref="DealTemplate"/>, and a skeleton in the same
+    /// way: the cancellation clause comes filled with a sentence pointing to the club's own terms,
+    /// which the club replaces in the draft before sending when its terms say more.
+    /// </remarks>
+    public const string PrivateEventTemplate = """
+        PRIVATE EVENT AGREEMENT
+        =======================
+
+        Between:   {{org.name}} ("the Club")
+        And:       {{lead.name}} ("the Client")
+        Date:      {{today}}
+
+
+        1. THE EVENT
+        ------------
+        {{event.title}}
+        When:      {{event.when}}
+        Spaces:    {{event.spaces}}
+        Guests:    {{event.guests}} expected
+
+
+        2. MENU AND SERVICES
+        --------------------
+        {{event.lines}}
+
+        The Client agrees to pay {{event.total}}.{{event.depositClause}}
+
+
+        3. CANCELLATION
+        ---------------
+        {{contract.cancellationTerms}}
+
+
+        4. CLUB RULES
+        -------------
+        The Client and their guests agree to observe the Club's rules while on its
+        premises. The Client is responsible for their guests' conduct.
+
+
+        ------------------------------------------------------------------
+        By signing below, both parties agree to be bound by this agreement.
+        """;
+
+    /// <summary>
+    /// The sentence a contract with a deposit says about it, for <c>contract.depositClause</c>:
+    /// on a line of its own, so it reads as its own sentence in the text and runs on in the
+    /// PDF's paragraph. Empty for a contract that asks for no deposit.
+    /// </summary>
+    public static string DepositClause(string? depositMoney) =>
+        string.IsNullOrWhiteSpace(depositMoney)
+            ? ""
+            : $"\nA deposit of {depositMoney} is payable on signing. It is credited against the first amounts due under this agreement.";
 }

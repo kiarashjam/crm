@@ -26,5 +26,13 @@ public class DealLineItem : Common.BaseEntity
 
     public decimal UnitPrice { get; set; }
 
+    /// <summary>
+    /// The VAT rate in percent the unit price includes (8.1, 2.6 or 3.8 in Switzerland since
+    /// 2024), or null when nobody said. Included, not added, as the club's catalogue and its
+    /// charges are: a contract's fee table prints what the line costs and the VAT inside it,
+    /// and the deal's value stays what the customer pays.
+    /// </summary>
+    public decimal? VatRate { get; set; }
+
     public DateTime CreatedAtUtc { get; set; }
 }

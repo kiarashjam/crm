@@ -2,6 +2,7 @@ import { Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/app/components/ui/button';
 import { downloadCsv, type CsvColumn } from '@/app/lib/exportCsv';
+import { useCsvSeparator } from '@/app/hooks/useCsvSeparator';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
 import { orgCan, PERMISSION } from '@/app/api/organizations';
 
@@ -16,9 +17,10 @@ interface ExportCsvButtonProps<T> {
 /** Small toolbar button that exports the given rows to a CSV download. */
 export default function ExportCsvButton<T>({ rows, columns, filename, label = 'Export', className }: ExportCsvButtonProps<T>) {
   const org = useOrgOptional();
+  const separator = useCsvSeparator();
   const handle = () => {
     if (!rows.length) { toast.error('Nothing to export'); return; }
-    downloadCsv(filename, rows, columns);
+    downloadCsv(filename, rows, columns, separator);
     toast.success(`Exported ${rows.length} row${rows.length === 1 ? '' : 's'}`);
   };
   // Exporting takes records.export; in a personal workspace everything is the person's own.

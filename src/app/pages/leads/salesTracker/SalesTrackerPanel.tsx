@@ -29,6 +29,7 @@ import {
   computeMonthlyCumulative, computeContractStatusBreakdown,
   computeDropOffBreakdown, computeMembershipStatus,
 } from '../../salesTracker/computed';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const FUNNEL_COLORS = ['#3b82f6', '#8b5cf6', '#a855f7', '#d946ef', '#f59e0b', '#10b981', '#14b8a6'];
 const PIE_COLORS = ['#6366f1', '#14b8a6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
@@ -38,7 +39,7 @@ const COLLAPSED_KEY = 'crm.salesTracker.panel.collapsed.v2';
 const fmtPct = (n: number) => `${(n * 100).toFixed(1)}%`;
 const fmtNum = (n: number | null | undefined) => (n == null || Number.isNaN(n) ? '—' : Math.round(n).toString());
 const fmtDate = (d: Date) =>
-  d.toLocaleDateString(undefined, { day: '2-digit', month: '2-digit', year: 'numeric' });
+  d.toLocaleDateString(currentDateLocale(), { day: '2-digit', month: '2-digit', year: 'numeric' });
 
 interface Props {
   leads: Lead[];

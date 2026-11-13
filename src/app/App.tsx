@@ -13,6 +13,9 @@ import { ThemeProvider } from '@/app/contexts/ThemeContext';
 import { servesDemoData } from '@/app/api/apiClient';
 import { PageLoadingProvider } from '@/app/components/LoadingOverlay';
 import { RouteProgress } from '@/app/components/motion/RouteProgress';
+import { ModuleOutlet, SalesHome } from '@/app/components/ModuleOff';
+import { I18nProvider } from '@/app/i18n';
+import { LanguageNotice } from '@/app/i18n/LanguageNotice';
 
 // Eager-loaded pages (critical path)
 import Homepage from '@/app/pages/Homepage';
@@ -44,6 +47,7 @@ const PublicCapture = lazy(() => import('@/app/pages/PublicCapture'));
 const PublicApply = lazy(() => import('@/app/pages/PublicApply'));
 const Unsubscribe = lazy(() => import('@/app/pages/Unsubscribe'));
 const PayPage = lazy(() => import('@/app/pages/PayPage'));
+const MemberPortalSite = lazy(() => import('@/app/pages/portal/MemberPortalSite'));
 const Pipeline = lazy(() => import('@/app/pages/Pipeline'));
 const DealDetail = lazy(() => import('@/app/pages/DealDetail'));
 const Tasks = lazy(() => import('@/app/pages/Tasks'));
@@ -54,6 +58,7 @@ const Reports = lazy(() => import('@/app/pages/Reports'));
 const Automations = lazy(() => import('@/app/pages/Automations'));
 const Duplicates = lazy(() => import('@/app/pages/Duplicates'));
 const AuditLog = lazy(() => import('@/app/pages/AuditLog'));
+const PrivacyRequests = lazy(() => import('@/app/pages/PrivacyRequests'));
 const Companies = lazy(() => import('@/app/pages/Companies'));
 const CompanyDetail = lazy(() => import('@/app/pages/CompanyDetail'));
 const Contacts = lazy(() => import('@/app/pages/Contacts'));
@@ -72,6 +77,10 @@ const GiftCards = lazy(() => import('@/app/pages/GiftCards'));
 const Communications = lazy(() => import('@/app/pages/Communications'));
 const MemberPortal = lazy(() => import('@/app/pages/MemberPortal'));
 const Households = lazy(() => import('@/app/pages/Households'));
+const Renewals = lazy(() => import('@/app/pages/Renewals'));
+const CorporateMemberships = lazy(() => import('@/app/pages/CorporateMemberships'));
+const PrivateEvents = lazy(() => import('@/app/pages/PrivateEvents'));
+const PrivateEventDetail = lazy(() => import('@/app/pages/PrivateEventDetail'));
 const Subscriptions = lazy(() => import('@/app/pages/Subscriptions'));
 const Campaigns = lazy(() => import('@/app/pages/Campaigns'));
 const Donations = lazy(() => import('@/app/pages/Donations'));
@@ -81,13 +90,17 @@ const ClubPayments = lazy(() => import('@/app/pages/ClubPayments'));
 const HospitalityReports = lazy(() => import('@/app/pages/HospitalityReports'));
 const TabsPage = lazy(() => import('@/app/pages/Tabs'));
 const PosTerminal = lazy(() => import('@/app/pages/PosTerminal'));
+const PosTickets = lazy(() => import('@/app/pages/PosTickets'));
 const HospitalitySettings = lazy(() => import('@/app/pages/HospitalitySettings'));
 const HospitalityDashboard = lazy(() => import('@/app/pages/HospitalityDashboard'));
 const MemberImport = lazy(() => import('@/app/pages/MemberImport'));
+const SsoCallback = lazy(() => import('@/app/pages/SsoCallback'));
+const MorningBrief = lazy(() => import('@/app/pages/MorningBrief'));
 
 function ProtectedLayout() {
   return (
     <RequireAuth>
+      <LanguageNotice />
       <Suspense fallback={<PageLoader />}>
         <Outlet />
       </Suspense>
@@ -117,6 +130,8 @@ export default function App() {
             <PageLoadingProvider>
               <RouteProgress />
             <OrgProvider>
+              {/* Inside the workspaces: someone who has not chosen a language reads their workspace's. */}
+              <I18nProvider>
               <WorkspaceCacheGuard />
               <SkipLink />
               <Toaster position="top-center" richColors closeButton />
@@ -126,6 +141,12 @@ export default function App() {
                 <Route path="/login" element={<Login />} />
                 <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
+                {/* Where single sign-on lands with its one-time code: not signed in yet. */}
+                <Route path="/auth/sso" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <SsoCallback />
+                  </Suspense>
+                } />
                 <Route path="/verify-email" element={
                   <Suspense fallback={<PageLoader />}>
                     <VerifyEmail />
@@ -176,6 +197,18 @@ export default function App() {
                     <PayPage />
                   </Suspense>
                 } />
+                {/* A club's member portal: members sign in with an emailed link, not a
+                    staff account, and the portal keeps its own session. */}
+                <Route path="/member-portal/:key" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <MemberPortalSite />
+                  </Suspense>
+                } />
+                <Route path="/member-portal/:key/sign-in" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <MemberPortalSite landing />
+                  </Suspense>
+                } />
                 <Route path="/terms" element={
                   <Suspense fallback={<PageLoader />}>
                     <Terms />
@@ -189,25 +222,30 @@ export default function App() {
                   <Route path="/invites/accept" element={<AcceptInvite />} />
                   <Route path="/onboarding" element={<Navigate to="/settings" replace />} />
                   <Route element={<RequireOrgLayout />}>
-                    <Route path="/dashboard" element={<Dashboard />} />
-                    <Route path="/send" element={<SendToCrm />} />
+                    <Route path="/dashboard" element={<SalesHome><Dashboard /></SalesHome>} />
+                    {/* The Sales module's pages: with it turned off they say so (ModuleOutlet). */}
+                    <Route element={<ModuleOutlet module="sales" />}>
+                      <Route path="/send" element={<SendToCrm />} />
+                      <Route path="/history" element={<History />} />
+                      <Route path="/leads" element={<Leads />} />
+                      <Route path="/leads/webhook" element={<LeadWebhook />} />
+                      <Route path="/leads/import" element={<LeadImport />} />
+                      <Route path="/leads/routing" element={<LeadRouting />} />
+                      <Route path="/leads/:id" element={<LeadDetailPage />} />
+                      <Route path="/deals" element={<Pipeline />} />
+                      <Route path="/deals/:id" element={<DealDetail />} />
+                      <Route path="/sequences" element={<Sequences />} />
+                      <Route path="/reports" element={<Reports />} />
+                    </Route>
+                    {/* What both modules share. */}
                     <Route path="/templates" element={<Templates />} />
-                    <Route path="/history" element={<History />} />
-                    <Route path="/leads" element={<Leads />} />
-                    <Route path="/leads/webhook" element={<LeadWebhook />} />
-                    <Route path="/leads/import" element={<LeadImport />} />
-                    <Route path="/leads/routing" element={<LeadRouting />} />
-                    <Route path="/leads/:id" element={<LeadDetailPage />} />
-                    <Route path="/deals" element={<Pipeline />} />
-                    <Route path="/deals/:id" element={<DealDetail />} />
                     <Route path="/tasks" element={<Tasks />} />
                     <Route path="/tasks/:id" element={<TaskDetail />} />
                     <Route path="/activities" element={<Activities />} />
-                    <Route path="/sequences" element={<Sequences />} />
-                    <Route path="/reports" element={<Reports />} />
                     <Route path="/automations" element={<Automations />} />
                     <Route path="/duplicates" element={<Duplicates />} />
                     <Route path="/audit" element={<AuditLog />} />
+                    <Route path="/privacy-requests" element={<PrivacyRequests />} />
                     <Route path="/contacts" element={<Contacts />} />
                     <Route path="/contacts/import" element={<ContactImport />} />
                     <Route path="/contacts/:id" element={<ContactDetail />} />
@@ -215,31 +253,41 @@ export default function App() {
                     <Route path="/companies/import" element={<CompanyImport />} />
                     <Route path="/companies/:id" element={<CompanyDetail />} />
                     <Route path="/team" element={<Team />} />
-                    <Route path="/members" element={<Members />} />
-                    <Route path="/members/import" element={<MemberImport />} />
-                    <Route path="/members/:id" element={<MemberDetail />} />
-                    <Route path="/events" element={<Events />} />
-                    <Route path="/events/:id" element={<EventDetail />} />
-                    <Route path="/reservations" element={<Reservations />} />
-                    <Route path="/loyalty" element={<Loyalty />} />
-                    <Route path="/applications" element={<Applications />} />
-                    <Route path="/charges" element={<Charges />} />
-                    <Route path="/visits" element={<Visits />} />
-                    <Route path="/gift-cards" element={<GiftCards />} />
-                    <Route path="/communications" element={<Communications />} />
-                    <Route path="/portal" element={<MemberPortal />} />
-                    <Route path="/households" element={<Households />} />
-                    <Route path="/subscriptions" element={<Subscriptions />} />
-                    <Route path="/campaigns" element={<Campaigns />} />
-                    <Route path="/donations" element={<Donations />} />
                     <Route path="/calendar" element={<Calendar />} />
-                    <Route path="/statements" element={<Statements />} />
-                    <Route path="/club-payments" element={<ClubPayments />} />
-                    <Route path="/club-reports" element={<HospitalityReports />} />
-                    <Route path="/tabs" element={<TabsPage />} />
-                    <Route path="/pos" element={<PosTerminal />} />
-                    <Route path="/hospitality-settings" element={<HospitalitySettings />} />
-                    <Route path="/hospitality" element={<HospitalityDashboard />} />
+                    {/* The morning brief: everyone's own day, in either module. */}
+                    <Route path="/brief" element={<MorningBrief />} />
+                    {/* The Club module's pages. */}
+                    <Route element={<ModuleOutlet module="club" />}>
+                      <Route path="/members" element={<Members />} />
+                      <Route path="/members/import" element={<MemberImport />} />
+                      <Route path="/members/:id" element={<MemberDetail />} />
+                      <Route path="/events" element={<Events />} />
+                      <Route path="/events/:id" element={<EventDetail />} />
+                      <Route path="/reservations" element={<Reservations />} />
+                      <Route path="/loyalty" element={<Loyalty />} />
+                      <Route path="/applications" element={<Applications />} />
+                      <Route path="/charges" element={<Charges />} />
+                      <Route path="/visits" element={<Visits />} />
+                      <Route path="/gift-cards" element={<GiftCards />} />
+                      <Route path="/communications" element={<Communications />} />
+                      <Route path="/portal" element={<MemberPortal />} />
+                      <Route path="/households" element={<Households />} />
+                      <Route path="/renewals" element={<Renewals />} />
+                      <Route path="/corporate-memberships" element={<CorporateMemberships />} />
+                      <Route path="/private-events" element={<PrivateEvents />} />
+                      <Route path="/private-events/:id" element={<PrivateEventDetail />} />
+                      <Route path="/subscriptions" element={<Subscriptions />} />
+                      <Route path="/campaigns" element={<Campaigns />} />
+                      <Route path="/donations" element={<Donations />} />
+                      <Route path="/statements" element={<Statements />} />
+                      <Route path="/club-payments" element={<ClubPayments />} />
+                      <Route path="/club-reports" element={<HospitalityReports />} />
+                      <Route path="/tabs" element={<TabsPage />} />
+                      <Route path="/pos" element={<PosTerminal />} />
+                      <Route path="/pos-tickets" element={<PosTickets />} />
+                      <Route path="/hospitality-settings" element={<HospitalitySettings />} />
+                      <Route path="/hospitality" element={<HospitalityDashboard />} />
+                    </Route>
                     <Route path="/settings" element={<Settings />} />
                     <Route path="/mcp" element={<Navigate to="/settings?tab=claude" replace />} />
                   </Route>
@@ -248,6 +296,7 @@ export default function App() {
                 {/* Catch-all redirect */}
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
+              </I18nProvider>
             </OrgProvider>
             </PageLoadingProvider>
           </BrowserRouter>

@@ -18,6 +18,7 @@ namespace ACI.WebApi.Controllers;
 [WorkspaceRequired]
 [Produces("application/json")]
 [Requires(MemberPermissions.ClubMembers, WritesOnly = true)]
+[InModule(WorkspaceModules.Club)]
 public class MemberConsentController : ControllerBase
 {
     private readonly IConsentService _consent;

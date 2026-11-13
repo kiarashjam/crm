@@ -110,11 +110,12 @@ public sealed class WeeklyDigestService
 
         // A digest is for whoever answers for a workspace's numbers. A salesperson who
         // turns it on and manages nothing gets none, rather than a report of their own
-        // pipeline dressed up as the team's.
+        // pipeline dressed up as the team's. Its figures are the Sales module's: a workspace
+        // that has turned Sales off is left out, as its Reports page and its endpoints are.
         var workspaces = await _db.OrganizationMembers.AsNoTracking()
             .Where(m => m.UserId == userId)
             .Where(DealVisibility.SeesAllDeals)
-            .Join(_db.Organizations.AsNoTracking(), m => m.OrganizationId, o => o.Id, (m, o) => new { o.Id, o.Name })
+            .Join(_db.Organizations.AsNoTracking().Where(o => !o.SalesModuleOff), m => m.OrganizationId, o => o.Id, (m, o) => new { o.Id, o.Name })
             .OrderBy(o => o.Name)
             .ToListAsync(ct);
         if (workspaces.Count == 0) return false;

@@ -118,6 +118,21 @@ describe('the bookings page', () => {
     expect((await screen.findAllByText('Jean Dupont')).length).toBeGreaterThan(0);
   });
 
+  it("offers no status, edit or delete on a private event's hold, which the server refuses, but leads to the event", async () => {
+    const hold: Reservation = {
+      ...BOOKED, id: 'b-hold', resourceId: PRIVATE_DINING.id, resourceName: PRIVATE_DINING.name, memberId: undefined,
+      memberName: 'Private event: Acme summer party', partySize: 16, status: 'Pending', privateEventId: 'pe-1',
+    };
+    bookings = [hold];
+    show();
+
+    const links = await screen.findAllByRole('link', { name: 'Held for a private event' });
+    expect(links[0]).toHaveAttribute('href', '/private-events/pe-1');
+    expect(screen.queryByRole('button', { name: 'Edit reservation' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Delete reservation' })).toBeNull();
+    expect(screen.queryByRole('combobox', { name: /Status of Private event/ })).toBeNull();
+  });
+
   it("books for a member by id: their name and email are the record's", async () => {
     const user = userEvent.setup();
     show();

@@ -14,11 +14,14 @@ public class CompanyService : ICompanyService
     private readonly ICompanyRepository _repository;
     private readonly ILogger<CompanyService> _logger;
 
-    public CompanyService(ICompanyRepository repository, ILogger<CompanyService> logger)
+    public CompanyService(ICompanyRepository repository, ILogger<CompanyService> logger, IRecordFlexQuery? flex = null)
     {
         _repository = repository;
         _logger = logger;
+        _flex = flex;
     }
+
+    private readonly IRecordFlexQuery? _flex;
 
     /// <summary>The most rows one export writes, as for contacts.</summary>
     public const int MaxExportRows = 50_000;
@@ -70,7 +73,7 @@ public class CompanyService : ICompanyService
         _repository.GetSummaryAsync(userId, organizationId, ct);
 
     /// <inheritdoc />
-    public async Task<ExportFile> ExportAsync(Guid userId, Guid? organizationId, CompanyQueryOptions options, CancellationToken ct = default)
+    public async Task<ExportFile> ExportAsync(Guid userId, Guid? organizationId, CompanyQueryOptions options, char separator = CsvExport.Comma, CancellationToken ct = default)
     {
         var (rows, total) = await _repository.GetExportRowsAsync(userId, organizationId, options, MaxExportRows, ct);
         var stats = new Dictionary<Guid, (Guid CompanyId, int ContactCount, int DealCount, IReadOnlyList<CurrencyTotalDto> DealTotals)>();
@@ -78,14 +81,19 @@ public class CompanyService : ICompanyService
             foreach (var s in await _repository.GetStatsAsync(chunk, userId, organizationId, ct))
                 stats[s.CompanyId] = s;
 
-        var csv = new CsvExport("Name", "Domain", "Industry", "Size", "Website", "Location", "Contacts", "Deals", "Deal value", "Added (UTC)");
+        // The workspace's own fields and the tags follow the built-in columns.
+        var flex = _flex == null
+            ? FlexColumns.None
+            : await _flex.ExportColumnsAsync(userId, organizationId, Domain.Entities.RecordTypes.Company, rows.Select(r => r.Id).ToList(), ct);
+        var csv = new CsvExport(separator, new[] { "Name", "Domain", "Industry", "Size", "Website", "Location", "Contacts", "Deals", "Deal value", "Added (UTC)" }
+            .Concat(flex.Headers).ToArray());
         foreach (var c in rows)
         {
             stats.TryGetValue(c.Id, out var s);
             // Each currency on its own, never added together: "CHF 40000; EUR 25000".
             var value = string.Join("; ", (s.DealTotals ?? Array.Empty<CurrencyTotalDto>()).Select(t => t.Currency + " " + CsvExport.Number(t.Value)));
-            csv.Row(c.Name, c.Domain, c.Industry, c.Size, c.Website, c.Location,
-                CsvExport.Number(s.ContactCount), CsvExport.Number(s.DealCount), value, CsvExport.Utc(c.CreatedAtUtc));
+            csv.Row(new string?[] { c.Name, c.Domain, c.Industry, c.Size, c.Website, c.Location,
+                CsvExport.Number(s.ContactCount), CsvExport.Number(s.DealCount), value, CsvExport.Utc(c.CreatedAtUtc) }.Concat(flex.CellsOf(c.Id)).ToArray());
         }
         _logger.LogInformation("Exported {Count} of {Total} companies for user {UserId}", rows.Count, total, userId);
         return new ExportFile("companies-" + DateTime.UtcNow.ToString("yyyy-MM-dd") + ".csv", csv.ToBytes(), rows.Count, total);
@@ -305,6 +313,7 @@ public class CompanyService : ICompanyService
         
         try
         {
+            if (await _repository.KeptByClubAsync(id, organizationId, ct) is { } kept) return DomainErrors.Company.KeptByClub(kept);
             var deleted = await _repository.DeleteAsync(id, userId, organizationId, ct);
             
             if (!deleted)

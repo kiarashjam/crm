@@ -12,14 +12,29 @@ public interface ICustomFieldRepository
 
     Task AddDefinitionAsync(CustomFieldDefinition definition, CancellationToken ct = default);
 
-    /// <summary>Persist changes made to a definition loaded by <see cref="FindDefinitionAsync"/>.</summary>
+    /// <summary>Persist changes made to definitions loaded by <see cref="FindDefinitionAsync"/> or for tracking.</summary>
     Task SaveDefinitionAsync(CustomFieldDefinition definition, CancellationToken ct = default);
 
+    /// <summary>The definitions of one kind of record, tracked, so their order can be changed and saved.</summary>
+    Task<IReadOnlyList<CustomFieldDefinition>> TrackedDefinitionsAsync(
+        Guid userId, Guid? organizationId, string entityType, CancellationToken ct = default);
+
+    /// <summary>Removes the field and every value entered for it.</summary>
     Task DeleteDefinitionAsync(CustomFieldDefinition definition, CancellationToken ct = default);
 
-    Task<CustomFieldValueSet?> FindValuesAsync(
-        Guid userId, Guid? organizationId, string entityType, Guid recordId, CancellationToken ct = default);
+    /// <summary>Whether any record has a value for the field.</summary>
+    Task<bool> HasValuesAsync(Guid fieldId, CancellationToken ct = default);
 
-    /// <summary>Insert the set, or persist changes to one loaded by <see cref="FindValuesAsync"/>.</summary>
-    Task SaveValuesAsync(CustomFieldValueSet values, bool isNew, CancellationToken ct = default);
+    /// <summary>The typed values of these records, of the caller's workspace.</summary>
+    Task<IReadOnlyList<CustomFieldEntry>> EntriesAsync(
+        string entityType, IReadOnlyCollection<Guid> recordIds, CancellationToken ct = default);
+
+    /// <summary>
+    /// Makes the record's rows for each field in <paramref name="wanted"/> the ones given (none
+    /// empties the field), changing rows in place where it can, in one save. False when
+    /// another save of the same record and field got there first.
+    /// </summary>
+    Task<bool> ApplyEntriesAsync(
+        string entityType, Guid recordId, Guid? organizationId, Guid ownerUserId,
+        IReadOnlyDictionary<CustomFieldDefinition, List<CustomFieldEntry>> wanted, CancellationToken ct = default);
 }

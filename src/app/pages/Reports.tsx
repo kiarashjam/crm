@@ -29,12 +29,14 @@ import {
   countTable, csvFileName, forecastTable, leadStatusTable, overviewTable, ownerTable, seriesTable, stageTable, type CsvTable,
 } from './reports/reportCsv';
 import { downloadCsv } from '@/app/lib/exportCsv';
+import { useCsvSeparator } from '@/app/hooks/useCsvSeparator';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import { servesDemoData } from '@/app/api/apiClient';
 import { orgCan, PERMISSION } from '@/app/api/organizations';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
 import { SavedForecastPanel } from './reports/SavedForecastPanel';
 import { useMoney } from '@/app/hooks/useMoney';
+import { currentDateLocale, currentNumberLocale } from '@/app/i18n/current';
 
 const pct = (v: number | null) => (v === null ? '—' : `${Math.round(v * 100)}%`);
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -66,6 +68,7 @@ const NO_TEAMS: SalesTeam[] = [];
 
 export default function Reports() {
   const [filters, setFilters] = useState<FilterState>(() => loadSavedFilters());
+  const csvSeparator = useCsvSeparator();
   // Every amount is written in the workspace's number format, and its periods and
   // months begin at the workspace's midnight, not at this browser's. Month and day
   // names stay in the viewer's language, like the rest of the page.
@@ -142,9 +145,9 @@ export default function Reports() {
   const firstDay = period ? dateInputValue(new Date(period.fromUtc), timeZone) : '';
   const lastDay = period ? lastDayOf(period.toUtc, timeZone) : '';
   const periodText = period
-    ? `${new Date(period.fromUtc).toLocaleDateString(undefined, { day: 'numeric', month: 'short', timeZone })} – ${new Date(Date.parse(period.toUtc) - 1).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone })}`
+    ? `${new Date(period.fromUtc).toLocaleDateString(currentDateLocale(), { day: 'numeric', month: 'short', timeZone })} – ${new Date(Date.parse(period.toUtc) - 1).toLocaleDateString(currentDateLocale(), { day: 'numeric', month: 'short', year: 'numeric', timeZone })}`
     : '';
-  const exportTable = <T,>(t: CsvTable<T>) => downloadCsv(csvFileName(t.name, firstDay, lastDay), t.rows, t.columns);
+  const exportTable = <T,>(t: CsvTable<T>) => downloadCsv(csvFileName(t.name, firstDay, lastDay), t.rows, t.columns, csvSeparator);
   // Leads and activities have no pipeline or currency, so those filters cannot narrow
   // them; with either picked, the sections that ignore it say so.
   const dealsOnlyNote = filters.pipelineId || filters.currency
@@ -462,7 +465,7 @@ export default function Reports() {
                       <BarList
                         rows={d.others.map((c) => ({ name: `${c.currency} · ${plural(c.count, 'deal')}`, value: c.value }))}
                         accent="sky"
-                        format={(v) => Math.round(v).toLocaleString()}
+                        format={(v) => Math.round(v).toLocaleString(currentNumberLocale())}
                       />
                     </div>
                   </div>

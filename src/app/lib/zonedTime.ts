@@ -122,3 +122,26 @@ export function weekdayOf(key: string): number {
 export function formatDay(keyOrIso: string, options: Intl.DateTimeFormatOptions, locale?: string): string {
   return new Date(utcOf(dateOnlyKey(keyOrIso))).toLocaleDateString(locale, { ...options, timeZone: 'UTC' });
 }
+
+/**
+ * The instant a wall-clock time on a calendar day is in `timeZone`: "2026-11-20" at "18:30"
+ * in Europe/Zurich is 17:30 UTC. A time the clocks skip or pass twice, on the nights they
+ * change, comes out an hour to one side. Null for a day or time that cannot be read.
+ */
+export function instantIn(dayKeyValue: string, time: string, timeZone: string): Date | null {
+  const d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dayKeyValue);
+  const t = /^(\d{1,2}):(\d{2})$/.exec(time);
+  if (!d || !t) return null;
+  const hour = Number(t[1]);
+  const minute = Number(t[2]);
+  if (hour > 23 || minute > 59) return null;
+  const target = Date.UTC(Number(d[1]), Number(d[2]) - 1, Number(d[3]), hour, minute);
+  const offsetAt = (instant: number) => {
+    const p = zonedParts(new Date(instant), timeZone);
+    return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - instant;
+  };
+  // The zone's offset at the guess, and again at the answer, where the clocks changed between.
+  const first = offsetAt(target);
+  const second = offsetAt(target - first);
+  return new Date(target - second);
+}

@@ -43,10 +43,24 @@ public sealed record DealBoardQuery
     /// <summary>"close" (soonest expected close first, the default), "value" (largest first), "created" (newest first) or "name".</summary>
     public string? Sort { get; init; }
 
+    /// <summary>Deals with any of these tags (all of them with <see cref="TagMatch"/> "all").</summary>
+    public Guid[]? Tag { get; init; }
+
+    public string? TagMatch { get; init; }
+
+    /// <summary>Deals with none of these tags.</summary>
+    public Guid[]? NotTag { get; init; }
+
+    /// <summary>Custom field conditions, "key:op:value" (see FlexFilter).</summary>
+    public string[]? Field { get; init; }
+
+    /// <summary>The tag and custom field conditions, as the lists read them.</summary>
+    public Common.FlexFilter Flex() => Common.FlexFilter.Parse(Tag, TagMatch, NotTag, Field);
+
     /// <summary>Whether anything here narrows the deals shown.</summary>
     public bool Narrows =>
         !string.IsNullOrWhiteSpace(Search) || AssigneeId != null || Unassigned || Mine || MinAmount != null || MaxAmount != null
-        || CloseFrom != null || CloseTo != null || StaleOnly;
+        || CloseFrom != null || CloseTo != null || StaleOnly || Flex().Filters;
 }
 
 /// <summary>A pipeline as the board draws it: its columns with their first cards, and the figures above them.</summary>

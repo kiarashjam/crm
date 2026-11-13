@@ -46,6 +46,9 @@ public static partial class DomainErrors
         public static readonly Error TooLarge = new(
             "DealLineItem.TooLarge", "That quantity or price is too large");
 
+        public static readonly Error VatRateInvalid = new(
+            "DealLineItem.VatRateInvalid", "A VAT rate is a percentage between 0 and 50 with at most two decimals, such as 8.1");
+
         // Codes ending ".NotFound" map to 404.
         public static readonly Error DealNotFound = new(
             "DealLineItemDeal.NotFound", "The deal was not found");
@@ -241,6 +244,9 @@ public static partial class DomainErrors
         public static readonly Error ResourceInactive = new(
             "Resource.Inactive.Conflict", "This resource is not taking bookings. Make it bookable again first, or pick another.");
 
+        public static readonly Error MemberBookingInvalid = new(
+            "Reservation.MemberBooking", "Members book it in the portal: off, request (staff confirm it) or instant.");
+
         public static Error TooBig(string resource, int capacity, int party) => new(
             "Reservation.Capacity.Conflict", $"{resource} holds {capacity}, so a party of {party} can't be booked into it.");
 
@@ -276,10 +282,88 @@ public static partial class DomainErrors
     /// <summary>
     /// Custom field errors.
     /// </summary>
+    public static class SavedView
+    {
+        public static readonly Error InvalidList = new(
+            "SavedView.InvalidList", "Views can be saved for the leads, contacts, companies, deals and members lists");
+
+        public static readonly Error NameRequired = new("SavedView.NameRequired", "A view needs a name");
+
+        public static readonly Error InvalidQuery = new(
+            "SavedView.InvalidQuery", "A view's filters are the list's query string: at most 40 names, each with text or a list of texts");
+
+        public static readonly Error InvalidColumns = new(
+            "SavedView.InvalidColumns", "A view's columns are a list of at most 60 column names");
+
+        public static readonly Error NotFound = new("SavedView.NotFound", "The view was not found");
+
+        // ".Conflict" maps it to 409, as for the records people edit as a whole.
+        public static readonly Error Changed = new(
+            "SavedView.Changed.Conflict", "Someone changed this view since you opened it; reload it and try again");
+
+        // "NotOwner" in the code maps these to 403.
+        public static readonly Error NotOwner = new(
+            "SavedView.NotOwner", "Only whoever made this view can change it");
+
+        public static readonly Error NotOwnerCannotShare = new(
+            "SavedView.NotOwnerCannotShare", "Your role here is view-only, so you can keep views for yourself but not share them");
+    }
+
+    public static class Tag
+    {
+        public static readonly Error NameRequired = new("Tag.NameRequired", "A tag needs a name");
+
+        public static readonly Error InvalidColor = new("Tag.InvalidColor", "That is not one of the tag colours");
+
+        public static readonly Error NotFound = new("Tag.NotFound", "The tag was not found");
+
+        public static readonly Error RecordNotFound = new("TagRecord.NotFound", "The record was not found");
+
+        public static readonly Error InvalidEntityType = new(
+            "Tag.InvalidEntityType", "Tags can be put on leads, contacts, companies, deals and, in an organization, members");
+
+        // ".Conflict" maps it to 409: the workspace already has a tag of that name.
+        public static Error NameTaken(string name) => new("Tag.Name.Conflict", $"There is already a tag called \"{name}\"");
+
+        public static readonly Error TooMany = new("Tag.TooMany", "A bulk change takes at most 1,000 records and 20 tags at a time");
+
+        public static readonly Error RecordsConflict = new(
+            "Tag.Records.Conflict", "Someone else changed these tags at the same moment; reload and try again");
+
+        // "NotOwner" in the code maps it to 403: renaming or deleting a tag changes everyone's records.
+        public static readonly Error NotOwnerOrManager = new(
+            "Tag.NotOwnerOrManager", "Your role here does not let you rename or delete the workspace's tags");
+    }
+
     public static class CustomField
     {
         public static readonly Error InvalidEntityType = new(
-            "CustomField.InvalidEntityType", "Custom fields can be added to leads, contacts, companies and deals");
+            "CustomField.InvalidEntityType", "Custom fields can be added to leads, contacts, companies, deals and, in an organization, members");
+
+        public static readonly Error InvalidCurrency = new(
+            "CustomField.InvalidCurrency", "A money field's currency is a three-letter code such as CHF");
+
+        public static readonly Error LinkTypeRequired = new(
+            "CustomField.LinkTypeRequired", "A link field needs the kind of record it points at: a lead, contact, company, deal or member");
+
+        // ".Conflict" is what maps this to 409: the field is there, but its values stop it changing kind.
+        public static readonly Error TypeChangeConflict = new(
+            "CustomField.TypeChange.Conflict", "This field already has values, so its kind can't change; add a new field instead");
+
+        public static readonly Error ValuesConflict = new(
+            "CustomField.Values.Conflict", "Someone else saved these fields at the same moment; reload the record and try again");
+
+        public static readonly Error ReorderInvalid = new(
+            "CustomField.InvalidOrder", "Send every field of that kind of record, each once");
+
+        public static Error IsRequired(string label) => new(
+            "CustomField.Required", $"{label} is required");
+
+        public static Error LinkNotFound(string label) => new(
+            "CustomField.InvalidValue", $"{label} must point at a record of this workspace");
+
+        public static Error InvalidDefault(string label, string expected) => new(
+            "CustomField.InvalidDefault", $"The default for {label} {expected}");
 
         public static readonly Error InvalidType = new(
             "CustomField.InvalidType", "That is not a kind of custom field");
@@ -288,7 +372,7 @@ public static partial class DomainErrors
             "CustomField.LabelRequired", "A custom field needs a label");
 
         public static readonly Error OptionsRequired = new(
-            "CustomField.OptionsRequired", "A dropdown field needs at least one option");
+            "CustomField.OptionsRequired", "A dropdown or multi select field needs at least one option");
 
         public static readonly Error CannotMove = new(
             "CustomField.CannotMove", "A field can't move to another kind of record; add a new one instead");
@@ -333,6 +417,13 @@ public static partial class DomainErrors
 
         public static readonly Error LeadNotFound = new(
             "Contract.LeadNotFound", "The lead this contract is for was not found");
+
+        public static readonly Error DealNotFound = new(
+            "ContractDeal.NotFound", "The deal this contract is for was not found");
+
+        /// <summary>A membership contract names a tier of the club, which needs the club turned on.</summary>
+        public static readonly Error ClubOff = new(
+            "Contract.ClubOff", "The club is turned off in this workspace, so a contract cannot admit a member or take a deposit");
 
         public static readonly Error BodyRequired = new(
             "Contract.BodyRequired", "The contract needs a body before it can be sent");
@@ -401,6 +492,45 @@ public static partial class DomainErrors
             "Contract.LinkExpired", "This signing link has expired. Ask for a new one.");
     }
 
+    /// <summary>A contract's deposit (see IContractDeposits).</summary>
+    public static class ContractDeposit
+    {
+        public static readonly Error NotAsked = new(
+            "ContractDeposit.NotFound", "This contract asks for no deposit.");
+
+        public static readonly Error NeedsTier = new(
+            "ContractDeposit.NeedsTier",
+            "Only a membership contract asks for a deposit, because it goes on the member's account: choose the tier it admits them at first.");
+
+        public static readonly Error AmountInvalid = new(
+            "ContractDeposit.AmountInvalid", "A deposit is an amount above zero.");
+
+        public static readonly Error NoWayToPay = new(
+            "ContractDeposit.NoWayToPay",
+            "The club cannot be paid yet: set up Stripe, or the club's bank details for QR-bills, under Club settings, Payments, before asking for a deposit.");
+
+        public static readonly Error SignFirst = new(
+            "ContractDeposit.SignFirst", "The deposit is paid once the contract is signed: sign it first.");
+
+        /// <summary>Paid already: a second payment would be the signer paying twice.</summary>
+        public static readonly Error AlreadyPaid = new(
+            "ContractDeposit.Paid.Conflict", "The deposit is paid.");
+
+        public static readonly Error Closed = new(
+            "ContractDeposit.Closed", "The deposit can no longer be paid: the contract was declined or withdrawn.");
+
+        public static readonly Error NoQrBill = new(
+            "ContractDeposit.NoQrBill", "The club takes no bank transfers by QR-bill. Pay online, or ask the club how to pay.");
+
+        /// <summary>
+        /// The text the signer agrees to must say what they are asked to pay: a deposit the text
+        /// never mentions would be money asked for outside the agreement.
+        /// </summary>
+        public static Error NotInText(string money) => new(
+            "ContractDeposit.NotInText",
+            $"The contract text does not say the deposit of {money}. Add it, for example \"A deposit of {money} is payable on signing.\", before sending.");
+    }
+
     /// <summary>
     /// Contact-related errors.
     /// </summary>
@@ -408,6 +538,11 @@ public static partial class DomainErrors
     {
         public static readonly Error NotFound = new(
             "Contact.NotFound", "The contact was not found");
+
+        /// <summary>A 409: the club's records name the contact as its private client.</summary>
+        public static Error KeptByClub(string what) => new(
+            "Contact.KeptByClub.Conflict",
+            $"This contact has {what}, and the club's records would be left naming nobody, so they can't be deleted. Merge them into the contact they duplicate instead.");
         
         public static readonly Error NameRequired = new(
             "Contact.NameRequired", "Contact name is required");
@@ -465,6 +600,11 @@ public static partial class DomainErrors
         public static readonly Error Changed = new(
             "Company.Changed.Conflict",
             "Someone else changed this company after you opened it, so your changes were not saved. Reload it to see the latest, then make your change again.");
+
+        /// <summary>A 409: the club's records name the company (its account's entries, a membership, an event).</summary>
+        public static Error KeptByClub(string what) => new(
+            "Company.KeptByClub.Conflict",
+            $"This company has {what}, and the club's records would be left naming nobody, so it can't be deleted. Merge it into the company it duplicates instead.");
     }
 
     /// <summary>
@@ -813,6 +953,12 @@ public static partial class DomainErrors
 
         public static readonly Error WrongPassword = new(
             "Auth.WrongPassword", "The password is incorrect");
+
+        // An account single sign-on made, or one whose unconfirmed password went when the
+        // address's owner signed on, has no password to confirm a change with. Also 400:
+        // the person is signed in.
+        public static readonly Error NoPassword = new(
+            "Auth.NoPassword", "Your account has no password yet: you sign in with Google, Microsoft or a passkey. Set a password first (Forgot password on the sign-in page sends you a link), then turn on two-factor sign-in.");
 
         public static readonly Error TwoFactorRequired = new(
             "Auth.TwoFactorRequired", "Two-factor authentication is required");
@@ -1394,6 +1540,86 @@ public static readonly Error AlreadyMember = new(
 
         public static readonly Error NothingToSave = new(
             "Reporting.NothingToSave", "There are no open deals, so there is no forecast to save.");
+    }
+
+    /// <summary>
+    /// Single sign-on with Google and Microsoft, and a workspace's requirement of it.
+    /// </summary>
+    public static class Sso
+    {
+        public const string RequiredCode = "Sso.Required";
+
+        public static readonly Error NotOffered = new(
+            "Sso.NotOffered", "Signing in with that provider is not set up on this server.");
+
+        public static readonly Error BadChallenge = new(
+            "Sso.BadChallenge", "The sign-in could not start: the app sent no valid challenge. Reload the page and try again.");
+
+        public static readonly Error ProviderUnavailable = new(
+            "Sso.ProviderUnavailable", "The sign-in provider did not answer. Try again in a moment.");
+
+        public static readonly Error HandoffExpired = new(
+            "Sso.HandoffExpired", "This sign-in has expired or was already used. Sign in again.");
+
+        public static readonly Error HandoffNotYours = new(
+            "Sso.HandoffNotYours", "This sign-in was started in another browser or tab. Start it again here.");
+
+        public static readonly Error LinkNotFound = new(
+            "Sso.LinkNotFound", "That sign-in is not linked to your account.");
+
+        public static readonly Error LastWayIn = new(
+            "Sso.LastWayIn", "This is the only way you sign in. Add a passkey or set a password (Forgot password sends a link) before you unlink it.");
+
+        public static readonly Error NoProvider = new(
+            "Sso.NoProvider", "No single sign-on provider is set up on this server, so nobody could meet the requirement. Ask whoever runs Cadence to set up Google or Microsoft sign-in first.");
+
+        public static Error InvalidDomain(string domain) => new(
+            "Sso.InvalidDomain", $"\"{domain}\" is not an email domain. Write domains like pavillon46.ch, without the @.");
+
+        public static readonly Error TooManyDomains = new(
+            "Sso.TooManyDomains", "List at most 20 email domains.");
+
+        public static Error Required(string workspace) => new(
+            RequiredCode, $"{workspace} asks its team to sign in with Google or Microsoft. Sign in that way to open it.");
+    }
+
+    /// <summary>
+    /// Passkeys (WebAuthn): adding them and signing in with them.
+    /// </summary>
+    public static class Passkeys
+    {
+        public static readonly Error NotConfigured = new(
+            "Passkeys.NotConfigured", "Passkeys are not set up on this server.");
+
+        public static readonly Error CeremonyExpired = new(
+            "Passkeys.CeremonyExpired", "That passkey prompt has expired. Try again.");
+
+        public static readonly Error NotRecognised = new(
+            "Passkeys.NotRecognised", "That passkey was not recognised. Use another, or sign in with your password.");
+
+        public static readonly Error CounterWentBack = new(
+            "Passkeys.CounterWentBack", "That passkey was refused: its counter went backwards, which happens when a security key has been copied. Sign in another way and remove it in Settings.");
+
+        public static readonly Error RegistrationFailed = new(
+            "Passkeys.RegistrationFailed", "The passkey could not be added. Try again, or use another device.");
+
+        public static readonly Error AlreadyAdded = new(
+            "Passkeys.AlreadyAdded", "That passkey is already added to an account.");
+
+        public static readonly Error RecentSignInRequired = new(
+            "Passkeys.RecentSignInRequired", "For your security, sign in again before you add a passkey: your account has no password to confirm it with.");
+
+        public static readonly Error PasswordRequired = new(
+            "Passkeys.PasswordRequired", "Enter your password to add a passkey.");
+
+        public static readonly Error NotFound = new(
+            "Passkeys.NotFound", "That passkey is not one of yours.");
+
+        public static readonly Error TooMany = new(
+            "Passkeys.TooMany", "You have 20 passkeys already. Remove one you no longer use first.");
+
+        public static readonly Error NoneForAccount = new(
+            "Passkeys.NoneForAccount", "You have not added a passkey yet. Enter the code from your authenticator app.");
     }
 
     /// <summary>

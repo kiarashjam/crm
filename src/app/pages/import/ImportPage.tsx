@@ -28,6 +28,7 @@ import {
 } from '@/app/api/imports';
 import RecentImports, { UndoImportDialog } from './RecentImports';
 import { IMPORT_KINDS, count, leadImportInfo, type ImportKindInfo } from './importKinds';
+import { currentNumberLocale } from '@/app/i18n/current';
 import { useLeadKinds } from '@/app/lib/leadKinds';
 
 type Step = 'upload' | 'columns' | 'check' | 'importing' | 'done';
@@ -94,7 +95,7 @@ export function missingChoice(
 function importLabel(info: ImportKindInfo, result: ImportResult): string | null {
   const parts: string[] = [];
   if (result.created > 0) parts.push(`add ${count(result.created, info)}`);
-  if (result.updated > 0) parts.push(`update ${result.updated.toLocaleString()}`);
+  if (result.updated > 0) parts.push(`update ${result.updated.toLocaleString(currentNumberLocale())}`);
   if (parts.length === 0) return null;
   const text = parts.join(' and ');
   return text[0]!.toUpperCase() + text.slice(1);
@@ -228,8 +229,8 @@ export default function ImportPage({ kind }: ImportPageProps) {
       setStep('done');
       setRefreshKey((k) => k + 1);
       const changed = done.created + done.updated;
-      if (changed > 0) toast.success(`Imported ${changed.toLocaleString()} ${changed === 1 ? info.one : info.many}`);
-      if (done.failed > 0) toast.error(`${done.failed.toLocaleString()} rows were not imported`);
+      if (changed > 0) toast.success(`Imported ${changed.toLocaleString(currentNumberLocale())} ${changed === 1 ? info.one : info.many}`);
+      if (done.failed > 0) toast.error(`${done.failed.toLocaleString(currentNumberLocale())} rows were not imported`);
     } catch (e) {
       if (e instanceof ApiError && e.status >= 400 && e.status < 500) {
         // Refused before anything was written (the file, the columns, a Viewer): say
@@ -360,7 +361,7 @@ export default function ImportPage({ kind }: ImportPageProps) {
                     <div>
                       <p className="font-medium text-slate-800">{file.fileName}</p>
                       <p className="text-sm text-slate-500">
-                        {analysis.rowCount.toLocaleString()} rows, columns separated by {SEPARATOR_NAMES[analysis.separator]}, read as {analysis.encoding}
+                        {analysis.rowCount.toLocaleString(currentNumberLocale())} rows, columns separated by {SEPARATOR_NAMES[analysis.separator]}, read as {analysis.encoding}
                       </p>
                     </div>
                   </div>
@@ -590,8 +591,8 @@ function Outcome({ info, result, dryRun, filter, onFilter }: OutcomeProps) {
         </h3>
         <p className="mt-1 text-sm text-slate-500">
           {dryRun
-            ? `What each of the ${result.totalRows.toLocaleString()} rows would do.`
-            : `${result.totalRows.toLocaleString()} rows read.`}
+            ? `What each of the ${result.totalRows.toLocaleString(currentNumberLocale())} rows would do.`
+            : `${result.totalRows.toLocaleString(currentNumberLocale())} rows read.`}
         </p>
       </div>
       <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-4">
@@ -605,7 +606,7 @@ function Outcome({ info, result, dryRun, filter, onFilter }: OutcomeProps) {
               filter === t.action ? 'border-orange-300 bg-orange-50' : 'border-slate-200 hover:bg-slate-50'
             }`}
           >
-            <span className="block text-2xl font-bold text-slate-800">{t.value.toLocaleString()}</span>
+            <span className="block text-2xl font-bold text-slate-800">{t.value.toLocaleString(currentNumberLocale())}</span>
             <span className="text-sm text-slate-500">{t.label}</span>
           </button>
         ))}
@@ -654,7 +655,7 @@ function RowsTable({ info, rows }: { info: ImportKindInfo; rows: ImportRow[] }) 
       </table>
       {rows.length > ROWS_SHOWN && (
         <p className="border-t border-slate-100 px-6 py-3 text-center text-sm text-slate-500">
-          Showing the first {ROWS_SHOWN.toLocaleString()} of {rows.length.toLocaleString()} rows. The counts above cover them all.
+          Showing the first {ROWS_SHOWN.toLocaleString(currentNumberLocale())} of {rows.length.toLocaleString(currentNumberLocale())} rows. The counts above cover them all.
         </p>
       )}
     </div>

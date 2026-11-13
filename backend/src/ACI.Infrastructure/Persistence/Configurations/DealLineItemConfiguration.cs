@@ -15,6 +15,7 @@ internal sealed class DealLineItemConfiguration : IEntityTypeConfiguration<DealL
         // Hours and part-units are real quantities; prices need their cents.
         builder.Property(e => e.Quantity).HasPrecision(18, 4);
         builder.Property(e => e.UnitPrice).HasPrecision(18, 4);
+        builder.Property(e => e.VatRate).HasPrecision(5, 2);
         builder.HasIndex(e => e.DealId);
     }
 }

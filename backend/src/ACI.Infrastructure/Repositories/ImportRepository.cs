@@ -1,5 +1,7 @@
+using ACI.Application.Common;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
+using ACI.Application.Services;
 using ACI.Domain.Entities;
 using ACI.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -98,6 +100,25 @@ public sealed class ImportRepository : IImportRepository
             })
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyDictionary<string, DateTime>> ErasedAddressesAsync(Guid? organizationId, IReadOnlyCollection<string> addresses, CancellationToken ct = default)
+    {
+        var erased = new Dictionary<string, DateTime>(StringComparer.Ordinal);
+        if (organizationId is not Guid org) return erased;
+        var keys = addresses.Select(ErasedAddresses.Normalize).Where(a => a.Length > 0).Distinct()
+            .ToDictionary(ErasedAddresses.Key, a => a, StringComparer.Ordinal);
+        // In slices: SQL Server takes at most 2,100 parameters in one query, and a file can hold more rows.
+        foreach (var slice in keys.Keys.Chunk(1000))
+        {
+            var wanted = slice.ToList();
+            foreach (var row in await _db.EmailSuppressions.AsNoTracking()
+                         .Where(s => s.OrganizationId == org && s.Reason == EmailSuppressionReasons.Erased && wanted.Contains(s.Email))
+                         .Select(s => new { s.Email, s.CreatedAtUtc })
+                         .ToListAsync(ct))
+                erased[keys[row.Email]] = row.CreatedAtUtc;
+        }
+        return erased;
+    }
+
     public async Task<IReadOnlyList<Company>> CompaniesAsync(Guid userId, Guid? organizationId, CancellationToken ct = default) =>
         await InWorkspace(_db.Companies.AsNoTracking(), userId, organizationId)
             .OrderBy(c => c.CreatedAtUtc)
@@ -110,11 +131,19 @@ public sealed class ImportRepository : IImportRepository
 
     public async Task<IReadOnlyDictionary<Guid, string>> CustomValuesAsync(string entityType, Guid userId, Guid? organizationId, CancellationToken ct = default)
     {
-        var rows = await InWorkspace(_db.CustomFieldValues.AsNoTracking(), userId, organizationId, owner: "OwnerUserId")
+        // Each record's values as one JSON object keyed by field key, as the API writes them,
+        // so an update can tell what a row of the file would change.
+        var fields = (await InWorkspace(_db.CustomFieldDefinitions.AsNoTracking(), userId, organizationId, owner: "OwnerUserId")
+                .Where(d => d.EntityType == entityType)
+                .ToListAsync(ct))
+            .ToDictionary(d => d.Id);
+        var rows = await InWorkspace(_db.CustomFieldEntries.AsNoTracking(), userId, organizationId, owner: "OwnerUserId")
             .Where(v => v.EntityType == entityType)
-            .Select(v => new { v.RecordId, v.ValuesJson })
             .ToListAsync(ct);
-        return rows.GroupBy(r => r.RecordId).ToDictionary(g => g.Key, g => g.First().ValuesJson);
+        return rows.Where(r => fields.ContainsKey(r.FieldId))
+            .GroupBy(r => r.RecordId)
+            .ToDictionary(g => g.Key, g => System.Text.Json.JsonSerializer.Serialize(
+                g.GroupBy(r => r.FieldId).ToDictionary(f => fields[f.Key].Key, f => CustomFieldValues.Read(fields[f.Key], f.ToList()))));
     }
 
     public IDisposable StampNewRecords(Guid batchId)
@@ -322,7 +351,7 @@ public sealed class ImportRepository : IImportRepository
         _db.Attachments.Where(a => a.EntityType == entityType && ids.Contains(a.RecordId)).Select(a => a.RecordId).Distinct().ToListAsync(ct);
 
     private Task<List<Guid>> CustomFieldsSinceAsync(string entityType, IQueryable<Guid> ids, DateTime since, CancellationToken ct) =>
-        _db.CustomFieldValues
+        _db.CustomFieldEntries
             .Where(v => v.EntityType == entityType && ids.Contains(v.RecordId) && v.UpdatedAtUtc > since)
             .Select(v => v.RecordId)
             .Distinct()

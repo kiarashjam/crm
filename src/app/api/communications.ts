@@ -26,6 +26,7 @@ export type CommStatus =
   | 'bounced'
   | 'suppressed'
   | 'failed'
+  | 'cancelled'
   | 'skipped'
   | 'logged';
 export type CommCategory =
@@ -70,12 +71,13 @@ export function commStatusLabel(status: CommStatus): string {
     case 'suppressed': return 'Not sent';
     case 'skipped': return 'Not sent';
     case 'failed': return 'Failed';
+    case 'cancelled': return 'Not sent';
     case 'logged': return 'Logged, not sent by CadenceE';
   }
 }
 
 /** Statuses that mean nothing reached the member. */
-export const NOT_SENT: CommStatus[] = ['suppressed', 'skipped', 'failed', 'bounced'];
+export const NOT_SENT: CommStatus[] = ['suppressed', 'skipped', 'failed', 'cancelled', 'bounced'];
 
 export const CHANNELS: CommChannel[] = ['Email', 'SMS', 'Push'];
 export const CATEGORIES: CommCategory[] = [

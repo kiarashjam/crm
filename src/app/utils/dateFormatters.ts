@@ -3,6 +3,8 @@
  * Extracted from Activities.tsx and other components
  */
 
+import { currentDateLocale } from '@/app/i18n/current';
+
 /**
  * Format a date string to locale format
  * @param iso - ISO date string
@@ -10,7 +12,7 @@
  */
 export function formatDate(iso: string): string {
   const d = new Date(iso);
-  return d.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
+  return d.toLocaleString(currentDateLocale(), { dateStyle: 'short', timeStyle: 'short' });
 }
 
 /**
@@ -30,7 +32,7 @@ export function formatRelativeDate(iso: string): string {
   if (diffMins < 60) return `${diffMins}m ago`;
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffDays < 7) return `${diffDays}d ago`;
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return d.toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric' });
 }
 
 /**
@@ -50,7 +52,7 @@ export function getDateGroup(iso: string): string {
   if (d >= yesterday) return 'Yesterday';
   if (d >= thisWeekStart) return 'This Week';
   if (d >= lastWeekStart) return 'Last Week';
-  return d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  return d.toLocaleDateString(currentDateLocale(), { month: 'long', year: 'numeric' });
 }
 
 /**
@@ -60,7 +62,7 @@ export function getDateGroup(iso: string): string {
  */
 export function formatLongDate(iso: string): string {
   const d = new Date(iso);
-  return d.toLocaleDateString(undefined, { 
+  return d.toLocaleDateString(currentDateLocale(), { 
     year: 'numeric', 
     month: 'long', 
     day: 'numeric' 

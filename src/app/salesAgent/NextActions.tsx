@@ -1,10 +1,11 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowRight, Check, ChevronDown, Loader2, PenLine, RotateCw, Sparkles, X } from 'lucide-react';
+import { ArrowRight, Check, ChevronDown, ListChecks, Loader2, PenLine, RotateCw, X } from 'lucide-react';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
 import { useMotionPreference } from '@/app/hooks/useMotionPreference';
+import { useModules } from '@/app/hooks/useModules';
 import { cn } from '@/app/components/ui/utils';
 import { getCurrentUser } from '@/app/lib/auth';
 import { useAgentData, type AgentLists } from './agentData';
@@ -22,7 +23,9 @@ import type { WorkQueue } from '@/app/api/workQueue';
 import { useWorkScope, type WorkScope } from '@/app/lib/workScope';
 import { WorkScopeToggle } from '@/app/components/WorkScopeToggle';
 import type { WriterBrief } from './writerBrief';
-import { orgCan, PERMISSION } from '@/app/api/organizations';
+import { orgCan, PERMISSION, type Permission } from '@/app/api/organizations';
+import type { ProposalKind } from '@/app/api/assistant';
+import { useModelReady } from '@/app/hooks/queries/assistant';
 
 /**
  * The sales agent's panel: the next thing worth doing, from what is already saved.
@@ -46,6 +49,17 @@ import { orgCan, PERMISSION } from '@/app/api/organizations';
 
 const MAX_SHOWN = 5;
 const EASE = [0.16, 1, 0.3, 1] as const;
+
+/**
+ * Whether a language model answers the chat. The next steps themselves come from rules, never
+ * a model, so only the chat may be called AI, and only when one is set up on the server.
+ */
+const ModelReady = createContext(false);
+
+/** What the button that opens the chat says: the AI only when a model answers. */
+function askLabels(modelReady: boolean): { short: string; full: string } {
+  return modelReady ? { short: 'Ask AI', full: 'Ask Cadence AI' } : { short: 'Ask', full: 'Ask Cadence' };
+}
 
 /**
  * The rep's own work as the queue's rules read it: the open tasks, leads and deals the
@@ -91,7 +105,30 @@ function askWorld(lists: AgentLists, items: WorkSuggestion[], scope: Exclude<Pag
   };
 }
 
+/**
+ * The permission the endpoint a proposal is confirmed through asks for: the bookings endpoint
+ * the front desk's, the charges endpoint the money one, the rest records.edit. The server
+ * offers each proposal only to someone who holds it, and its card follows the same rule, so
+ * the front desk can confirm a booking without being allowed to edit sales records.
+ */
+const PROPOSAL_PERMISSION: Readonly<Record<ProposalKind, Permission>> = {
+  task: PERMISSION.EditRecords,
+  activity: PERMISSION.EditRecords,
+  'deal-stage': PERMISSION.EditRecords,
+  'email-draft': PERMISSION.EditRecords,
+  booking: PERMISSION.FrontDesk,
+  charge: PERMISSION.ManageMoney,
+};
+
+/** Whether the person may confirm a proposal of this kind in the current workspace. */
+function useMayConfirm(): (kind: ProposalKind) => boolean {
+  const org = useOrgOptional();
+  return (kind) => !(org?.isReadOnly ?? false) && (!org || orgCan(org.currentOrg, PROPOSAL_PERMISSION[kind]));
+}
+
 function AskBox({ lists, gaps, items, scope }: { lists: AgentLists; gaps: string[]; items: WorkSuggestion[]; scope: Exclude<PageScope, { mode: 'hidden' }> }) {
+  const modelReady = useContext(ModelReady);
+  const mayConfirm = useMayConfirm();
   const org = useOrgOptional();
   const userId = getCurrentUser()?.id ?? 'session';
   const accountKey = `${userId}:${org?.currentOrgId ?? 'no-org'}`;
@@ -104,6 +141,34 @@ function AskBox({ lists, gaps, items, scope }: { lists: AgentLists; gaps: string
       world={askWorld(lists, items, scope, patterns, gaps)}
       readOnly={(org?.isReadOnly ?? false) || (org ? !orgCan(org.currentOrg, PERMISSION.EditRecords) : false)}
       accountKey={accountKey}
+      modelReady={modelReady}
+      mayConfirm={mayConfirm}
+    />
+  );
+}
+
+const NO_PATTERNS: LearnedPatterns = { lines: [], wonDeals: 0, lostDeals: 0, lostLeads: 0 };
+
+/**
+ * A workspace with only the Club module has no sales queue to show, so the panel stays away;
+ * with a language model set up, its people can still ask it about members, bookings, events
+ * and money. The built-in rules know the sales records only, so they do not answer here.
+ */
+function ClubAsk() {
+  const org = useOrgOptional();
+  const mayConfirm = useMayConfirm();
+  const userId = getCurrentUser()?.id ?? 'session';
+  const accountKey = `${userId}:${org?.currentOrgId ?? 'no-org'}`;
+  const world: AgentWorld = { items: [], leads: [], deals: [], page: { mode: 'focus' }, patterns: NO_PATTERNS };
+  return (
+    <AgentDesk
+      key={accountKey}
+      world={world}
+      readOnly={org?.isReadOnly ?? false}
+      accountKey={accountKey}
+      modelReady
+      clubOnly
+      mayConfirm={mayConfirm}
     />
   );
 }
@@ -172,7 +237,7 @@ function Accent() {
 
 /**
  * The card arriving: a short rise and fade, inside a gradient border that slowly turns,
- * so the panel reads as the AI at work. With less motion asked for, the border is still.
+ * so the panel reads as at work. With less motion asked for, the border is still.
  */
 function Card({ className, labelledBy, children }: { className?: string; labelledBy: string; children: ReactNode }) {
   const reduce = useMotionPreference();
@@ -223,7 +288,7 @@ function IconTile({ busy, small = false }: { busy: boolean; small?: boolean }) {
             transition={{ duration: busy ? 1.5 : 6, repeat: Infinity, ease: 'linear' }}
           />
         )}
-        <Sparkles className={cn('relative', small ? 'h-4 w-4' : 'h-5 w-5')} />
+        <ListChecks className={cn('relative', small ? 'h-4 w-4' : 'h-5 w-5')} />
       </span>
       {!reduce && [
         { className: '-right-1 -top-1 h-1.5 w-1.5', delay: 0 },
@@ -419,6 +484,8 @@ function ClosedPanel({ label, count, refreshing, onOpen, onAsk }: {
   onAsk: () => void;
 }) {
   const reduce = useMotionPreference();
+  const modelReady = useContext(ModelReady);
+  const ask = askLabels(modelReady);
   const pill = cn(
     'group relative inline-flex h-12 items-center gap-2.5 overflow-hidden rounded-full border border-fuchsia-200/80 bg-white/90 pl-2 pr-4 text-sm font-semibold text-slate-800 shadow-sm shadow-fuchsia-500/10 backdrop-blur transition-shadow hover:shadow-md dark:border-fuchsia-900/60 dark:bg-slate-900/90 dark:text-slate-100',
     focusRing,
@@ -449,14 +516,14 @@ function ClosedPanel({ label, count, refreshing, onOpen, onAsk }: {
       <motion.button
         type="button"
         onClick={onAsk}
-        aria-label="Ask CadenceE"
+        aria-label={ask.full}
         whileHover={reduce ? undefined : { y: -2 }}
         whileTap={reduce ? undefined : { scale: 0.97 }}
         className={pill}
         {...enter(0.06)}
       >
-        <AiOrb size={32} reduce={reduce} />
-        <span className="hidden sm:inline">Ask AI</span>
+        <AiOrb size={32} reduce={reduce} ai={modelReady} />
+        <span className="hidden sm:inline">{ask.short}</span>
       </motion.button>
     </div>
   );
@@ -465,18 +532,20 @@ function ClosedPanel({ label, count, refreshing, onOpen, onAsk }: {
 /** The chat, closed: a pill on the panel's title row rather than a bar of its own. */
 function AskPill({ onAsk }: { onAsk: () => void }) {
   const reduce = useMotionPreference();
+  const modelReady = useContext(ModelReady);
+  const ask = askLabels(modelReady);
   return (
     <motion.button
       type="button"
       onClick={onAsk}
-      aria-label="Ask CadenceE"
+      aria-label={ask.full}
       aria-expanded={false}
       whileHover={reduce ? undefined : { y: -1 }}
       whileTap={reduce ? undefined : { scale: 0.97 }}
       className={cn('inline-flex h-9 shrink-0 items-center gap-2 rounded-full border border-fuchsia-200/80 bg-gradient-to-r from-white to-fuchsia-50 pl-1 pr-3 text-sm font-semibold text-slate-800 shadow-sm transition-shadow hover:shadow-md dark:border-fuchsia-900/60 dark:from-slate-900 dark:to-fuchsia-950/40 dark:text-slate-100', focusRing)}
     >
-      <AiOrb size={26} reduce={reduce} />
-      <span className="hidden sm:inline">Ask AI</span>
+      <AiOrb size={26} reduce={reduce} ai={modelReady} />
+      <span className="hidden sm:inline">{ask.short}</span>
     </motion.button>
   );
 }
@@ -601,7 +670,12 @@ function RecordStrip({ href, step, items, lists, gaps, refreshing, chatOpen, onA
 export function NextActions() {
   const orgId = useOrgOptional()?.currentOrgId ?? null;
   const { pathname } = useLocation();
-  const scope = pageScope(pathname);
+  // The sales agent works the Sales module's leads and deals: with Sales turned off it has
+  // nothing to read (the server refuses), so it stays away rather than say it failed.
+  const { sales: salesOn, club: clubOn } = useModules();
+  const modelReady = useModelReady();
+  const pageScoped = pageScope(pathname);
+  const scope: PageScope = salesOn ? pageScoped : { mode: 'hidden' };
   const where: 'home' | 'page' = scope.mode === 'focus' && (pathname === '/dashboard' || pathname === '/') ? 'home' : 'page';
   const [open, setOpen] = useState(() => readOpen(where));
   const data = useAgentData(orgId, scope.mode !== 'hidden');
@@ -636,12 +710,18 @@ export function NextActions() {
   );
 
   /** In the page's slot when it has one (after its title), else under the header. */
-  const place = (content: ReactNode) =>
-    slot
-      ? createPortal(content, slot)
-      : <div className="w-full px-[var(--page-padding)] pb-4 pt-4">{content}</div>;
+  const place = (content: ReactNode) => {
+    const told = <ModelReady.Provider value={modelReady}>{content}</ModelReady.Provider>;
+    return slot
+      ? createPortal(told, slot)
+      : <div className="w-full px-[var(--page-padding)] pb-4 pt-4">{told}</div>;
+  };
 
-  if (scope.mode === 'hidden') return null;
+  if (scope.mode === 'hidden') {
+    // Only the Club module: no queue, but the chat when a language model can answer it.
+    if (!salesOn && clubOn && modelReady && pageScoped.mode !== 'hidden') return place(<ClubAsk />);
+    return null;
+  }
 
   if (!data.lists) {
     if (data.failed) {
@@ -755,7 +835,6 @@ export function NextActions() {
         <div className="min-w-[10rem] flex-1">
           <div className="flex items-center gap-2">
             <h2 id="next-actions-heading" className="bg-gradient-to-r from-slate-900 via-fuchsia-600 to-slate-900 bg-[length:200%_100%] bg-clip-text text-base font-semibold text-transparent motion-safe:animate-[shimmer_6s_linear_infinite] dark:from-white dark:via-fuchsia-300 dark:to-white">Do this next</h2>
-            <span className="rounded-full bg-gradient-to-r from-orange-500 to-fuchsia-500 px-1.5 py-px text-[10px] font-bold uppercase tracking-wider text-white">AI</span>
             <Refreshing on={data.refreshing} />
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -822,7 +901,7 @@ export function NextActions() {
                 exit={{ opacity: 0, transition: { duration: reduce ? 0 : 0.15 } }}
                 className="flex items-center gap-1.5 pb-1 text-xs text-slate-500 dark:text-slate-400"
               >
-                <Sparkles className="h-3.5 w-3.5 text-amber-500" aria-hidden="true" />
+                <ListChecks className="h-3.5 w-3.5 text-amber-500" aria-hidden="true" />
                 {beyond} more after these. Finish one and the next moves up.
               </motion.p>
             )}

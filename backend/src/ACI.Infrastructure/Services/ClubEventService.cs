@@ -1,5 +1,6 @@
 using System.Globalization;
 using ACI.Application.Common;
+using ACI.Application.Common.I18n;
 using ACI.Application.Interfaces;
 using ACI.Application.Services;
 using ACI.Domain.Entities;
@@ -48,8 +49,10 @@ public sealed partial class ClubEventService : IClubEvents
     private readonly ICampaignRepository _messages;
     private readonly ILedgerReadObserver _reads;
     private readonly IClubRules _rules;
+    private readonly IAutomationEngine? _automations;
 
-    public ClubEventService(AppDbContext db, ICurrentUserService user, IClubLedger ledger, IOutbox outbox, ICampaignRepository messages, ILedgerReadObserver reads, IClubRules rules)
+    public ClubEventService(AppDbContext db, ICurrentUserService user, IClubLedger ledger, IOutbox outbox, ICampaignRepository messages, ILedgerReadObserver reads, IClubRules rules,
+        IAutomationEngine? automations = null)
     {
         _db = db;
         _user = user;
@@ -58,6 +61,7 @@ public sealed partial class ClubEventService : IClubEvents
         _messages = messages;
         _reads = reads;
         _rules = rules;
+        _automations = automations;
     }
 
     // ── reads ────────────────────────────────────────────────────────────────
@@ -516,25 +520,32 @@ public sealed partial class ClubEventService : IClubEvents
         var address = (member?.Email ?? registration.Email ?? "").Trim();
         if (!ValidationHelper.IsValidEmail(address)) return;
 
-        var when = When(ev.StartAtUtc, zone);
-        var where = string.IsNullOrWhiteSpace(ev.Location) ? "" : $" at {ev.Location}";
+        // In the member's language (English for a guest, or a member with none set, as before).
+        var language = AppLanguages.ForMember(member?.PreferredLanguage);
+        var locale = language == AppLanguages.English ? null
+            : await _db.Organizations.AsNoTracking().Where(o => o.Id == org).Select(o => o.Locale).FirstOrDefaultAsync(ct);
+        string L(string key, params (string, object?)[] args) => MemberTexts.T(language, key, args);
+        var english = language == AppLanguages.English;
+        var when = english ? When(ev.StartAtUtc, zone)
+            : TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(ev.StartAtUtc, DateTimeKind.Utc), zone).ToString(L("event.when"), MemberTexts.Culture(language, locale));
+        var where = string.IsNullOrWhiteSpace(ev.Location) ? "" : L("event.atPlace", ("location", ev.Location));
         var ticket = registration.ChargeId != null
-            ? string.Create(CultureInfo.InvariantCulture, $"{registration.Currency} {registration.TicketPrice:N2}")
+            ? $"{registration.Currency} {registration.TicketPrice.ToString("N2", english ? CultureInfo.InvariantCulture : NumberCulture(locale))}"
             : null;
         string subject, body;
         if (notice == Notice.Promoted)
         {
-            subject = $"A place for you at {ev.Name}";
-            body = $"Good news: a place has come free at {ev.Name} on {when}{where}, and it is yours."
-                + (ticket != null ? $"\n\nThe ticket, {ticket}, is on {(registration.TicketTier == TicketTiers.Guest ? "your host's" : "your")} house account." : "")
-                + "\n\nIf you can no longer come, please let us know, so the next person waiting can have the place.";
+            subject = L("event.promotedSubject", ("event", ev.Name));
+            body = L("event.promotedBody", ("event", ev.Name), ("when", when), ("where", where))
+                + (ticket != null ? "\n\n" + L(registration.TicketTier == TicketTiers.Guest ? "event.ticketOnHostAccount" : "event.ticketOnAccount", ("ticket", ticket)) : "")
+                + "\n\n" + L("event.cantCome");
         }
         else
         {
-            subject = $"{ev.Name} is cancelled";
-            body = $"We are sorry: {ev.Name} on {when}{where} is cancelled."
-                + (ticket != null && registration.ChargeReversedAtUtc != null ? $"\n\nThe ticket, {ticket}, has been taken off the house account it was on." : "")
-                + "\n\nWe hope to see you at another event soon.";
+            subject = L("event.cancelledSubject", ("event", ev.Name));
+            body = L("event.cancelledBody", ("event", ev.Name), ("when", when), ("where", where))
+                + (ticket != null && registration.ChargeReversedAtUtc != null ? "\n\n" + L("event.ticketTakenOff", ("ticket", ticket)) : "")
+                + "\n\n" + L("event.seeYou");
         }
         var email = new OutboundEmailRequest
         {
@@ -732,6 +743,19 @@ public sealed partial class ClubEventService : IClubEvents
         var zone = organizationId == null ? null
             : await _db.Organizations.AsNoTracking().Where(o => o.Id == organizationId).Select(o => o.TimeZone).FirstOrDefaultAsync(ct);
         return RegionalSettings.ZoneOf(zone);
+    }
+
+    /// <summary>The workspace's number format, or the default one when its locale is not known here.</summary>
+    private static CultureInfo NumberCulture(string? locale)
+    {
+        try
+        {
+            return CultureInfo.GetCultureInfo(string.IsNullOrWhiteSpace(locale) ? RegionalSettings.DefaultLocale : locale);
+        }
+        catch (CultureNotFoundException)
+        {
+            return CultureInfo.GetCultureInfo(RegionalSettings.DefaultLocale);
+        }
     }
 
     /// <summary>A moment as the club reads it, in its own time zone: "Friday 13 November 2026 at 19:00".</summary>

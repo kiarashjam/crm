@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using ACI.Application.Common;
+using ACI.Application.Common.I18n;
 using ACI.Application.Configuration;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
@@ -85,6 +86,22 @@ public sealed record OutboundEmailRequest
     /// sends the same ones.
     /// </summary>
     public IReadOnlyList<EmailAttachment> Attachments { get; init; } = [];
+
+    /// <summary>
+    /// The name it is from, when not the workspace's: the member portal's invitations and
+    /// sign-in links go under the sender name set in Welcome &amp; portal.
+    /// </summary>
+    public string? FromName { get; init; }
+
+    /// <summary>
+    /// The address it is from, when not the workspace's own. Used only on a domain the mail
+    /// service has verified for this workspace, as its own sending address is; any other is
+    /// left out, and the email goes from the usual address under <see cref="FromName"/>.
+    /// </summary>
+    public string? FromAddress { get; init; }
+
+    /// <summary>Where replies go, when not to the person behind it (or the workspace's owner).</summary>
+    public string? ReplyTo { get; init; }
 }
 
 /// <summary>How an attempt at a message ended.</summary>
@@ -192,6 +209,7 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
     private readonly ITenantContext? _tenant;
     private readonly IMemberMailRules? _members;
     private readonly IOnboardingRepository? _onboarding;
+    private readonly ICampaignRepository? _campaigns;
 
     public OutboxService(
         IOutboxRepository messages,
@@ -208,7 +226,8 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
         ILogger<OutboxService> logger,
         ITenantContext? tenant = null,
         IMemberMailRules? members = null,
-        IOnboardingRepository? onboarding = null)
+        IOnboardingRepository? onboarding = null,
+        ICampaignRepository? campaigns = null)
     {
         _messages = messages;
         _email = email;
@@ -225,6 +244,7 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
         _tenant = tenant;
         _members = members;
         _onboarding = onboarding;
+        _campaigns = campaigns;
     }
 
     // ── Queueing ──────────────────────────────────────────────────────────────
@@ -275,14 +295,22 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
         var mail = request.ForOwnTeam
             ? new OutreachBody(body, PlainTextEmail.ToHtml(body, null, sender.WorkspaceName), null)
             : purpose != null && request.MemberId is Guid memberId
-                ? _outreach.MemberBody(organizationId, sender.WorkspaceName, body, memberId, to[0], purpose == ConsentPurposes.Marketing)
+                ? _outreach.MemberBody(organizationId, sender.WorkspaceName, body, memberId, to[0], purpose == ConsentPurposes.Marketing,
+                    purpose == ConsentPurposes.Marketing ? await MemberLanguageAsync(organizationId, memberId, ct) : AppLanguages.English)
                 : _outreach.Body(organizationId, sender.WorkspaceName, body, to.Concat(cc).ToList(), tracking);
 
         var id = Guid.NewGuid();
         var replyDomain = _settings.CapturesReplies ? _settings.ReplyDomain() : null;
         var token = replyDomain == null ? null : NewReplyToken();
         var replyTo = new List<string>();
-        if (sender.ReplyTo != null) replyTo.Add(sender.ReplyTo);
+        // A sender the request names (the member portal's, from Welcome & portal) stands in for
+        // the workspace's usual one: its from address only on a domain verified for the
+        // workspace, so no workspace sends as a domain that is not its own.
+        var fromAddress = VerifiedFromAddress(request.FromAddress, organizationId) ?? sender.FromAddress;
+        var fromName = string.IsNullOrWhiteSpace(request.FromName) ? sender.WorkspaceName : OneLine(request.FromName);
+        var ownReplyTo = request.ReplyTo?.Trim() is { Length: > 0 } asked && ValidationHelper.IsValidEmail(asked) ? asked : null;
+        if (ownReplyTo != null) replyTo.Add(ownReplyTo);
+        else if (sender.ReplyTo != null) replyTo.Add(sender.ReplyTo);
         // With reply capture on, a second Reply-To brings the answer into the CRM as well,
         // while the first still puts it in the person's own inbox.
         if (token != null) replyTo.Add($"reply+{token}@{replyDomain}");
@@ -306,8 +334,8 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
             CreatedByUserId = request.CreatedByUserId,
             // A workspace's name may be 256 characters and the column holds 200: unclipped,
             // every email of a workspace with a longer name failed to queue.
-            FromName = Clip(sender.WorkspaceName, MaxFromName),
-            FromAddress = sender.FromAddress,
+            FromName = Clip(fromName, MaxFromName),
+            FromAddress = fromAddress,
             ReplyTo = replyTo.Count == 0 ? null : string.Join(", ", replyTo),
             To = string.Join(", ", to),
             Cc = cc.Count == 0 ? null : string.Join(", ", cc),
@@ -320,7 +348,7 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
             UnsubscribeUrl = mail.UnsubscribeUrl,
             OneClickUnsubscribe = mail.OneClick,
             Purpose = purpose,
-            MessageIdHeader = $"<{id:N}@{MessageIdDomain(sender.FromAddress)}>",
+            MessageIdHeader = $"<{id:N}@{MessageIdDomain(fromAddress)}>",
             ReplyToken = token,
             CountsAsResponse = request.CountsAsResponse,
             LeadId = request.LeadId,
@@ -377,6 +405,13 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
     }
 
     // ── Sending ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The language a member's marketing footer is in: theirs, else English (see
+    /// <see cref="AppLanguages.ForMember"/>). The words above it are whatever staff wrote.
+    /// </summary>
+    private async Task<string> MemberLanguageAsync(Guid organizationId, Guid memberId, CancellationToken ct) =>
+        AppLanguages.ForMember(_members == null ? null : await _members.PreferredLanguageAsync(organizationId, memberId, ct));
 
     public Task<OutboxAttempt> SendNowAsync(OutboundMessage message, CancellationToken ct = default) =>
         AttemptEmailAsync(message, personWaiting: true, ct);
@@ -445,6 +480,15 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
             await _messages.SaveAsync(ct);
             _logger.LogInformation("Outbox email {MessageId} was not sent: {Reason}", message.Id, stopped);
             return new OutboxAttempt(OutboxAttemptResult.Suppressed, stopped, "Email.SequenceStopped");
+        }
+
+        // Staff stopped the campaign this email is part of: what had not gone by then does not go.
+        if (await CampaignStoppedAsync(message, ct) is { } halted)
+        {
+            Stop(message, OutboundStatuses.Cancelled, halted);
+            await _messages.SaveAsync(ct);
+            _logger.LogInformation("Outbox email {MessageId} was not sent: {Reason}", message.Id, halted);
+            return new OutboxAttempt(OutboxAttemptResult.Suppressed, halted, "Email.CampaignStopped");
         }
 
         // Asked again at the moment it goes: someone may have unsubscribed or bounced
@@ -783,7 +827,13 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
                 return new Error(DomainErrors.Contact.DoNotContact.Code, "This person is marked do not contact, so nothing was sent.");
         }
         if (await _messages.FindSuppressionAsync(organizationId, addresses, ct) is { } suppressed)
-            return new Error("Email.Suppressed", $"{suppressed.Email} {SuppressedBecause(suppressed)}, so email to it is suppressed and nothing was sent.");
+        {
+            // An erasure leaves a fingerprint, not the address: name the address it matched.
+            var address = ErasedAddresses.IsKey(suppressed.Email)
+                ? addresses.FirstOrDefault(a => ErasedAddresses.Key(a) == suppressed.Email) ?? "This address"
+                : suppressed.Email;
+            return new Error("Email.Suppressed", $"{address} {SuppressedBecause(suppressed)}, so email to it is suppressed and nothing was sent.");
+        }
         return null;
     }
 
@@ -815,6 +865,16 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
             : null;
     }
 
+    /// <summary>Why a campaign's email does not go now that staff stopped the campaign, or null while it may.</summary>
+    private async Task<string?> CampaignStoppedAsync(OutboundMessage message, CancellationToken ct)
+    {
+        if (_campaigns == null || message.Source != OutboundSources.Campaign
+            || message.SourceId is not Guid campaignId || message.OrganizationId is not Guid org) return null;
+        return await _campaigns.StatusAsync(org, campaignId, ct) == CampaignStatuses.Stopped
+            ? "The campaign was stopped before this email went, so it was not sent."
+            : null;
+    }
+
     private static string SuppressedBecause(EmailSuppression suppression)
     {
         var on = suppression.CreatedAtUtc.ToString("d MMM yyyy", CultureInfo.InvariantCulture);
@@ -823,6 +883,7 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
             EmailSuppressionReasons.SpamReport => $"marked this workspace's email as spam on {on}",
             EmailSuppressionReasons.Invalid => $"was refused by the mail service as not deliverable on {on}",
             EmailSuppressionReasons.Unsubscribed => $"unsubscribed through the mail service on {on}",
+            EmailSuppressionReasons.Erased => $"belongs to a person erased at their request on {on}",
             _ => $"bounced on {on}",
         };
     }
@@ -891,6 +952,14 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
 
     private static IReadOnlyList<string> Split(string? list) =>
         string.IsNullOrWhiteSpace(list) ? [] : list.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    /// <summary>A from address a request names, when the mail service has verified its domain for this workspace; else null.</summary>
+    private string? VerifiedFromAddress(string? address, Guid organizationId)
+    {
+        var value = (address ?? "").Trim();
+        if (value.Length == 0 || !ValidationHelper.IsValidEmail(value)) return null;
+        return _settings.IsVerifiedSendingDomain(value[(value.LastIndexOf('@') + 1)..], organizationId) ? value.ToLowerInvariant() : null;
+    }
 
     /// <summary>A line break in a subject would start a new header line, so a subject stays one line.</summary>
     internal static string OneLine(string? text) =>

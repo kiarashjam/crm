@@ -56,6 +56,7 @@ file static class Ledger
 [WorkspaceRequired]
 [Produces("application/json")]
 [Requires(MemberPermissions.ManageMoney, WritesOnly = true)]
+[InModule(WorkspaceModules.Club)]
 public class ChargesController : ControllerBase
 {
     private readonly IClubLedger _ledger;
@@ -109,6 +110,7 @@ public class ChargesController : ControllerBase
 [WorkspaceRequired]
 [Produces("application/json")]
 [Requires(MemberPermissions.ManageMoney, WritesOnly = true)]
+[InModule(WorkspaceModules.Club)]
 public class PaymentsController : ControllerBase
 {
     private readonly IClubLedger _ledger;
@@ -171,6 +173,7 @@ public class PaymentsController : ControllerBase
 [Authorize]
 [WorkspaceRequired]
 [Produces("application/json")]
+[InModule(WorkspaceModules.Club)]
 public class MemberAccountController : ControllerBase
 {
     private readonly IClubLedger _ledger;
@@ -222,6 +225,7 @@ public sealed class StatementPeriodRequest
 [Authorize]
 [WorkspaceRequired]
 [Produces("application/json")]
+[InModule(WorkspaceModules.Club)]
 public class GiftCardsController : ControllerBase
 {
     private readonly IClubLedger _ledger;
@@ -277,6 +281,7 @@ public class GiftCardsController : ControllerBase
 [WorkspaceRequired]
 [Produces("application/json")]
 [Requires(MemberPermissions.FrontDesk, WritesOnly = true)]
+[InModule(WorkspaceModules.Club)]
 public class TabsController : ControllerBase
 {
     private readonly IClubLedger _ledger;
@@ -331,6 +336,7 @@ public class TabsController : ControllerBase
 [WorkspaceRequired]
 [Produces("application/json")]
 [Requires(MemberPermissions.ManageMoney, WritesOnly = true)]
+[InModule(WorkspaceModules.Club)]
 public class SubscriptionsController : ControllerBase
 {
     private readonly IClubLedger _ledger;
@@ -374,6 +380,7 @@ public class SubscriptionsController : ControllerBase
 [WorkspaceRequired]
 [Produces("application/json")]
 [Requires(MemberPermissions.ManageMoney, WritesOnly = true)]
+[InModule(WorkspaceModules.Club)]
 public class DonationsController : ControllerBase
 {
     private readonly IClubLedger _ledger;

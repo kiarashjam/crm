@@ -6,6 +6,8 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import type { CalendarEntry } from '@/app/api/calendar';
+import { withQueries } from '@/test/queryWrapper';
+import { announceDataChanged } from '@/app/api/dataChanged';
 
 const api = { events: vi.fn(), reservations: vi.fn(), calendar: vi.fn() };
 vi.mock('@/app/api/events', async () => {
@@ -47,7 +49,8 @@ const teamEntries = (): CalendarEntry[] => [
   { kind: 'task', id: 't2', title: 'Luca\'s call', startUtc: local(12, 11), allDay: false, link: '/tasks/t2', status: 'todo', who: 'Luca' },
 ];
 
-const show = () => render(<MemoryRouter><Calendar /></MemoryRouter>);
+// Under the app's query cache, as in the app: the page reads through it.
+const show = () => render(withQueries(<MemoryRouter><Calendar /></MemoryRouter>));
 const day = (name: RegExp) => screen.getByRole('button', { name });
 const detail = () => screen.getByRole('heading', { name: /^Meetings \(/ }).closest('section')!.parentElement!;
 
@@ -75,7 +78,7 @@ describe('a rep’s tasks and meetings on the calendar', () => {
 
     expect(await screen.findByText('Tour of the club')).toBeInTheDocument();
     // Sunday 1 November to Saturday 12 December: the grid, to the day after its last.
-    expect(api.calendar).toHaveBeenCalledWith(new Date(2026, 10, 1), new Date(2026, 11, 13), 'mine');
+    expect(api.calendar).toHaveBeenCalledWith(new Date(2026, 10, 1), new Date(2026, 11, 13), 'mine', expect.anything());
     const today = within(detail());
     expect(today.getByRole('heading', { name: 'Meetings (1)' })).toBeInTheDocument();
     expect(today.getByRole('link', { name: /Tour of the club/ })).toHaveAttribute('href', '/leads/l1');
@@ -101,13 +104,13 @@ describe('a rep’s tasks and meetings on the calendar', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Team' }));
 
     expect(await within(detail()).findByText('Luca\'s call')).toBeInTheDocument();
-    expect(api.calendar).toHaveBeenLastCalledWith(new Date(2026, 10, 1), new Date(2026, 11, 13), 'team');
+    expect(api.calendar).toHaveBeenLastCalledWith(new Date(2026, 10, 1), new Date(2026, 11, 13), 'team', expect.anything());
     unmount();
 
     api.calendar.mockClear();
     show();
     await screen.findByText('Tour of the club');
-    expect(api.calendar).toHaveBeenCalledWith(expect.any(Date), expect.any(Date), 'team');
+    expect(api.calendar).toHaveBeenCalledWith(expect.any(Date), expect.any(Date), 'team', expect.anything());
   });
 
   it('reads the next month’s grid on the way forward', async () => {
@@ -117,7 +120,7 @@ describe('a rep’s tasks and meetings on the calendar', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Next month' }));
 
     // December 2026: Sunday 29 November to Saturday 9 January.
-    await waitFor(() => expect(api.calendar).toHaveBeenLastCalledWith(new Date(2026, 10, 29), new Date(2027, 0, 10), 'mine'));
+    await waitFor(() => expect(api.calendar).toHaveBeenLastCalledWith(new Date(2026, 10, 29), new Date(2027, 0, 10), 'mine', expect.anything()));
   });
 
   it('moves the day on show into the month gone to, instead of leaving it off the grid read', async () => {
@@ -168,7 +171,7 @@ describe('a rep’s tasks and meetings on the calendar', () => {
     await screen.findByText('Tour of the club');
 
     expect(screen.queryByRole('group', { name: 'Whose work' })).not.toBeInTheDocument();
-    expect(api.calendar).toHaveBeenCalledWith(expect.any(Date), expect.any(Date), 'mine');
+    expect(api.calendar).toHaveBeenCalledWith(expect.any(Date), expect.any(Date), 'mine', expect.anything());
   });
 });
 
@@ -233,5 +236,22 @@ describe('when part of the calendar cannot be loaded', () => {
 
     expect(await within(detail()).findByText('Court 1')).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+});
+
+describe('the calendar and the rest of the app', () => {
+  it('shows a booking saved on another page without a reload: it reads through the shared cache', async () => {
+    show();
+    expect(await screen.findByText('Tour of the club')).toBeInTheDocument();
+    expect(within(detail()).queryByText('Court 1')).toBeNull();
+
+    api.reservations.mockResolvedValue([{
+      id: 'r1', resourceId: 'court-1', resourceName: 'Court 1', memberName: 'Ada Muster', partySize: 2,
+      startAtUtc: local(9, 18), endAtUtc: local(9, 19), status: 'Confirmed',
+    }]);
+    // What saving a booking announces (api/dataChanged): the bookings changed.
+    act(() => announceDataChanged({ resources: ['reservations'] }));
+
+    expect(await within(detail()).findByText('Court 1', undefined, { timeout: 3000 })).toBeInTheDocument();
   });
 });

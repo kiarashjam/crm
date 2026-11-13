@@ -58,6 +58,7 @@ import { WorkspaceCard } from './organizations/WorkspaceCard';
 import LaunchSequence from './organizations/LaunchSequence';
 import CreateWorkspaceDialog from './organizations/CreateWorkspaceDialog';
 import { BrandName } from '@/app/components/BrandName';
+import { currentDateLocale } from '@/app/i18n/current';
 
 /** The page's colour, for the hero, its main action and the focus rings. */
 const TONE = 'indigo' as const;
@@ -149,7 +150,9 @@ export default function Organizations() {
   useEffect(() => {
     if (servesDemoData() || !hasFetched) return;
     let alive = true;
-    const ids = organizations.map((o) => o.id);
+    // A workspace that wants single sign-on from this session refuses its member list
+    // too: its card says so instead of showing a count that failed.
+    const ids = organizations.filter((o) => !o.ssoSignInNeeded).map((o) => o.id);
     const owned = organizations.filter((o) => o.isOwner).map((o) => o.id);
 
     void (async () => {
@@ -506,7 +509,7 @@ export default function Organizations() {
                       <p className="truncate text-sm font-medium text-slate-900">{invite.organizationName}</p>
                       <p className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-slate-500">
                         <Clock className="h-3 w-3" aria-hidden />
-                        Expires {new Date(invite.expiresAtUtc).toLocaleDateString()}
+                        Expires {new Date(invite.expiresAtUtc).toLocaleDateString(currentDateLocale())}
                       </p>
                     </div>
                     {/* Accepting takes the link from the invitation email: it is what

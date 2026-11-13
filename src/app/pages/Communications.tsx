@@ -64,6 +64,7 @@ import { WriteOnly } from '@/app/components/WriteOnly';
 import { PERMISSION } from '@/app/api/organizations';
 import { useClubMembers, useCommunications } from '@/app/hooks/queries/club';
 import EmailMemberDialog from '@/app/pages/members/EmailMemberDialog';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const CHANNEL_ICON: Record<CommChannel, React.ElementType> = {
   Email: Mail,
@@ -86,6 +87,7 @@ const COMM_STATUS_BADGE: Record<CommStatus, string> = {
   suppressed: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
   skipped: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
   failed: 'bg-rose-50 text-rose-700 ring-1 ring-rose-200',
+  cancelled: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
   logged: 'bg-slate-100 text-slate-500 ring-1 ring-slate-200',
 };
 
@@ -94,7 +96,7 @@ type StatusFilter = 'All' | 'delivered' | 'notSent' | 'logged';
 function formatDateTime(iso?: string | null): string {
   if (!iso) return '';
   try {
-    return new Date(iso).toLocaleString(undefined, {
+    return new Date(iso).toLocaleString(currentDateLocale(), {
       month: 'short',
       day: 'numeric',
       hour: 'numeric',
@@ -315,6 +317,7 @@ export default function Communications() {
                   }
                   actionLabel={comms.length === 0 ? 'Email a member' : undefined}
                   onAction={comms.length === 0 ? () => setEmailing(true) : undefined}
+                  actionPermission={PERMISSION.ClubMembers}
                   variant="orange"
                 />
               ) : (
