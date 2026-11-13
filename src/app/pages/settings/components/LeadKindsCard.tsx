@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
 import { orgCan, PERMISSION, updateOrganizationSettings } from '@/app/api/organizations';
 import { servesDemoData } from '@/app/api/apiClient';
+import { useModules } from '@/app/hooks/useModules';
 import { Button } from '@/app/components/ui/button';
 import { cn } from '@/app/components/ui/utils';
 import { leadKindsMode, type LeadKindsMode } from '@/app/lib/leadKinds';
@@ -35,9 +36,11 @@ export function LeadKindsCard() {
   const [saving, setSaving] = useState(false);
   const orgId = currentOrg?.id;
   useEffect(() => setValue(saved), [orgId, saved]);
+  const salesOn = useModules().sales;
 
-  // Demo workspaces have no server to keep it; their leads are people.
-  if (!currentOrg || servesDemoData()) return null;
+  // Demo workspaces have no server to keep it; their leads are people. Leads are the Sales
+  // module's, so a workspace that has turned Sales off has none to ask about.
+  if (!currentOrg || servesDemoData() || !salesOn) return null;
   const canEdit = orgCan(currentOrg, PERMISSION.ManageSettings);
 
   const save = async () => {
