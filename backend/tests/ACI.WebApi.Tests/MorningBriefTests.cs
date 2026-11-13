@@ -200,6 +200,40 @@ public class MorningBriefTests
     }
 
     [Fact]
+    public async Task AMembershipMarkedNotRenewingOnTheRenewalsBoard_IsNoRenewalComingUpInTheBrief()
+    {
+        // The brief and the renewals board were built side by side, each reading memberships
+        // that end soon. A membership staff marked "not renewing" on the board was still in the
+        // next morning's brief as renewing on its date.
+        using var factory = new AssistantFactory();
+        var (club, _, _, finance) = await ADayAtTheClubAsync(factory);
+        var ada = await factory.Services.Read(db => db.ClubMembers.Single(m => m.OrganizationId == club.Org && m.FirstName == "Ada").Id);
+        Lines(await BuildAsync(factory, club.Org, finance), "renewals").Should().ContainSingle().Which.Should().StartWith("Ada Muster (Gold) renews on");
+
+        async Task<JsonElement> SetStageAsync(object body)
+        {
+            var res = await club.Owner.PostAsync("/api/renewals/stage", Body(body));
+            var text = await res.Content.ReadAsStringAsync();
+            res.StatusCode.Should().Be(HttpStatusCode.OK, text);
+            return JsonDocument.Parse(text).RootElement.Clone();
+        }
+        var board = JsonDocument.Parse(await club.Owner.GetStringAsync("/api/renewals")).RootElement;
+        var card = board.GetProperty("columns").EnumerateArray().SelectMany(c => c.GetProperty("cards").EnumerateArray())
+            .Single(c => c.GetProperty("memberId").GetGuid() == ada);
+        var endsAt = card.GetProperty("endsAtUtc").GetString();
+        var marked = await SetStageAsync(new { memberId = ada, source = "membership", endsAtUtc = endsAt, stage = "lapsed" });
+        marked.GetProperty("stage").GetString().Should().Be(RenewalStages.Lapsed);
+
+        var afterwards = await BuildAsync(factory, club.Org, finance);
+        Keys(afterwards).Should().Equal(["owing"], "the club knows she is not renewing");
+        (await BuildAsync(factory, club.Org, club.OwnerId)).Headline.Should().NotContain("renewal");
+
+        // Given back to the board's own judgement, her renewal is coming up again.
+        await SetStageAsync(new { memberId = ada, source = "membership", endsAtUtc = endsAt, stage = "auto", version = marked.GetProperty("version").GetGuid() });
+        Lines(await BuildAsync(factory, club.Org, finance), "renewals").Should().ContainSingle().Which.Should().StartWith("Ada Muster (Gold) renews on");
+    }
+
+    [Fact]
     public async Task AModuleThatIsOffLeavesItsPartsOut()
     {
         using var factory = new AssistantFactory();
