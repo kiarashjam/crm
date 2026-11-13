@@ -29,6 +29,12 @@ public interface IContractRepository
     Task<Guid?> LeadOfDealAsync(Guid dealId, Guid organizationId, CancellationToken ct = default);
 
     /// <summary>
+    /// The deal the lead was converted into, if it was: whoever can see the contract learns which
+    /// deal it is for, as the workspace's fact, not through what they may see of the lead.
+    /// </summary>
+    Task<Guid?> DealOfLeadAsync(Guid leadId, Guid organizationId, CancellationToken ct = default);
+
+    /// <summary>
     /// Looked up by token hash alone — the public signing path.
     /// </summary>
     /// <remarks>

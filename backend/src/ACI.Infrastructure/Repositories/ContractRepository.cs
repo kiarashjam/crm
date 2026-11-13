@@ -41,6 +41,11 @@ public class ContractRepository : IContractRepository
             .Select(l => (Guid?)l.Id)
             .FirstOrDefaultAsync(ct);
 
+    public async Task<Guid?> DealOfLeadAsync(Guid leadId, Guid organizationId, CancellationToken ct = default) =>
+        await _db.Leads.Where(l => l.Id == leadId && l.OrganizationId == organizationId)
+            .Select(l => l.ConvertedToDealId)
+            .FirstOrDefaultAsync(ct);
+
     public async Task<Contract?> GetBySigningTokenHashAsync(string tokenHash, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(tokenHash)) return null;

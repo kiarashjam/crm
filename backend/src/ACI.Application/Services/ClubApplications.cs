@@ -26,9 +26,9 @@ namespace ACI.Application.Services;
 /// </para>
 /// <para>
 /// <b>What else admits someone</b>. A countersigned contract for the application's lead or deal
-/// approves it (ContractService calls <see cref="AdmitForContractAsync"/>); a paid deposit will,
-/// through <see cref="AdmitForDepositAsync"/>, once the contract flow collects deposits (Phase 3).
-/// Both go through the same approval, once.
+/// approves it (ContractService calls <see cref="AdmitForContractAsync"/>); the deposit collected
+/// on the contract's signing page finishes the money of an approval that left it pending,
+/// through <see cref="AdmitForDepositAsync"/>. Both go through the same approval, once.
 /// </para>
 /// </remarks>
 public interface IClubApplications
@@ -69,18 +69,27 @@ public interface IClubApplications
 
     /// <summary>
     /// The hook a countersigned contract calls: approves the open application of the contract's
-    /// lead or deal (or the one it names), once, as the person who countersigned, held to the
-    /// approve button's rules. Someone without club.members (a sales rep can countersign)
-    /// admits nobody, and the application stays open for a reviewer; someone without
-    /// money.manage admits the member with the dues and fee left pending. A contract with no
-    /// application behind it admits nobody. Answers what it approved.
+    /// lead or deal, or of their contact (or the one it names), once, as the person who
+    /// countersigned, held to the approve button's rules, at the tier the contract names. A
+    /// membership contract (one naming a tier) with no application behind it starts one for the
+    /// person who signed it. The open applications are linked to the contract and its tier
+    /// before anything else, so someone without club.members (a sales rep can countersign)
+    /// admits nobody and leaves the application, at the signed tier, for a reviewer; someone
+    /// without money.manage admits the member with the dues and fee left pending. A contract
+    /// with no tier and no application behind it admits nobody. Answers what it approved.
     /// </summary>
+    /// <remarks>
+    /// The member admitted is the one the sales side already made when it made one (a deal's
+    /// welcome handoff), found by the application's lead, contact or deal rather than its
+    /// address alone; every approval finds that member the same way.
+    /// </remarks>
     Task<IReadOnlyList<ApprovalResultDto>> AdmitForContractAsync(Guid organizationId, Guid contractId, Guid? leadId, Guid? dealId, Guid userId, CancellationToken ct = default);
 
     /// <summary>
     /// The hook a paid deposit calls: approves the application, once, as the person who recorded
-    /// the deposit, dues and fee included. Nothing calls it yet: deposits for applications do not
-    /// exist until the contract flow collects one at signing (Phase 3).
+    /// the deposit, dues and fee included. A contract's deposit (IContractDeposits) calls it to
+    /// finish the dues and fee of an application approved with the money left pending; a paid
+    /// deposit never admits anyone the club has not approved.
     /// </summary>
     Task<Result<ApprovalResultDto>> AdmitForDepositAsync(Guid organizationId, Guid applicationId, Guid userId, Guid? depositPaymentId, CancellationToken ct = default);
 

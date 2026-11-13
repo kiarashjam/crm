@@ -575,6 +575,10 @@ public class ContractService : IContractService
         contract.CounterSignedByUserId = userId;
         contract.CounterSignatureIp = ip;
         contract.UpdatedAtUtc = now;
+        // A contract drafted on a lead is for the deal the lead became since, if it did: named
+        // here, with the signature, so the deal's page and the member's find it by its deal.
+        if (contract.DealId is null && contract.LeadId is Guid signedLead)
+            contract.DealId = await _contracts.DealOfLeadAsync(signedLead, organizationId, ct);
         // Terminal from here, so nothing — not even void — can kill the link later.
         ExpireLinkSoon(contract);
         if (!await _contracts.UpdateAsync(contract, ct))
@@ -584,6 +588,7 @@ public class ContractService : IContractService
             $"Countersigned by {contract.CounterSignatureName}", userId, contract.CounterSignatureName, ip, null, ct);
 
         await ApplyPipelineEffectAsync(contract, userId, organizationId, userId, ct);
+        await WinDealAsync(contract, userId, organizationId, ct);
         await AdmitMemberAsync(contract, userId, ct);
         // The deposit the signer paid goes on the account of the member just admitted (once:
         // the ledger holds it under the provider's id). One not paid yet goes on it when it is.
@@ -592,6 +597,57 @@ public class ContractService : IContractService
         await AnnounceSignatureAsync(contract, AutomationCatalog.ContractCountersigned, "countersigned", userId, ct);
 
         return Result.Success(await ToDtoAsync(contract, ct));
+    }
+
+    /// <summary>
+    /// An executed contract is a won deal: the contract's deal is marked won through the deal
+    /// service, as the deal page's Won button does, so it moves to its pipeline's won stage, the
+    /// move is written to its stage history, and the workspace's deal.won rules and webhooks fire.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Done as the person who countersigned. A private deal they may not open is marked won as
+    /// the person who drafted the contract on it, who could: the signature is the workspace's
+    /// fact whoever adds it. A deal already won is left as it is, its close date included.
+    /// </para>
+    /// <para>
+    /// The contract is executed whatever happens here; a deal that cannot be marked won (deleted
+    /// since, say) is written on the contract's trail instead of failing the signature.
+    /// </para>
+    /// </remarks>
+    private async Task WinDealAsync(Contract contract, Guid userId, Guid organizationId, CancellationToken ct)
+    {
+        if (_dealService is null || _deals is null || contract.DealId is not Guid dealId) return;
+        try
+        {
+            foreach (var actor in new[] { userId, contract.CreatedByUserId }.Distinct())
+            {
+                var deal = await _deals.GetByIdAsync(dealId, actor, organizationId, ct);
+                if (deal is null) continue;
+                if (deal.IsWon == true) return;
+                for (var attempt = 1; attempt <= 3; attempt++)
+                {
+                    var won = await _dealService.UpdateAsync(dealId, actor, organizationId, new UpdateDealRequest { IsWon = true }, ct);
+                    if (won.IsSuccess)
+                    {
+                        await LogEventAsync(contract.Id, "deal_won", $"Deal \"{won.Value.Name}\" marked won", actor, null, null, null, ct);
+                        return;
+                    }
+                    // Saved by someone else at this moment: read again and mark it won on top.
+                    if (won.Error.Code != DomainErrors.Deal.Changed.Code)
+                    {
+                        await LogEventAsync(contract.Id, "deal_not_won", $"The deal could not be marked won: {won.Error.Description}", actor, null, null, null, ct);
+                        return;
+                    }
+                }
+                return;
+            }
+            _logger.LogWarning("Contract {ContractId} was countersigned, but its deal {DealId} is not there to mark won", contract.Id, dealId);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "Contract {ContractId} was countersigned, but its deal {DealId} could not be marked won", contract.Id, dealId);
+        }
     }
 
     /// <summary>

@@ -122,7 +122,7 @@ public static class AutomationCatalog
     private static readonly AutomationChoice[] ApplicationVia =
     [
         new(ApplicationSources.Staff, "Added by staff"), new(ApplicationSources.PublicForm, "The public form"),
-        new(ApplicationSources.Lead, "From a lead or contact"),
+        new(ApplicationSources.Lead, "From a lead or contact"), new(ApplicationSources.Contract, "A countersigned membership contract"),
     ];
     private static readonly AutomationChoice[] ApprovedVia =
     [
