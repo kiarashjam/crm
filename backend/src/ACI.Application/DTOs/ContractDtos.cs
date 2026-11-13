@@ -71,7 +71,8 @@ public record ContractDto(
     IReadOnlyList<ContractEventDto> Events,
     string? MembershipTier = null,
     decimal? DepositAmount = null,
-    string? DepositCurrency = null
+    string? DepositCurrency = null,
+    ACI.Application.Services.ContractDepositDto? Deposit = null
 );
 
 /// <summary>
@@ -105,7 +106,11 @@ public record PublicContractDto(
     /// <summary>True while this link can still be used to sign.</summary>
     bool CanSign,
     /// <summary>Why not, when it cannot — expired, already signed, voided.</summary>
-    string? Blocked
+    string? Blocked,
+    /// <summary>The deposit the contract asks for on signing, and whether and how it can be paid; null when it asks for none.</summary>
+    ACI.Application.Services.PublicDepositDto? Deposit = null,
+    /// <summary>The club tier the contract admits the signer at, for the page to say so.</summary>
+    string? MembershipTier = null
 );
 
 public class CreateContractDraftRequest
@@ -124,6 +129,12 @@ public class CreateContractDraftRequest
     /// contract (see Contract.MembershipTier). One of the club's tiers on sale.
     /// </summary>
     public string? MembershipTier { get; set; }
+
+    /// <summary>
+    /// The deposit the counterparty pays on signing, in the club's currency. Needs a membership
+    /// tier, and someone who may take payments (money.manage).
+    /// </summary>
+    public decimal? DepositAmount { get; set; }
     /// <summary>Overrides the organisation's template for this one draft.</summary>
     public string? TemplateOverride { get; set; }
     /// <summary>
@@ -146,6 +157,9 @@ public class UpdateContractRequest : ACI.Application.Common.IMergePatchRequest
 
     /// <summary>The club tier the contract admits its counterparty at; null takes it off.</summary>
     public string? MembershipTier { get; set; }
+
+    /// <summary>The deposit asked for on signing (money.manage); null takes it off.</summary>
+    public decimal? DepositAmount { get; set; }
 
     /// <inheritdoc />
     [System.Text.Json.Serialization.JsonIgnore]

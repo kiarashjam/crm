@@ -61,6 +61,7 @@ public partial class AppDbContext : DbContext
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<Contract> Contracts => Set<Contract>();
     public DbSet<ContractEvent> ContractEvents => Set<ContractEvent>();
+    public DbSet<ContractDeposit> ContractDeposits => Set<ContractDeposit>();
     public DbSet<Template> Templates => Set<Template>();
     public DbSet<CopyHistoryItem> CopyHistoryItems => Set<CopyHistoryItem>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();

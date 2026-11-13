@@ -38,6 +38,9 @@ internal static class MemberPayments
         }
         foreach (var row in await db.ClubBankTransactions.Where(t => t.MemberId == dropId && t.OrganizationId == organizationId).ToListAsync(ct))
             (row.MemberId, row.MemberName) = (keepId, keptName);
+        // A contract's deposit put on the duplicate's account is the kept member's, as its payment is.
+        foreach (var row in await db.ContractDeposits.Where(d => d.MemberId == dropId && d.OrganizationId == organizationId).ToListAsync(ct))
+            row.MemberId = keepId;
 
         var kept = await db.ClubPaymentProfiles.Where(p => p.MemberId == keepId && p.OrganizationId == organizationId).ToListAsync(ct);
         foreach (var dropped in await db.ClubPaymentProfiles.Where(p => p.MemberId == dropId && p.OrganizationId == organizationId).ToListAsync(ct))

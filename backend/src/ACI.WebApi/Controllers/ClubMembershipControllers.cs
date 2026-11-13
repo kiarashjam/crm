@@ -27,11 +27,13 @@ public class ApplicationsController : ControllerBase
 {
     private readonly IClubApplications _applications;
     private readonly ICurrentUserService _user;
+    private readonly IContractDeposits? _deposits;
 
-    public ApplicationsController(IClubApplications applications, ICurrentUserService user)
+    public ApplicationsController(IClubApplications applications, ICurrentUserService user, IContractDeposits? deposits = null)
     {
         _applications = applications;
         _user = user;
+        _deposits = deposits;
     }
 
     private Guid Org => _user.CurrentOrganizationId!.Value;
@@ -89,7 +91,11 @@ public class ApplicationsController : ControllerBase
         if (versionError != null) return versionError.ToProblemResult();
         request.Version = version;
         var result = await _applications.ApproveAsync(Org, id, userId, request, ct);
-        return result.IsSuccess ? Ok(result.Value) : result.Error.ToProblemResult();
+        if (!result.IsSuccess) return result.Error.ToProblemResult();
+        // A deposit the applicant paid on their contract's signing page waits for the club's yes:
+        // admitted now, it goes on their account, paying their first charges.
+        if (_deposits != null) await _deposits.SettleForApplicationAsync(Org, id, userId, ct);
+        return Ok(result.Value);
     }
 
     [HttpDelete("{id:guid}")]

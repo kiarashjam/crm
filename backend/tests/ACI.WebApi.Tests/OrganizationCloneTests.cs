@@ -273,6 +273,20 @@ public class OrganizationCloneTests
                 Id = Guid.NewGuid(), OrganizationId = org.Id, ImportId = bankImport.Id, BankReference = $"CH5800791123000889012:{name}-1", Amount = 10,
                 BookedAtUtc = now, Status = BankTransactionStatuses.Matched, MemberId = member.Id, LedgerPaymentId = payment.Id, CreatedAtUtc = now,
             });
+        // The deposit the contract asks for, with the QR reference printed for it, still to be
+        // paid: the copy points both at its own contract and keeps the payment with the original.
+        var depositReference = new ClubPaymentReference
+        {
+            Id = Guid.NewGuid(), OrganizationId = org.Id, Number = 2, ScorReference = ACI.Application.Common.Payments.PaymentReferences.CreditorReference(2),
+            ContractId = contract.Id, Purpose = "deposit", AmountDue = 500, CreatedAtUtc = now,
+        };
+        db.AddRange(depositReference,
+            new ContractDeposit
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, ContractId = contract.Id, Amount = 500, Currency = "CHF", Status = ContractDepositStatuses.Awaiting,
+                CheckoutSessionId = $"cs_{name}", CheckoutUrl = $"https://checkout.stripe.com/c/pay/cs_{name}", CheckoutExpiresAtUtc = now.AddHours(20),
+                CheckoutAttempts = 1, PaymentReferenceId = depositReference.Id, CreatedAtUtc = now, Version = Guid.NewGuid(),
+            });
         db.AddRange(
             new LeadStatusEvent { Id = Guid.NewGuid(), LeadId = lead.Id, OrganizationId = org.Id, ToStatus = "Qualified", ChangedByUserId = rep, ChangedAtUtc = now },
             new LeadScoringRule { Id = Guid.NewGuid(), OrganizationId = org.Id, Field = "source", MatchValue = "Website", Points = 10, IsActive = true },
@@ -447,7 +461,15 @@ public class OrganizationCloneTests
         (await db.ClubOnlinePayments.IgnoreQueryFilters().SingleAsync(p => p.OrganizationId == report.CopyId)).Status.Should().Be(OnlinePaymentStatuses.Canceled);
         (await db.ClubOnlinePayments.IgnoreQueryFilters().SingleAsync(p => p.OrganizationId == original.Org)).Status.Should().Be(OnlinePaymentStatuses.Processing);
         report.Adjustments.Keys.Should().Contain("Payment settings keep the Stripe key and webhook with the original")
-            .And.Contain("Saved cards are not charged for dues from the copy");
+            .And.Contain("Saved cards are not charged for dues from the copy")
+            .And.Contain("Deposits not paid yet are paid to the original only");
+
+        // The signer of a contract out for signature pays its deposit to the original.
+        var deposit = await db.ContractDeposits.IgnoreQueryFilters().SingleAsync(d => d.OrganizationId == report.CopyId);
+        (deposit.Status, deposit.CheckoutUrl, deposit.CheckoutSessionId).Should().Be((ContractDepositStatuses.Cancelled, (string?)null, (string?)null));
+        (await db.Contracts.IgnoreQueryFilters().SingleAsync(c => c.Id == deposit.ContractId)).OrganizationId.Should().Be(report.CopyId);
+        (await db.ClubPaymentReferences.IgnoreQueryFilters().SingleAsync(r => r.Id == deposit.PaymentReferenceId)).ContractId.Should().Be(deposit.ContractId);
+        (await db.ContractDeposits.IgnoreQueryFilters().SingleAsync(d => d.OrganizationId == original.Org)).Status.Should().Be(ContractDepositStatuses.Awaiting);
     }
 
     [Fact]

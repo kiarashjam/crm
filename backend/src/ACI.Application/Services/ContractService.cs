@@ -56,8 +56,12 @@ public class ContractService : IContractService
         IDealRepository? deals = null,
         IDealLineItemRepository? lineItems = null,
         IClubCatalog? catalog = null,
-        IWorkspaceModules? modules = null)
+        IWorkspaceModules? modules = null,
+        IContractDeposits? deposits = null,
+        IDealService? dealService = null)
     {
+        _deposits = deposits;
+        _dealService = dealService;
         _deals = deals;
         _lineItems = lineItems;
         _catalog = catalog;
@@ -82,6 +86,8 @@ public class ContractService : IContractService
     private readonly IDealLineItemRepository? _lineItems;
     private readonly IClubCatalog? _catalog;
     private readonly IWorkspaceModules? _modules;
+    private readonly IContractDeposits? _deposits;
+    private readonly IDealService? _dealService;
 
     /// <summary>
     /// The workspace's rules for a signature, as the contract's lead or deal. A contract is
@@ -132,6 +138,14 @@ public class ContractService : IContractService
 
         var tier = await TierAsync(organizationId, request.MembershipTier, ct);
         if (tier.IsFailure) return Result.Failure<ContractDto>(tier.Error);
+        var culture = ContractDealFields.CultureOf(org?.Locale);
+        DepositAsk? deposit = null;
+        if (request.DepositAmount is { } asked)
+        {
+            var checkedAsk = await DepositAskAsync(organizationId, userId, tier.Value, asked, ct);
+            if (checkedAsk.IsFailure) return Result.Failure<ContractDto>(checkedAsk.Error);
+            deposit = checkedAsk.Value;
+        }
 
         var lines = deal != null && _lineItems != null
             ? (await _lineItems.ListAsync(deal.Id, ct)).Select(l => new ContractFeeLine(l.Name, l.Quantity, l.UnitPrice, l.VatRate)).ToList()
@@ -141,7 +155,9 @@ public class ContractService : IContractService
             : ContractTemplate.DefaultTemplate;
 
         var person = Counterparty(lead, deal);
-        var values = BuildMergeValues(orgName, person, deal, lines, tier.Value, ContractDealFields.CultureOf(org?.Locale), request.Values);
+        var values = BuildMergeValues(orgName, person, deal, lines, tier.Value, culture, request.Values);
+        if (deposit != null && !(request.Values?.ContainsKey("contract.depositClause") ?? false))
+            values["contract.depositClause"] = ContractTemplate.DepositClause(ContractDealFields.Money(deposit.Amount, deposit.Currency, culture));
         var merged = ContractTemplate.Fill(template, values, ContractTemplate.OptionalFields);
 
         var now = DateTime.UtcNow;
@@ -159,6 +175,8 @@ public class ContractService : IContractService
             CounterpartyName = person.Name ?? "",
             CounterpartyEmail = person.Email ?? "",
             MembershipTier = tier.Value,
+            DepositAmount = deposit?.Amount,
+            DepositCurrency = deposit?.Currency,
             CreatedByUserId = userId,
             CreatedAtUtc = now,
             UpdatedAtUtc = now,
@@ -246,6 +264,25 @@ public class ContractService : IContractService
         return Result.Success<string?>(tier.Name);
     }
 
+    /// <summary>
+    /// A deposit a contract may ask for (IContractDeposits.CheckAskAsync): only on a membership
+    /// contract, because the deposit goes on the member's account once they are admitted.
+    /// </summary>
+    private async Task<Result<DepositAsk>> DepositAskAsync(Guid organizationId, Guid userId, string? tier, decimal amount, CancellationToken ct)
+    {
+        if (tier is null) return Result.Failure<DepositAsk>(DomainErrors.ContractDeposit.NeedsTier);
+        if (_deposits is null) return Result.Failure<DepositAsk>(DomainErrors.ContractDeposit.NoWayToPay);
+        return await _deposits.CheckAskAsync(organizationId, userId, amount, ct);
+    }
+
+    /// <summary>The deposit as the contract's text writes it, in the workspace's number format.</summary>
+    private async Task<string?> DepositMoneyAsync(Contract contract, CancellationToken ct)
+    {
+        if (contract.DepositAmount is not { } amount) return null;
+        var org = await _organizations.GetByIdAsync(contract.OrganizationId, ct);
+        return ContractDealFields.Money(amount, contract.DepositCurrency ?? "", ContractDealFields.CultureOf(org?.Locale));
+    }
+
     /* -------------------------------------------------------- step 2: edit */
 
     public async Task<Result<ContractDto>> UpdateDraftAsync(
@@ -267,8 +304,39 @@ public class ContractService : IContractService
             if (tier.IsFailure) return Result.Failure<ContractDto>(tier.Error);
             contract.MembershipTier = tier.Value;
         }
-        if (request.Title is not null) contract.Title = request.Title.Trim();
         if (request.Body is not null) contract.Body = request.Body;
+
+        // The deposit, and the sentence the draft wrote about it: changed together, so the text
+        // keeps saying what the signer will be asked to pay. A text someone rewrote is left as
+        // they wrote it, and sending checks it still says the deposit.
+        var depositChanges = request.DepositAmount is not null || request.Clears(nameof(request.DepositAmount));
+        if (depositChanges || (contract.DepositAmount != null && contract.MembershipTier == null))
+        {
+            var previous = await DepositMoneyAsync(contract, ct);
+            if (request.DepositAmount is { } asked)
+            {
+                var ask = await DepositAskAsync(organizationId, userId, contract.MembershipTier, asked, ct);
+                if (ask.IsFailure) return Result.Failure<ContractDto>(ask.Error);
+                (contract.DepositAmount, contract.DepositCurrency) = (ask.Value.Amount, ask.Value.Currency);
+            }
+            else if (depositChanges)
+            {
+                if (contract.DepositAmount != null && _deposits != null)
+                {
+                    // Taking a deposit off is a money decision as much as asking for one.
+                    var ask = await _deposits.CheckAskAsync(organizationId, userId, contract.DepositAmount.Value, ct);
+                    if (ask.IsFailure && ask.Error.Code.StartsWith("Permission.", StringComparison.Ordinal)) return Result.Failure<ContractDto>(ask.Error);
+                }
+                (contract.DepositAmount, contract.DepositCurrency) = (null, null);
+            }
+            else return Result.Failure<ContractDto>(DomainErrors.ContractDeposit.NeedsTier);
+
+            var oldClause = ContractTemplate.DepositClause(previous);
+            var newClause = ContractTemplate.DepositClause(await DepositMoneyAsync(contract, ct));
+            if (oldClause.Length > 0 && contract.Body.Contains(oldClause, StringComparison.Ordinal))
+                contract.Body = contract.Body.Replace(oldClause, newClause, StringComparison.Ordinal);
+        }
+        if (request.Title is not null) contract.Title = request.Title.Trim();
         if (request.CounterpartyName is not null) contract.CounterpartyName = request.CounterpartyName.Trim();
         if (request.CounterpartyEmail is not null) contract.CounterpartyEmail = request.CounterpartyEmail.Trim();
         contract.UpdatedAtUtc = DateTime.UtcNow;
@@ -305,6 +373,9 @@ public class ContractService : IContractService
         var unresolved = UnresolvedIn(contract.Body);
         if (unresolved.Count > 0)
             return Result.Failure<SendContractResult>(DomainErrors.Contract.HasUnresolvedFields);
+        // A deposit the signed text never mentions would be money asked for outside the agreement.
+        if (await DepositMoneyAsync(contract, ct) is { } depositMoney && !contract.Body.Contains(depositMoney, StringComparison.Ordinal))
+            return Result.Failure<SendContractResult>(DomainErrors.ContractDeposit.NotInText(depositMoney));
 
         var now = DateTime.UtcNow;
 
@@ -337,6 +408,8 @@ public class ContractService : IContractService
         // one thing the state machine's no-double-send rule exists to prevent.
         if (!await _contracts.UpdateAsync(contract, ct))
             return Result.Failure<SendContractResult>(DomainErrors.Contract.ChangedByAnother);
+        // The deposit, frozen with the text: what the signer will be asked to pay.
+        if (_deposits != null) await _deposits.OpenAsync(contract, ct);
 
         var org = await _organizations.GetByIdAsync(organizationId, ct);
         var signingUrl = BuildSigningUrl(rawToken);
@@ -452,6 +525,7 @@ public class ContractService : IContractService
         await LogEventAsync(contract.Id, "declined",
             contract.ClosedReason ?? "Declined by the counterparty",
             null, contract.CounterpartyName, ip, userAgent, ct);
+        if (_deposits != null) await _deposits.CloseAsync(contract, ct);
 
         // Their decision, and the pipeline has a word for it. Nobody in the workspace
         // made the change, so the status history credits nobody.
@@ -511,6 +585,9 @@ public class ContractService : IContractService
 
         await ApplyPipelineEffectAsync(contract, userId, organizationId, userId, ct);
         await AdmitMemberAsync(contract, userId, ct);
+        // The deposit the signer paid goes on the account of the member just admitted (once:
+        // the ledger holds it under the provider's id). One not paid yet goes on it when it is.
+        if (_deposits != null) await _deposits.SettleAsync(organizationId, contract.Id, userId, ct);
         await SendExecutedCopiesAsync(contract, userId, ct);
         await AnnounceSignatureAsync(contract, AutomationCatalog.ContractCountersigned, "countersigned", userId, ct);
 
@@ -854,6 +931,8 @@ public class ContractService : IContractService
             return Result.Failure<ContractDto>(DomainErrors.Contract.ChangedByAnother);
 
         await LogEventAsync(contract.Id, "voided", contract.ClosedReason ?? "Voided", userId, null, null, null, ct);
+        // A deposit not paid yet can no longer be paid; one already paid stays, to be paid back.
+        if (_deposits != null) await _deposits.CloseAsync(contract, ct);
         // Deliberately no pipeline effect: voiding is our decision, not the
         // customer's, and recording it against them would corrupt the drop-off report.
         return Result.Success(await ToDtoAsync(contract, ct));
@@ -1050,7 +1129,8 @@ public class ContractService : IContractService
             events.Select(e => new ContractEventDto(e.Id, e.Type, e.Detail, e.ActorLabel, Utc(e.AtUtc))).ToList(),
             c.MembershipTier,
             c.DepositAmount,
-            c.DepositCurrency);
+            c.DepositCurrency,
+            _deposits == null || c.DepositAmount == null ? null : (await _deposits.ForContractsAsync(c.OrganizationId, [c.Id], ct)).GetValueOrDefault(c.Id));
     }
 
     /// <summary>
@@ -1109,6 +1189,29 @@ public class ContractService : IContractService
             c.Status, c.Title, c.Body, c.CounterpartyName, org?.Name ?? "",
             Utc(c.SentAtUtc), c.ClientSignatureName, Utc(c.ClientSignedAtUtc),
             c.CounterSignatureName, Utc(c.CounterSignedAtUtc),
-            Utc(c.ExecutedCopySentAtUtc), canSign, blocked);
+            Utc(c.ExecutedCopySentAtUtc), canSign, blocked,
+            _deposits == null ? null : await _deposits.PublicAsync(c, ct),
+            c.MembershipTier);
+    }
+
+    /* ------------------------------------------- the deposit, for the signer */
+
+    public async Task<Result<CheckoutStartedDto>> StartDepositCheckoutAsync(string rawToken, CancellationToken ct = default)
+    {
+        var (contract, error) = await ResolveTokenAsync(rawToken, ct);
+        if (contract is null) return Result.Failure<CheckoutStartedDto>(error);
+        using var acting = ActFor(contract);
+        if (_deposits == null) return Result.Failure<CheckoutStartedDto>(DomainErrors.ContractDeposit.NotAsked);
+        // Stripe sends the signer back to the page they paid from.
+        return await _deposits.StartCheckoutAsync(contract, BuildSigningUrl(rawToken.Trim()), ct);
+    }
+
+    public async Task<Result<ContractDocument>> GetDepositQrBillByTokenAsync(string rawToken, string? language, CancellationToken ct = default)
+    {
+        var (contract, error) = await ResolveTokenAsync(rawToken, ct);
+        if (contract is null) return Result.Failure<ContractDocument>(error);
+        using var acting = ActFor(contract);
+        if (_deposits == null) return Result.Failure<ContractDocument>(DomainErrors.ContractDeposit.NotAsked);
+        return await _deposits.QrBillAsync(contract, language, ct);
     }
 }

@@ -125,6 +125,34 @@ internal sealed class ClubPaymentReferenceConfiguration : IEntityTypeConfigurati
         builder.HasIndex(e => new { e.OrganizationId, e.MemberId, e.PeriodStartUtc, e.PeriodEndUtc }).IsUnique()
             .HasFilter("[Purpose] = N'statement'");
         builder.HasIndex(e => new { e.OrganizationId, e.ChargeId }).IsUnique().HasFilter("[ChargeId] IS NOT NULL");
+        // A contract's deposit keeps the reference it was first printed with, too.
+        builder.HasIndex(e => new { e.OrganizationId, e.ContractId }).IsUnique().HasFilter("[ContractId] IS NOT NULL");
+    }
+}
+
+internal sealed class ContractDepositConfiguration : IEntityTypeConfiguration<ContractDeposit>
+{
+    public void Configure(EntityTypeBuilder<ContractDeposit> builder)
+    {
+        builder.ToTable("ContractDeposits");
+        builder.HasKey(e => e.Id);
+        builder.Property(e => e.Amount).HasPrecision(18, 2);
+        builder.Property(e => e.Currency).HasMaxLength(3).IsRequired();
+        builder.Property(e => e.Status).HasMaxLength(20).IsRequired();
+        builder.Property(e => e.Provider).HasMaxLength(20);
+        builder.Property(e => e.ProviderPaymentId).HasMaxLength(200);
+        builder.Property(e => e.MethodType).HasMaxLength(30);
+        builder.Property(e => e.AmountPaid).HasPrecision(18, 2);
+        builder.Property(e => e.AmountRefunded).HasPrecision(18, 2);
+        builder.Property(e => e.CheckoutSessionId).HasMaxLength(200);
+        builder.Property(e => e.CheckoutUrl).HasMaxLength(2000);
+        builder.Property(e => e.FailureMessage).HasMaxLength(500);
+        builder.Property(e => e.Version).IsConcurrencyToken();
+        // One deposit per contract; the database refuses a second, so two sends at once make one.
+        builder.HasIndex(e => new { e.OrganizationId, e.ContractId }).IsUnique();
+        // Stripe's word on a payment, and a refund made in its dashboard, find the deposit by it.
+        builder.HasIndex(e => new { e.OrganizationId, e.ProviderPaymentId }).HasFilter("[ProviderPaymentId] IS NOT NULL");
+        builder.HasIndex(e => new { e.OrganizationId, e.MemberId }).HasFilter("[MemberId] IS NOT NULL");
     }
 }
 

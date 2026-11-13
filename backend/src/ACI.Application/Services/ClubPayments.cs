@@ -254,9 +254,11 @@ public sealed record PaymentStatusDto(
     bool OnlinePayments, string? Mode, IReadOnlyList<string> Methods, bool WebhookConfigured,
     bool QrBills, string? QrReferenceType, string Currency);
 
+/// <param name="MemberId">The member it is for; none for a contract's deposit (<paramref name="ContractId"/>), printed before anyone was a member.</param>
 public sealed record PaymentReferenceDto(
-    Guid Id, string Reference, string Type, Guid MemberId, string? MemberName, string Purpose,
-    DateTime? PeriodStartUtc, DateTime? PeriodEndUtc, Guid? ChargeId, decimal AmountDue, string Currency, DateTime CreatedAtUtc);
+    Guid Id, string Reference, string Type, Guid? MemberId, string? MemberName, string Purpose,
+    DateTime? PeriodStartUtc, DateTime? PeriodEndUtc, Guid? ChargeId, decimal AmountDue, string Currency, DateTime CreatedAtUtc,
+    Guid? ContractId = null);
 
 public sealed record BankImportDto(
     Guid Id, string FileName, string Format, string? MessageId, string? AccountIban, int Transactions, int Matched,

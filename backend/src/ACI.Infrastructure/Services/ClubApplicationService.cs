@@ -701,6 +701,8 @@ public sealed class ClubApplicationService : IClubApplications
                 return money.Error;
             }
             app.MoneyPending = false;
+            // A paid deposit that finished the money is the payment that did it, as it is when it approves.
+            if (approval.DepositPaymentId is { } depositPaid && app.DepositPaymentId == null) app.DepositPaymentId = depositPaid;
             app.ApprovalClaimedUntilUtc = null;
             app.UpdatedAtUtc = DateTime.UtcNow;
             await _db.SaveChangesAsync(ct);

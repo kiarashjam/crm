@@ -98,6 +98,15 @@ public interface IContractService
     Task<Result<bool>> ResendExecutedCopyAsync(
         Guid contractId, Guid userId, Guid organizationId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Starts Stripe's page for the deposit of the contract behind a signing link, once it is
+    /// signed. Authorised by the token alone, like the rest of the signer's surface.
+    /// </summary>
+    Task<Result<Services.CheckoutStartedDto>> StartDepositCheckoutAsync(string rawToken, CancellationToken ct = default);
+
+    /// <summary>The deposit's invoice with its Swiss QR-bill, for the person holding the signing link, once signed.</summary>
+    Task<Result<ContractDocument>> GetDepositQrBillByTokenAsync(string rawToken, string? language, CancellationToken ct = default);
+
     Task<Result<ContractDto>> VoidAsync(
         Guid contractId, Guid userId, Guid organizationId, string? reason, CancellationToken ct = default);
 }

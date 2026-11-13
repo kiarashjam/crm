@@ -559,6 +559,15 @@ public sealed class OrganizationCloner
             case ClubPaymentProfile profile when profile.AutoPayDues:
                 profile.AutoPayDues = false;
                 return "Saved cards are not charged for dues from the copy";
+            case ContractDeposit deposit when deposit.Status is ContractDepositStatuses.Awaiting or ContractDepositStatuses.Processing:
+                // The signing link stays with the original (see Contract above), and so does
+                // Stripe's page and its word on the payment: the copy keeps the deposit as history.
+                deposit.Status = ContractDepositStatuses.Cancelled;
+                deposit.CheckoutSessionId = null;
+                deposit.CheckoutUrl = null;
+                deposit.CheckoutExpiresAtUtc = null;
+                deposit.FailureMessage = "Copied with its organization before it was paid; the original takes the payment.";
+                return "Deposits not paid yet are paid to the original only";
             case ClubOnlinePayment payment when payment.Status is OnlinePaymentStatuses.Open or OnlinePaymentStatuses.Processing:
                 // Stripe tells the original how it ends; the copy keeps the attempt as history.
                 payment.Status = OnlinePaymentStatuses.Canceled;
