@@ -14,6 +14,9 @@ public sealed class DealLineItemService : IDealLineItemService
     private const decimal MaxQuantity = 1_000_000m;
     private const decimal MaxUnitPrice = 1_000_000_000_000m;
 
+    /// <summary>No VAT anywhere is this high; a larger number is a price typed into the wrong box.</summary>
+    private const decimal MaxVatRate = 50m;
+
     private readonly IDealLineItemRepository _repository;
     private readonly IWorkspaceRecords _records;
 
@@ -34,7 +37,7 @@ public sealed class DealLineItemService : IDealLineItemService
     public async Task<Result<DealLineItemDto>> AddAsync(
         Guid userId, Guid? organizationId, Guid dealId, CreateDealLineItemRequest request, CancellationToken ct = default)
     {
-        var error = Check(request.Name, request.Quantity, request.UnitPrice);
+        var error = Check(request.Name, request.Quantity, request.UnitPrice) ?? CheckVat(request.VatRate);
         if (error != null) return Result.Failure<DealLineItemDto>(error);
         if (!await _records.ExistsAsync(RecordTypes.Deal, dealId, userId, organizationId, ct))
             return Result.Failure<DealLineItemDto>(DomainErrors.DealLineItem.DealNotFound);
@@ -47,6 +50,7 @@ public sealed class DealLineItemService : IDealLineItemService
             Name = Clip(request.Name.Trim(), 200),
             Quantity = request.Quantity,
             UnitPrice = request.UnitPrice,
+            VatRate = VatOf(request.VatRate),
             CreatedAtUtc = DateTime.UtcNow,
         };
         await _repository.AddAsync(item, ct);
@@ -59,13 +63,16 @@ public sealed class DealLineItemService : IDealLineItemService
         var item = await _repository.FindAsync(id, userId, organizationId, ct);
         if (item == null) return Result.Failure<DealLineItemDto>(DomainErrors.DealLineItem.NotFound);
 
-        var error = Check(request.Name ?? item.Name, request.Quantity ?? item.Quantity, request.UnitPrice ?? item.UnitPrice);
+        var error = Check(request.Name ?? item.Name, request.Quantity ?? item.Quantity, request.UnitPrice ?? item.UnitPrice)
+            ?? CheckVat(request.VatRate);
         if (error != null) return Result.Failure<DealLineItemDto>(error);
 
         if (request.Name != null) item.Name = Clip(request.Name.Trim(), 200);
         if (request.Quantity is { } quantity) item.Quantity = quantity;
         if (request.UnitPrice is { } price) item.UnitPrice = price;
         if (request.ProductId != null) item.ProductId = CleanProductId(request.ProductId);
+        if (request.VatRate is { } rate) item.VatRate = VatOf(rate);
+        else if (request.Clears(nameof(request.VatRate))) item.VatRate = null;
         await _repository.SaveAsync(item, ct);
         return Result.Success(ToDto(item));
     }
@@ -87,10 +94,19 @@ public sealed class DealLineItemService : IDealLineItemService
         return null;
     }
 
+    /// <summary>
+    /// A VAT rate is a percentage with at most two decimals (8.1, 2.6, 3.8, 0): a contract's fee
+    /// table prints it and works out the VAT inside each line from it.
+    /// </summary>
+    private static Error? CheckVat(decimal? rate) =>
+        rate is { } r && (r < 0 || r > MaxVatRate || decimal.Round(r, 2) != r) ? DomainErrors.DealLineItem.VatRateInvalid : null;
+
+    private static decimal? VatOf(decimal? rate) => rate is { } r ? decimal.Round(r, 2) : null;
+
     private static string? CleanProductId(string? productId) =>
         string.IsNullOrWhiteSpace(productId) ? null : Clip(productId.Trim(), 64);
 
-    private static DealLineItemDto ToDto(DealLineItem i) => new(i.Id, i.DealId, i.ProductId, i.Name, i.Quantity, i.UnitPrice);
+    private static DealLineItemDto ToDto(DealLineItem i) => new(i.Id, i.DealId, i.ProductId, i.Name, i.Quantity, i.UnitPrice, i.VatRate);
 
     private static string Clip(string text, int max) => text.Length <= max ? text : text[..max];
 }

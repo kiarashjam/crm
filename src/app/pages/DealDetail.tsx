@@ -28,6 +28,8 @@ import CustomFieldsCard from '@/app/components/CustomFieldsCard';
 import AttachmentsCard from '@/app/components/AttachmentsCard';
 import StageHistoryCard from '@/app/components/StageHistoryCard';
 import { DealWelcomeCard } from '@/app/components/onboarding';
+import { PersonMembershipCard } from '@/app/components/MembershipLinks';
+import { ContractPanel } from './contracts/ContractPanel';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import { getDealById, getDealStageHistory, updateDeal, deleteDeal, messages } from '@/app/api';
@@ -47,6 +49,7 @@ import { cn } from '@/app/components/ui/utils';
 import { UrgencyBadge, STAGE_COLORS } from './pipeline/DealCard';
 import { daysSince, formatCloseDate, formatDays, getDaysUntilClose } from './pipeline/utils';
 import { WriteOnly } from '@/app/components/WriteOnly';
+import { useMay } from '@/app/hooks/useMay';
 import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary, heroSecondary } from '@/app/components/PageHero';
@@ -61,6 +64,8 @@ import { currentDateLocale } from '@/app/i18n/current';
 
 export default function DealDetail() {
   const money = useMoney();
+  // Whether this member may draft and sign the deal's contract (records.edit), as WriteOnly decides.
+  const mayEdit = useMay()();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [deal, setDeal] = useState<Deal | null>(null);
@@ -102,6 +107,12 @@ export default function DealDetail() {
       .catch(() => toast.error('Failed to load deal'))
       .finally(() => setLoading(false));
   }, [id]);
+
+  // Countersigning the deal's contract wins the deal on the server: read it again to show so.
+  const refreshDeal = () => {
+    if (!id) return;
+    getDealById(id).then((d) => { if (d) setDeal(d); }).catch(() => {});
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -396,6 +407,10 @@ export default function DealDetail() {
                 onValueSynced={(t) => setDeal((prev) => (prev ? { ...prev, amount: t, value: String(t) } : prev))}
               />
 
+              {/* The deal's contract: drafted with its value and line items, sent, signed with
+                  its deposit, and countersigned, which wins the deal and admits the member. */}
+              <ContractPanel dealId={deal.id} leadName={deal.contactName || deal.name} readOnly={!mayEdit} onLeadChanged={refreshDeal} />
+
               <RecordCard title="Linked tasks" icon={<CheckCircle2 className="h-3.5 w-3.5" />} tone="violet" count={dealTasks.length} index={1}>
                 {tasksLoading ? (
                   <div className="py-6 text-center">
@@ -472,6 +487,9 @@ export default function DealDetail() {
               )}
 
               {deal.contactId && <DealWelcomeCard dealId={deal.id} contactName={deal.contactName} dealName={deal.name} index={3} />}
+
+              {/* The member the deal brought in, by its contract or its handoff, and the applications behind it. */}
+              <PersonMembershipCard kind="deal" id={deal.id} personName={deal.contactName || deal.name} contactId={deal.contactId} readOnly={!mayEdit} />
 
               <RecordCard title="Deal details" icon={<Target className="h-3.5 w-3.5" />} tone="violet" index={3}>
                 {!deal.contactName && !deal.companyName && !deal.assigneeName && !deal.pipelineName && !deal.expectedCloseDateUtc && !deal.createdAtUtc && !deal.description && (

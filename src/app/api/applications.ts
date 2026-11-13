@@ -15,6 +15,7 @@ import { apiWithFallback, authFetch, authFetchJson, ensureOk, getApiBaseUrl, typ
 import { createMockStore, mockId } from './mockStore';
 import { createMember, type MemberTier } from './members';
 import type { Household } from './households';
+import type { ContractDeposit, ContractStatus } from './contracts';
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -542,6 +543,20 @@ export interface PersonMembership {
   household?: Household | null;
 }
 
+/** A contract of a member's, as their page lists it. */
+export interface MemberContract {
+  id: string;
+  title: string;
+  status: ContractStatus;
+  membershipTier?: string;
+  sentAtUtc?: string;
+  counterSignedAtUtc?: string;
+  leadId?: string;
+  dealId?: string;
+  /** The deposit it asked for on signing, and where it went. */
+  deposit?: ContractDeposit;
+}
+
 /** What a member's page links to on the sales side. */
 export interface MemberLinks {
   memberId: string;
@@ -551,7 +566,12 @@ export interface MemberLinks {
   contactId?: string;
   contactName?: string;
   contactEmail?: string;
+  /** The deal they joined through; absent when the reader may not open it. */
+  dealId?: string;
+  dealName?: string;
   applications: Application[];
+  /** Their contracts once sent, newest first. */
+  contracts?: MemberContract[];
   household?: Household | null;
 }
 
@@ -566,6 +586,14 @@ export async function getContactMembership(contactId: string, options: RequestOp
   return apiWithFallback(
     () => authFetchJson<PersonMembership>(`/api/contacts/${contactId}/membership`, { signal: options.signal }),
     async () => ({ contactId, members: [], applications: applicationStore.list().filter((a) => a.contactId === contactId), household: null }),
+  );
+}
+
+/** What a deal's page shows of the club: the members it brought in and the applications behind it. */
+export async function getDealMembership(dealId: string, options: RequestOptions = {}): Promise<PersonMembership> {
+  return apiWithFallback(
+    () => authFetchJson<PersonMembership>(`/api/deals/${dealId}/membership`, { signal: options.signal }),
+    async () => ({ members: [], applications: [], household: null }),
   );
 }
 

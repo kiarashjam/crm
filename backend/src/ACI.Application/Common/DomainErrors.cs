@@ -46,6 +46,9 @@ public static partial class DomainErrors
         public static readonly Error TooLarge = new(
             "DealLineItem.TooLarge", "That quantity or price is too large");
 
+        public static readonly Error VatRateInvalid = new(
+            "DealLineItem.VatRateInvalid", "A VAT rate is a percentage between 0 and 50 with at most two decimals, such as 8.1");
+
         // Codes ending ".NotFound" map to 404.
         public static readonly Error DealNotFound = new(
             "DealLineItemDeal.NotFound", "The deal was not found");
@@ -337,6 +340,13 @@ public static partial class DomainErrors
         public static readonly Error LeadNotFound = new(
             "Contract.LeadNotFound", "The lead this contract is for was not found");
 
+        public static readonly Error DealNotFound = new(
+            "ContractDeal.NotFound", "The deal this contract is for was not found");
+
+        /// <summary>A membership contract names a tier of the club, which needs the club turned on.</summary>
+        public static readonly Error ClubOff = new(
+            "Contract.ClubOff", "The club is turned off in this workspace, so a contract cannot admit a member or take a deposit");
+
         public static readonly Error BodyRequired = new(
             "Contract.BodyRequired", "The contract needs a body before it can be sent");
 
@@ -402,6 +412,45 @@ public static partial class DomainErrors
 
         public static readonly Error LinkExpired = new(
             "Contract.LinkExpired", "This signing link has expired. Ask for a new one.");
+    }
+
+    /// <summary>A contract's deposit (see IContractDeposits).</summary>
+    public static class ContractDeposit
+    {
+        public static readonly Error NotAsked = new(
+            "ContractDeposit.NotFound", "This contract asks for no deposit.");
+
+        public static readonly Error NeedsTier = new(
+            "ContractDeposit.NeedsTier",
+            "Only a membership contract asks for a deposit, because it goes on the member's account: choose the tier it admits them at first.");
+
+        public static readonly Error AmountInvalid = new(
+            "ContractDeposit.AmountInvalid", "A deposit is an amount above zero.");
+
+        public static readonly Error NoWayToPay = new(
+            "ContractDeposit.NoWayToPay",
+            "The club cannot be paid yet: set up Stripe, or the club's bank details for QR-bills, under Club settings, Payments, before asking for a deposit.");
+
+        public static readonly Error SignFirst = new(
+            "ContractDeposit.SignFirst", "The deposit is paid once the contract is signed: sign it first.");
+
+        /// <summary>Paid already: a second payment would be the signer paying twice.</summary>
+        public static readonly Error AlreadyPaid = new(
+            "ContractDeposit.Paid.Conflict", "The deposit is paid.");
+
+        public static readonly Error Closed = new(
+            "ContractDeposit.Closed", "The deposit can no longer be paid: the contract was declined or withdrawn.");
+
+        public static readonly Error NoQrBill = new(
+            "ContractDeposit.NoQrBill", "The club takes no bank transfers by QR-bill. Pay online, or ask the club how to pay.");
+
+        /// <summary>
+        /// The text the signer agrees to must say what they are asked to pay: a deposit the text
+        /// never mentions would be money asked for outside the agreement.
+        /// </summary>
+        public static Error NotInText(string money) => new(
+            "ContractDeposit.NotInText",
+            $"The contract text does not say the deposit of {money}. Add it, for example \"A deposit of {money} is payable on signing.\", before sending.");
     }
 
     /// <summary>

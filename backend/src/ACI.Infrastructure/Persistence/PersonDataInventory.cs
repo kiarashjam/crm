@@ -44,6 +44,7 @@ public static class PersonDataInventory
         [typeof(DuplicateDecision)] = "Deleted.",
         [typeof(Contract)] = "Drafts deleted; out for signature voided and anonymised; declined or voided anonymised; signed kept whole as a legal record.",
         [typeof(ContractEvent)] = "With a contract anonymised: its addresses and the person's name removed.",
+        [typeof(ContractDeposit)] = "Kept with the books: an amount, its status and the payment provider's ids, under the contract's id (the contract names the person). One not paid yet is cancelled with the contract.",
         [typeof(DealOnboarding)] = "Anonymised.",
         [typeof(Attachment)] = "Deleted with their lead, contact or deal.",
         [typeof(CustomFieldValueSet)] = "Deleted.",

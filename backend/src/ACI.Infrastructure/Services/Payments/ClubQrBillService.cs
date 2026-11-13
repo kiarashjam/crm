@@ -39,6 +39,9 @@ public sealed class ClubQrBillService : IClubQrBills
     /// </summary>
     public const string MergedStatementPurpose = "statement-merged";
 
+    /// <summary>A contract's deposit, printed before the signer is anyone's member.</summary>
+    public const string DepositPurpose = "deposit";
+
     private readonly AppDbContext _db;
     private readonly ClubPaymentSettingsService _settings;
     private readonly ILedgerReadObserver _reads;
@@ -58,7 +61,7 @@ public sealed class ClubQrBillService : IClubQrBills
         if (amountDue <= 0 || currency is not ("CHF" or "EUR")) return null;
         var config = await _settings.ConfigAsync(organizationId, ct);
         if (config.QrBillProblem != null || config.Creditor == null) return null;
-        var reference = await IssueAsync(organizationId, config, memberId, new Key(StatementPurpose, fromUtc, toUtc, null), amountDue, currency, ct);
+        var reference = await IssueAsync(organizationId, config, memberId, new Key(StatementPurpose, fromUtc, toUtc, null, null), amountDue, currency, ct);
         var zone = RegionalSettings.ZoneOf(config.TimeZone);
         // The message on the slip is in the statement's language; English reads as it always did.
         var message = AppLanguages.Normalise(language) is { } words && words != AppLanguages.English
@@ -74,12 +77,27 @@ public sealed class ClubQrBillService : IClubQrBills
         if (amountDue <= 0 || currency is not ("CHF" or "EUR")) return null;
         var config = await _settings.ConfigAsync(organizationId, ct);
         if (config.QrBillProblem != null || config.Creditor == null) return null;
-        var reference = await IssueAsync(organizationId, config, memberId, new Key(ChargePurpose, null, null, chargeId), amountDue, currency, ct);
+        var reference = await IssueAsync(organizationId, config, memberId, new Key(ChargePurpose, null, null, chargeId, null), amountDue, currency, ct);
         return Bill(config, reference, amountDue, currency, message, memberId);
     }
 
+    /// <summary>
+    /// The QR-bill for a contract's deposit, with a reference that names the deposit (the same
+    /// one every time it is printed), so the bank's payment is the deposit even though nobody is
+    /// a member yet. Null as for a statement, and with the reference row when one was issued.
+    /// </summary>
+    public async Task<(QrBill? Bill, ClubPaymentReference? Reference)> ForDepositAsync(Guid organizationId, Guid contractId, decimal amountDue, string currency,
+        string message, CancellationToken ct = default)
+    {
+        if (amountDue <= 0 || currency is not ("CHF" or "EUR")) return (null, null);
+        var config = await _settings.ConfigAsync(organizationId, ct);
+        if (config.QrBillProblem != null || config.Creditor == null) return (null, null);
+        var reference = await IssueAsync(organizationId, config, null, new Key(DepositPurpose, null, null, null, contractId), amountDue, currency, ct);
+        return (Bill(config, reference, amountDue, currency, message, contractId), reference);
+    }
+
     /// <summary>The bill for an issued reference; none when it would not validate (and why is logged).</summary>
-    private QrBill? Bill(PaymentConfig config, ClubPaymentReference? reference, decimal amountDue, string currency, string message, Guid memberId)
+    private QrBill? Bill(PaymentConfig config, ClubPaymentReference? reference, decimal amountDue, string currency, string message, Guid? memberId)
     {
         if (reference == null || config.Creditor is not { } creditor) return null;
         var qr = config.QrIban != null;
@@ -95,7 +113,7 @@ public sealed class ClubQrBillService : IClubQrBills
         var problems = SwissQrBill.Validate(bill);
         if (problems.Count > 0)
         {
-            _logger.LogWarning("The QR-bill for member {MemberId} was left off: {Problems}", memberId, string.Join(" ", problems));
+            _logger.LogWarning("The QR-bill for {MemberOrContract} was left off: {Problems}", memberId, string.Join(" ", problems));
             return null;
         }
         return bill;
@@ -105,12 +123,12 @@ public sealed class ClubQrBillService : IClubQrBills
     {
         var row = await FindRowAsync(organizationId, reference, ct);
         if (row == null) return DomainErrors.Payments.ReferenceNotFound;
-        var name = await _db.ClubMembers.AsNoTracking().Where(m => m.Id == row.MemberId && m.OrganizationId == organizationId)
+        var name = row.MemberId is not Guid memberId ? null : await _db.ClubMembers.AsNoTracking().Where(m => m.Id == memberId && m.OrganizationId == organizationId)
             .Select(m => (m.FirstName + " " + m.LastName).Trim()).FirstOrDefaultAsync(ct);
         var compact = PaymentReferences.Compact(reference);
         return new PaymentReferenceDto(row.Id, compact == row.QrReference ? row.QrReference! : row.ScorReference,
             compact == row.QrReference ? SwissQrBill.Qrr : SwissQrBill.Scor, row.MemberId, name, row.Purpose,
-            row.PeriodStartUtc, row.PeriodEndUtc, row.ChargeId, row.AmountDue, row.Currency, row.CreatedAtUtc);
+            row.PeriodStartUtc, row.PeriodEndUtc, row.ChargeId, row.AmountDue, row.Currency, row.CreatedAtUtc, row.ContractId);
     }
 
     /// <summary>The issued reference a bank transfer quotes, QR or creditor reference, spaces or not.</summary>
@@ -122,18 +140,18 @@ public sealed class ClubQrBillService : IClubQrBills
             .FirstOrDefaultAsync(r => r.OrganizationId == organizationId && (r.QrReference == compact || r.ScorReference == compact), ct);
     }
 
-    /// <summary>What a reference is for: a member's statement of a period, or one charge.</summary>
-    private sealed record Key(string Purpose, DateTime? FromUtc, DateTime? ToUtc, Guid? ChargeId);
+    /// <summary>What a reference is for: a member's statement of a period, one charge, or a contract's deposit.</summary>
+    private sealed record Key(string Purpose, DateTime? FromUtc, DateTime? ToUtc, Guid? ChargeId, Guid? ContractId);
 
-    /// <summary>The reference for a statement or a charge: the one issued before, or a new number.</summary>
-    private async Task<ClubPaymentReference?> IssueAsync(Guid organizationId, PaymentConfig config, Guid memberId, Key key,
+    /// <summary>The reference for a statement, a charge or a deposit: the one issued before, or a new number.</summary>
+    private async Task<ClubPaymentReference?> IssueAsync(Guid organizationId, PaymentConfig config, Guid? memberId, Key key,
         decimal amountDue, string currency, CancellationToken ct)
     {
         for (var attempt = 0; attempt < 5; attempt++)
         {
             var issued = _db.ClubPaymentReferences.Where(r => r.OrganizationId == organizationId && r.Purpose == key.Purpose);
-            issued = key.ChargeId is { } chargeId
-                ? issued.Where(r => r.ChargeId == chargeId)
+            issued = key.ChargeId is { } chargeId ? issued.Where(r => r.ChargeId == chargeId)
+                : key.ContractId is { } contractId ? issued.Where(r => r.ContractId == contractId)
                 : issued.Where(r => r.MemberId == memberId && r.PeriodStartUtc == key.FromUtc && r.PeriodEndUtc == key.ToUtc);
             var existing = await issued.FirstOrDefaultAsync(ct);
             if (existing != null)
@@ -173,6 +191,7 @@ public sealed class ClubQrBillService : IClubQrBills
                 PeriodStartUtc = key.FromUtc,
                 PeriodEndUtc = key.ToUtc,
                 ChargeId = key.ChargeId,
+                ContractId = key.ContractId,
                 AmountDue = amountDue,
                 Currency = currency,
                 CreatedAtUtc = DateTime.UtcNow,
@@ -180,7 +199,7 @@ public sealed class ClubQrBillService : IClubQrBills
             _db.ClubPaymentReferences.Add(row);
             if (await TrySaveAsync(ct)) return row;
         }
-        _logger.LogWarning("No QR reference could be issued for member {MemberId}: the numbers kept being taken", memberId);
+        _logger.LogWarning("No QR reference could be issued for {MemberOrContract}: the numbers kept being taken", (object?)memberId ?? key.ContractId);
         return null;
     }
 

@@ -60,11 +60,14 @@ public sealed partial class ClubPaymentsService : IClubPayments
     private readonly EmailSettings _email;
     private readonly ILogger<ClubPaymentsService> _logger;
     private readonly IAutomationEngine? _automations;
+    private readonly IContractDeposits? _deposits;
 
     public ClubPaymentsService(AppDbContext db, IClubLedger ledger, IClubBilling billing, ClubPaymentSettingsService settings,
         IEnumerable<IPaymentProvider> providers, PayLinkSigner links, IOutbox outbox, ITenantContext tenant, ICurrentUserService user,
-        IOptions<EmailSettings> email, ILogger<ClubPaymentsService> logger, IAutomationEngine? automations = null)
+        IOptions<EmailSettings> email, ILogger<ClubPaymentsService> logger, IAutomationEngine? automations = null,
+        IContractDeposits? deposits = null)
     {
+        _deposits = deposits;
         _automations = automations;
         _db = db;
         _ledger = ledger;

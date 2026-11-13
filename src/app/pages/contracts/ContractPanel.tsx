@@ -1,4 +1,4 @@
-// The CRM side of the contract flow, on a lead.
+// The CRM side of the contract flow, on a lead or a deal.
 //
 // Three of the four steps happen here — generate the draft, edit it, countersign
 // once they have signed — and the fourth (their signature) is watched from here.
@@ -19,10 +19,11 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
-  countersignContract, createContractDraft, listContractsForLead, openContractPdf,
+  countersignContract, createContractDraft, listContractsForDeal, listContractsForLead, openContractPdf,
   resendExecutedCopy, sendContract, updateContract, voidContract, ContractError,
   type Contract,
 } from '@/app/api/contracts';
+import { DepositLine, MembershipTermsFields, TierPill, depositAmountOf } from './ContractDeposit';
 import { ApiError, servesDemoData } from '@/app/api/apiClient';
 import {
   MAX_SIGNATURE_NAME_LENGTH, STATUS_LABELS, checkSignature, type ContractStatus,
@@ -32,6 +33,7 @@ import { Input } from '@/app/components/ui/input';
 import { cn } from '@/app/components/ui/utils';
 import { ContractProgress } from './ContractProgress';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { LoadFailed } from '@/app/components/LoadFailed';
 import { currentDateLocale } from '@/app/i18n/current';
 
 /** Fields the seeded template asks for that the CRM cannot know. */
@@ -136,7 +138,14 @@ function AuditTrail({ contract }: { contract: Contract }) {
 }
 
 interface Props {
-  leadId: string;
+  /** The lead the contracts are with. */
+  leadId?: string;
+  /**
+   * Or the deal they are for: its contracts and those of the lead it came from, and a draft
+   * that merges in the deal's value and line items (so the fee is not asked for).
+   */
+  dealId?: string;
+  /** Whom a new draft is for, as the page names them. */
   leadName: string;
   /** Viewers cannot draft or sign anything. */
   readOnly?: boolean;
@@ -148,12 +157,18 @@ interface Props {
   onLeadChanged?: () => void;
 }
 
-export function ContractPanel({ leadId, leadName, readOnly, onLeadChanged }: Props) {
+export function ContractPanel({ leadId, dealId, leadName, readOnly, onLeadChanged }: Props) {
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [loading, setLoading] = useState(true);
+  // Why the list could not be read, when it could not. Not an empty list: an empty one offers
+  // a fresh draft, and a second membership contract, deposit and all, went out beside the first.
+  const [loadError, setLoadError] = useState<unknown>(null);
   usePageLoading(loading);
   const [busy, setBusy] = useState<string | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
+  // A membership contract's terms: the tier it admits them at, and the deposit asked on signing.
+  const [tier, setTier] = useState('');
+  const [deposit, setDeposit] = useState('');
   const [editing, setEditing] = useState<string | null>(null);
   const [draftBody, setDraftBody] = useState('');
   // Keyed by contract id, like `editing` and `lastLink` already are. As single
@@ -170,13 +185,14 @@ export function ContractPanel({ leadId, leadName, readOnly, onLeadChanged }: Pro
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      setContracts(await listContractsForLead(leadId));
-    } catch {
-      setContracts([]);
+      setContracts(dealId ? await listContractsForDeal(dealId) : leadId ? await listContractsForLead(leadId) : []);
+      setLoadError(null);
+    } catch (e) {
+      setLoadError(e);
     } finally {
       setLoading(false);
     }
-  }, [leadId]);
+  }, [leadId, dealId]);
 
   useEffect(() => { void reload(); }, [reload]);
 
@@ -198,7 +214,18 @@ export function ContractPanel({ leadId, leadName, readOnly, onLeadChanged }: Pro
   };
 
   const draft = () => run('draft', async () => {
-    const created = await createContractDraft({ leadId, values });
+    const depositAmount = tier ? depositAmountOf(deposit) : undefined;
+    if (depositAmount !== undefined && !(depositAmount > 0)) {
+      throw new ContractError('The deposit is an amount above zero, like 500.');
+    }
+    // A deal's draft takes its fee from the deal's value and line items.
+    const asked = dealId ? Object.fromEntries(Object.entries(values).filter(([k]) => k !== 'contract.fee')) : values;
+    const created = await createContractDraft({
+      ...(dealId ? { dealId } : { leadId }),
+      values: asked,
+      membershipTier: tier || undefined,
+      depositAmount,
+    });
     if (!created) throw new ContractError('The draft could not be created.');
     await reload();
     setEditing(created.id);
@@ -282,6 +309,8 @@ export function ContractPanel({ leadId, leadName, readOnly, onLeadChanged }: Pro
         <div className="flex items-center gap-2 py-6 text-sm text-slate-500" role="status">
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Loading contracts…
         </div>
+      ) : loadError ? (
+        <LoadFailed what="The contracts" error={loadError} onRetry={() => void reload()} />
       ) : contracts.length === 0 ? (
         <div>
           <p className="text-sm leading-relaxed text-slate-600">
@@ -290,7 +319,7 @@ export function ContractPanel({ leadId, leadName, readOnly, onLeadChanged }: Pro
           </p>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            {ASK_FOR.map((f) => (
+            {ASK_FOR.filter((f) => !(dealId && f.key === 'contract.fee')).map((f) => (
               <label key={f.key} className="block">
                 <span className="text-xs font-semibold text-slate-600">{f.label}</span>
                 <Input
@@ -306,7 +335,11 @@ export function ContractPanel({ leadId, leadName, readOnly, onLeadChanged }: Pro
           <p className="mt-2 text-[11px] text-slate-500">
             Anything left blank stays visible in the draft as a placeholder — the
             contract cannot be sent until it is filled in.
+            {dealId ? ' The fee is the deal’s value, with its line items as the fee table.' : ''}
           </p>
+
+          <MembershipTermsFields tier={tier} onTier={(t) => { setTier(t); if (!t) setDeposit(''); }}
+            deposit={deposit} onDeposit={setDeposit} disabled={readOnly} />
 
           <Button
             onClick={() => void draft()}
@@ -332,8 +365,19 @@ export function ContractPanel({ leadId, leadName, readOnly, onLeadChanged }: Pro
                       {c.counterpartyName} · {c.counterpartyEmail}
                     </p>
                   </div>
-                  <StatusPill status={c.status} />
+                  <span className="flex flex-wrap items-center gap-1.5">
+                    {c.membershipTier && <TierPill tier={c.membershipTier} />}
+                    <StatusPill status={c.status} />
+                  </span>
                 </div>
+
+                {c.deposit ? (
+                  <DepositLine deposit={c.deposit} withdrawn={c.status === 'voided' || c.status === 'declined'} className="mt-3" />
+                ) : c.depositAmount ? (
+                  <p className="mt-3 text-xs text-slate-600">
+                    Asks a deposit of {c.depositCurrency} {c.depositAmount.toFixed(2)} on signing, paid once it is sent and signed.
+                  </p>
+                ) : null}
 
                 {/* Replaced a bare one-line hint. The pill says which state; this
                     says whose move it is, since when, and what happens next —
@@ -577,7 +621,11 @@ export function ContractPanel({ leadId, leadName, readOnly, onLeadChanged }: Pro
 
           {!readOnly && (
             <li>
-              <Button variant="outline" size="sm" onClick={() => void draft()} disabled={busy === 'draft'} className="gap-1.5">
+              {/* A second contract (after one was voided or declined) can be a membership
+                  contract with its deposit too. */}
+              <MembershipTermsFields tier={tier} onTier={(t) => { setTier(t); if (!t) setDeposit(''); }}
+                deposit={deposit} onDeposit={setDeposit} />
+              <Button variant="outline" size="sm" onClick={() => void draft()} disabled={busy === 'draft'} className="mt-3 gap-1.5">
                 <Sparkles className="h-3.5 w-3.5" aria-hidden /> New draft
               </Button>
             </li>

@@ -27,11 +27,16 @@ public class ApplicationsController : ControllerBase
 {
     private readonly IClubApplications _applications;
     private readonly ICurrentUserService _user;
+    private readonly IContractDeposits? _deposits;
+    private readonly ILogger<ApplicationsController>? _logger;
 
-    public ApplicationsController(IClubApplications applications, ICurrentUserService user)
+    public ApplicationsController(IClubApplications applications, ICurrentUserService user, IContractDeposits? deposits = null,
+        ILogger<ApplicationsController>? logger = null)
     {
         _applications = applications;
         _user = user;
+        _deposits = deposits;
+        _logger = logger;
     }
 
     private Guid Org => _user.CurrentOrganizationId!.Value;
@@ -89,7 +94,23 @@ public class ApplicationsController : ControllerBase
         if (versionError != null) return versionError.ToProblemResult();
         request.Version = version;
         var result = await _applications.ApproveAsync(Org, id, userId, request, ct);
-        return result.IsSuccess ? Ok(result.Value) : result.Error.ToProblemResult();
+        if (!result.IsSuccess) return result.Error.ToProblemResult();
+        // A deposit the applicant paid on their contract's signing page waits for the club's yes:
+        // admitted now, it goes on their account, paying their first charges. The approval is
+        // committed whatever happens here, so a failure is logged (approving again tries once
+        // more) rather than answered as a failed approval the reviewer would retry for nothing.
+        if (_deposits != null)
+        {
+            try
+            {
+                await _deposits.SettleForApplicationAsync(Org, id, userId, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger?.LogError(ex, "Application {ApplicationId} was approved, but the deposit paid on its contract could not be put on the member's account", id);
+            }
+        }
+        return Ok(result.Value);
     }
 
     [HttpDelete("{id:guid}")]
@@ -270,15 +291,33 @@ public class MembershipLinksController : ControllerBase
     private readonly IClubApplications _applications;
     private readonly IClubHouseholds _households;
     private readonly ICurrentUserService _user;
+    private readonly IDealService _deals;
 
-    public MembershipLinksController(IClubApplications applications, IClubHouseholds households, ICurrentUserService user)
+    public MembershipLinksController(IClubApplications applications, IClubHouseholds households, ICurrentUserService user, IDealService deals)
     {
         _applications = applications;
         _households = households;
         _user = user;
+        _deals = deals;
     }
 
     private Guid Org => _user.CurrentOrganizationId!.Value;
+
+    /// <summary>
+    /// The members a deal brought in (its handoff, or a contract of its that admitted them), the
+    /// applications of its lead, contact and contracts, and its contact's household. A deal the
+    /// person may not open answers not found.
+    /// </summary>
+    [HttpGet("api/deals/{dealId:guid}/membership")]
+    [ProducesResponseType(typeof(PersonMembershipDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PersonMembershipDto>> ForDeal(Guid dealId, CancellationToken ct)
+    {
+        var deal = await _deals.GetByIdAsync(dealId, _user.UserId!.Value, Org, ct);
+        if (deal.IsFailure) return deal.Error.ToProblemResult();
+        var found = await _applications.DealMembershipAsync(Org, dealId, ct);
+        return Ok(found with { Household = found.ContactId is { } contactId ? await _households.ForContactAsync(Org, contactId, ct) : null });
+    }
 
     /// <summary>The member a lead became (or several), their applications and household.</summary>
     [HttpGet("api/leads/{leadId:guid}/membership")]
@@ -296,11 +335,14 @@ public class MembershipLinksController : ControllerBase
             Household = await _households.ForContactAsync(Org, contactId, ct),
         });
 
-    /// <summary>A member's lead and contact, the applications that made them, and their household.</summary>
+    /// <summary>
+    /// A member's lead, contact and deal, the applications that made them, their contracts with
+    /// each one's deposit, and their household.
+    /// </summary>
     [HttpGet("api/members/{memberId:guid}/links")]
     public async Task<ActionResult<MemberLinksDto>> ForMember(Guid memberId, CancellationToken ct)
     {
-        var links = await _applications.MemberLinksAsync(Org, memberId, ct);
+        var links = await _applications.MemberLinksAsync(Org, memberId, _user.UserId, ct);
         if (!links.IsSuccess) return links.Error.ToProblemResult();
         return Ok(links.Value with { Household = await _households.ForMemberAsync(Org, memberId, ct) });
     }

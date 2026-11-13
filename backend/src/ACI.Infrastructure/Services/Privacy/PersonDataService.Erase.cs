@@ -381,6 +381,14 @@ public sealed partial class PersonDataService
                         contract.Status = ContractStatuses.Voided;
                         contract.ClosedReason = "Voided when the person was erased at their request.";
                     }
+                    // A deposit not paid yet can no longer be paid; one paid stays with the books.
+                    foreach (var deposit in d.ContractDeposits.Where(x => x.ContractId == contract.Id && x.Status == ContractDepositStatuses.Awaiting))
+                    {
+                        deposit.Status = ContractDepositStatuses.Cancelled;
+                        deposit.CheckoutUrl = null;
+                        deposit.CheckoutExpiresAtUtc = null;
+                        deposit.UpdatedAtUtc = now;
+                    }
                     contract.SigningTokenHash = null;
                     contract.SigningTokenExpiresAtUtc = null;
                     contract.Title = Scrub(contract.Title) ?? contract.Title;

@@ -12,7 +12,7 @@
 // and not a qualified one.
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import {
   CheckCircle2, Loader2, PenLine, ShieldCheck, TriangleAlert, XCircle, FileText, Info,
@@ -31,6 +31,11 @@ import { cn } from '@/app/components/ui/utils';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import { LanguageSwitcher } from '@/app/i18n/LanguageSwitcher';
 import { useFormat, useT, type MessageKey } from '@/app/i18n';
+import { DepositBeforeSigning, DepositStep } from '@/app/pages/contracts/SignDeposit';
+
+/** How often, and how many times, the page asks again after Stripe sends the signer back. */
+const RETURN_POLL_MS = 3000;
+const RETURN_POLLS = 10;
 
 /** Bold words inside a translated sentence. */
 const bold = (words: ReactNode) => <strong className="font-semibold text-slate-700">{words}</strong>;
@@ -159,6 +164,9 @@ function SignedBlock({ contract }: { contract: PublicContract }) {
 
 export default function SignContract() {
   const { token = '' } = useParams<{ token: string }>();
+  const [search] = useSearchParams();
+  // What Stripe's page sent the signer back saying: paid (being confirmed) or given up.
+  const returned = search.get('deposit') === 'done' ? 'done' : search.get('deposit') === 'cancelled' ? 'cancelled' : null;
   const { t, tx } = useT();
   const [contract, setContract] = useState<PublicContract | null>(null);
   const [loading, setLoading] = useState(true);
@@ -188,6 +196,20 @@ export default function SignContract() {
   }, [token, t]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // Back from Stripe's page before Stripe's word reached the club: ask again, quietly, a few
+  // times, so the page turns to paid by itself rather than leave the signer wondering.
+  const depositStatus = contract?.deposit?.status;
+  useEffect(() => {
+    if (returned !== 'done' || !depositStatus || depositStatus === 'paid' || depositStatus === 'refunded' || depositStatus === 'cancelled') return;
+    let polls = 0;
+    const timer = window.setInterval(() => {
+      polls += 1;
+      if (polls > RETURN_POLLS) { window.clearInterval(timer); return; }
+      getPublicContract(token).then(setContract).catch(() => {});
+    }, RETURN_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [returned, depositStatus, token]);
 
   const submit = async () => {
     if (!contract) return;
@@ -309,7 +331,12 @@ export default function SignContract() {
 
         <div className="mt-6">
           {alreadySigned ? (
-            <SignedBlock contract={contract} />
+            <>
+              <SignedBlock contract={contract} />
+              {contract.deposit && (
+                <DepositStep token={token} deposit={contract.deposit} organizationName={contract.organizationName} returned={returned} />
+              )}
+            </>
           ) : !contract.canSign ? (
             <div className="flex items-start gap-2.5 rounded-2xl border border-slate-200 bg-slate-50 p-5">
               <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-slate-500" aria-hidden />
@@ -321,6 +348,7 @@ export default function SignContract() {
           ) : (
             <>
             <WhatHappensNext organizationName={contract.organizationName} />
+            {contract.deposit && <DepositBeforeSigning deposit={contract.deposit} />}
             <form
               className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 sm:p-6"
               onSubmit={(e) => { e.preventDefault(); void submit(); }}

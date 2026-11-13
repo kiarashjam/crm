@@ -68,7 +68,11 @@ public record ContractDto(
     string? SigningUrl,
     DateTime? SigningLinkExpiresAtUtc,
     bool BodyMatchesHashAtSend,
-    IReadOnlyList<ContractEventDto> Events
+    IReadOnlyList<ContractEventDto> Events,
+    string? MembershipTier = null,
+    decimal? DepositAmount = null,
+    string? DepositCurrency = null,
+    ACI.Application.Services.ContractDepositDto? Deposit = null
 );
 
 /// <summary>
@@ -102,14 +106,35 @@ public record PublicContractDto(
     /// <summary>True while this link can still be used to sign.</summary>
     bool CanSign,
     /// <summary>Why not, when it cannot — expired, already signed, voided.</summary>
-    string? Blocked
+    string? Blocked,
+    /// <summary>The deposit the contract asks for on signing, and whether and how it can be paid; null when it asks for none.</summary>
+    ACI.Application.Services.PublicDepositDto? Deposit = null,
+    /// <summary>The club tier the contract admits the signer at, for the page to say so.</summary>
+    string? MembershipTier = null
 );
 
 public class CreateContractDraftRequest
 {
     public Guid? LeadId { get; set; }
+
+    /// <summary>
+    /// The deal the contract is for. Its value and line items are merged into the template
+    /// (deal.*), and its lead, when it came from one, is the contract's lead.
+    /// </summary>
     public Guid? DealId { get; set; }
     public string? Title { get; set; }
+
+    /// <summary>
+    /// The club tier the contract admits its counterparty at, which makes it a membership
+    /// contract (see Contract.MembershipTier). One of the club's tiers on sale.
+    /// </summary>
+    public string? MembershipTier { get; set; }
+
+    /// <summary>
+    /// The deposit the counterparty pays on signing, in the club's currency. Needs a membership
+    /// tier, and someone who may take payments (money.manage).
+    /// </summary>
+    public decimal? DepositAmount { get; set; }
     /// <summary>Overrides the organisation's template for this one draft.</summary>
     public string? TemplateOverride { get; set; }
     /// <summary>
@@ -119,12 +144,26 @@ public class CreateContractDraftRequest
     public Dictionary<string, string?>? Values { get; set; }
 }
 
-public class UpdateContractRequest
+/// <summary>
+/// A change to a draft. A field left out is kept; the membership tier is taken off when sent
+/// as null (a merge patch).
+/// </summary>
+public class UpdateContractRequest : ACI.Application.Common.IMergePatchRequest
 {
     public string? Title { get; set; }
     public string? Body { get; set; }
     public string? CounterpartyName { get; set; }
     public string? CounterpartyEmail { get; set; }
+
+    /// <summary>The club tier the contract admits its counterparty at; null takes it off.</summary>
+    public string? MembershipTier { get; set; }
+
+    /// <summary>The deposit asked for on signing (money.manage); null takes it off.</summary>
+    public decimal? DepositAmount { get; set; }
+
+    /// <inheritdoc />
+    [System.Text.Json.Serialization.JsonIgnore]
+    public ISet<string> NullsSent { get; } = new HashSet<string>(StringComparer.Ordinal);
 }
 
 public class SignContractRequest

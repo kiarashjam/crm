@@ -33,6 +33,12 @@ public static class ApplicationSources
     /// <summary>Started from a lead or a contact in the sales pipeline.</summary>
     public const string Lead = "lead";
 
+    /// <summary>
+    /// Started when a membership contract (one naming a tier) was countersigned with no
+    /// application behind it: for the person who signed, at the tier they signed for.
+    /// </summary>
+    public const string Contract = "contract";
+
     /// <summary>Copied from the old application documents when they moved to this table.</summary>
     public const string Moved = "moved";
 }

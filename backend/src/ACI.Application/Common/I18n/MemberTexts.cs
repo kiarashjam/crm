@@ -290,6 +290,9 @@ public static partial class MemberTexts
             $"Des questions sur cette facture{Nb}? Répondez à l’e-mail qui l’accompagnait ou adressez-vous au secrétariat des membres."),
         ["invoice.balanceBroughtOver"] = new("Balance brought over", "Übertragener Saldo", "Solde repris"),
         ["invoice.qrMessage"] = new("Invoice {number}", "Rechnung {number}", "Facture {number}"),
+        // A membership contract's deposit, paid on signing (its QR-bill invoice).
+        ["deposit.description"] = new("Deposit: {title}", "Anzahlung: {title}", $"Acompte{Nb}: {{title}}"),
+        ["deposit.qrMessage"] = new("Deposit {number}", "Anzahlung {number}", "Acompte {number}"),
         ["statement.qrMessage"] = new("Statement {period}", "Kontoauszug {period}", "Relevé {period}"),
 
         // ── the Swiss QR-bill, in the SIX guidelines' words ─────────────────────
@@ -341,6 +344,7 @@ public static partial class MemberTexts
         ["kind:Booking"] = new("Booking", "Reservation", "Réservation"),
         ["kind:Retail"] = new("Retail", "Shop", "Boutique"),
         ["kind:Other"] = new("Other", "Anderes", "Autre"),
+        ["kind:Deposit"] = new("Deposit", "Anzahlung", "Acompte"),
         ["method:CardOnFile"] = new("CardOnFile", "Hinterlegte Karte", "Carte enregistrée"),
         ["method:Card"] = new("Card", "Karte", "Carte"),
         ["method:Twint"] = new("Twint", "TWINT", "TWINT"),

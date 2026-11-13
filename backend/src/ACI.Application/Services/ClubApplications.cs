@@ -26,9 +26,9 @@ namespace ACI.Application.Services;
 /// </para>
 /// <para>
 /// <b>What else admits someone</b>. A countersigned contract for the application's lead or deal
-/// approves it (ContractService calls <see cref="AdmitForContractAsync"/>); a paid deposit will,
-/// through <see cref="AdmitForDepositAsync"/>, once the contract flow collects deposits (Phase 3).
-/// Both go through the same approval, once.
+/// approves it (ContractService calls <see cref="AdmitForContractAsync"/>); the deposit collected
+/// on the contract's signing page finishes the money of an approval that left it pending,
+/// through <see cref="AdmitForDepositAsync"/>. Both go through the same approval, once.
 /// </para>
 /// </remarks>
 public interface IClubApplications
@@ -45,8 +45,20 @@ public interface IClubApplications
     /// </summary>
     Task<PersonMembershipDto> MembershipAsync(Guid organizationId, Guid? leadId, Guid? contactId, CancellationToken ct = default);
 
-    /// <summary>A member's lead and contact, and the applications that admitted them: what the member page links to.</summary>
-    Task<Result<MemberLinksDto>> MemberLinksAsync(Guid organizationId, Guid memberId, CancellationToken ct = default);
+    /// <summary>
+    /// A member's lead, contact and deal, the applications that admitted them, and their
+    /// contracts with each one's deposit: what the member page links to. With
+    /// <paramref name="viewerId"/>, a deal the viewer may not open, and the contracts drafted
+    /// on it, are left out.
+    /// </summary>
+    Task<Result<MemberLinksDto>> MemberLinksAsync(Guid organizationId, Guid memberId, Guid? viewerId = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// The members a deal brought in (the deal's handoff, its contracts, or its contact or
+    /// lead), and the applications of its lead, contact and contracts: what the deal's page
+    /// shows of the club.
+    /// </summary>
+    Task<PersonMembershipDto> DealMembershipAsync(Guid organizationId, Guid dealId, CancellationToken ct = default);
 
     Task<Result<ApplicationDto>> CreateAsync(Guid organizationId, Guid userId, ApplicationWriteRequest request, CancellationToken ct = default);
 
@@ -69,18 +81,27 @@ public interface IClubApplications
 
     /// <summary>
     /// The hook a countersigned contract calls: approves the open application of the contract's
-    /// lead or deal (or the one it names), once, as the person who countersigned, held to the
-    /// approve button's rules. Someone without club.members (a sales rep can countersign)
-    /// admits nobody, and the application stays open for a reviewer; someone without
-    /// money.manage admits the member with the dues and fee left pending. A contract with no
-    /// application behind it admits nobody. Answers what it approved.
+    /// lead or deal, or of their contact (or the one it names), once, as the person who
+    /// countersigned, held to the approve button's rules, at the tier the contract names. A
+    /// membership contract (one naming a tier) with no application behind it starts one for the
+    /// person who signed it. The open applications are linked to the contract and its tier
+    /// before anything else, so someone without club.members (a sales rep can countersign)
+    /// admits nobody and leaves the application, at the signed tier, for a reviewer; someone
+    /// without money.manage admits the member with the dues and fee left pending. A contract
+    /// with no tier and no application behind it admits nobody. Answers what it approved.
     /// </summary>
+    /// <remarks>
+    /// The member admitted is the one the sales side already made when it made one (a deal's
+    /// welcome handoff), found by the application's lead, contact or deal rather than its
+    /// address alone; every approval finds that member the same way.
+    /// </remarks>
     Task<IReadOnlyList<ApprovalResultDto>> AdmitForContractAsync(Guid organizationId, Guid contractId, Guid? leadId, Guid? dealId, Guid userId, CancellationToken ct = default);
 
     /// <summary>
     /// The hook a paid deposit calls: approves the application, once, as the person who recorded
-    /// the deposit, dues and fee included. Nothing calls it yet: deposits for applications do not
-    /// exist until the contract flow collects one at signing (Phase 3).
+    /// the deposit, dues and fee included. A contract's deposit (IContractDeposits) calls it to
+    /// finish the dues and fee of an application approved with the money left pending; a paid
+    /// deposit never admits anyone the club has not approved.
     /// </summary>
     Task<Result<ApprovalResultDto>> AdmitForDepositAsync(Guid organizationId, Guid applicationId, Guid userId, Guid? depositPaymentId, CancellationToken ct = default);
 
@@ -271,8 +292,33 @@ public sealed record MemberLinksDto
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Guid? ContactId { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? ContactName { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? ContactEmail { get; init; }
+
+    /// <summary>The deal they joined through (its handoff, or the contract that admitted them).</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Guid? DealId { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? DealName { get; init; }
+
     public IReadOnlyList<ApplicationDto> Applications { get; init; } = Array.Empty<ApplicationDto>();
+
+    /// <summary>Their contracts once sent (newest first), each with the deposit it asked for.</summary>
+    public IReadOnlyList<MemberContractDto> Contracts { get; init; } = Array.Empty<MemberContractDto>();
+
     public HouseholdDto? Household { get; init; }
+}
+
+/// <summary>A contract of a member's, as their page lists it.</summary>
+public sealed record MemberContractDto
+{
+    public Guid Id { get; init; }
+    public string Title { get; init; } = string.Empty;
+    public string Status { get; init; } = string.Empty;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? MembershipTier { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public DateTime? SentAtUtc { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public DateTime? CounterSignedAtUtc { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Guid? LeadId { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Guid? DealId { get; init; }
+
+    /// <summary>The deposit the contract asked for on signing, and where it went; none when it asked for none.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public ContractDepositDto? Deposit { get; init; }
 }
 
 /// <summary>What an approval did.</summary>

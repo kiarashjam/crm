@@ -49,6 +49,7 @@ internal sealed class PersonDossier
     public List<Lead> LeadsOfTheirContacts { get; private set; } = new();
     public List<Contract> Contracts { get; private set; } = new();
     public List<ContractEvent> ContractEvents { get; private set; } = new();
+    public List<ContractDeposit> ContractDeposits { get; private set; } = new();
     public List<DealOnboarding> Onboardings { get; private set; } = new();
     public List<Attachment> Attachments { get; private set; } = new();
     public List<CustomFieldValueSet> CustomFieldValues { get; private set; } = new();
@@ -181,6 +182,7 @@ internal sealed class PersonDossier
             .ToListAsync(ct);
         var contractIds = d.Contracts.Select(c => c.Id).ToList();
         d.ContractEvents = await Q(db.ContractEvents).Where(e => contractIds.Contains(e.ContractId)).ToListAsync(ct);
+        d.ContractDeposits = await Q(db.ContractDeposits).Where(x => contractIds.Contains(x.ContractId)).ToListAsync(ct);
         d.Onboardings = await Q(db.DealOnboardings).Where(o =>
                 (o.LeadId != null && leadIds.Contains(o.LeadId.Value))
                 || (o.ContactId != null && contactIds.Contains(o.ContactId.Value))
@@ -302,7 +304,7 @@ internal sealed class PersonDossier
         d.OnlinePayments = await Q(db.ClubOnlinePayments).Where(p => memberIds.Contains(p.MemberId)).ToListAsync(ct);
         d.BankTransactions = await Q(db.ClubBankTransactions).Where(t => t.MemberId != null && memberIds.Contains(t.MemberId.Value)).ToListAsync(ct);
         d.PaymentProfiles = await Q(db.ClubPaymentProfiles).Where(p => memberIds.Contains(p.MemberId)).ToListAsync(ct);
-        d.PaymentReferences = await Q(db.ClubPaymentReferences).Where(r => memberIds.Contains(r.MemberId)).ToListAsync(ct);
+        d.PaymentReferences = await Q(db.ClubPaymentReferences).Where(r => r.MemberId != null && memberIds.Contains(r.MemberId.Value)).ToListAsync(ct);
         d.StatementDeliveries = await Q(db.ClubStatementDeliveries).Where(s => memberIds.Contains(s.MemberId)).ToListAsync(ct);
         d.PaymentReminders = await Q(db.ClubPaymentReminders).Where(r => memberIds.Contains(r.MemberId)).ToListAsync(ct);
         d.MemberCodes = await Q(db.ClubMemberCodes).Where(c => memberIds.Contains(c.MemberId)).ToListAsync(ct);

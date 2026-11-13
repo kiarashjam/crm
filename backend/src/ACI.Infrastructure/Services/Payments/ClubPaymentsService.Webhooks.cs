@@ -116,6 +116,10 @@ public sealed partial class ClubPaymentsService
 
     private async Task<Outcome> DispatchAsync(Guid organizationId, PaymentConfig config, ProviderEvent stripeEvent, CancellationToken ct)
     {
+        // A contract's deposit, paid on the signing page before anyone is a member: its own
+        // service keeps it until the club admits the signer (IContractDeposits).
+        if (_deposits != null && await _deposits.HandleStripeEventAsync(organizationId, stripeEvent, ct) is { } depositNote)
+            return new Outcome(depositNote);
         switch (stripeEvent.Type)
         {
             case "payment_intent.succeeded":
@@ -185,6 +189,14 @@ public sealed partial class ClubPaymentsService
                 if (charge?.PaymentIntentId == null) return new Outcome("no payment on the charge", true);
                 var payment = await _db.ClubPayments.AsNoTracking().FirstOrDefaultAsync(p => p.OrganizationId == organizationId
                     && p.Provider == PaymentProviders.Stripe && p.ProviderPaymentId == charge.PaymentIntentId && p.ReversesPaymentId == null, ct);
+                if (payment == null && _deposits != null && config.StripeKey != null)
+                {
+                    // A deposit paid back before it went on anyone's account: the deposit records it.
+                    var listedForDeposit = await Stripe.ListRefundsAsync(config.StripeKey, charge.PaymentIntentId, ct);
+                    if (listedForDeposit.Failure is { } refundFailure) throw new InvalidOperationException($"Stripe did not list the payment's refunds: {refundFailure.Message}");
+                    if (await _deposits.RecordProviderRefundAsync(organizationId, charge.PaymentIntentId, listedForDeposit.Value!, ct) is { } refundNote)
+                        return new Outcome(refundNote);
+                }
                 if (payment == null) return new Outcome("the refunded payment is not on the ledger", true);
                 // Since Stripe's API version 2022-11-15 a charge lists its refunds only when asked
                 // to, and a webhook cannot ask, so the event says that the charge was refunded but

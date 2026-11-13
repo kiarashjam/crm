@@ -220,6 +220,35 @@ public class ContractPdfTests
     }
 
     [Fact]
+    public void SetsADealsFeeTableAsColumns_EveryCellAsTyped_WithinTheMargins()
+    {
+        // The fee table a deal's contract carries. As prose it ran every cell and bar together
+        // into one justified paragraph; set as a table, each cell is its own run, the bars and
+        // dashes are gone, and the figures line up on the right of their columns.
+        var lines = new ContractFeeLine[]
+        {
+            new("Gold membership, annual, including the founding member's locker and parking", 1, 480m, 8.1m),
+            new("Wine tasting", 3, 25.5m, 2.6m),
+        };
+        var body = "MEMBERSHIP AGREEMENT\n====================\n\n2. FEES\n-------\n"
+            + ContractDealFields.FeeTable(lines, "CHF", System.Globalization.CultureInfo.InvariantCulture)
+            + "\n\nThe Member agrees to pay CHF 556.50.";
+
+        var runs = PdfPageScanner.Scan(ContractPdf.Render(Request(body: body), compressStreams: false).Bytes);
+        var texts = runs.Select(r => r.Text).ToList();
+
+        texts.Should().Contain(["Qty", "Unit price (CHF)", "VAT", "Total (CHF)", "Wine tasting", "3", "25.50", "2.6%", "76.50", "556.50", "VAT 8.1% included", "35.97"]);
+        texts.Should().NotContain(t => t.Contains('|') || t.Contains("-+-"), "the bars and rules are drawn as columns and lines, not printed");
+        var right = PageWidth - MarginX;
+        runs.Should().AllSatisfy(run => (run.X + run.Width).Should().BeLessThanOrEqualTo(right + 0.5, $"\"{run.Text}\" must not cross the right margin"));
+        // The long item wraps inside its column rather than pushing the figures off the page.
+        runs.Where(r => r.Text.StartsWith("Gold membership", StringComparison.Ordinal)).Should().ContainSingle();
+        var total = runs.Single(r => r.Text == "76.50");
+        var price = runs.Single(r => r.Text == "25.50");
+        (total.X + total.Width).Should().BeGreaterThan(price.X + price.Width, "each figure sits right-aligned in its own column");
+    }
+
+    [Fact]
     public void ShowsBothSignaturesAndTheHashOnAnExecutedContract()
     {
         var runs = PdfPageScanner.Scan(

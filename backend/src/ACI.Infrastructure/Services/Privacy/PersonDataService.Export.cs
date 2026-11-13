@@ -122,8 +122,8 @@ public sealed partial class PersonDataService
             new("outreach/generated-copy.json", "Text the AI writer generated for messages to them.", d.CopyHistory.Select(c => Row(c)).ToList()),
             new("consent/consent-records.json", "Every answer they gave about being contacted, by channel and purpose, with where it came from.", d.Consent.Select(c => Row(c)).ToList()),
             new("consent/suppression-list.json", "Their addresses on the workspace's suppression list.", d.Suppressions.Select(x => Row(x)).ToList()),
-            new("contracts/contracts.json", "Contracts sent to them, with the record of signatures.", d.Contracts.Select(c => With(Row(c), "events",
-                RowsOf(eventsByContract.GetValueOrDefault(c.Id)))).ToList()),
+            new("contracts/contracts.json", "Contracts sent to them, with the record of signatures and the deposit each asked for.", d.Contracts.Select(c => With(With(Row(c), "events",
+                RowsOf(eventsByContract.GetValueOrDefault(c.Id))), "deposit", d.ContractDeposits.Where(x => x.ContractId == c.Id).Select(x => (object)Row(x)).FirstOrDefault())).ToList()),
             new("contracts/onboarding-handoffs.json", "Their hand-over to the member portal after a deal was won.", d.Onboardings.Select(o => Row(o)).ToList()),
             new("club/house-account.json", "Their house account: the charges and payments on it, and what each payment paid.", [new
             {

@@ -2474,6 +2474,9 @@ namespace ACI.Infrastructure.Migrations
                     b.Property<Guid?>("ChargeId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("ContractId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -2482,7 +2485,7 @@ namespace ACI.Infrastructure.Migrations
                         .HasMaxLength(3)
                         .HasColumnType("nvarchar(3)");
 
-                    b.Property<Guid>("MemberId")
+                    b.Property<Guid?>("MemberId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<long>("Number")
@@ -2516,6 +2519,10 @@ namespace ACI.Infrastructure.Migrations
                     b.HasIndex("OrganizationId", "ChargeId")
                         .IsUnique()
                         .HasFilter("[ChargeId] IS NOT NULL");
+
+                    b.HasIndex("OrganizationId", "ContractId")
+                        .IsUnique()
+                        .HasFilter("[ContractId] IS NOT NULL");
 
                     b.HasIndex("OrganizationId", "Number")
                         .IsUnique()
@@ -4109,6 +4116,14 @@ namespace ACI.Infrastructure.Migrations
                     b.Property<Guid?>("DealId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<decimal?>("DepositAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("DepositCurrency")
+                        .HasMaxLength(3)
+                        .HasColumnType("nvarchar(3)");
+
                     b.Property<DateTime?>("ExecutedCopySentAtUtc")
                         .HasColumnType("datetime2");
 
@@ -4117,6 +4132,10 @@ namespace ACI.Infrastructure.Migrations
 
                     b.Property<Guid?>("LeadId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("MembershipTier")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
 
                     b.Property<Guid>("OrganizationId")
                         .HasColumnType("uniqueidentifier");
@@ -4164,6 +4183,110 @@ namespace ACI.Infrastructure.Migrations
                     b.HasIndex("OrganizationId", "LeadId");
 
                     b.ToTable("Contracts", (string)null);
+                });
+
+            modelBuilder.Entity("ACI.Domain.Entities.ContractDeposit", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal?>("AmountPaid")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("AmountRefunded")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("CheckoutAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("CheckoutExpiresAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CheckoutSessionId")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("CheckoutUrl")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<Guid>("ContractId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("nvarchar(3)");
+
+                    b.Property<string>("FailureMessage")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<Guid?>("LedgerPaymentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("MemberId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("MethodType")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<Guid?>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("PaidAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("PaymentReferenceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Provider")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("ProviderPaymentId")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("RecordedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId", "ContractId")
+                        .IsUnique()
+                        .HasFilter("[OrganizationId] IS NOT NULL");
+
+                    b.HasIndex("OrganizationId", "MemberId")
+                        .HasFilter("[MemberId] IS NOT NULL");
+
+                    b.HasIndex("OrganizationId", "ProviderPaymentId")
+                        .HasFilter("[ProviderPaymentId] IS NOT NULL");
+
+                    b.ToTable("ContractDeposits", (string)null);
                 });
 
             modelBuilder.Entity("ACI.Domain.Entities.ContractEvent", b =>
@@ -4509,6 +4632,10 @@ namespace ACI.Infrastructure.Migrations
                     b.Property<decimal>("UnitPrice")
                         .HasPrecision(18, 4)
                         .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal?>("VatRate")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
 
                     b.HasKey("Id");
 

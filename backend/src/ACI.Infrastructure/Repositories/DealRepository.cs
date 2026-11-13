@@ -179,6 +179,11 @@ public sealed class DealRepository : IDealRepository
                 message.DealId = keepId;
             foreach (var contract in await _db.Contracts.Where(c => c.DealId == dropId).ToListAsync(ct))
                 contract.DealId = keepId;
+            // The members the deal brought in, and its welcome handoff: their pages link to the deal kept.
+            foreach (var member in await _db.ClubMembers.Where(m => m.DealId == dropId).ToListAsync(ct))
+                member.DealId = keepId;
+            foreach (var handoff in await _db.DealOnboardings.Where(o => o.DealId == dropId).ToListAsync(ct))
+                handoff.DealId = keepId;
             foreach (var lead in await _db.Leads.Where(l => l.ConvertedToDealId == dropId).ToListAsync(ct))
                 lead.ConvertedToDealId = keepId;
 

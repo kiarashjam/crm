@@ -158,6 +158,9 @@ public partial class AppDbContext
         Scope<ClubOnlinePayment>(model, e => e.OrganizationId);
         Scope<ClubProviderEvent>(model, e => e.OrganizationId);
         Scope<ClubPaymentReference>(model, e => e.OrganizationId);
+        // A contract's deposit: the signing link's request acts for the contract's workspace
+        // before it reads one, and Stripe's webhook for the workspace its address names.
+        Scope<ContractDeposit>(model, e => e.OrganizationId);
         Scope<ClubBankImport>(model, e => e.OrganizationId);
         Scope<ClubBankTransaction>(model, e => e.OrganizationId);
         // Sales, the POS's tickets and connection, and members' codes: club money and club records,

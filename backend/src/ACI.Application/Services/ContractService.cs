@@ -52,8 +52,20 @@ public class ContractService : IContractService
         ILeadStatusSync statusSync,
         ITenantContext? tenant = null,
         IClubApplications? admissions = null,
-        IAutomationEngine? automations = null)
+        IAutomationEngine? automations = null,
+        IDealRepository? deals = null,
+        IDealLineItemRepository? lineItems = null,
+        IClubCatalog? catalog = null,
+        IWorkspaceModules? modules = null,
+        IContractDeposits? deposits = null,
+        IDealService? dealService = null)
     {
+        _deposits = deposits;
+        _dealService = dealService;
+        _deals = deals;
+        _lineItems = lineItems;
+        _catalog = catalog;
+        _modules = modules;
         _automations = automations;
         _contracts = contracts;
         _leads = leads;
@@ -70,6 +82,12 @@ public class ContractService : IContractService
     private readonly ITenantContext? _tenant;
     private readonly IClubApplications? _admissions;
     private readonly IAutomationEngine? _automations;
+    private readonly IDealRepository? _deals;
+    private readonly IDealLineItemRepository? _lineItems;
+    private readonly IClubCatalog? _catalog;
+    private readonly IWorkspaceModules? _modules;
+    private readonly IContractDeposits? _deposits;
+    private readonly IDealService? _dealService;
 
     /// <summary>
     /// The workspace's rules for a signature, as the contract's lead or deal. A contract is
@@ -105,11 +123,41 @@ public class ContractService : IContractService
             if (lead is null) return Result.Failure<ContractDto>(DomainErrors.Contract.LeadNotFound);
         }
 
-        var template = string.IsNullOrWhiteSpace(request.TemplateOverride)
-            ? ContractTemplate.DefaultTemplate
-            : request.TemplateOverride!;
+        // The deal: the one named, or the one the lead became. Read as this person, so a private
+        // deal they may not see cannot be drafted on, or have its figures merged into a contract.
+        Deal? deal = null;
+        if ((request.DealId ?? lead?.ConvertedToDealId) is Guid dealId && _deals != null)
+        {
+            deal = await _deals.GetByIdAsync(dealId, userId, organizationId, ct);
+            if (deal is null && request.DealId.HasValue) return Result.Failure<ContractDto>(DomainErrors.Contract.DealNotFound);
+        }
+        // A deal's contract is with the lead it came from, when it came from one: countersigning
+        // then moves that lead's pipeline and finds the membership application started on it.
+        if (lead is null && deal != null && await _contracts.LeadOfDealAsync(deal.Id, organizationId, ct) is Guid leadOfDeal)
+            lead = await _leads.GetByIdAsync(leadOfDeal, userId, organizationId, ct);
 
-        var values = BuildMergeValues(orgName, lead, request.Values);
+        var tier = await TierAsync(organizationId, request.MembershipTier, ct);
+        if (tier.IsFailure) return Result.Failure<ContractDto>(tier.Error);
+        var culture = ContractDealFields.CultureOf(org?.Locale);
+        DepositAsk? deposit = null;
+        if (request.DepositAmount is { } asked)
+        {
+            var checkedAsk = await DepositAskAsync(organizationId, userId, tier.Value, asked, ct);
+            if (checkedAsk.IsFailure) return Result.Failure<ContractDto>(checkedAsk.Error);
+            deposit = checkedAsk.Value;
+        }
+
+        var lines = deal != null && _lineItems != null
+            ? (await _lineItems.ListAsync(deal.Id, ct)).Select(l => new ContractFeeLine(l.Name, l.Quantity, l.UnitPrice, l.VatRate)).ToList()
+            : new List<ContractFeeLine>();
+        var template = !string.IsNullOrWhiteSpace(request.TemplateOverride) ? request.TemplateOverride!
+            : lines.Count > 0 ? ContractTemplate.DealTemplate
+            : ContractTemplate.DefaultTemplate;
+
+        var person = Counterparty(lead, deal);
+        var values = BuildMergeValues(orgName, person, deal, lines, tier.Value, culture, request.Values);
+        if (deposit != null && !(request.Values?.ContainsKey("contract.depositClause") ?? false))
+            values["contract.depositClause"] = ContractTemplate.DepositClause(ContractDealFields.Money(deposit.Amount, deposit.Currency, culture));
         var merged = ContractTemplate.Fill(template, values, ContractTemplate.OptionalFields);
 
         var now = DateTime.UtcNow;
@@ -117,15 +165,18 @@ public class ContractService : IContractService
         {
             Id = Guid.NewGuid(),
             OrganizationId = organizationId,
-            LeadId = request.LeadId,
-            DealId = request.DealId,
+            LeadId = lead?.Id ?? request.LeadId,
+            DealId = deal?.Id ?? request.DealId,
             Status = ContractStatuses.Draft,
             Title = string.IsNullOrWhiteSpace(request.Title)
-                ? (lead is null ? "Contract" : $"Membership Agreement — {lead.Name}")
+                ? (person.Name is null ? "Contract" : $"Membership Agreement — {person.Name}")
                 : request.Title!.Trim(),
             Body = merged.Body,
-            CounterpartyName = lead?.Name ?? "",
-            CounterpartyEmail = lead?.Email ?? "",
+            CounterpartyName = person.Name ?? "",
+            CounterpartyEmail = person.Email ?? "",
+            MembershipTier = tier.Value,
+            DepositAmount = deposit?.Amount,
+            DepositCurrency = deposit?.Currency,
             CreatedByUserId = userId,
             CreatedAtUtc = now,
             UpdatedAtUtc = now,
@@ -146,14 +197,15 @@ public class ContractService : IContractService
     /// unresolved rather than blanked — see <see cref="ContractTemplate"/>.
     /// </remarks>
     private static Dictionary<string, string?> BuildMergeValues(
-        string orgName, Lead? lead, IReadOnlyDictionary<string, string?>? overrides)
+        string orgName, (string? Name, string? Email, string? Phone) person, Deal? deal, IReadOnlyList<ContractFeeLine> lines,
+        string? tier, System.Globalization.CultureInfo culture, IReadOnlyDictionary<string, string?>? overrides)
     {
         var values = new Dictionary<string, string?>(StringComparer.Ordinal)
         {
             ["org.name"] = orgName,
             ["today"] = DateTime.UtcNow.ToString("d MMMM yyyy"),
-            ["lead.name"] = lead?.Name,
-            ["lead.email"] = lead?.Email,
+            ["lead.name"] = person.Name,
+            ["lead.email"] = person.Email,
             // A clause rather than a bare value, so a lead with no phone number
             // produces a sentence that still reads correctly instead of a dangling
             // comma. The template asks for the clause, not the number.
@@ -163,14 +215,72 @@ public class ContractService : IContractService
             // "{{lead.phoneClause}}" — and sending is refused while any placeholder
             // is unresolved, so that contract could never be sent at all. See
             // ContractTemplate.OptionalFields.
-            ["lead.phoneClause"] = string.IsNullOrWhiteSpace(lead?.Phone) ? "" : $", {lead!.Phone}",
+            ["lead.phoneClause"] = string.IsNullOrWhiteSpace(person.Phone) ? "" : $", {person.Phone}",
+            ["contract.tier"] = tier,
+            // No deposit asked yet: the clause says nothing (ContractTemplate.OptionalFields).
+            ["contract.depositClause"] = "",
         };
+
+        if (deal is not null)
+        {
+            // The deal's figures, in its own currency: its line items as the fee table, and
+            // their total (or the deal's value, when it has no lines) as the fee itself, so
+            // what was quoted is what gets signed without anybody typing it again.
+            var dealFields = ContractDealFields.For(deal.Name, deal.Amount, deal.Currency, lines, culture);
+            foreach (var (key, value) in dealFields) values[key] = value;
+            if (dealFields.TryGetValue("deal.total", out var fee)) values["contract.fee"] = fee;
+        }
 
         if (overrides is not null)
         {
             foreach (var (key, value) in overrides) values[key] = value;
         }
         return values;
+    }
+
+    /// <summary>
+    /// Whom the contract is with: the lead, or, for a deal that came from no lead, the deal's
+    /// contact. The template calls them <c>lead.*</c> either way.
+    /// </summary>
+    private static (string? Name, string? Email, string? Phone) Counterparty(Lead? lead, Deal? deal) =>
+        lead is not null ? (lead.Name, lead.Email, lead.Phone)
+        : deal?.Contact is { } contact ? (contact.Name, contact.Email, contact.Phone)
+        : (null, null, null);
+
+    /// <summary>
+    /// The membership tier a contract names, as the club's catalogue spells it: one of its
+    /// tiers on sale, in a workspace whose club is turned on. None asked for is none.
+    /// </summary>
+    private async Task<Result<string?>> TierAsync(Guid organizationId, string? requested, CancellationToken ct)
+    {
+        var name = requested?.Trim();
+        if (string.IsNullOrEmpty(name)) return Result.Success<string?>(null);
+        if (_modules != null && !await _modules.IsOnAsync(organizationId, Domain.Common.WorkspaceModules.Club, ct))
+            return Result.Failure<string?>(DomainErrors.Contract.ClubOff);
+        if (_catalog == null) return Result.Success<string?>(name.Length > 32 ? name[..32] : name);
+        var tier = await _catalog.TierAsync(organizationId, name, ct);
+        if (tier == null) return Result.Failure<string?>(DomainErrors.Club.TierUnknown(name));
+        if (!tier.IsActive) return Result.Failure<string?>(DomainErrors.Club.TierNotOnSale(tier.Name));
+        return Result.Success<string?>(tier.Name);
+    }
+
+    /// <summary>
+    /// A deposit a contract may ask for (IContractDeposits.CheckAskAsync): only on a membership
+    /// contract, because the deposit goes on the member's account once they are admitted.
+    /// </summary>
+    private async Task<Result<DepositAsk>> DepositAskAsync(Guid organizationId, Guid userId, string? tier, decimal amount, CancellationToken ct)
+    {
+        if (tier is null) return Result.Failure<DepositAsk>(DomainErrors.ContractDeposit.NeedsTier);
+        if (_deposits is null) return Result.Failure<DepositAsk>(DomainErrors.ContractDeposit.NoWayToPay);
+        return await _deposits.CheckAskAsync(organizationId, userId, amount, ct);
+    }
+
+    /// <summary>The deposit as the contract's text writes it, in the workspace's number format.</summary>
+    private async Task<string?> DepositMoneyAsync(Contract contract, CancellationToken ct)
+    {
+        if (contract.DepositAmount is not { } amount) return null;
+        var org = await _organizations.GetByIdAsync(contract.OrganizationId, ct);
+        return ContractDealFields.Money(amount, contract.DepositCurrency ?? "", ContractDealFields.CultureOf(org?.Locale));
     }
 
     /* -------------------------------------------------------- step 2: edit */
@@ -188,8 +298,45 @@ public class ContractService : IContractService
             return Result.Failure<ContractDto>(DomainErrors.Contract.NotAllowedInThisState);
         }
 
-        if (request.Title is not null) contract.Title = request.Title.Trim();
+        if (request.MembershipTier is not null || request.Clears(nameof(request.MembershipTier)))
+        {
+            var tier = await TierAsync(organizationId, request.MembershipTier, ct);
+            if (tier.IsFailure) return Result.Failure<ContractDto>(tier.Error);
+            contract.MembershipTier = tier.Value;
+        }
         if (request.Body is not null) contract.Body = request.Body;
+
+        // The deposit, and the sentence the draft wrote about it: changed together, so the text
+        // keeps saying what the signer will be asked to pay. A text someone rewrote is left as
+        // they wrote it, and sending checks it still says the deposit.
+        var depositChanges = request.DepositAmount is not null || request.Clears(nameof(request.DepositAmount));
+        if (depositChanges || (contract.DepositAmount != null && contract.MembershipTier == null))
+        {
+            var previous = await DepositMoneyAsync(contract, ct);
+            if (request.DepositAmount is { } asked)
+            {
+                var ask = await DepositAskAsync(organizationId, userId, contract.MembershipTier, asked, ct);
+                if (ask.IsFailure) return Result.Failure<ContractDto>(ask.Error);
+                (contract.DepositAmount, contract.DepositCurrency) = (ask.Value.Amount, ask.Value.Currency);
+            }
+            else if (depositChanges)
+            {
+                if (contract.DepositAmount != null && _deposits != null)
+                {
+                    // Taking a deposit off is a money decision as much as asking for one.
+                    var ask = await _deposits.CheckAskAsync(organizationId, userId, contract.DepositAmount.Value, ct);
+                    if (ask.IsFailure && ask.Error.Code.StartsWith("Permission.", StringComparison.Ordinal)) return Result.Failure<ContractDto>(ask.Error);
+                }
+                (contract.DepositAmount, contract.DepositCurrency) = (null, null);
+            }
+            else return Result.Failure<ContractDto>(DomainErrors.ContractDeposit.NeedsTier);
+
+            var oldClause = ContractTemplate.DepositClause(previous);
+            var newClause = ContractTemplate.DepositClause(await DepositMoneyAsync(contract, ct));
+            if (oldClause.Length > 0 && contract.Body.Contains(oldClause, StringComparison.Ordinal))
+                contract.Body = contract.Body.Replace(oldClause, newClause, StringComparison.Ordinal);
+        }
+        if (request.Title is not null) contract.Title = request.Title.Trim();
         if (request.CounterpartyName is not null) contract.CounterpartyName = request.CounterpartyName.Trim();
         if (request.CounterpartyEmail is not null) contract.CounterpartyEmail = request.CounterpartyEmail.Trim();
         contract.UpdatedAtUtc = DateTime.UtcNow;
@@ -226,6 +373,9 @@ public class ContractService : IContractService
         var unresolved = UnresolvedIn(contract.Body);
         if (unresolved.Count > 0)
             return Result.Failure<SendContractResult>(DomainErrors.Contract.HasUnresolvedFields);
+        // A deposit the signed text never mentions would be money asked for outside the agreement.
+        if (await DepositMoneyAsync(contract, ct) is { } depositMoney && !contract.Body.Contains(depositMoney, StringComparison.Ordinal))
+            return Result.Failure<SendContractResult>(DomainErrors.ContractDeposit.NotInText(depositMoney));
 
         var now = DateTime.UtcNow;
 
@@ -258,6 +408,8 @@ public class ContractService : IContractService
         // one thing the state machine's no-double-send rule exists to prevent.
         if (!await _contracts.UpdateAsync(contract, ct))
             return Result.Failure<SendContractResult>(DomainErrors.Contract.ChangedByAnother);
+        // The deposit, frozen with the text: what the signer will be asked to pay.
+        if (_deposits != null) await _deposits.OpenAsync(contract, ct);
 
         var org = await _organizations.GetByIdAsync(organizationId, ct);
         var signingUrl = BuildSigningUrl(rawToken);
@@ -373,6 +525,7 @@ public class ContractService : IContractService
         await LogEventAsync(contract.Id, "declined",
             contract.ClosedReason ?? "Declined by the counterparty",
             null, contract.CounterpartyName, ip, userAgent, ct);
+        await CloseDepositAsync(contract, ct);
 
         // Their decision, and the pipeline has a word for it. Nobody in the workspace
         // made the change, so the status history credits nobody.
@@ -422,6 +575,10 @@ public class ContractService : IContractService
         contract.CounterSignedByUserId = userId;
         contract.CounterSignatureIp = ip;
         contract.UpdatedAtUtc = now;
+        // A contract drafted on a lead is for the deal the lead became since, if it did: named
+        // here, with the signature, so the deal's page and the member's find it by its deal.
+        if (contract.DealId is null && contract.LeadId is Guid signedLead)
+            contract.DealId = await _contracts.DealOfLeadAsync(signedLead, organizationId, ct);
         // Terminal from here, so nothing — not even void — can kill the link later.
         ExpireLinkSoon(contract);
         if (!await _contracts.UpdateAsync(contract, ct))
@@ -431,11 +588,66 @@ public class ContractService : IContractService
             $"Countersigned by {contract.CounterSignatureName}", userId, contract.CounterSignatureName, ip, null, ct);
 
         await ApplyPipelineEffectAsync(contract, userId, organizationId, userId, ct);
+        await WinDealAsync(contract, userId, organizationId, ct);
         await AdmitMemberAsync(contract, userId, ct);
+        // The deposit the signer paid goes on the account of the member just admitted (once:
+        // the ledger holds it under the provider's id). One not paid yet goes on it when it is.
+        await SettleDepositAsync(contract, userId, ct);
         await SendExecutedCopiesAsync(contract, userId, ct);
         await AnnounceSignatureAsync(contract, AutomationCatalog.ContractCountersigned, "countersigned", userId, ct);
 
         return Result.Success(await ToDtoAsync(contract, ct));
+    }
+
+    /// <summary>
+    /// An executed contract is a won deal: the contract's deal is marked won through the deal
+    /// service, as the deal page's Won button does, so it moves to its pipeline's won stage, the
+    /// move is written to its stage history, and the workspace's deal.won rules and webhooks fire.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Done as the person who countersigned. A private deal they may not open is marked won as
+    /// the person who drafted the contract on it, who could: the signature is the workspace's
+    /// fact whoever adds it. A deal already won is left as it is, its close date included.
+    /// </para>
+    /// <para>
+    /// The contract is executed whatever happens here; a deal that cannot be marked won (deleted
+    /// since, say) is written on the contract's trail instead of failing the signature.
+    /// </para>
+    /// </remarks>
+    private async Task WinDealAsync(Contract contract, Guid userId, Guid organizationId, CancellationToken ct)
+    {
+        if (_dealService is null || _deals is null || contract.DealId is not Guid dealId) return;
+        try
+        {
+            foreach (var actor in new[] { userId, contract.CreatedByUserId }.Distinct())
+            {
+                var deal = await _deals.GetByIdAsync(dealId, actor, organizationId, ct);
+                if (deal is null) continue;
+                if (deal.IsWon == true) return;
+                for (var attempt = 1; attempt <= 3; attempt++)
+                {
+                    var won = await _dealService.UpdateAsync(dealId, actor, organizationId, new UpdateDealRequest { IsWon = true }, ct);
+                    if (won.IsSuccess)
+                    {
+                        await LogEventAsync(contract.Id, "deal_won", $"Deal \"{won.Value.Name}\" marked won", actor, null, null, null, ct);
+                        return;
+                    }
+                    // Saved by someone else at this moment: read again and mark it won on top.
+                    if (won.Error.Code != DomainErrors.Deal.Changed.Code)
+                    {
+                        await LogEventAsync(contract.Id, "deal_not_won", $"The deal could not be marked won: {won.Error.Description}", actor, null, null, null, ct);
+                        return;
+                    }
+                }
+                return;
+            }
+            _logger.LogWarning("Contract {ContractId} was countersigned, but its deal {DealId} is not there to mark won", contract.Id, dealId);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "Contract {ContractId} was countersigned, but its deal {DealId} could not be marked won", contract.Id, dealId);
+        }
     }
 
     /// <summary>
@@ -465,6 +677,44 @@ public class ContractService : IContractService
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "Contract {ContractId} was countersigned but its membership application could not be approved", contract.Id);
+        }
+    }
+
+    /// <summary>
+    /// The paid deposit put on the account of the member the countersignature admitted. The
+    /// contract is executed whatever happens here: a failure is logged (the deposit stays paid,
+    /// and Stripe's next word on the payment or a reviewer's approval puts it on the account)
+    /// rather than turning a signature both parties have given into an error, which also
+    /// skipped the executed copies and the workspace's rules.
+    /// </summary>
+    private async Task SettleDepositAsync(Contract contract, Guid userId, CancellationToken ct)
+    {
+        if (_deposits == null) return;
+        try
+        {
+            await _deposits.SettleAsync(contract.OrganizationId, contract.Id, userId, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "Contract {ContractId} was countersigned, but its deposit could not be put on the member's account", contract.Id);
+        }
+    }
+
+    /// <summary>
+    /// A declined or voided contract's deposit, closed (see IContractDeposits.CloseAsync). The
+    /// contract is closed whatever happens here: a deposit left open cannot be paid on a closed
+    /// contract anyway, so a failure is logged rather than reported as a failed decline or void.
+    /// </summary>
+    private async Task CloseDepositAsync(Contract contract, CancellationToken ct)
+    {
+        if (_deposits == null) return;
+        try
+        {
+            await _deposits.CloseAsync(contract, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "Contract {ContractId} was closed, but its deposit could not be closed with it", contract.Id);
         }
     }
 
@@ -775,6 +1025,8 @@ public class ContractService : IContractService
             return Result.Failure<ContractDto>(DomainErrors.Contract.ChangedByAnother);
 
         await LogEventAsync(contract.Id, "voided", contract.ClosedReason ?? "Voided", userId, null, null, null, ct);
+        // A deposit not paid yet can no longer be paid; one already paid stays, to be paid back.
+        await CloseDepositAsync(contract, ct);
         // Deliberately no pipeline effect: voiding is our decision, not the
         // customer's, and recording it against them would corrupt the drop-off report.
         return Result.Success(await ToDtoAsync(contract, ct));
@@ -796,6 +1048,19 @@ public class ContractService : IContractService
         var dtos = new List<ContractDto>(list.Count);
         foreach (var c in list) dtos.Add(await ToDtoAsync(c, ct));
         return dtos;
+    }
+
+    public async Task<Result<IReadOnlyList<ContractDto>>> ListForDealAsync(
+        Guid dealId, Guid userId, Guid organizationId, CancellationToken ct = default)
+    {
+        // As visible as the deal: a private deal's contracts are not listed to someone who may
+        // not open the deal itself.
+        if (_deals != null && await _deals.GetByIdAsync(dealId, userId, organizationId, ct) is null)
+            return Result.Failure<IReadOnlyList<ContractDto>>(DomainErrors.Contract.DealNotFound);
+        var list = await _contracts.GetForDealAsync(dealId, organizationId, ct);
+        var dtos = new List<ContractDto>(list.Count);
+        foreach (var c in list) dtos.Add(await ToDtoAsync(c, ct));
+        return Result.Success<IReadOnlyList<ContractDto>>(dtos);
     }
 
     /* -------------------------------------------------------------- shared */
@@ -955,7 +1220,11 @@ public class ContractService : IContractService
             null,
             Utc(c.SigningTokenExpiresAtUtc),
             BodyMatchesHash(c),
-            events.Select(e => new ContractEventDto(e.Id, e.Type, e.Detail, e.ActorLabel, Utc(e.AtUtc))).ToList());
+            events.Select(e => new ContractEventDto(e.Id, e.Type, e.Detail, e.ActorLabel, Utc(e.AtUtc))).ToList(),
+            c.MembershipTier,
+            c.DepositAmount,
+            c.DepositCurrency,
+            _deposits == null || c.DepositAmount == null ? null : (await _deposits.ForContractsAsync(c.OrganizationId, [c.Id], ct)).GetValueOrDefault(c.Id));
     }
 
     /// <summary>
@@ -1014,6 +1283,29 @@ public class ContractService : IContractService
             c.Status, c.Title, c.Body, c.CounterpartyName, org?.Name ?? "",
             Utc(c.SentAtUtc), c.ClientSignatureName, Utc(c.ClientSignedAtUtc),
             c.CounterSignatureName, Utc(c.CounterSignedAtUtc),
-            Utc(c.ExecutedCopySentAtUtc), canSign, blocked);
+            Utc(c.ExecutedCopySentAtUtc), canSign, blocked,
+            _deposits == null ? null : await _deposits.PublicAsync(c, ct),
+            c.MembershipTier);
+    }
+
+    /* ------------------------------------------- the deposit, for the signer */
+
+    public async Task<Result<CheckoutStartedDto>> StartDepositCheckoutAsync(string rawToken, CancellationToken ct = default)
+    {
+        var (contract, error) = await ResolveTokenAsync(rawToken, ct);
+        if (contract is null) return Result.Failure<CheckoutStartedDto>(error);
+        using var acting = ActFor(contract);
+        if (_deposits == null) return Result.Failure<CheckoutStartedDto>(DomainErrors.ContractDeposit.NotAsked);
+        // Stripe sends the signer back to the page they paid from.
+        return await _deposits.StartCheckoutAsync(contract, BuildSigningUrl(rawToken.Trim()), ct);
+    }
+
+    public async Task<Result<ContractDocument>> GetDepositQrBillByTokenAsync(string rawToken, string? language, CancellationToken ct = default)
+    {
+        var (contract, error) = await ResolveTokenAsync(rawToken, ct);
+        if (contract is null) return Result.Failure<ContractDocument>(error);
+        using var acting = ActFor(contract);
+        if (_deposits == null) return Result.Failure<ContractDocument>(DomainErrors.ContractDeposit.NotAsked);
+        return await _deposits.QrBillAsync(contract, language, ct);
     }
 }

@@ -27,8 +27,12 @@ public interface IOnboardingRepository
     /// <summary>The outbox messages that carried these handoffs, by id.</summary>
     Task<IReadOnlyDictionary<Guid, OutboundMessage>> MessagesAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct = default);
 
-    /// <summary>The workspace's club member with this email, tracked, if there is one.</summary>
-    Task<ClubMember?> ClubMemberByEmailAsync(Guid organizationId, string email, CancellationToken ct = default);
+    /// <summary>
+    /// The workspace's club member a handoff is for, tracked, if there is one: the one linked to
+    /// the deal's contact or lead (a countersigned membership contract may have admitted them
+    /// before the handoff), else the one with this email.
+    /// </summary>
+    Task<ClubMember?> ClubMemberForAsync(Guid organizationId, string email, Guid? contactId, Guid? leadId, CancellationToken ct = default);
 
     /// <summary>Keeps every change made through this repository; a concurrent change to a handoff throws ConcurrencyConflictException.</summary>
     Task SaveAsync(CancellationToken ct = default);
