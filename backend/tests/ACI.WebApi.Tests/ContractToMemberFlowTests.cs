@@ -399,6 +399,31 @@ public class ContractToMemberFlowTests
         (await HandedOverAsync()).Should().Be((true, true));
     }
 
+    [Fact]
+    public async Task AMemberHandedOverWithTheirStartToBeDecided_StartsWhenTheCountersignatureAdmitsThem_AndThePortalNoLongerSaysItIsUndecided()
+    {
+        await using var app = new PaymentsApp();
+        var club = await ClubAsync(app);
+        var (lead, _, deal) = await DealAsync(club);
+        await HandOverAsync(club, deal, lead);
+        var handedOver = await Read(app, db => db.ClubMembers.IgnoreQueryFilters().Single());
+        (handedOver.Status, handedOver.StartUndetermined).Should().Be(("Pending", true), "the hand-over left the start to be decided");
+
+        var (contract, _) = await SignedOnDealAsync(app, club.Owner, deal, deposit: null);
+        await Json(await CountersignAsync(club.Owner, contract), "countersign");
+
+        // Admitted and billed from now: the start is decided, on the member's record.
+        var member = await Read(app, db => db.ClubMembers.IgnoreQueryFilters().Single());
+        (member.Id, member.Status, member.StartUndetermined).Should().Be((handedOver.Id, "Active", false));
+        member.StartsOnUtc.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromMinutes(5));
+
+        // And in the member portal, where Anna reads her membership.
+        var key = await PortalWorld.OpenPortalAsync(club.Owner);
+        using var anna = await PortalWorld.SignInMemberAsync(app, key, "anna@example.ch");
+        var me = await PortalWorld.Ok(await anna.GetAsync("/api/portal/me"), "Anna's profile in the portal");
+        (me.GetProperty("active").GetBoolean(), me.GetProperty("startUndetermined").GetBoolean()).Should().Be((true, false));
+    }
+
     private static async Task HandOverAsync(Club club, Guid deal, Guid lead)
     {
         await Json(await club.Owner.PutAsync("/api/onboarding/settings", Body(new { webhookUrl = "https://portal.example.com/api/integrations/cadence/onboarding", defaultLanguage = "en" })), "set the portal up");

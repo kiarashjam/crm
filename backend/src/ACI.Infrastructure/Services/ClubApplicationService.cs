@@ -848,6 +848,15 @@ public sealed class ClubApplicationService : IClubApplications
             member.Tier = plan.Tier.Name;
             member.DuesAmount = plan.Tier.Price;
             member.DuesFrequency = Cadence(plan.Tier.Cadence);
+            // Admitted now: a start a welcome hand-over left to be decided is decided by this
+            // approval. Left as it was, a member the hand-over made and a countersigned contract
+            // then admitted was active and billed while the member list, and the member portal
+            // they sign in to, still said their start was to be decided.
+            if (member.StartUndetermined)
+            {
+                member.StartUndetermined = false;
+                member.StartsOnUtc = now;
+            }
             readmitted = true;
             notes.Add($"{Name(member)} was already a member, so their record was used and set active again.");
         }
