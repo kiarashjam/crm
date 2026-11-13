@@ -188,7 +188,10 @@ public sealed class PrivateEventService : IPrivateEvents
         var e = await _db.ClubPrivateEvents.FirstOrDefaultAsync(x => x.Id == id && x.OrganizationId == organizationId, ct);
         if (e == null) return DomainErrors.PrivateEvent.NotFound;
         if (e.Status is PrivateEventStatuses.Cancelled or PrivateEventStatuses.Completed) return DomainErrors.PrivateEvent.NotWhileStatus(e.Status);
-        if (e.InvoicedAtUtc != null) return DomainErrors.PrivateEvent.Invoiced;
+        // An invoiced event is cancelled once its invoice's charges are voided on the client's
+        // account: cancelling moves no money, so the books and the event agree. It used to be
+        // refused for good, the spaces it held kept for a party that was not happening.
+        if (e.InvoicedAtUtc != null && !await InvoiceVoidedAsync(organizationId, id, ct)) return DomainErrors.PrivateEvent.InvoiceNotVoided;
 
         // A deposit asked is kept or given back as the club decides: nothing moves without saying so.
         if (e.DepositChargeId is Guid deposit && e.DepositSettledAtUtc == null)
@@ -721,6 +724,7 @@ public sealed class PrivateEventService : IPrivateEvents
                 .ToDictionaryAsync(g => g.Key, g => g.Sum, ct);
         var invoiceTotal = invoiceIds.Count == 0 ? 0m
             : await _db.ClubCharges.AsNoTracking().Where(c => invoiceIds.Contains(c.Id)).SumAsync(c => c.Amount, ct);
+        var invoiceVoided = invoiceIds.Count > 0 && await VoidedCountAsync(organizationId, invoiceIds, ct) == invoiceIds.Count;
         var depositPaid = e.DepositChargeId is Guid deposit ? paid.GetValueOrDefault(deposit) : 0m;
         var depositState = e.DepositChargeId == null ? "none"
             : e.DepositSettledAtUtc != null ? (e.InvoicedAtUtc != null ? "set_against_invoice" : "released")
@@ -764,10 +768,26 @@ public sealed class PrivateEventService : IPrivateEvents
             InvoiceChargeIds = invoiceIds,
             InvoiceTotal = invoiceTotal,
             InvoicePaid = invoiceIds.Sum(id => paid.GetValueOrDefault(id)),
+            InvoiceVoided = invoiceVoided,
         };
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
+
+    /// <summary>Whether every charge of the event's final invoice has been voided on the client's account.</summary>
+    private async Task<bool> InvoiceVoidedAsync(Guid organizationId, Guid id, CancellationToken ct)
+    {
+        var charges = await _db.ClubPrivateEventLines.AsNoTracking()
+            .Where(l => l.PrivateEventId == id && l.ChargeId != null)
+            .Select(l => l.ChargeId!.Value).Distinct().ToListAsync(ct);
+        return charges.Count > 0 && await VoidedCountAsync(organizationId, charges, ct) == charges.Count;
+    }
+
+    /// <summary>How many of <paramref name="chargeIds"/> a void entry has taken back.</summary>
+    private Task<int> VoidedCountAsync(Guid organizationId, IReadOnlyCollection<Guid> chargeIds, CancellationToken ct) =>
+        _db.ClubCharges.AsNoTracking()
+            .Where(c => c.OrganizationId == organizationId && c.ReversesChargeId != null && chargeIds.Contains(c.ReversesChargeId.Value))
+            .Select(c => c.ReversesChargeId!.Value).Distinct().CountAsync(ct);
 
     private async Task<List<Guid>> HeldResourcesAsync(Guid organizationId, Guid id, CancellationToken ct) =>
         await _db.ClubReservations.AsNoTracking()

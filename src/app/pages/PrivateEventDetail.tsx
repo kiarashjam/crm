@@ -78,6 +78,8 @@ function EventView({ event: e, onSaved }: { event: PrivateEvent; onSaved: () => 
 
   const open = e.status === 'Enquiry' || e.status === 'Confirmed';
   const invoiced = e.money.invoiced;
+  // An invoiced event is cancelled once its invoice's charges are voided on the client's account.
+  const cancellable = !invoiced || e.money.invoiceVoided === true;
   const canArrange = may(PERMISSION.ClubMembers);
   const canMoney = may(PERMISSION.ManageMoney);
 
@@ -122,7 +124,7 @@ function EventView({ event: e, onSaved }: { event: PrivateEvent; onSaved: () => 
               onClick={() => void act('Completing', () => completePrivateEvent(e.id), `${e.title} is completed.`)}>
               <CheckCircle2 className="h-4 w-4" aria-hidden="true" /> Completed
             </Button>
-            {!invoiced && (
+            {cancellable && (
               <Button type="button" variant="outline" className="gap-1.5 text-rose-700" onClick={() => setCancelling(true)} disabled={busy}>
                 <XCircle className="h-4 w-4" aria-hidden="true" /> Cancel the event
               </Button>
@@ -191,11 +193,16 @@ function EventView({ event: e, onSaved }: { event: PrivateEvent; onSaved: () => 
                   <dt className="text-slate-500">Final invoice</dt>
                   <dd className="text-right font-medium">
                     {amount(e.money.invoiceTotal, e.currency)}
-                    <span className="block text-xs font-normal text-slate-500">{amount(e.money.invoicePaid, e.currency)} paid</span>
+                    <span className="block text-xs font-normal text-slate-500">
+                      {e.money.invoiceVoided ? 'Voided on the client’s account' : `${amount(e.money.invoicePaid, e.currency)} paid`}
+                    </span>
                   </dd>
                 </div>
               )}
             </dl>
+            {open && invoiced && !e.money.invoiceVoided && canArrange && (
+              <p className="text-xs text-slate-500">To cancel the event, void its invoice’s charges on the client’s house account first.</p>
+            )}
             {open && !invoiced && canMoney && (
               <div className="flex flex-wrap gap-2">
                 {e.money.depositState === 'none' && (

@@ -305,6 +305,49 @@ public class ClubPrivateEventsTests
         (await AccountAsync(client, "companies", acme)).GetProperty("owed").GetDecimal().Should().Be(18m, "Acme owes Marc's drink and nothing of his party");
     }
 
+    [Fact]
+    public async Task AnInvoicedEvent_IsCancelledOnceItsInvoicesChargesAreVoided_AndItsSpacesAreFreed()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await ClubAsync(factory);
+        var acme = await CompanyAsync(client);
+        var salon = await ResourceAsync(client, "Salon", 30);
+        var party = await EventAsync(client, new
+        {
+            title = "Acme dinner", companyId = acme, startAtUtc = At(Evening), endAtUtc = At(Evening.AddHours(4)), guestCount = 30, resourceIds = new[] { salon },
+            lines = new object[]
+            {
+                new { name = "Dinner", quantity = 30m, unitPrice = 90m, vatRate = 8.1m },
+                new { name = "Flowers", quantity = 1m, unitPrice = 200m, vatRate = 2.6m },
+            },
+        });
+        var invoiced = await Json(await client.PostAsync($"/api/private-events/{Id(party)}/invoice", null), "invoice it in advance");
+        invoiced.GetProperty("money").GetProperty("invoiceVoided").GetBoolean().Should().BeFalse();
+        var charges = invoiced.GetProperty("money").GetProperty("invoiceChargeIds").EnumerateArray().Select(c => c.GetGuid()).ToList();
+        charges.Should().HaveCount(2, "one charge per VAT rate");
+
+        // Acme calls it off. While the invoice stands on its account the event stays, so the two agree.
+        (await Refused(await client.PostAsync($"/api/private-events/{Id(party)}/cancel", Body(new { reason = "Acme called it off" })),
+            HttpStatusCode.Conflict, "cancelling with the invoice standing")).Should().Contain("Void its charges");
+        await Json(await client.PostAsync($"/api/charges/{charges[0]}/void", Body(new { reason = "Acme called it off" })), "void the dinner");
+        await Refused(await client.PostAsync($"/api/private-events/{Id(party)}/cancel", Body(new { reason = "Acme called it off" })),
+            HttpStatusCode.Conflict, "cancelling with part of the invoice standing");
+        await Json(await client.PostAsync($"/api/charges/{charges[1]}/void", Body(new { reason = "Acme called it off" })), "void the flowers");
+        (await Json(await client.GetAsync($"/api/private-events/{Id(party)}"), "the event")).GetProperty("money").GetProperty("invoiceVoided").GetBoolean()
+            .Should().BeTrue();
+
+        // It used to be refused for good, and the salon stayed held for a dinner nobody was coming to.
+        var cancelled = await Json(await client.PostAsync($"/api/private-events/{Id(party)}/cancel", Body(new { reason = "Acme called it off" })), "cancel");
+        cancelled.GetProperty("status").GetString().Should().Be("Cancelled");
+        cancelled.GetProperty("spaces").GetArrayLength().Should().Be(0);
+        var anna = await MemberAsync(client, "Anna");
+        await Json(await client.PostAsync("/api/reservations", Body(new
+        {
+            resourceId = salon, memberId = anna, partySize = 2, startAtUtc = At(Evening.AddHours(1)), endAtUtc = At(Evening.AddHours(2)),
+        })), "Anna books the salon that evening");
+        (await AccountAsync(client, "companies", acme)).GetProperty("owed").GetDecimal().Should().Be(0m);
+    }
+
     // ── contract ─────────────────────────────────────────────────────────────
 
     [Fact]

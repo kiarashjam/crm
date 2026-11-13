@@ -119,6 +119,29 @@ describe("a private event's page", () => {
     await waitFor(() => expect(api.cancel).toHaveBeenCalledWith('pe-1', 'Acme postponed', 'release'));
   });
 
+  it('keeps an invoiced event until its invoice is voided on the account, then offers to cancel it', async () => {
+    const invoicedMoney = { ...PARTY.money, invoiced: true, invoiceChargeIds: ['c-1'], invoiceTotal: 3600, invoicePaid: 0 };
+    api.get.mockResolvedValue({ ...PARTY, money: { ...invoicedMoney, invoiceVoided: false } });
+    const first = show();
+
+    await screen.findByRole('heading', { name: 'Acme summer party' });
+    expect(screen.queryByRole('button', { name: 'Cancel the event' })).not.toBeInTheDocument();
+    expect(screen.getByText(/void its invoice’s charges on the client’s house account first/)).toBeInTheDocument();
+    first.unmount();
+
+    api.get.mockResolvedValue({ ...PARTY, money: { ...invoicedMoney, invoiceVoided: true } });
+    api.cancel.mockResolvedValue({ ...PARTY, status: 'Cancelled' });
+    show();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Cancel the event' }));
+    const dialog = screen.getByRole('dialog');
+    await userEvent.type(within(dialog).getByLabelText('Why'), 'Acme called it off');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel the event' }));
+
+    await waitFor(() => expect(api.cancel).toHaveBeenCalledWith('pe-1', 'Acme called it off', undefined));
+    expect(screen.getByText('Voided on the client’s account')).toBeInTheDocument();
+  });
+
   it('lets the door check a guest in, and nothing more', async () => {
     as([PERMISSION.FrontDesk]);
     api.checkIn.mockResolvedValue({ ...PARTY, guests: [{ id: 'g-tom', name: 'Tom Berger', checkedInAtUtc: '2026-12-13T17:30:00Z' }], guestsCheckedIn: 1 });

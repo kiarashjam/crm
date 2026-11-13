@@ -176,6 +176,9 @@ public sealed record PrivateEventMoneyDto
     public IReadOnlyList<Guid> InvoiceChargeIds { get; init; } = Array.Empty<Guid>();
     public decimal InvoiceTotal { get; init; }
     public decimal InvoicePaid { get; init; }
+
+    /// <summary>Every charge of the final invoice has been voided on the client's account: the event can be cancelled.</summary>
+    public bool InvoiceVoided { get; init; }
 }
 
 public sealed record PrivateEventDto

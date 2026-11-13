@@ -109,7 +109,12 @@ public static partial class DomainErrors
             "PrivateEvent.NotWhile.Conflict", $"This private event is {status.ToLowerInvariant()}: that cannot be done now.");
 
         public static readonly Error Invoiced = new(
-            "PrivateEvent.Invoiced.Conflict", "The final invoice has been posted: its menu, services and client can no longer change. Void the invoice's charges first to change them.");
+            "PrivateEvent.Invoiced.Conflict",
+            "The final invoice has been posted: its menu, services and client can no longer change. Correct what the client owes on their house account.");
+
+        public static readonly Error InvoiceNotVoided = new(
+            "PrivateEvent.InvoiceNotVoided.Conflict",
+            "The final invoice has been posted. Void its charges on the client's house account first, then cancel the event.");
 
         public static readonly Error ClientHasMoney = new(
             "PrivateEvent.ClientHasMoney.Conflict",

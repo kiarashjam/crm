@@ -349,6 +349,8 @@ export interface PrivateEventMoney {
   invoiceChargeIds: string[];
   invoiceTotal: number;
   invoicePaid: number;
+  /** Every charge of the final invoice was voided on the client's account: the event can be cancelled. */
+  invoiceVoided?: boolean;
 }
 
 export interface PrivateEvent {
