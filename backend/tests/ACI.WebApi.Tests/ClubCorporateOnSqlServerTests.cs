@@ -162,6 +162,47 @@ public class ClubCorporateOnSqlServerTests
     });
 
     [SqlServerFact]
+    public Task TwoCompaniesWhoseStatementsForTheSameMonthWerePrinted_CanBeMerged_AndTheDuplicatesSlipStillPays() => RunAsync(async (client, _, database) =>
+    {
+        // A statement has one QR reference per account and period (a filtered unique index): the
+        // month's statements of both records were printed, so moving the duplicate's onto the
+        // company kept used to break that index and the merge failed.
+        await Json(await client.PutAsync("/api/payment-settings", Body(new
+        {
+            iban = "CH5800791123000889012", qrIban = "CH4431999123000889012",
+            creditorName = "Pavillon 46", creditorPostalCode = "2501", creditorTown = "Biel", creditorCountry = "CH",
+        })), "set the bank");
+        var from = Uri.EscapeDataString(DateTime.UtcNow.Date.AddDays(-7).ToString("o"));
+        var to = Uri.EscapeDataString(DateTime.UtcNow.Date.AddDays(7).ToString("o"));
+        var acme = await CompanyAsync(client, "Acme AG");
+        var duplicate = await CompanyAsync(client, "ACME");
+        foreach (var company in new[] { acme, duplicate })
+        {
+            await Json(await client.PostAsync($"/api/club-accounts/companies/{company}", null), "open the account");
+            await Json(await client.PostAsync("/api/charges", Body(new { memberId = company, kind = "Event", description = "Summer party", amount = 1200 })), "charge it");
+            var statement = await client.GetAsync($"/api/club-accounts/companies/{company}/statement.pdf?from={from}&to={to}");
+            statement.StatusCode.Should().Be(HttpStatusCode.OK, await statement.Content.ReadAsStringAsync());
+        }
+        var duplicateReference = (string)(await SqlServerApp.ScalarAsync(database, $"SELECT [QrReference] FROM [ClubPaymentReferences] WHERE [MemberId] = '{duplicate}'"))!;
+        // Part of the duplicate's statement was paid by transfer before anyone saw it was a duplicate.
+        (await Json(await BankFileTests.ImportAsync(client, BankFileTests.Camt054(("TX-1", 200m, duplicateReference)), "first.xml"), "import the first transfer"))
+            .GetProperty("matched").GetInt32().Should().Be(1);
+
+        var merged = await client.PostAsync($"/api/companies/{acme}/merge", Body(new { otherCompanyId = duplicate }));
+        merged.IsSuccessStatusCode.Should().BeTrue(await merged.Content.ReadAsStringAsync());
+
+        (await CountAsync(database, $"SELECT COUNT(*) FROM [ClubPaymentReferences] WHERE [MemberId] = '{acme}'"))
+            .Should().Be(2, "the duplicate's printed reference is Acme's now, beside its own");
+        (await CountAsync(database, $"SELECT COUNT(*) FROM [ClubBankTransactions] WHERE [MemberId] = '{acme}'"))
+            .Should().Be(1, "the transfer recorded as the duplicate's is Acme's, as its payment is");
+        // The rest of the duplicate's slip, paid after the merge, lands on Acme's account.
+        (await Json(await BankFileTests.ImportAsync(client, BankFileTests.Camt054(("TX-2", 1000m, duplicateReference)), "second.xml"), "import the second transfer"))
+            .GetProperty("matched").GetInt32().Should().Be(1);
+        (await CountAsync(database, $"SELECT COUNT(*) FROM [ClubPayments] WHERE [MemberId] = '{acme}' AND [Provider] = N'bank'")).Should().Be(2);
+        (await CountAsync(database, $"SELECT COUNT(*) FROM [ClubPayments] WHERE [MemberId] = '{duplicate}'")).Should().Be(0);
+    });
+
+    [SqlServerFact]
     public Task ACompanyAndAContactNothingKeepsAreDeleted_WithTheirEmptyAccounts_AndPastEventsStopNamingThem() => RunAsync(async (client, _, database) =>
     {
         var bolt = await CompanyAsync(client, "Bolt GmbH");

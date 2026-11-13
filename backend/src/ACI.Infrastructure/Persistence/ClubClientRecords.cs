@@ -1,4 +1,5 @@
 using ACI.Domain.Entities;
+using ACI.Infrastructure.Services.Payments;
 using Microsoft.EntityFrameworkCore;
 
 namespace ACI.Infrastructure.Persistence;
@@ -113,8 +114,25 @@ internal static class ClubClientRecords
             (row.MemberId, row.MemberName) = (keepId, name);
         foreach (var row in await db.ClubSubscriptions.Where(s => s.MemberId == dropId && s.OrganizationId == organizationId).ToListAsync(ct))
             (row.MemberId, row.MemberName) = (keepId, name);
+        // The QR references printed on the dropped record's statements pay the kept record's account
+        // when a transfer quotes them, as a member merge has them do. A statement has one reference
+        // per account and period (a unique index): where the kept record's statement for the same
+        // period was printed too, the moved one stops being the period's, or the merge would fail
+        // on that index.
+        var keptStatements = await db.ClubPaymentReferences
+            .Where(r => r.MemberId == keepId && r.OrganizationId == organizationId && r.Purpose == ClubQrBillService.StatementPurpose)
+            .Select(r => new { r.PeriodStartUtc, r.PeriodEndUtc })
+            .ToListAsync(ct);
         foreach (var row in await db.ClubPaymentReferences.Where(r => r.MemberId == dropId && r.OrganizationId == organizationId).ToListAsync(ct))
+        {
             row.MemberId = keepId;
+            if (row.Purpose == ClubQrBillService.StatementPurpose
+                && keptStatements.Any(k => k.PeriodStartUtc == row.PeriodStartUtc && k.PeriodEndUtc == row.PeriodEndUtc))
+                row.Purpose = ClubQrBillService.MergedStatementPurpose;
+        }
+        // Bank transfers recorded as the dropped record's are the kept record's, as their payments are.
+        foreach (var row in await db.ClubBankTransactions.Where(t => t.MemberId == dropId && t.OrganizationId == organizationId).ToListAsync(ct))
+            (row.MemberId, row.MemberName) = (keepId, name);
         foreach (var e in await db.ClubPrivateEvents.Where(e => e.BillToAccountId == dropId && e.OrganizationId == organizationId).ToListAsync(ct))
             e.BillToAccountId = keepId;
 
