@@ -70,6 +70,24 @@ describe('single sign-on', () => {
     await expect(completeSso('one-time-code')).rejects.toThrow(/another browser or tab/);
   });
 
+  it('carries the language picked on the sign-in page through the provider, and only one the app has', async () => {
+    server.use(http.post(`${BASE}/api/auth/sso/complete`, () =>
+      HttpResponse.json({ token: 't', user: { id: 'u', name: 'Anna', email: 'anna@pavillon46.ch' }, requiresTwoFactor: false })));
+
+    await ssoStartUrl('google', null, 'de');
+    expect((await completeSso('code')).language).toBe('de');
+    // "Follow the workspace" is a choice too.
+    await ssoStartUrl('google', null, null);
+    expect((await completeSso('code')).language).toBeNull();
+    // Nothing picked: nothing carried, and the account's own language stands.
+    await ssoStartUrl('google');
+    expect(JSON.parse(sessionStorage.getItem('cadence.sso')!)).not.toHaveProperty('language');
+    expect((await completeSso('code')).language).toBeUndefined();
+    // A value the app has no catalogue for is no choice.
+    sessionStorage.setItem('cadence.sso', JSON.stringify({ verifier: 'v', provider: 'google', returnTo: null, language: 'xx' }));
+    expect((await completeSso('code')).language).toBeUndefined();
+  });
+
   it('reads the landing address and says each failure in words', () => {
     expect(readSsoLanding('#code=abc')).toEqual({ code: 'abc', error: null });
     expect(readSsoLanding('#error=email_not_verified')).toEqual({ code: null, error: 'email_not_verified' });

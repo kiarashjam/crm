@@ -2,6 +2,10 @@
 // one-time code (or the reason it failed) in the address fragment, which never reaches a
 // server log. The code is traded, with this tab's secret, for the session; when the account
 // has two-factor sign-in on, the sign-in page asks for the code or a passkey next.
+//
+// A language picked on the sign-in page before leaving for the provider comes back with the
+// tab's secret, and goes onto the account as a password sign-in's does. Without that, the
+// account's own (older) language won as the session started, and switched this browser too.
 
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -11,9 +15,11 @@ import { completeSso, keepWorkspaceFor, readSsoLanding, ssoErrorMessage } from '
 import { messages } from '@/app/api/messages';
 import { setSession } from '@/app/lib/auth';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
+import { useT } from '@/app/i18n';
 
 export default function SsoCallback() {
   const navigate = useNavigate();
+  const { choose } = useT();
   const [failure, setFailure] = useState<string | null>(null);
   // The code works once: a second run (React's development double effect) must not spend it again.
   const started = useRef(false);
@@ -29,19 +35,21 @@ export default function SsoCallback() {
       return;
     }
     completeSso(code)
-      .then(({ response, returnTo, kept }) => {
+      .then(({ response, returnTo, kept, language }) => {
         if (response.requiresTwoFactor && response.twoFactorToken) {
-          navigate('/login', { replace: true, state: { twoFactorToken: response.twoFactorToken, returnTo, kept } });
+          navigate('/login', { replace: true, state: { twoFactorToken: response.twoFactorToken, returnTo, kept, language } });
           return;
         }
         if (!response.token || !response.user) throw new Error(ssoErrorMessage('server_error'));
         setSession(response.token, response.user);
+        // Right after the session starts, so the account's older answer is dropped (see I18nProvider).
+        if (language !== undefined) void choose(language);
         keepWorkspaceFor(response.user, kept);
         toast.success(messages.auth.signedIn);
         navigate(returnTo ?? '/organizations', { replace: true });
       })
       .catch((err: unknown) => setFailure(err instanceof Error && err.message ? err.message : ssoErrorMessage('server_error')));
-  }, [navigate]);
+  }, [navigate, choose]);
 
   return (
     <main id={MAIN_CONTENT_ID} tabIndex={-1} className="flex min-h-screen items-center justify-center bg-gradient-subtle px-[var(--page-padding)]">

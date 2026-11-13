@@ -2,8 +2,8 @@
 // kept in this browser, and once the person signs in it goes onto their account, so the app
 // opens in it in every browser they use. A language they did not touch leaves the account's.
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { http, HttpResponse } from 'msw';
@@ -12,6 +12,9 @@ import { withQueries } from '@/test/queryWrapper';
 import { I18nProvider, loadCatalogue, useT } from '@/app/i18n';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), message: vi.fn() } }));
+// Leaving for Google or Microsoft is a page load the test cannot follow: what it hands over is checked.
+const startSso = vi.hoisted(() => vi.fn());
+vi.mock('@/app/api/signIn', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/app/api/signIn')>()), startSso }));
 
 const Login = (await import('./Login')).default;
 
@@ -25,6 +28,7 @@ beforeEach(async () => {
   localStorage.clear();
   sessionStorage.clear();
   vi.stubEnv('VITE_API_URL', BASE);
+  startSso.mockReset();
   saved = [];
   await loadCatalogue('de');
   await loadCatalogue('fr');
@@ -48,9 +52,9 @@ function SignedIn() {
   return <p>Signed in <span data-testid="language">{language}</span></p>;
 }
 
-function renderLogin() {
+function renderLogin(state?: unknown) {
   return render(withQueries(
-    <MemoryRouter initialEntries={['/login']}>
+    <MemoryRouter initialEntries={[{ pathname: '/login', state }]}>
       <I18nProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
@@ -128,5 +132,102 @@ describe('the sign-in page in another language', () => {
     await user.type(screen.getByLabelText('Mot de passe'), 'wrong');
     await user.click(last(screen.getAllByRole('button', { name: /Se connecter/ })));
     expect(await screen.findByText('Ces informations ne correspondent pas')).toBeInTheDocument();
+  });
+});
+
+// Single sign-on and passkeys came with their own ways in, which started the session without
+// the language picked here: the account's own, older language then switched the app (and
+// this browser) back, as it once did after a password sign-in.
+describe('the language picked here, whichever way in the person takes', () => {
+  const NORA = { id: 'user-1', name: 'Nora Keller', email: 'nora@example.ch', emailVerified: true };
+  const bytes = (...values: number[]) => new Uint8Array(values).buffer;
+
+  /** This browser holds a passkey for the site, as the sign-in tests of passkeys set it up. */
+  function offerPasskeys() {
+    const assertion = {
+      id: 'cred-1', rawId: bytes(1, 2), type: 'public-key',
+      response: { clientDataJSON: bytes(3), authenticatorData: bytes(4), signature: bytes(5), userHandle: bytes(6) },
+    };
+    vi.stubGlobal('PublicKeyCredential', function PublicKeyCredential() {});
+    Object.defineProperty(navigator, 'credentials', { configurable: true, value: { get: vi.fn(async () => assertion), create: vi.fn() } });
+  }
+
+  /** The account says French, and counts how often it is asked. */
+  function accountSaysFrench() {
+    const asked = { count: 0 };
+    server.use(http.get(`${BASE}/api/settings/language`, () => {
+      asked.count += 1;
+      return HttpResponse.json({ language: 'fr' });
+    }));
+    return asked;
+  }
+
+  /** Lets the account's answer arrive and be read, then says which language the app is in. */
+  async function settledLanguage(asked: { count: number }) {
+    await waitFor(() => expect(asked.count).toBeGreaterThan(0));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    return screen.getByTestId('language').textContent;
+  }
+
+  afterEach(async () => {
+    // The code boxes keep timers running for 50 ms after each digit (see Login.twoFactor.test).
+    cleanup();
+    vi.unstubAllGlobals();
+    Reflect.deleteProperty(navigator, 'credentials');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  });
+
+  it('keeps it after signing in with a passkey', async () => {
+    const asked = accountSaysFrench();
+    server.use(
+      http.get(`${BASE}/api/auth/sign-in-options`, () => HttpResponse.json({ sso: [], passkeys: true })),
+      http.post(`${BASE}/api/auth/passkeys/sign-in/options`, () =>
+        HttpResponse.json({ ceremonyId: 'ceremony-1', options: { challenge: 'CQk', allowCredentials: [], userVerification: 'required' } })),
+      http.post(`${BASE}/api/auth/passkeys/sign-in`, () => HttpResponse.json({ token: 'passkey-session', user: NORA, requiresTwoFactor: false })),
+    );
+    offerPasskeys();
+    const user = userEvent.setup();
+    renderLogin();
+
+    await user.selectOptions(screen.getByLabelText('Language'), 'de');
+    await user.click(await screen.findByRole('button', { name: /passkey/i }));
+
+    expect(await screen.findByText('Signed in', { exact: false })).toBeInTheDocument();
+    await waitFor(() => expect(saved).toEqual([{ language: 'de' }]));
+    expect(await settledLanguage(asked)).toBe('de');
+    expect(localStorage.getItem('cadence.language')).toBe('de');
+  });
+
+  it('hands it to single sign-on, which carries it through the provider', async () => {
+    server.use(http.get(`${BASE}/api/auth/sign-in-options`, () =>
+      HttpResponse.json({ sso: [{ id: 'google', name: 'Google' }], passkeys: false })));
+    const user = userEvent.setup();
+    renderLogin();
+
+    await user.selectOptions(screen.getByLabelText('Language'), 'de');
+    await user.click(await screen.findByRole('button', { name: /Google/ }));
+
+    expect(startSso).toHaveBeenCalledWith('google', null, 'de');
+  });
+
+  it('keeps one picked before single sign-on once the two-factor code is in', async () => {
+    // Picked here and kept in this browser; then off to the provider, which sends the person
+    // back here for the code because the account has two-factor sign-in on.
+    localStorage.setItem('cadence.language', 'de');
+    const asked = accountSaysFrench();
+    server.use(http.post(`${BASE}/api/auth/login/2fa`, () => HttpResponse.json({ token: 'sso-session', user: NORA, requiresTwoFactor: false })));
+    const user = userEvent.setup();
+    renderLogin({ twoFactorToken: 'step-from-sso', language: 'de' });
+
+    expect(screen.getByRole('heading', { name: 'Zwei-Faktor-Bestätigung' })).toBeInTheDocument();
+    await user.type(document.querySelector<HTMLInputElement>('input[autocomplete="one-time-code"]')!, '123456');
+    await user.click(screen.getByRole('button', { name: 'Bestätigen und anmelden' }));
+
+    expect(await screen.findByText('Signed in', { exact: false })).toBeInTheDocument();
+    await waitFor(() => expect(saved).toEqual([{ language: 'de' }]));
+    expect(await settledLanguage(asked)).toBe('de');
+    expect(localStorage.getItem('cadence.language')).toBe('de');
   });
 });

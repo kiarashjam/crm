@@ -8,6 +8,7 @@ import { useQuery } from '@tanstack/react-query';
 import { KeyRound, Loader2 } from 'lucide-react';
 import { getSignInOptions, passkeysSupported, signInWithPasskey, startSso, type SsoProvider } from '@/app/api/signIn';
 import type { LoginResponse } from '@/app/api/auth';
+import type { Language } from '@/app/i18n/languages';
 
 /** The providers' own marks, drawn small and plain so they read as theirs. */
 function ProviderMark({ id }: { id: string }) {
@@ -35,10 +36,12 @@ const buttonCls =
   'flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2';
 
 /** The single sign-on buttons on their own (the sign-in page, and a workspace asking for them). */
-export function SsoButtons({ providers, returnTo, onError }: {
+export function SsoButtons({ providers, returnTo, language, onError }: {
   providers: SsoProvider[];
   /** Where to come back to in the app once signed in. */
   returnTo?: string | null;
+  /** The language picked on the sign-in page, kept for the account once back (undefined: none was). */
+  language?: Language | null;
   onError?: (message: string) => void;
 }) {
   const [leaving, setLeaving] = useState<string | null>(null);
@@ -47,7 +50,7 @@ export function SsoButtons({ providers, returnTo, onError }: {
   const go = async (provider: SsoProvider) => {
     setLeaving(provider.id);
     try {
-      await startSso(provider.id, returnTo);
+      await startSso(provider.id, returnTo, language);
     } catch (err) {
       setLeaving(null);
       onError?.(err instanceof Error ? err.message : 'Single sign-on could not start.');
@@ -73,9 +76,11 @@ export interface AlternativeSignInProps {
   /** Offer a passkey too (signing in; creating an account has none yet). */
   withPasskey?: boolean;
   returnTo?: string | null;
+  /** The language picked on the sign-in page, which single sign-on carries through the provider (undefined: none was). */
+  language?: Language | null;
 }
 
-export function AlternativeSignIn({ onSignedIn, onError, withPasskey = true, returnTo }: AlternativeSignInProps) {
+export function AlternativeSignIn({ onSignedIn, onError, withPasskey = true, returnTo, language }: AlternativeSignInProps) {
   const options = useQuery({ queryKey: ['sign-in-options'], queryFn: getSignInOptions, staleTime: 5 * 60_000, retry: 1 });
   const [busy, setBusy] = useState(false);
 
@@ -97,7 +102,7 @@ export function AlternativeSignIn({ onSignedIn, onError, withPasskey = true, ret
 
   return (
     <div className="space-y-2" aria-label="Other ways to sign in">
-      <SsoButtons providers={sso} returnTo={returnTo} onError={onError} />
+      <SsoButtons providers={sso} returnTo={returnTo} language={language} onError={onError} />
       {passkey && (
         <button type="button" className={buttonCls} disabled={busy} onClick={() => void withKey()}>
           {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <KeyRound className="h-4 w-4" aria-hidden />}

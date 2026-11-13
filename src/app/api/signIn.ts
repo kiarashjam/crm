@@ -13,6 +13,7 @@
 import { authFetchJson, getApiBaseUrl, servesDemoData } from './apiClient';
 import type { LoginResponse } from './auth';
 import { getCurrentOrganizationId, getCurrentUser, setCurrentOrganizationId } from '@/app/lib/auth';
+import { asLanguage, type Language } from '@/app/i18n/languages';
 
 export type SsoProvider = { id: string; name: string };
 export type SignInOptions = { sso: SsoProvider[]; passkeys: boolean };
@@ -51,7 +52,21 @@ const SSO_KEY = 'cadence.sso';
  */
 export type KeptWorkspace = { orgId: string; userId: string };
 
-type PendingSso = { verifier: string; provider: string; returnTo: string | null; kept?: KeptWorkspace | null };
+/**
+ * `language` is the one picked on the sign-in page before leaving for the provider (null:
+ * "follow the workspace"), absent when none was. The page is gone by the time the person
+ * comes back, and the account's own, older language would otherwise win as the session
+ * starts, as it would after a password sign-in that did not keep the pick.
+ */
+type PendingSso = {
+  verifier: string; provider: string; returnTo: string | null; kept?: KeptWorkspace | null; language?: Language | null;
+};
+
+/** A language kept for the way back: null ("follow the workspace") or one the app has; anything else is none. */
+function pickedLanguage(value: unknown): Language | null | undefined {
+  if (value === null) return null;
+  return typeof value === 'string' ? asLanguage(value) ?? undefined : undefined;
+}
 
 /** Only a path inside the app: the address the browser comes back to must not leave it. */
 export function safeReturnTo(path: string | null | undefined): string | null {
@@ -66,8 +81,11 @@ export async function pkceChallenge(verifier: string): Promise<string> {
   return bufferToBase64Url(digest);
 }
 
-/** Where the browser goes to sign in with the provider. Keeps this tab's secret for the way back. */
-export async function ssoStartUrl(provider: string, returnTo?: string | null): Promise<string> {
+/**
+ * Where the browser goes to sign in with the provider. Keeps this tab's secret for the way
+ * back, and the language picked on the sign-in page (`language`, undefined when none was).
+ */
+export async function ssoStartUrl(provider: string, returnTo?: string | null, language?: Language | null): Promise<string> {
   const base = getApiBaseUrl();
   if (!base) throw new Error('Single sign-on needs the server.');
   const verifier = bufferToBase64Url(crypto.getRandomValues(new Uint8Array(32)));
@@ -75,14 +93,15 @@ export async function ssoStartUrl(provider: string, returnTo?: string | null): P
   const userId = getCurrentUser()?.id;
   const pending: PendingSso = {
     verifier, provider, returnTo: safeReturnTo(returnTo), kept: orgId && userId ? { orgId, userId } : null,
+    ...(language !== undefined ? { language } : {}),
   };
   sessionStorage.setItem(SSO_KEY, JSON.stringify(pending));
   return `${base}/api/auth/sso/${encodeURIComponent(provider)}/start?challenge=${await pkceChallenge(verifier)}`;
 }
 
 /** Sends the browser to the provider. */
-export async function startSso(provider: string, returnTo?: string | null): Promise<void> {
-  window.location.assign(await ssoStartUrl(provider, returnTo));
+export async function startSso(provider: string, returnTo?: string | null, language?: Language | null): Promise<void> {
+  window.location.assign(await ssoStartUrl(provider, returnTo, language));
 }
 
 /** What the API put in the /auth/sso address: a one-time code, or why it failed. */
@@ -95,7 +114,9 @@ export function readSsoLanding(hash: string): { code: string | null; error: stri
  * Trades the one-time code for a session (or the two-factor step), with this tab's secret.
  * The secret is used once: it is forgotten whether or not the server accepts it.
  */
-export async function completeSso(code: string): Promise<{ response: LoginResponse; returnTo: string | null; kept: KeptWorkspace | null }> {
+export async function completeSso(code: string): Promise<{
+  response: LoginResponse; returnTo: string | null; kept: KeptWorkspace | null; language: Language | null | undefined;
+}> {
   let pending: PendingSso | null = null;
   try {
     pending = JSON.parse(sessionStorage.getItem(SSO_KEY) ?? 'null') as PendingSso | null;
@@ -111,7 +132,7 @@ export async function completeSso(code: string): Promise<{ response: LoginRespon
     body: JSON.stringify({ code, verifier: pending.verifier }),
     skipAuth: true,
   });
-  return { response, returnTo: pending.returnTo, kept: pending.kept ?? null };
+  return { response, returnTo: pending.returnTo, kept: pending.kept ?? null, language: pickedLanguage(pending.language) };
 }
 
 /**

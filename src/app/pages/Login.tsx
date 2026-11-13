@@ -36,18 +36,22 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const { t, choose } = useT();
+  // Back from single sign-on with two-factor sign-in on: the code (or a passkey) is next,
+  // with the language picked here before leaving for the provider, if one was.
+  const fromSso = location.state as {
+    twoFactorToken?: string; returnTo?: string | null; kept?: KeptWorkspace | null; language?: Language | null;
+  } | null;
   // A language picked on this page is the person's latest choice: it goes onto their account
-  // once they are signed in. One they did not touch leaves whatever the account has. Chosen
-  // again through the app's language, not saved behind its back: the account's answer to the
-  // question the app asks as the session starts is older, and would switch the page back.
-  const [pickedLanguage, setPickedLanguage] = useState<Language | null | undefined>(undefined);
+  // once they are signed in, whichever way in they take. One they did not touch leaves
+  // whatever the account has. Chosen again through the app's language, not saved behind its
+  // back: the account's answer to the question the app asks as the session starts is older,
+  // and would switch the page back.
+  const [pickedLanguage, setPickedLanguage] = useState<Language | null | undefined>(fromSso?.language);
   const keepPickedLanguage = () => {
     if (pickedLanguage !== undefined) void choose(pickedLanguage);
   };
   // An invitation link opened while signed out: go back to it, token and all.
   const resumeInvitation = invitationToResume(location.state);
-  // Back from single sign-on with two-factor sign-in on: the code (or a passkey) is next.
-  const fromSso = location.state as { twoFactorToken?: string; returnTo?: string | null; kept?: KeptWorkspace | null } | null;
   const afterSignIn = resumeInvitation ?? safeReturnTo(fromSso?.returnTo);
   // A passkey in place of the code only where the server takes passkeys (the same answer
   // the other ways in below read) and this browser can use one.
@@ -129,6 +133,7 @@ export default function Login() {
       return;
     }
     setSession(res.token, res.user);
+    keepPickedLanguage();
     keepWorkspaceFor(res.user, fromSso?.kept);
     toast.success(messages.auth.signedIn);
     navigate(afterSignIn ?? (isUsingRealApi() ? '/organizations' : '/dashboard'), { replace: true });
@@ -351,6 +356,7 @@ export default function Login() {
                     onError={setError}
                     withPasskey={mode === 'login'}
                     returnTo={afterSignIn}
+                    language={pickedLanguage}
                   />
 
                   <button

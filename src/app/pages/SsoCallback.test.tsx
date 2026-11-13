@@ -2,13 +2,14 @@
 // secret, for the session; the two-factor step goes on at the sign-in page; a failure says why.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { http, HttpResponse } from 'msw';
 import { server } from '@/test/mocks/server';
 import { withQueries } from '@/test/queryWrapper';
 import { getAuthToken, getCurrentOrganizationId } from '@/app/lib/auth';
 import { ssoStartUrl } from '@/app/api/signIn';
+import { I18nProvider, loadCatalogue, useT } from '@/app/i18n';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), message: vi.fn() } }));
 
@@ -17,8 +18,13 @@ const SsoCallback = (await import('./SsoCallback')).default;
 const BASE = 'http://api.test';
 
 function LoginStub() {
-  const state = useLocation().state as { twoFactorToken?: string } | null;
-  return <p>Sign-in page, step token {state?.twoFactorToken}</p>;
+  const state = useLocation().state as { twoFactorToken?: string; language?: string | null } | null;
+  return (
+    <>
+      <p>Sign-in page, step token {state?.twoFactorToken}</p>
+      <p data-testid="picked">{String(state?.language)}</p>
+    </>
+  );
 }
 
 function land(hash: string) {
@@ -123,5 +129,96 @@ describe('landing from single sign-on', () => {
 
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/another browser or tab/));
     expect(complete).not.toHaveBeenCalled();
+  });
+});
+
+// The sign-in page is gone by the time the provider sends the person back, so the language
+// picked there travels with this tab's secret. Without it, the account's own (older) language
+// won as the session started and switched this browser too.
+describe('landing from single sign-on with a language picked on the sign-in page', () => {
+  const ANNA = { id: 'u1', name: 'Anna', email: 'anna@pavillon46.ch', emailVerified: true };
+  let saved: unknown[];
+  let asked: number;
+
+  /** Where single sign-on lands, saying which language the app is in. */
+  function InTheApp() {
+    const { language } = useT();
+    return <p>Members page <span data-testid="language">{language}</span></p>;
+  }
+
+  function landInTheApp(hash: string) {
+    window.history.replaceState(null, '', `/auth/sso${hash}`);
+    return render(withQueries(
+      <MemoryRouter initialEntries={['/auth/sso']}>
+        <I18nProvider>
+          <Routes>
+            <Route path="/auth/sso" element={<SsoCallback />} />
+            <Route path="/members" element={<InTheApp />} />
+          </Routes>
+        </I18nProvider>
+      </MemoryRouter>,
+    ));
+  }
+
+  async function settledLanguage() {
+    await waitFor(() => expect(asked).toBeGreaterThan(0));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    return screen.getByTestId('language').textContent;
+  }
+
+  beforeEach(async () => {
+    saved = [];
+    asked = 0;
+    await loadCatalogue('de');
+    await loadCatalogue('fr');
+    server.use(
+      http.post(`${BASE}/api/auth/sso/complete`, () => HttpResponse.json({ token: 'sso-session', user: ANNA, requiresTwoFactor: false })),
+      // The account says French.
+      http.get(`${BASE}/api/settings/language`, () => {
+        asked += 1;
+        return HttpResponse.json({ language: 'fr' });
+      }),
+      http.put(`${BASE}/api/settings/language`, async ({ request }) => {
+        const body = await request.json();
+        saved.push(body);
+        return HttpResponse.json(body);
+      }),
+    );
+  });
+
+  it('keeps it on the account, over the account’s older one', async () => {
+    // Picked on the sign-in page while signed out: applied there and kept in this browser.
+    localStorage.setItem('cadence.language', 'de');
+    await ssoStartUrl('google', '/members', 'de');
+
+    landInTheApp('#code=the-code');
+
+    expect(await screen.findByText('Members page', { exact: false })).toBeInTheDocument();
+    await waitFor(() => expect(saved).toEqual([{ language: 'de' }]));
+    expect(await settledLanguage()).toBe('de');
+    expect(localStorage.getItem('cadence.language')).toBe('de');
+  });
+
+  it('leaves the account’s own language alone when none was picked', async () => {
+    await ssoStartUrl('google', '/members');
+
+    landInTheApp('#code=the-code');
+
+    expect(await screen.findByText('Members page', { exact: false })).toBeInTheDocument();
+    expect(await settledLanguage()).toBe('fr');
+    expect(saved).toEqual([]);
+  });
+
+  it('hands it to the sign-in page with the two-factor step', async () => {
+    server.use(http.post(`${BASE}/api/auth/sso/complete`, () =>
+      HttpResponse.json({ token: null, user: null, requiresTwoFactor: true, twoFactorToken: 'step-token' })));
+    await ssoStartUrl('google', null, 'fr');
+
+    land('#code=the-code');
+
+    expect(await screen.findByText('Sign-in page, step token step-token')).toBeInTheDocument();
+    expect(screen.getByTestId('picked')).toHaveTextContent('fr');
   });
 });

@@ -86,7 +86,8 @@ describe('a workspace that asks for single sign-on', () => {
     expect(await screen.findByRole('heading', { name: 'Pavillon 46 asks you to sign in with single sign-on' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Load contacts' })).not.toBeInTheDocument();
     await user.click(await screen.findByRole('button', { name: 'Continue with Microsoft' }));
-    expect(startSso).toHaveBeenCalledWith('microsoft', '/contacts');
+    // Signed in already: the account's language stands, and none is carried through the provider.
+    expect(startSso).toHaveBeenCalledWith('microsoft', '/contacts', undefined);
     expect(screen.getByRole('link', { name: 'Choose another workspace' })).toHaveAttribute('href', '/organizations');
   });
 

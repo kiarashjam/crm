@@ -66,7 +66,8 @@ describe('other ways to sign in', () => {
     page();
 
     await user.click(await screen.findByRole('button', { name: 'Continue with Microsoft' }));
-    expect(startSso).toHaveBeenCalledWith('microsoft', null);
+    // No language was picked on the page, so none is carried through the provider.
+    expect(startSso).toHaveBeenCalledWith('microsoft', null, undefined);
     expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Sign in with a passkey' })).not.toBeInTheDocument();
   });
