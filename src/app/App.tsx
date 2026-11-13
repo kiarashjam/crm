@@ -47,6 +47,7 @@ const PublicCapture = lazy(() => import('@/app/pages/PublicCapture'));
 const PublicApply = lazy(() => import('@/app/pages/PublicApply'));
 const Unsubscribe = lazy(() => import('@/app/pages/Unsubscribe'));
 const PayPage = lazy(() => import('@/app/pages/PayPage'));
+const MemberPortalSite = lazy(() => import('@/app/pages/portal/MemberPortalSite'));
 const Pipeline = lazy(() => import('@/app/pages/Pipeline'));
 const DealDetail = lazy(() => import('@/app/pages/DealDetail'));
 const Tasks = lazy(() => import('@/app/pages/Tasks'));
@@ -189,6 +190,18 @@ export default function App() {
                 <Route path="/pay/:token" element={
                   <Suspense fallback={<PageLoader />}>
                     <PayPage />
+                  </Suspense>
+                } />
+                {/* A club's member portal: members sign in with an emailed link, not a
+                    staff account, and the portal keeps its own session. */}
+                <Route path="/member-portal/:key" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <MemberPortalSite />
+                  </Suspense>
+                } />
+                <Route path="/member-portal/:key/sign-in" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <MemberPortalSite landing />
                   </Suspense>
                 } />
                 <Route path="/terms" element={

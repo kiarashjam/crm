@@ -1,7 +1,23 @@
 // Days and months on the workspace's calendar, whatever zone the browser is in.
 
 import { describe, expect, it } from 'vitest';
-import { dateOnlyKey, dayKey, dayKeyIn, daysBetween, formatDay, startOfDayIn, todayKeyIn, weekdayOf, zonedParts } from './zonedTime';
+import { dateOnlyKey, dayKey, dayKeyIn, daysBetween, formatDay, instantIn, startOfDayIn, todayKeyIn, weekdayOf, zonedParts } from './zonedTime';
+
+describe('instantIn', () => {
+  it("is a wall-clock time on the zone's clock, in winter and in summer time", () => {
+    expect(instantIn('2026-12-02', '18:00', 'Europe/Zurich')?.toISOString()).toBe('2026-12-02T17:00:00.000Z');
+    expect(instantIn('2026-07-02', '18:00', 'Europe/Zurich')?.toISOString()).toBe('2026-07-02T16:00:00.000Z');
+    expect(instantIn('2026-12-02', '18:00', 'America/New_York')?.toISOString()).toBe('2026-12-02T23:00:00.000Z');
+    expect(instantIn('2026-12-02', '00:30', 'Europe/Zurich')?.toISOString()).toBe('2026-12-01T23:30:00.000Z');
+  });
+
+  it('is nothing for a day or a time that cannot be read', () => {
+    expect(instantIn('', '18:00', 'Europe/Zurich')).toBeNull();
+    expect(instantIn('2026-12-02', '', 'Europe/Zurich')).toBeNull();
+    expect(instantIn('2026-12-02', '25:00', 'Europe/Zurich')).toBeNull();
+    expect(instantIn('02.12.2026', '18:00', 'Europe/Zurich')).toBeNull();
+  });
+});
 
 describe('the day an instant falls on', () => {
   const late = new Date('2026-10-31T23:30:00Z');
