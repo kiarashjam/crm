@@ -23,6 +23,9 @@ namespace ACI.Infrastructure.Migrations
         /// the old way never showed them either. A record and field that already have a row are
         /// left alone, so running this again adds nothing. The old rows are kept, read-only,
         /// until a later release; nothing reads them any more.
+        /// OPENJSON names its keys in a binary collation, so a field's key is compared in that
+        /// one too: exactly, as the old code looked a key up in the JSON, and without the
+        /// collation conflict comparing it to a column of the database's default would raise.
         /// </remarks>
         public const string CopyCustomFieldValuesSql = @"
 WITH [Values] AS (
@@ -32,7 +35,7 @@ WITH [Values] AS (
     FROM [CustomFieldValues] s
     CROSS APPLY OPENJSON(CASE WHEN ISJSON(s.[ValuesJson]) = 1 THEN s.[ValuesJson] END) j
     JOIN [CustomFieldDefinitions] d
-        ON d.[EntityType] = s.[EntityType] AND d.[Key] = j.[key]
+        ON d.[EntityType] = s.[EntityType] AND d.[Key] COLLATE Latin1_General_BIN2 = j.[key]
        AND ((s.[OrganizationId] IS NOT NULL AND d.[OrganizationId] = s.[OrganizationId])
          OR (s.[OrganizationId] IS NULL AND d.[OrganizationId] IS NULL AND d.[OwnerUserId] = s.[OwnerUserId]))
 ), [Typed] AS (
