@@ -458,7 +458,8 @@ function StartCorporateDialog({ open, onOpenChange, companyId, companyName, mayH
             </select>
           </div>
           <div>
-            <Label htmlFor={`corp-email-${companyId}`}>Statements to (email)</Label>
+            {/* Printed on the company's statements; the app does not email them (they are downloaded as a PDF). */}
+            <Label htmlFor={`corp-email-${companyId}`}>Billing email (printed on its statements)</Label>
             <Input id={`corp-email-${companyId}`} type="email" value={form.billingEmail} onChange={(e) => setForm({ ...form, billingEmail: e.target.value })} />
           </div>
           {mayHandleMoney && (
