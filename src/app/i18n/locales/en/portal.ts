@@ -175,4 +175,6 @@ export const portal = {
   'portal.error.nothingToPay': 'Nothing is owed on your account at the moment.',
   'portal.error.phone': 'A phone number is at most 40 characters: digits, spaces and + ( ) - / only.',
   'portal.error.party': 'Say how many people are coming, at least one.',
+  'portal.error.email': 'Enter the email address the club has for you.',
+  'portal.error.closed': 'The member portal is closed at the moment. Ask the club if you need anything.',
 };

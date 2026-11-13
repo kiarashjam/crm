@@ -175,4 +175,6 @@ export const portal: Translation<typeof en> = {
   'portal.error.nothingToPay': 'Auf Ihrem Konto ist zurzeit nichts offen.',
   'portal.error.phone': 'Eine Telefonnummer hat höchstens 40 Zeichen: nur Ziffern, Leerzeichen und + ( ) - /.',
   'portal.error.party': 'Geben Sie an, wie viele Personen kommen, mindestens eine.',
+  'portal.error.email': 'Geben Sie die E-Mail-Adresse ein, die der Club von Ihnen hat.',
+  'portal.error.closed': 'Das Mitgliederportal ist im Moment geschlossen. Wenden Sie sich bei Fragen an den Club.',
 };

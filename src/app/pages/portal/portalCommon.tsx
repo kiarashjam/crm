@@ -28,7 +28,19 @@ const ERROR_WORDS: Record<string, MessageKey> = {
   'Portal.NothingToPay': 'portal.error.nothingToPay',
   'Portal.Phone': 'portal.error.phone',
   'Portal.TooManyLinks': 'portal.error.tooMany',
+  'Portal.EmailInvalid': 'portal.error.email',
+  // The club turned its portal, or its whole club side, off while the page was open.
+  'Portal.Off': 'portal.error.closed',
+  'Module.Off': 'portal.error.closed',
 };
+
+/**
+ * The club has its portal, or its whole club side, turned off: every request is refused the
+ * same way until it is on again, so trying again is no use and the page says it is closed.
+ */
+export function isPortalClosed(error: unknown): boolean {
+  return error instanceof PortalError && (error.code === 'Portal.Off' || error.code === 'Module.Off');
+}
 
 export function portalErrorText(error: unknown, t: I18nValue['t']): string {
   if (error instanceof PortalError) {

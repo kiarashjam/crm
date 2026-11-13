@@ -263,6 +263,35 @@ describe('the member’s account', () => {
     expect(await screen.findByRole('heading', { name: 'Welcome back, Anna' })).toBeInTheDocument();
   });
 
+  it('says the portal is closed while the club has its club side off, with nothing to try again, and keeps the session', async () => {
+    signedIn();
+    let calls = 0;
+    server.use(http.get(`${BASE}/api/portal/me`, () => {
+      calls += 1;
+      return HttpResponse.json({ detail: 'The Club module is turned off.', errorCode: 'Module.Off' }, { status: 403 });
+    }));
+    open(`/member-portal/${KEY}`);
+
+    expect(await screen.findByRole('heading', { name: 'The member portal is closed' })).toBeInTheDocument();
+    expect(screen.getByText('Pavillon 46 has closed its member portal for now. Ask the club if you need anything.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+    expect(calls).toBe(1);
+    // It answers again once the club is back on, so the member stays signed in.
+    expect(JSON.parse(localStorage.getItem(`cadence.portal.${KEY}`) ?? '{}').token).toBe('member-token');
+  });
+
+  it('says an address the server will not take in the visitor’s language', async () => {
+    Object.defineProperty(window.navigator, 'languages', { value: ['fr-CH'], configurable: true });
+    server.use(http.post(`${BASE}/api/public/portal/${KEY}/sign-in-link`, () =>
+      HttpResponse.json({ detail: 'Enter the email address the club has for you.', errorCode: 'Portal.EmailInvalid' }, { status: 400 })));
+    const user = userEvent.setup();
+    open(`/member-portal/${KEY}`);
+
+    await user.type(await screen.findByLabelText('E-mail'), 'anna@example');
+    await user.click(screen.getByRole('button', { name: 'M’envoyer un lien' }));
+    expect(await screen.findByText('Saisissez l’adresse e-mail que le club a pour vous.')).toBeInTheDocument();
+  });
+
   it('goes back to the sign-in page when the club ended the session', async () => {
     signedIn();
     server.use(http.get(`${BASE}/api/portal/me`, () => new HttpResponse(null, { status: 401 })));

@@ -176,4 +176,6 @@ export const portal: Translation<typeof en> = {
   'portal.error.nothingToPay': 'Rien n’est dû sur votre compte pour le moment.',
   'portal.error.party': 'Indiquez combien de personnes viennent, au moins une.',
   'portal.error.phone': 'Un numéro de téléphone a 40 caractères au plus : chiffres, espaces et + ( ) - / seulement.',
+  'portal.error.email': 'Saisissez l’adresse e-mail que le club a pour vous.',
+  'portal.error.closed': 'L’espace membre est fermé pour le moment. Adressez-vous au club si vous avez besoin de quoi que ce soit.',
 };

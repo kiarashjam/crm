@@ -12,7 +12,7 @@ import { LanguageSwitcher } from '@/app/i18n/LanguageSwitcher';
 import { asLanguage, usePageLanguage, useT, type MessageKey } from '@/app/i18n';
 import { timed } from '@/app/hooks/queries/queryClient';
 import {
-  LoadFailed, portalErrorText, portalKeys, secondaryButtonClass, useClubFormats, usePortalTitle, type SectionProps,
+  isPortalClosed, LoadFailed, portalErrorText, portalKeys, secondaryButtonClass, useClubFormats, usePortalTitle, type SectionProps,
 } from './portalCommon';
 import { AccountSection, BookingsSection, EventsSection, PointsSection, PreferencesSection, statusWords } from './PortalSections';
 
@@ -98,7 +98,17 @@ export function PortalHome({ portalKey, session }: { portalKey: string; session:
         {me.isPending ? (
           <p aria-busy="true" className="text-sm text-slate-500">{t('common.loading')}</p>
         ) : me.isError ? (
-          <LoadFailed onRetry={() => void me.refetch()} />
+          // With the club side turned off the session still stands (it answers again once the
+          // club is back on), but nothing answers meanwhile: said so, rather than offering to
+          // try again forever.
+          isPortalClosed(me.error) ? (
+            <section role="status" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h1 className="text-xl font-semibold text-slate-900">{t('portal.signIn.closedTitle')}</h1>
+              <p className="mt-2 text-sm text-slate-600">{t('portal.signIn.closedText', { club: session.clubName })}</p>
+            </section>
+          ) : (
+            <LoadFailed onRetry={() => void me.refetch()} />
+          )
         ) : tab === 'account' ? (
           <AccountSection api={api} keys={keys} me={me.data} />
         ) : tab === 'events' ? (
