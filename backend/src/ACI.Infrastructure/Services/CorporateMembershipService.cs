@@ -182,54 +182,84 @@ public sealed class CorporateMembershipService : ICorporateMemberships
     /// The dues as a subscription on the company's account: started the first time, changed after
     /// (a new amount or cadence applies from the next period, as for any subscription).
     /// </summary>
+    /// <remarks>
+    /// Starting them takes the membership's row first, in one transaction with the subscription it
+    /// starts. Two first settings at once (a second click, two people, a retry) each started a
+    /// subscription, and the daily billing billed the company for both; now the second waits on
+    /// the row, is refused by its version, and is decided again on what the first saved: it
+    /// changes the dues the first started.
+    /// </remarks>
     private async Task<Result> StartOrChangeDuesAsync(Guid organizationId, Guid id, CorporateDuesRequest request, CancellationToken ct)
     {
-        var membership = await _db.ClubCorporateMemberships.FirstOrDefaultAsync(m => m.Id == id && m.OrganizationId == organizationId, ct);
-        if (membership == null) return DomainErrors.Corporate.NotFound;
-        if (membership.Status == CorporateMembershipStatuses.Ended) return DomainErrors.Corporate.Ended;
         var first = (request.FirstBillingAtUtc ?? "").Trim();
-
-        if (membership.DuesSubscriptionId is Guid running
-            && await _db.ClubSubscriptions.AsNoTracking().AnyAsync(s => s.Id == running && s.Status != "Cancelled", ct))
+        for (var attempt = 1; ; attempt++)
         {
-            var changed = await _ledger.UpdateSubscriptionAsync(organizationId, running, new SubscriptionWriteRequest
+            var membership = await _db.ClubCorporateMemberships.FirstOrDefaultAsync(m => m.Id == id && m.OrganizationId == organizationId, ct);
+            if (membership == null) return DomainErrors.Corporate.NotFound;
+            if (membership.Status == CorporateMembershipStatuses.Ended) return DomainErrors.Corporate.Ended;
+
+            if (membership.DuesSubscriptionId is Guid running
+                && await _db.ClubSubscriptions.AsNoTracking().AnyAsync(s => s.Id == running && s.Status != "Cancelled", ct))
             {
-                Amount = request.Amount,
-                Cadence = request.Cadence,
-                NextChargeAtUtc = first.Length == 0 ? null : first,
-            }, null, ct);
-            return changed.IsSuccess ? Result.Success() : changed.Error;
-        }
+                var changed = await _ledger.UpdateSubscriptionAsync(organizationId, running, new SubscriptionWriteRequest
+                {
+                    Amount = request.Amount,
+                    Cadence = request.Cadence,
+                    NextChargeAtUtc = first.Length == 0 ? null : first,
+                }, null, ct);
+                return changed.IsSuccess ? Result.Success() : changed.Error;
+            }
 
-        var account = await _ledger.OpenClientAccountAsync(organizationId, ClubAccountHolders.Company, membership.CompanyId, ct);
-        if (!account.IsSuccess) return account.Error;
-        var started = await _ledger.CreateSubscriptionAsync(organizationId, new SubscriptionWriteRequest
-        {
-            MemberId = membership.CompanyId,
-            Name = Clip($"{membership.Name} dues", 200),
-            Amount = request.Amount,
-            // A corporate membership is usually billed once a year; the catalogue item says otherwise when it does.
-            Cadence = string.IsNullOrWhiteSpace(request.Cadence) && request.CatalogItemId == null ? "Annual" : request.Cadence,
-            CatalogItemId = request.CatalogItemId,
-            NextChargeAtUtc = first.Length > 0 ? first : membership.StartsAtUtc.ToString("O", CultureInfo.InvariantCulture),
-            Notes = $"Dues of the corporate membership {membership.Name}",
-        }, ct);
-        if (!started.IsSuccess) return started.Error;
-        membership.DuesSubscriptionId = started.Value.Id;
-        membership.UpdatedAtUtc = DateTime.UtcNow;
-        try
-        {
-            await _db.SaveChangesAsync(ct);
+            await _reads.ReadAsync("corporate-dues", ct);
+            Guid? startedId = null;
+            var transaction = await BeginAsync(ct);
+            try
+            {
+                // The membership's row on its own first: of two starts at once, the second fails
+                // here, before it has started anything, and is decided again.
+                membership.UpdatedAtUtc = DateTime.UtcNow;
+                await _db.SaveChangesAsync(ct);
+
+                var account = await _ledger.OpenClientAccountAsync(organizationId, ClubAccountHolders.Company, membership.CompanyId, ct);
+                if (!account.IsSuccess) return account.Error;
+                var started = await _ledger.CreateSubscriptionAsync(organizationId, new SubscriptionWriteRequest
+                {
+                    MemberId = membership.CompanyId,
+                    Name = Clip($"{membership.Name} dues", 200),
+                    Amount = request.Amount,
+                    // A corporate membership is usually billed once a year; the catalogue item says otherwise when it does.
+                    Cadence = string.IsNullOrWhiteSpace(request.Cadence) && request.CatalogItemId == null ? "Annual" : request.Cadence,
+                    CatalogItemId = request.CatalogItemId,
+                    NextChargeAtUtc = first.Length > 0 ? first : membership.StartsAtUtc.ToString("O", CultureInfo.InvariantCulture),
+                    Notes = $"Dues of the corporate membership {membership.Name}",
+                }, ct);
+                if (!started.IsSuccess) return started.Error;
+                startedId = started.Value.Id;
+                membership.DuesSubscriptionId = started.Value.Id;
+                membership.UpdatedAtUtc = DateTime.UtcNow;
+                await _db.SaveChangesAsync(ct);
+                if (transaction != null) await transaction.CommitAsync(ct);
+                return Result.Success();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                _db.ChangeTracker.Clear();
+                if (transaction == null && startedId is Guid kept)
+                {
+                    // The in-memory provider the tests run on has no transaction to take the
+                    // subscription back with: it is noted on the row as it now stands.
+                    var again = await _db.ClubCorporateMemberships.FirstAsync(m => m.Id == id, ct);
+                    again.DuesSubscriptionId = kept;
+                    await _db.SaveChangesAsync(ct);
+                    return Result.Success();
+                }
+                if (attempt >= Attempts) return DomainErrors.Corporate.Changed;
+            }
+            finally
+            {
+                if (transaction != null) await transaction.DisposeAsync();
+            }
         }
-        catch (DbUpdateConcurrencyException)
-        {
-            // A nominee change saved the row meanwhile: note the subscription on what it left.
-            _db.ChangeTracker.Clear();
-            var again = await _db.ClubCorporateMemberships.FirstAsync(m => m.Id == id, ct);
-            again.DuesSubscriptionId = started.Value.Id;
-            await _db.SaveChangesAsync(ct);
-        }
-        return Result.Success();
     }
 
     public async Task<Result<CorporateMembershipDto>> RenewAsync(Guid organizationId, Guid id, Guid? expectedVersion, CancellationToken ct = default) =>
@@ -277,6 +307,11 @@ public sealed class CorporateMembershipService : ICorporateMemberships
         }
         return await SeatChangeAsync(organizationId, id, async (tracked, seated, now) =>
         {
+            // Dues started at the same moment as this end (after it looked): ending now would
+            // leave them billing a membership that has ended. Ending again stops them.
+            if (tracked.DuesSubscriptionId is Guid started && started != membership.DuesSubscriptionId
+                && await _db.ClubSubscriptions.AsNoTracking().AnyAsync(s => s.Id == started && s.Status != "Cancelled", ct))
+                return DomainErrors.Corporate.Changed;
             foreach (var nominee in seated)
                 Remove(nominee, now, "The corporate membership ended", null);
             tracked.Status = CorporateMembershipStatuses.Ended;
@@ -284,7 +319,6 @@ public sealed class CorporateMembershipService : ICorporateMemberships
             tracked.EndedReason = why;
             tracked.EndedByName = Who();
             tracked.EditVersion = Guid.NewGuid();
-            await Task.CompletedTask;
             return null;
         }, allowEnded: false, ct);
     }

@@ -105,6 +105,26 @@ public class ClubCorporateOnSqlServerTests
     });
 
     [SqlServerFact]
+    public Task DuesSetTwiceAtOnce_StartOneSubscriptionOnTheCompanysAccount() => RunAsync(async (client, gate, database) =>
+    {
+        var acme = await CompanyAsync(client, "Acme AG");
+        var membership = await CorporateAsync(client, acme, seats: 2);
+        // Both find no dues running and decide to start them before either has.
+        gate.Arm("corporate-dues");
+
+        var answers = await Task.WhenAll(
+            client.PutAsync($"/api/corporate-memberships/{membership}/dues", Body(new { amount = 12000m, cadence = "Annual" })),
+            client.PutAsync($"/api/corporate-memberships/{membership}/dues", Body(new { amount = 12500m, cadence = "Annual" })));
+
+        foreach (var answer in answers)
+            answer.StatusCode.Should().Be(HttpStatusCode.OK, await answer.Content.ReadAsStringAsync());
+        (await CountAsync(database, $"SELECT COUNT(*) FROM [ClubSubscriptions] WHERE [MemberId] = '{acme}'"))
+            .Should().Be(1, "the second was decided again on what the first saved and changed its dues; two would both be billed to Acme");
+        (await CountAsync(database, $@"SELECT COUNT(*) FROM [ClubCorporateMemberships] m JOIN [ClubSubscriptions] s ON s.[Id] = m.[DuesSubscriptionId]
+            WHERE m.[Id] = '{membership}' AND s.[Status] = N'Active'")).Should().Be(1, "the membership names the dues that run");
+    });
+
+    [SqlServerFact]
     public Task APartyAndAMembersBookingOfTheSameRoomAtOnce_OneGetsTheRoom() => RunAsync(async (client, gate, database) =>
     {
         var acme = await CompanyAsync(client, "Acme AG");
