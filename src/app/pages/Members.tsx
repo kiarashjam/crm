@@ -73,6 +73,7 @@ import { useRegional } from '@/app/hooks/useMoney';
 import { translate, useT, type I18nValue, type MessageKey } from '@/app/i18n';
 import { readFlexParams } from '@/app/api/flexFilters';
 import { FlexFilterBar } from '@/app/components/flex/FlexFilterBar';
+import { SavedViewsMenu } from '@/app/components/flex/SavedViewsMenu';
 import { BulkTagButton } from '@/app/components/flex/BulkTagDialog';
 import { useFlexColumns } from '@/app/components/flex/useFlexColumns';
 
@@ -189,8 +190,21 @@ export default function Members() {
   const [loading, setLoading] = useState(true);
   usePageLoading(loading);
   const [search, setSearch] = useState('');
-  const [tierFilter, setTierFilter] = useState<'All' | MemberTier>('All');
-  const [statusFilter, setStatusFilter] = useState<'All' | MemberStatus>('All');
+  // The tier and status filters live in the address beside the tag and field conditions, so a
+  // filtered list survives a reload and a saved view keeps and restores them; the search box
+  // is a quick look of the page's own.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tierFilter: 'All' | MemberTier = searchParams.get('tier') || 'All';
+  const statusParam = searchParams.get('status');
+  const statusFilter: 'All' | MemberStatus = MEMBER_STATUSES.find((s) => s === statusParam) ?? 'All';
+  const setFilterParam = (name: 'tier' | 'status', value: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (value === 'All') next.delete(name);
+    else next.set(name, value);
+    setSearchParams(next, { replace: true });
+  };
+  const setTierFilter = (value: 'All' | MemberTier) => setFilterParam('tier', value);
+  const setStatusFilter = (value: 'All' | MemberStatus) => setFilterParam('status', value);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Member | null>(null);
   // The tiers and their dues are the club's own, from the price catalogue.
@@ -204,10 +218,11 @@ export default function Members() {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  // Conditions on the members' tags and custom fields live in the address, and the server applies them.
-  const [searchParams, setSearchParams] = useSearchParams();
-  const flexKey = searchParams.toString();
-  const flex = useMemo(() => readFlexParams(new URLSearchParams(flexKey)), [flexKey]);
+  // Conditions on the members' tags and custom fields live in the address, and the server applies
+  // them: the list is read again when they change, not when the tier or status filter does.
+  const paramsKey = searchParams.toString();
+  const flex = useMemo(() => readFlexParams(new URLSearchParams(paramsKey)), [paramsKey]);
+  const flexKey = JSON.stringify(flex);
 
   const load = async () => {
     try {
@@ -502,7 +517,10 @@ export default function Members() {
                 ))}
               </SelectContent>
             </Select>
-            <ViewSwitcher view={view} columns={columnChoices(allMemberColumns)} className="md:ml-auto" />
+            <div className="flex items-center gap-2 md:ml-auto">
+              <SavedViewsMenu list="members" params={searchParams} onChange={(next) => setSearchParams(next)} view={view} columns={columnChoices(allMemberColumns)} />
+              <ViewSwitcher view={view} columns={columnChoices(allMemberColumns)} />
+            </div>
           </div>
 
           {/* The members' tags and the club's own fields: filters the server applies, and tags for those shown. */}
