@@ -45,6 +45,8 @@ import type { GiftCard } from '@/app/api/giftCards';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import { ClubReadState } from '@/app/components/ClubReadState';
 import { MemberLinksCard } from '@/app/components/MembershipLinks';
+import CustomFieldsCard from '@/app/components/CustomFieldsCard';
+import RecordTagsEditor from '@/app/components/flex/RecordTagsEditor';
 import {
   NONE, useClubCharges, useClubMembers, useClubPayments, useClubReads, useClubVisits, useCommunications, useGiftCards, useLoyaltyLedger,
   useMemberRegistrations, useReservations,
@@ -370,6 +372,16 @@ export default function MemberDetail() {
                     <DlRow label="Joined" value={formatDate(member.joinedAtUtc)} />
                   </dl>
                 </SectionCard>
+
+                {/* The club's tags on them, and the club's own fields (renders only when some are defined for members). */}
+                <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+                  <RecordTagsEditor entityType="member" recordId={member.id} />
+                </div>
+                <CustomFieldsCard
+                  entityType="member"
+                  recordId={member.id}
+                  className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800"
+                />
 
                 {/* Their lead and contact on the sales side, how they joined, and their household. */}
                 <MemberLinksCard memberId={member.id} />

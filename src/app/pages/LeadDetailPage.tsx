@@ -74,6 +74,7 @@ import { PersonMembershipCard } from '@/app/components/MembershipLinks';
 import AiNextActionCard from '@/app/components/AiNextActionCard';
 import SaveLeadAsContactDialog from '@/app/components/SaveLeadAsContactDialog';
 import CustomFieldsCard from '@/app/components/CustomFieldsCard';
+import RecordTagsEditor from '@/app/components/flex/RecordTagsEditor';
 import AttachmentsCard from '@/app/components/AttachmentsCard';
 import { Confetti } from '@/app/components/Confetti';
 import EmailComposerDialog from '@/app/components/EmailComposerDialog';
@@ -1574,6 +1575,11 @@ export default function LeadDetailPage() {
                   readOnly={isReadOnly}
                   onSaved={(updated) => setLead((prev) => (prev ? { ...prev, ...updated } : prev))}
                 />
+              </motion.div>
+
+              {/* Tags on the lead */}
+              <motion.div {...card(6)} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <RecordTagsEditor entityType="lead" recordId={lead.id} />
               </motion.div>
 
               {/* Custom fields (renders only when defined for leads) */}

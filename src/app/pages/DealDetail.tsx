@@ -25,6 +25,7 @@ import { Spinner } from '@/app/components/motion/CadenceLoader';
 import { RecordSkeleton } from '@/app/components/PageSkeleton';
 import DealLineItemsCard from '@/app/components/DealLineItemsCard';
 import CustomFieldsCard from '@/app/components/CustomFieldsCard';
+import RecordTagsEditor from '@/app/components/flex/RecordTagsEditor';
 import AttachmentsCard from '@/app/components/AttachmentsCard';
 import StageHistoryCard from '@/app/components/StageHistoryCard';
 import { DealWelcomeCard } from '@/app/components/onboarding';
@@ -550,6 +551,11 @@ export default function DealDetail() {
                   </div>
                 )}
               </RecordCard>
+
+              {/* Tags on the deal */}
+              <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+                <RecordTagsEditor entityType="deal" recordId={deal.id} />
+              </div>
 
               {/* Custom fields (renders only when defined for deals) */}
               <CustomFieldsCard
