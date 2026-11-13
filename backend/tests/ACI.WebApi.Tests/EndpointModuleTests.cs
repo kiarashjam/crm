@@ -49,6 +49,7 @@ public class EndpointModuleTests
         ["WebhookController"] = "the workspace's keys, and leads posted by website forms: refusing those would lose enquiries nobody could be told about",
         ["IntegrationController"] = "linked systems, keyed by the workspace's MCP key",
         ["McpController"] = "AI assistants, keyed by the workspace's MCP key",
+        ["AgentController"] = "the assistant answers about both modules, offering only the tools of the modules that are on",
         ["PublicLeadController"] = "a public capture form already on a website: refusing it would lose enquiries",
         ["PublicContractsController"] = "someone outside signing a contract they were sent",
         ["PublicEmailController"] = "the mail service reporting deliveries and replies",

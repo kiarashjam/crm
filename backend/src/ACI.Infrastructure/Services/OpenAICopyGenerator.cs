@@ -21,6 +21,9 @@ public sealed class OpenAICopyGenerator : ICopyGenerator
     private readonly TemplateCopyGenerator _fallback;
     
     private const string OpenAIApiUrl = "https://api.openai.com/v1/chat/completions";
+
+    /// <inheritdoc />
+    public bool CallsModel => true;
     
     public OpenAICopyGenerator(
         HttpClient httpClient,

@@ -179,6 +179,12 @@ public static class DependencyInjection
                 ? ActivatorUtilities.CreateInstance<ACI.Infrastructure.Services.Assistant.OpenAIAssistantModel>(sp)
                 : new ACI.Infrastructure.Services.Assistant.UnconfiguredAssistantModel(provider);
         });
+        // What calls to the model may cost: the month's allowance per workspace (or person,
+        // outside any organization) and the short-term throttle per workspace; and the settings
+        // a manager keeps them by.
+        services.AddSingleton<ACI.Infrastructure.Services.Assistant.AiWorkspaceThrottle>();
+        services.AddScoped<IAiBudget, ACI.Infrastructure.Services.Assistant.AiBudget>();
+        services.AddScoped<IAssistantSettingsService, ACI.Infrastructure.Services.Assistant.AssistantSettingsService>();
 
         services.AddDataProtection().SetApplicationName("ACI");
         services.AddSingleton<ISecretProtector, DataProtectionSecretProtector>();

@@ -106,6 +106,11 @@ public static class ResultExtensions
         DomainErrors.Portal.OffCode => StatusCodes.Status403Forbidden,
         var code when code.StartsWith(DomainErrors.Portal.NotAllowedCode, StringComparison.Ordinal) => StatusCodes.Status403Forbidden,
         DomainErrors.Portal.TooManyLinksCode => StatusCodes.Status429TooManyRequests,
+
+        // What calls to the language model may cost: the month's allowance used up, or a
+        // workspace asking too much at once (DomainErrors.Ai).
+        DomainErrors.Ai.MonthlyLimitCode => StatusCodes.Status429TooManyRequests,
+        DomainErrors.Ai.BusyCode => StatusCodes.Status429TooManyRequests,
         
         // Unauthorized/Authentication errors
         "Auth.InvalidCredentials" => StatusCodes.Status401Unauthorized,
@@ -148,6 +153,7 @@ public static class ResultExtensions
         // A dependency that is missing or did not answer — not the caller's fault
         var code when code.EndsWith(".NotConfigured") => StatusCodes.Status503ServiceUnavailable,
         var code when code.EndsWith(".SendFailed") => StatusCodes.Status502BadGateway,
+        var code when code.EndsWith(".ModelFailed") => StatusCodes.Status502BadGateway,
 
         // Bad Request errors (default for validation/business rule violations)
         _ => StatusCodes.Status400BadRequest
@@ -160,6 +166,7 @@ public static class ResultExtensions
         403 => "Forbidden",
         404 => "Not Found",
         409 => "Conflict",
+        429 => "Too Many Requests",
         500 => "Server Error",
         502 => "Bad Gateway",
         503 => "Service Unavailable",
