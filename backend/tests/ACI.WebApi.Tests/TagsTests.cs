@@ -181,6 +181,36 @@ public class TagsTests
     }
 
     [Fact]
+    public async Task ClubStaffMakeTheTagsTheyPutOnMembers_ButTheFrontDeskCannot()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (owner, _, org) = await WorkspaceAsync(factory);
+        async Task<HttpClient> Staff(string email, string stored)
+        {
+            var (client, id) = await SignInAsync(factory, email);
+            await AddMemberAsync(factory, org, id, OrgMemberRole.Member);
+            using (var scope = factory.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ACI.Infrastructure.Persistence.AppDbContext>();
+                db.OrganizationMembers.Single(m => m.UserId == id && m.OrganizationId == org).Permissions = stored;
+                await db.SaveChangesAsync();
+            }
+            return client.In(org);
+        }
+        var clubOnly = await Staff("club@example.ch", ",club.members,");
+        var frontDesk = await Staff("desk@example.ch", ",club.frontdesk,");
+        var member = (await Ok(await owner.PostAsync("/api/members", Body(new { firstName = "Ana", lastName = "Silva", email = "ana@example.ch", tier = "Gold", status = "Active" })), "a member"))
+            .GetProperty("id").GetGuid();
+
+        // The member's page and the Settings tab offer club staff "make a tag": it is made, and goes on the member.
+        var board = await TagAsync(clubOnly, "Board");
+        (await clubOnly.PutAsync("/api/tags/records", Body(new { entityType = "member", recordId = member, tagIds = new[] { board } })))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        (await frontDesk.PostAsync("/api/tags", Body(new { name = "Golf" }))).StatusCode
+            .Should().Be(HttpStatusCode.Forbidden, "the front desk tags nothing, so it makes no tags");
+    }
+
+    [Fact]
     public async Task MembersCarryTags_AndTheMembersListFiltersByThem()
     {
         using var factory = new CustomWebApplicationFactory();

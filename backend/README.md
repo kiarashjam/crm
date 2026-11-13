@@ -429,7 +429,7 @@ anyone else's default.
 | `POST` | `/api/custom-fields/values/batch` | The values of a page of records (up to 500), for list columns and exports |
 | `PUT` | `/api/custom-fields/values` | Save a record's values (`records.edit`; a member's: `club.members`) |
 | `GET` | `/api/tags` | The workspace's tags with how many records carry each |
-| `POST` | `/api/tags` | Add a tag (`records.edit`) |
+| `POST` | `/api/tags` | Add a tag (`records.edit` or `club.members`: whoever may put tags on records) |
 | `PUT`/`DELETE` | `/api/tags/{id}` | Rename, recolour or delete a tag, taking it off every record (`settings.manage`) |
 | `GET`/`PUT` | `/api/tags/records` | One record's tags; set them (`records.edit`; a member's: `club.members`) |
 | `POST` | `/api/tags/records/batch` | The tags of a page of records |

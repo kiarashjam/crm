@@ -13,7 +13,8 @@ namespace ACI.Infrastructure.Services;
 /// tags on its leads, contacts, companies, deals and members.
 /// </summary>
 /// <remarks>
-/// Anyone who can edit records can make a tag by using it and put tags on records. Renaming,
+/// Anyone who can tag records (records.edit, or club.members for members) can make a tag and put
+/// tags on the records they may change. Renaming,
 /// recolouring or deleting a tag changes every record that carries it, so it takes the
 /// right to manage the workspace's settings. A record's tags are read and changed only
 /// through records the caller can see, so a private deal's tags stay with it.

@@ -10,7 +10,7 @@ namespace ACI.WebApi.Controllers;
 
 /// <summary>
 /// Tags: the workspace's list of them, each with a colour, and the tags on its leads,
-/// contacts, companies, deals and members. Anyone who edits records makes tags and puts
+/// contacts, companies, deals and members. Anyone who tags records makes tags and puts
 /// them on; renaming, recolouring or deleting one takes the right to manage settings.
 /// </summary>
 [ApiController]
@@ -40,8 +40,11 @@ public class TagsController : ControllerBase
     /// <summary>Adds a tag. Its name is the workspace's alone, ignoring letter case.</summary>
     /// <response code="200">The tag.</response>
     /// <response code="400">No name, or not one of the colours.</response>
+    /// <response code="403">The caller's role lets them tag neither sales records nor members.</response>
     /// <response code="409">The workspace already has a tag of that name.</response>
-    [Requires(MemberPermissions.EditRecords)]
+    // Whoever may put tags on records may make one to put on: club staff tag members (club.members)
+    // as a sales rep tags leads (records.edit). Members' pages and Settings offer it to both.
+    [Requires(MemberPermissions.EditRecords, MemberPermissions.ClubMembers, Any = true)]
     [HttpPost]
     [ProducesResponseType(typeof(TagDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
