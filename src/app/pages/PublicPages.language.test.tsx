@@ -159,6 +159,40 @@ describe('the enquiry form', () => {
     expect(capturePost).toMatchObject({ name: 'Jean', language: 'de' });
     expect(localStorage.getItem('cadence.language')).toBe('de');
   });
+
+  it('asks a business for its place in the language read, keeps the choice of business through a switch, and sends the box with it', async () => {
+    server.use(http.get(`${BASE}/api/public/capture/biz`, ({ request }) => {
+      captureGets.push(new URL(request.url).searchParams.get('lang') ?? '');
+      return HttpResponse.json({ name: '', marketingConsent: 'optional', language: 'fr', leadKinds: 'both' });
+    }), http.post(`${BASE}/api/public/capture/biz`, async ({ request }) => {
+      capturePost = (await request.json()) as Record<string, unknown>;
+      return HttpResponse.json({ message: null });
+    }));
+    const user = userEvent.setup();
+    open('/capture/biz', '/capture/:token', <PublicCapture />);
+
+    await user.click(await screen.findByRole('radio', { name: 'For a business' }));
+    await user.type(screen.getByLabelText(/^Establishment name/), 'Trattoria Bella');
+    await user.selectOptions(screen.getByLabelText('Language'), 'de');
+
+    // The form is read again in German: the visitor still writes for the business they chose.
+    expect(await screen.findByRole('radio', { name: 'Für einen Betrieb' })).toHaveAttribute('aria-checked', 'true');
+    await waitFor(() => expect(captureGets[captureGets.length - 1]).toBe('de'));
+    expect(screen.getByLabelText(/^Name des Betriebs/)).toHaveValue('Trattoria Bella');
+    expect(screen.getByRole('option', { name: 'Bäckerei' })).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText('Art'), 'restaurant');
+    await user.type(screen.getByLabelText(/^Ihr Name/), 'Marco Rossi');
+    await user.type(screen.getByLabelText(/^E-Mail/), 'marco@trattoria.ch');
+    await user.click(screen.getByRole('checkbox', { name: /Ja, ich möchte per E-Mail/ }));
+    await user.click(screen.getByRole('button', { name: 'Senden' }));
+
+    expect(await screen.findByText('Danke. Wir melden uns bei Ihnen.')).toBeInTheDocument();
+    expect(capturePost).toMatchObject({
+      kind: 'establishment', establishmentName: 'Trattoria Bella', establishmentType: 'restaurant',
+      name: 'Marco Rossi', email: 'marco@trattoria.ch', marketingConsent: true, language: 'de',
+    });
+    expect(capturePost).not.toHaveProperty('company');
+  });
 });
 
 describe('a member’s own links', () => {
