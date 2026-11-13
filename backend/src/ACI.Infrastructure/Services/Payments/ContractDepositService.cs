@@ -306,7 +306,15 @@ public sealed class ContractDepositService : IContractDeposits
                     var received = intent.AmountReceived > 0 ? intent.AmountReceived : intent.Amount;
                     if (deposit.Status == ContractDepositStatuses.Paid)
                     {
-                        if (deposit.ProviderPaymentId == intent.Id) return "deposit already paid";
+                        if (deposit.ProviderPaymentId == intent.Id)
+                        {
+                            // Stripe's word again (posted anew after a failure, or another event
+                            // about the payment): the next time an earlier try never came to. A
+                            // deposit not on an account yet is put there now if the signer has been
+                            // admitted; the ledger's key keeps it from being recorded twice.
+                            if (deposit.LedgerPaymentId == null) await SettleAsync(organizationId, deposit.ContractId, null, ct);
+                            return "deposit already paid";
+                        }
                         // Paid twice (two of Stripe's pages, both paid): real money, said where staff look.
                         await LogEventAsync(deposit.ContractId, "deposit_paid_twice",
                             $"A second payment of {Money(received, deposit.Currency)} came in for the deposit ({intent.Id}). Refund it in Stripe, or record it on the member's account by hand.", ct);
@@ -556,7 +564,8 @@ public sealed class ContractDepositService : IContractDeposits
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             // Never a reason to fail the countersignature, the webhook or the approval that got
-            // here: the deposit stays paid and is put on the account the next time.
+            // here: the deposit stays paid, and is put on the account the next time something
+            // settles it (Stripe's next word on the payment, or the application approved again).
             _logger.LogError(ex, "Contract {ContractId}: the paid deposit could not be put on the member's account", contractId);
             // What failed half-way is let go of, so the caller's next save does not write it.
             foreach (var entry in _db.ChangeTracker.Entries()

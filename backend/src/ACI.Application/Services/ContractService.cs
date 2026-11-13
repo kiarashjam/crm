@@ -525,7 +525,7 @@ public class ContractService : IContractService
         await LogEventAsync(contract.Id, "declined",
             contract.ClosedReason ?? "Declined by the counterparty",
             null, contract.CounterpartyName, ip, userAgent, ct);
-        if (_deposits != null) await _deposits.CloseAsync(contract, ct);
+        await CloseDepositAsync(contract, ct);
 
         // Their decision, and the pipeline has a word for it. Nobody in the workspace
         // made the change, so the status history credits nobody.
@@ -592,7 +592,7 @@ public class ContractService : IContractService
         await AdmitMemberAsync(contract, userId, ct);
         // The deposit the signer paid goes on the account of the member just admitted (once:
         // the ledger holds it under the provider's id). One not paid yet goes on it when it is.
-        if (_deposits != null) await _deposits.SettleAsync(organizationId, contract.Id, userId, ct);
+        await SettleDepositAsync(contract, userId, ct);
         await SendExecutedCopiesAsync(contract, userId, ct);
         await AnnounceSignatureAsync(contract, AutomationCatalog.ContractCountersigned, "countersigned", userId, ct);
 
@@ -677,6 +677,44 @@ public class ContractService : IContractService
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "Contract {ContractId} was countersigned but its membership application could not be approved", contract.Id);
+        }
+    }
+
+    /// <summary>
+    /// The paid deposit put on the account of the member the countersignature admitted. The
+    /// contract is executed whatever happens here: a failure is logged (the deposit stays paid,
+    /// and Stripe's next word on the payment or a reviewer's approval puts it on the account)
+    /// rather than turning a signature both parties have given into an error, which also
+    /// skipped the executed copies and the workspace's rules.
+    /// </summary>
+    private async Task SettleDepositAsync(Contract contract, Guid userId, CancellationToken ct)
+    {
+        if (_deposits == null) return;
+        try
+        {
+            await _deposits.SettleAsync(contract.OrganizationId, contract.Id, userId, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "Contract {ContractId} was countersigned, but its deposit could not be put on the member's account", contract.Id);
+        }
+    }
+
+    /// <summary>
+    /// A declined or voided contract's deposit, closed (see IContractDeposits.CloseAsync). The
+    /// contract is closed whatever happens here: a deposit left open cannot be paid on a closed
+    /// contract anyway, so a failure is logged rather than reported as a failed decline or void.
+    /// </summary>
+    private async Task CloseDepositAsync(Contract contract, CancellationToken ct)
+    {
+        if (_deposits == null) return;
+        try
+        {
+            await _deposits.CloseAsync(contract, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "Contract {ContractId} was closed, but its deposit could not be closed with it", contract.Id);
         }
     }
 
@@ -988,7 +1026,7 @@ public class ContractService : IContractService
 
         await LogEventAsync(contract.Id, "voided", contract.ClosedReason ?? "Voided", userId, null, null, null, ct);
         // A deposit not paid yet can no longer be paid; one already paid stays, to be paid back.
-        if (_deposits != null) await _deposits.CloseAsync(contract, ct);
+        await CloseDepositAsync(contract, ct);
         // Deliberately no pipeline effect: voiding is our decision, not the
         // customer's, and recording it against them would corrupt the drop-off report.
         return Result.Success(await ToDtoAsync(contract, ct));

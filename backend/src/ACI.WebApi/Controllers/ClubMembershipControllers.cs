@@ -28,12 +28,15 @@ public class ApplicationsController : ControllerBase
     private readonly IClubApplications _applications;
     private readonly ICurrentUserService _user;
     private readonly IContractDeposits? _deposits;
+    private readonly ILogger<ApplicationsController>? _logger;
 
-    public ApplicationsController(IClubApplications applications, ICurrentUserService user, IContractDeposits? deposits = null)
+    public ApplicationsController(IClubApplications applications, ICurrentUserService user, IContractDeposits? deposits = null,
+        ILogger<ApplicationsController>? logger = null)
     {
         _applications = applications;
         _user = user;
         _deposits = deposits;
+        _logger = logger;
     }
 
     private Guid Org => _user.CurrentOrganizationId!.Value;
@@ -93,8 +96,20 @@ public class ApplicationsController : ControllerBase
         var result = await _applications.ApproveAsync(Org, id, userId, request, ct);
         if (!result.IsSuccess) return result.Error.ToProblemResult();
         // A deposit the applicant paid on their contract's signing page waits for the club's yes:
-        // admitted now, it goes on their account, paying their first charges.
-        if (_deposits != null) await _deposits.SettleForApplicationAsync(Org, id, userId, ct);
+        // admitted now, it goes on their account, paying their first charges. The approval is
+        // committed whatever happens here, so a failure is logged (approving again tries once
+        // more) rather than answered as a failed approval the reviewer would retry for nothing.
+        if (_deposits != null)
+        {
+            try
+            {
+                await _deposits.SettleForApplicationAsync(Org, id, userId, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger?.LogError(ex, "Application {ApplicationId} was approved, but the deposit paid on its contract could not be put on the member's account", id);
+            }
+        }
         return Ok(result.Value);
     }
 
