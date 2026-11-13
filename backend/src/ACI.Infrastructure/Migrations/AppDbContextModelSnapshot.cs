@@ -1433,6 +1433,181 @@ namespace ACI.Infrastructure.Migrations
                     b.ToTable("ClubCharges", (string)null);
                 });
 
+            modelBuilder.Entity("ACI.Domain.Entities.ClubCorporateMembership", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("BillingContactId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("BillingEmail")
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CompanyName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("DuesSubscriptionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("EditVersion")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("EndedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("EndedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("EndedReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Language")
+                        .HasMaxLength(5)
+                        .HasColumnType("nvarchar(5)");
+
+                    b.Property<DateTime?>("LastRenewedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("NomineeCharges")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("NomineesChangedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("NotRenewing")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("NotRenewingReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<Guid?>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("RenewsAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Seats")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("StartsAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int>("TermMonths")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId", "CompanyId");
+
+                    b.HasIndex("OrganizationId", "Status", "RenewsAtUtc");
+
+                    b.ToTable("ClubCorporateMemberships", (string)null);
+                });
+
+            modelBuilder.Entity("ACI.Domain.Entities.ClubCorporateNominee", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("AddedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("AddedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid?>("AddedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CorporateMembershipId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("MemberId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("MemberName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid?>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("RemovedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("RemovedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid?>("RemovedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RemovedReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<Guid?>("ReplacedByMemberId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CorporateMembershipId");
+
+                    b.HasIndex("OrganizationId", "CorporateMembershipId");
+
+                    b.HasIndex("OrganizationId", "MemberId")
+                        .IsUnique()
+                        .HasFilter("[RemovedAtUtc] IS NULL");
+
+                    b.ToTable("ClubCorporateNominees", (string)null);
+                });
+
             modelBuilder.Entity("ACI.Domain.Entities.ClubDocument", b =>
                 {
                     b.Property<Guid>("Id")
@@ -8131,6 +8306,15 @@ namespace ACI.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("TabId")
                         .OnDelete(DeleteBehavior.NoAction);
+                });
+
+            modelBuilder.Entity("ACI.Domain.Entities.ClubCorporateNominee", b =>
+                {
+                    b.HasOne("ACI.Domain.Entities.ClubCorporateMembership", null)
+                        .WithMany()
+                        .HasForeignKey("CorporateMembershipId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("ACI.Domain.Entities.ClubDonation", b =>

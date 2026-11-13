@@ -409,6 +409,22 @@ public class OrganizationCloneTests
                 Status = ReferralBonusStatuses.Awarded, Points = 500, Currency = "CHF", LoyaltyEntryId = bonusPoints.Id, CreatedAtUtc = now,
                 AwardedAtUtc = now, AwardedByUserId = owner,
             });
+        // A company's corporate membership with a nominee, and its house account (keyed by the
+        // company's id) with a charge a nominee ran up on it: the copy's must name the copy's company.
+        var corporate = new ClubCorporateMembership
+        {
+            Id = Guid.NewGuid(), OrganizationId = org.Id, CompanyId = company.Id, CompanyName = "Acme", Name = "Acme corporate", Seats = 2,
+            StartsAtUtc = now, RenewsAtUtc = now.AddYears(1), BillingContactId = contact.Id, BillingEmail = $"accounts@{name}.ch",
+            CreatedAtUtc = now, UpdatedAtUtc = now, EditVersion = Guid.NewGuid(),
+        };
+        db.AddRange(corporate,
+            new ClubCorporateNominee { Id = Guid.NewGuid(), OrganizationId = org.Id, CorporateMembershipId = corporate.Id, MemberId = member.Id, MemberName = "Ana Silva", AddedAtUtc = now },
+            new ClubHouseAccount { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = company.Id, CompanyId = company.Id, Currency = "CHF", OpenedAtUtc = now },
+            new ClubCharge
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = company.Id, MemberName = "Acme", Kind = "Bar", Description = "Negroni", Amount = 18m,
+                Currency = "CHF", PostedAtUtc = now, IncurredByMemberId = member.Id, IncurredByName = "Ana Silva", CreatedAtUtc = now,
+            });
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
         return new Seeded(org.Id, owner, manager, rep, lead.Id, deal.Id, contact.Id, member.Id, rule.Id, sequence.Id);

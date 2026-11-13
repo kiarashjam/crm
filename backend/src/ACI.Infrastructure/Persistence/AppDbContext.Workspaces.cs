@@ -209,6 +209,9 @@ public partial class AppDbContext
         Scope<ClubReferralBonus>(model, e => e.OrganizationId);
         Scope<ClubMemberConcern>(model, e => e.OrganizationId);
         Scope<ClubScoringRun>(model, e => e.OrganizationId);
+        // Corporate memberships and their nominees: an organization's alone.
+        Scope<ClubCorporateMembership>(model, e => e.OrganizationId);
+        Scope<ClubCorporateNominee>(model, e => e.OrganizationId);
 
         // Copy templates follow a person rather than a workspace (TemplateRepository): the
         // system's templates are everyone's, a person's own go with them, and a team's

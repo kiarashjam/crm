@@ -72,8 +72,11 @@ public sealed class ClubRenewalService : IClubRenewals
         Guid? owner = string.Equals(query.Owner?.Trim(), "me", StringComparison.OrdinalIgnoreCase) ? userId
             : Guid.TryParse(query.Owner, out var named) ? named : null;
 
+        // A corporate nominee renews with their company's membership, which has renewals of its own
+        // (ICorporateMemberships): a card for each nominee would ask about one renewal many times.
         var members = await _db.ClubMembers.AsNoTracking()
-            .Where(m => m.OrganizationId == organizationId && m.ErasedAtUtc == null && m.Status != "Pending" && (owner == null || m.OwnerUserId == owner))
+            .Where(m => m.OrganizationId == organizationId && m.ErasedAtUtc == null && m.Status != "Pending" && (owner == null || m.OwnerUserId == owner)
+                && !_db.ClubCorporateNominees.Any(n => n.MemberId == m.Id && n.RemovedAtUtc == null))
             .Select(m => new MemberRow(m.Id, m.FirstName, m.LastName, m.Tier, m.Status, m.RenewsAtUtc, m.DuesAmount, m.DuesFrequency, m.OwnerUserId, m.ContactId))
             .ToListAsync(ct);
         var memberIds = members.Select(m => m.Id).ToHashSet();

@@ -26,12 +26,14 @@ public class ClubClientAccountsController : ControllerBase
 {
     private readonly IClubLedger _ledger;
     private readonly IClubBilling _billing;
+    private readonly ICorporateMemberships _corporate;
     private readonly ICurrentUserService _user;
 
-    public ClubClientAccountsController(IClubLedger ledger, IClubBilling billing, ICurrentUserService user)
+    public ClubClientAccountsController(IClubLedger ledger, IClubBilling billing, ICorporateMemberships corporate, ICurrentUserService user)
     {
         _ledger = ledger;
         _billing = billing;
+        _corporate = corporate;
         _user = user;
     }
 
@@ -67,7 +69,11 @@ public class ClubClientAccountsController : ControllerBase
         [FromQuery] string? email, CancellationToken ct)
     {
         if (await OpenAccountAsync(kind, id, ct) is { } refused) return refused;
-        var file = await _billing.ClientStatementPdfAsync(_user.CurrentOrganizationId!.Value, id, from.ToUniversalTime(), to.ToUniversalTime(), language, email, ct);
+        // A company with a corporate membership has its statements go where, and in the language, the membership says.
+        var corporate = (await _corporate.ListAsync(_user.CurrentOrganizationId!.Value,
+            new CorporateMembershipQuery { CompanyId = id, Status = Domain.Entities.CorporateMembershipStatuses.Active }, ct)).FirstOrDefault();
+        var file = await _billing.ClientStatementPdfAsync(_user.CurrentOrganizationId!.Value, id, from.ToUniversalTime(), to.ToUniversalTime(),
+            language ?? corporate?.Language, email ?? corporate?.BillingEmail, ct);
         if (!file.IsSuccess) return file.Error.ToProblemResult();
         return File(file.Value.Content, "application/pdf", file.Value.FileName);
     }

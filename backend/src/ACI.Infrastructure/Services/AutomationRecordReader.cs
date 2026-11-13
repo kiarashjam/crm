@@ -304,10 +304,13 @@ public sealed class AutomationRecordReader : IAutomationRecordReader
 
     // ── the scan and the workspace ───────────────────────────────────────────
 
+    // A member's dues only: a company's (a corporate membership's, on the company's account) has
+    // no member for a rule's email or task to be about, and the corporate membership renews on its own.
     public async Task<IReadOnlyList<RenewalDue>> RenewalsDueAsync(DateTime fromUtc, DateTime toUtc, CancellationToken ct = default) =>
         await _db.ClubSubscriptions.AsNoTracking()
             .Where(s => (s.Status == "Active" || s.Status == "PastDue")
-                && s.NextChargeAtUtc != null && s.NextChargeAtUtc > fromUtc && s.NextChargeAtUtc <= toUtc)
+                && s.NextChargeAtUtc != null && s.NextChargeAtUtc > fromUtc && s.NextChargeAtUtc <= toUtc
+                && _db.ClubMembers.Any(m => m.Id == s.MemberId))
             .OrderBy(s => s.NextChargeAtUtc)
             .Select(s => new RenewalDue(s.Id, s.MemberId, s.MemberName, s.NextChargeAtUtc!.Value))
             .ToListAsync(ct);

@@ -114,6 +114,10 @@ internal sealed class PersonDossier
     public List<ClubMemberConcern> Concerns { get; private set; } = new();
     /// <summary>Referral bonuses for a member they brought in, or to the member who brought them in: kept with the books.</summary>
     public List<ClubReferralBonus> ReferralBonuses { get; private set; } = new();
+    /// <summary>The seats they held on companies' corporate memberships.</summary>
+    public List<ClubCorporateNominee> CorporateSeats { get; private set; } = new();
+    /// <summary>Corporate memberships that name them as the company's billing contact or address.</summary>
+    public List<ClubCorporateMembership> CorporateBilling { get; private set; } = new();
 
     /// <summary>The ids of every money record of the person's, for the audit lines written about them.</summary>
     public HashSet<Guid> MoneyRecordIds =>
@@ -298,14 +302,17 @@ internal sealed class PersonDossier
         // ── Club ────────────────────────────────────────────────────────────
         d.Visits = await Q(db.ClubVisits).Where(v => memberIds.Contains(v.MemberId)).OrderBy(v => v.VisitedAtUtc).ToListAsync(ct);
         d.Loyalty = await Q(db.LoyaltyLedger).Where(e => memberIds.Contains(e.MemberId)).OrderBy(e => e.CreatedAtUtc).ToListAsync(ct);
-        d.HouseAccounts = await Q(db.ClubHouseAccounts).Where(a => memberIds.Contains(a.MemberId)).ToListAsync(ct);
+        // Their house accounts: a member's, and a private client's opened on their contact (its
+        // key is the contact's id), whose entries name them as a member's do.
+        var accountIds = memberIds.Concat(contactIds).ToList();
+        d.HouseAccounts = await Q(db.ClubHouseAccounts).Where(a => accountIds.Contains(a.MemberId)).ToListAsync(ct);
         d.Charges = await Q(db.ClubCharges).Where(c =>
-                memberIds.Contains(c.MemberId) || (c.IncurredByMemberId != null && memberIds.Contains(c.IncurredByMemberId.Value)))
+                accountIds.Contains(c.MemberId) || (c.IncurredByMemberId != null && memberIds.Contains(c.IncurredByMemberId.Value)))
             .OrderBy(c => c.PostedAtUtc).ToListAsync(ct);
-        d.Payments = await Q(db.ClubPayments).Where(p => memberIds.Contains(p.MemberId)).OrderBy(p => p.ReceivedAtUtc).ToListAsync(ct);
+        d.Payments = await Q(db.ClubPayments).Where(p => accountIds.Contains(p.MemberId)).OrderBy(p => p.ReceivedAtUtc).ToListAsync(ct);
         var paymentIds = d.Payments.Select(p => p.Id).ToList();
         d.Allocations = await Q(db.ClubPaymentAllocations).Where(a => paymentIds.Contains(a.PaymentId)).ToListAsync(ct);
-        d.Subscriptions = await Q(db.ClubSubscriptions).Where(s => memberIds.Contains(s.MemberId)).ToListAsync(ct);
+        d.Subscriptions = await Q(db.ClubSubscriptions).Where(s => accountIds.Contains(s.MemberId)).ToListAsync(ct);
         d.Tabs = await Q(db.ClubTabs).Where(t => memberIds.Contains(t.MemberId)).ToListAsync(ct);
         var tabIds = d.Tabs.Select(t => t.Id).ToList();
         d.TabItems = await Q(db.ClubTabItems).Where(i => tabIds.Contains(i.TabId)).ToListAsync(ct);
@@ -356,6 +363,12 @@ internal sealed class PersonDossier
         d.Concerns = await Q(db.ClubMemberConcerns).Where(c => memberIds.Contains(c.MemberId)).OrderBy(c => c.RecordedAtUtc).ToListAsync(ct);
         d.ReferralBonuses = await Q(db.ClubReferralBonuses).Where(b => memberIds.Contains(b.ReferrerMemberId) || memberIds.Contains(b.ReferredMemberId))
             .OrderBy(b => b.CreatedAtUtc).ToListAsync(ct);
+        // The corporate seats they held, and the memberships that bill them as the company's contact or address.
+        d.CorporateSeats = await Q(db.ClubCorporateNominees).Where(n => memberIds.Contains(n.MemberId)).OrderBy(n => n.AddedAtUtc).ToListAsync(ct);
+        d.CorporateBilling = await Q(db.ClubCorporateMemberships).Where(m =>
+                (m.BillingContactId != null && contactIds.Contains(m.BillingContactId.Value))
+                || (m.BillingEmail != null && addresses.Contains(m.BillingEmail.Trim().ToLower())))
+            .ToListAsync(ct);
         // The JSON documents kept read-only from before the club's records had tables of their
         // own: the old copies of their records (a record moved to its table kept its document's
         // id), any that name a member's id, and any that mention the person, as written or as

@@ -60,7 +60,7 @@ public static class PersonDataInventory
         [typeof(AuditEvent)] = "Their name replaced by the pseudonym; who did what and when stays.",
         [typeof(ClubVisit)] = "Anonymised; kept for the club's figures.",
         [typeof(LoyaltyLedgerEntry)] = "Anonymised; kept for the club's figures.",
-        [typeof(ClubHouseAccount)] = "Kept: the account's balance and currency, under the member's id (no name).",
+        [typeof(ClubHouseAccount)] = "Kept: the account's balance and currency, under the member's id (no name), or the contact's id for a private client's account.",
         [typeof(ClubCharge)] = "Anonymised: amounts, dates and VAT stay (the books, OR art. 958f).",
         [typeof(ClubPayment)] = "Anonymised: amounts and dates stay.",
         [typeof(ClubPaymentAllocation)] = "Kept: amounts between a payment and a charge, no name.",
@@ -93,6 +93,8 @@ public static class PersonDataInventory
         [typeof(ClubRenewal)] = "Deleted: their renewals and the notes staff wrote on them.",
         [typeof(ClubMemberConcern)] = "Deleted: the complaints and concerns recorded about them.",
         [typeof(ClubReferralBonus)] = "Kept with the books: points or a credit between two members' ids, naming nobody (the credit is on the ledger).",
+        [typeof(ClubCorporateNominee)] = "Deleted: the seats they held on companies' corporate memberships (a seat they hold is given up).",
+        [typeof(ClubCorporateMembership)] = "The company's: kept. Their contact and address are taken off it where it names them as its billing contact or address.",
     };
 
     /// <summary>Tables that hold nothing about the people a workspace keeps records of, and why.</summary>

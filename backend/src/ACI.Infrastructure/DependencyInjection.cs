@@ -95,6 +95,7 @@ public static class DependencyInjection
         // Keeping members and growing through them: the renewals board, each member's at-risk
         // score with the save actions it sets off, and referrals, sponsors and their bonus.
         services.AddScoped<IClubRenewals, ACI.Infrastructure.Services.Retention.ClubRenewalService>();
+        services.AddScoped<ICorporateMemberships, CorporateMembershipService>();
         services.AddScoped<IClubRetention, ACI.Infrastructure.Services.Retention.ClubRetentionService>();
         services.AddScoped<IClubReferrals, ACI.Infrastructure.Services.Retention.ClubReferralService>();
         // Money from outside the club: payment settings, QR-bills, bank files, Stripe and the

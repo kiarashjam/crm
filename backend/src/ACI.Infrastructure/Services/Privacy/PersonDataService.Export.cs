@@ -187,6 +187,10 @@ public sealed partial class PersonDataService
                 }]),
             new("club/referral-bonuses.json", "Referral bonuses: given to them for a member they introduced, or to the member who introduced them.",
                 d.ReferralBonuses.Select(b => Row(b)).ToList()),
+            new("club/corporate-seats.json", "The seats they held on companies' corporate memberships, from when to when.",
+                d.CorporateSeats.Select(n => Row(n)).ToList()),
+            new("club/corporate-billing.json", "Companies' corporate memberships that name them as the contact or address their statements go to.",
+                d.CorporateBilling.Select(m => new { m.Id, m.CompanyName, m.Name, m.BillingContactId, m.BillingEmail }).ToList()),
             new("club/old-documents.json", "Club records kept read-only from before the club's records had tables of their own, that name them.", d.Documents.Select(x => Row(x)).ToList()),
             new("audit/audit-trail.json", "The history of changes to their records: who changed what, and when.", d.Audit.Select(a => Row(a)).ToList()),
         ];

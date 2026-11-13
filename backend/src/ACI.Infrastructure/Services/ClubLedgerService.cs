@@ -687,6 +687,22 @@ public sealed partial class ClubLedgerService : IClubLedger
     private async Task<(Holder BillTo, ClubMember? IncurredBy)> BillToAsync(Guid? organizationId, ClubMember member, bool forDues, CancellationToken ct)
     {
         var self = Holder.Of(member);
+        // A nominee of a corporate membership whose company pays its nominees' charges: on the
+        // company's account. Not their own dues: the company pays for the seat, not for each
+        // member's subscription, so a subscription a nominee still has stays theirs to pay (or
+        // for the club to pause). The company's rule comes before a household's roll-up, as it
+        // is the agreement the company made for what its people spend.
+        if (!forDues)
+        {
+            var company = await _db.ClubCorporateNominees.AsNoTracking()
+                .Where(n => n.OrganizationId == organizationId && n.MemberId == member.Id && n.RemovedAtUtc == null)
+                .Join(_db.ClubCorporateMemberships.AsNoTracking()
+                        .Where(c => c.Status == CorporateMembershipStatuses.Active && c.NomineeCharges == NomineeChargeRules.Company),
+                    n => n.CorporateMembershipId, c => c.Id, (n, c) => (Guid?)c.CompanyId)
+                .FirstOrDefaultAsync(ct);
+            if (company is Guid companyId && await HolderAsync(organizationId, companyId, ct) is { Kind: ClubAccountHolders.Company } payer)
+                return (payer, member);
+        }
         var link = await _db.ClubHouseholdMembers.AsNoTracking()
             .FirstOrDefaultAsync(l => l.OrganizationId == organizationId && l.MemberId == member.Id, ct);
         if (link is not { RollUpBilling: true, IsPrimary: false }) return (self, null);

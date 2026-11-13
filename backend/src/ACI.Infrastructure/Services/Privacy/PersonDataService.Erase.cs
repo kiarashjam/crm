@@ -265,6 +265,10 @@ public sealed partial class PersonDataService
         Add("Complaints and concerns about them", ErasureActions.Delete, d.Concerns.Count);
         Add("Referral bonuses", ErasureActions.Keep, d.ReferralBonuses.Count,
             "Kept with the books: the points or credit given stay, and the people they name show under their pseudonyms.");
+        Add("Seats on corporate memberships", ErasureActions.Delete, d.CorporateSeats.Count,
+            "A seat they hold is given up; the company's statements keep the charges under their pseudonym.");
+        Add("Corporate memberships billed to them", ErasureActions.Anonymise, d.CorporateBilling.Count,
+            "The membership stays the company's; their contact and address are taken off it.");
         Add("Older club records kept read-only", ErasureActions.Anonymise, d.Documents.Count);
         Add("Lines of the audit trail", ErasureActions.Anonymise, d.Audit.Count, "Their name is replaced by the pseudonym; who did what and when stays.");
         Add("Addresses", ErasureActions.Delete, s.Addresses.Count,
@@ -590,9 +594,18 @@ public sealed partial class PersonDataService
         _db.ClubRenewals.RemoveRange(d.Renewals);
         _db.ClubMemberConcerns.RemoveRange(d.Concerns);
         foreach (var b in d.ReferralBonuses) b.Reason = Scrub(b.Reason);
+        // A seat names the member and nothing the books need: it goes, and a seat they held now is
+        // free for the company. A membership billed to their contact or address keeps going, without them.
+        _db.ClubCorporateNominees.RemoveRange(d.CorporateSeats);
+        foreach (var m in d.CorporateBilling)
+        {
+            if (m.BillingContactId is Guid billed && contactIds.Contains(billed)) m.BillingContactId = null;
+            if (m.BillingEmail != null && s.Addresses.Contains(m.BillingEmail.Trim().ToLowerInvariant())) m.BillingEmail = null;
+            m.UpdatedAtUtc = now;
+        }
         foreach (var c in d.Charges)
         {
-            if (memberIds.Contains(c.MemberId)) c.MemberName = pseudonym;
+            if (memberIds.Contains(c.MemberId) || contactIds.Contains(c.MemberId)) c.MemberName = pseudonym;
             if (c.IncurredByMemberId is Guid by && memberIds.Contains(by)) c.IncurredByName = pseudonym;
             c.Description = Scrub(c.Description) ?? "";
             c.Reason = Scrub(c.Reason);
