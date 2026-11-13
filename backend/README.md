@@ -471,8 +471,10 @@ a **member session** of 30 days: a JWT of its own scheme (`MemberPortal`, its ow
 naming the organization, the member and the session), sent as `Authorization: Bearer` to
 `/api/portal/*` only. A member token is refused by every staff endpoint and a staff token by every
 portal endpoint. The session is checked on every request, so signing out, signing out everywhere,
-staff ending the member's sessions, turning the portal off, turning the Club module off, and erasing
-the member all end it at once. An erased member is never sent a link. Invitations and links go
+staff ending the member's sessions, turning the portal off, and erasing the member all end it at
+once. While the Club module is off every portal request is refused (403 `Module.Off`, whatever
+`X-Organization-Id` a member sends) and the page says the portal is closed; the session answers
+again once the module is back on. An erased member is never sent a link. Invitations and links go
 through the outbox from the Welcome & portal sender (its name, its from address when the workspace's
 verified domain allows it, its reply-to), in the member's language.
 
