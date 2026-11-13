@@ -84,7 +84,7 @@ export async function downloadClientStatementPdf(kind: ClientKind, id: string, f
 
 // ── corporate memberships ────────────────────────────────────────────────────
 
-export type CorporateStatus = 'Active' | 'Lapsed' | 'Ended' | string;
+export type CorporateStatus = 'Active' | 'Ended' | string;
 
 /** Whose account a nominee's own charges go on: the company's, or the nominee's. */
 export type NomineeCharges = 'company' | 'nominee';

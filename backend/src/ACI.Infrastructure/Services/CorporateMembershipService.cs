@@ -61,7 +61,19 @@ public sealed class CorporateMembershipService : ICorporateMemberships
         }
         var list = await rows.OrderBy(m => m.Status).ThenBy(m => m.RenewsAtUtc).ThenBy(m => m.Name).ToListAsync(ct);
         var answers = new List<CorporateMembershipDto>(list.Count);
-        foreach (var membership in list) answers.Add(await ToDtoAsync(organizationId, membership, now, ct, withAccount: false));
+        // What each company owes on its house account, read once per company: the corporate
+        // memberships page shows it beside each membership, and used to show a dash for every
+        // one because the list left the account out.
+        var accounts = new Dictionary<Guid, ClientAccountDto?>();
+        foreach (var membership in list)
+        {
+            if (!accounts.TryGetValue(membership.CompanyId, out var account))
+            {
+                var read = await _ledger.ClientAccountAsync(organizationId, ClubAccountHolders.Company, membership.CompanyId, ct);
+                accounts[membership.CompanyId] = account = read.IsSuccess ? read.Value : null;
+            }
+            answers.Add(await ToDtoAsync(organizationId, membership, now, ct, withAccount: false) with { Account = account });
+        }
         return answers;
     }
 

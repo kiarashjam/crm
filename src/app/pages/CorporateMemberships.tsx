@@ -18,10 +18,9 @@ import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
 import { useFormat } from '@/app/i18n';
 import { fieldClass, useClubAmount } from '@/app/components/corporate/parts';
 
+// A corporate membership is active or ended (CorporateMembershipStatuses on the server).
 const STATUSES = [
-  { value: '', label: 'Active and lapsed' },
-  { value: 'Active', label: 'Active' },
-  { value: 'Lapsed', label: 'Lapsed' },
+  { value: '', label: 'Active' },
   { value: 'Ended', label: 'Ended' },
 ] as const;
 

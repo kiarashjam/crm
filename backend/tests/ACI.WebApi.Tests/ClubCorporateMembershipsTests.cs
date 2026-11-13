@@ -267,6 +267,19 @@ public class ClubCorporateMembershipsTests
     }
 
     [Fact]
+    public async Task TheList_SaysWhatEachCompanyOwesOnItsHouseAccount()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await ClubAsync(factory);
+        var acme = await CompanyAsync(client);
+        await CorporateAsync(client, acme);
+        await Json(await client.PostAsync("/api/charges", Body(new { memberId = acme, kind = "Event", description = "Summer party", amount = 1200m })), "charge Acme");
+
+        var listed = (await Json(await client.GetAsync("/api/corporate-memberships"), "the list")).EnumerateArray().Single();
+        listed.GetProperty("account").GetProperty("owed").GetDecimal().Should().Be(1200m, "the corporate memberships page shows it beside each membership");
+    }
+
+    [Fact]
     public async Task EndingAMembership_FreesItsSeats_StopsItsDues_AndTakesTheMoneyPermissionWhileTheyRun()
     {
         using var factory = new CustomWebApplicationFactory();
