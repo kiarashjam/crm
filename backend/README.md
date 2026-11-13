@@ -647,8 +647,9 @@ gets no second round. All actions are off until the club turns them on.
 in the window (monthly ones when asked), one card per renewal, in a column worked out from the
 records: *lapsed* (the member lapsed or left, or the end passed without a renewal), *renewed*
 (the end moved on by four weeks or more, or the next period billed and paid), what staff set
-by hand, *at risk* (the score), *contacted* (a message written to them, a call, meeting or
-email logged on their contact, or marked contacted, in the 90 days before the end), else
+by hand, *at risk* (the score), *contacted* (a message someone at the club wrote to them, not
+one the club sends on its own such as a statement or a payment reminder; a call, meeting or
+email logged on their contact; or marked contacted; in the 90 days before the end), else
 *upcoming*. Marking a membership renewed moves its end on a year (or to the date given) once,
 and never back from a date the member's form set. The daily run notes the renewals of the
 next 90 days, so a renewal done elsewhere still shows as renewed.

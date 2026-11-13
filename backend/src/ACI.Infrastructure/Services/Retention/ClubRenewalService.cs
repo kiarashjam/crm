@@ -255,10 +255,16 @@ public sealed class ClubRenewalService : IClubRenewals
     }
 
     /// <summary>
-    /// When someone last spoke to each member, and how: a message written to them (not a
-    /// campaign's, which goes to everyone), a call, meeting or email logged on their contact, or
-    /// a renewal marked contacted.
+    /// When someone last spoke to each member, and how: a message someone at the club wrote to
+    /// them (sent from their page, or recorded as sent another way), a call, meeting or email
+    /// logged on their contact, or a renewal marked contacted.
     /// </summary>
+    /// <remarks>
+    /// What the club sends on its own is no contact: statements, payment reminders, pay links,
+    /// the welcome, event emails, portal invitations and the retention rules' own email go out
+    /// whoever looks after the member, like a campaign's. Counted, the monthly statement alone
+    /// put nearly every member in "contacted", with its date as the last contact.
+    /// </remarks>
     private async Task<Dictionary<Guid, (DateTime At, string Kind)>> LastContactAsync(Guid organizationId, IReadOnlyList<MemberRow> members, CancellationToken ct)
     {
         var result = new Dictionary<Guid, (DateTime At, string Kind)>();
@@ -267,9 +273,13 @@ public sealed class ClubRenewalService : IClubRenewals
             if (!result.TryGetValue(memberId, out var known) || at > known.At) result[memberId] = (at, kind);
         }
         var ids = members.Select(m => m.Id).ToHashSet();
+        var written = _db.OutboundMessages.Where(o => o.OrganizationId == organizationId && o.Source == OutboundSources.Member).Select(o => o.Id);
         var messages = await _db.MemberMessages.AsNoTracking()
             .Where(m => m.OrganizationId == organizationId && m.CampaignId == null
-                && m.Status != MemberMessageStatuses.Skipped && m.Status != MemberMessageStatuses.Failed && m.Status != MemberMessageStatuses.Suppressed)
+                && (m.Status == MemberMessageStatuses.Logged
+                    || (m.OutboundMessageId != null && written.Contains(m.OutboundMessageId.Value)
+                        && m.Status != MemberMessageStatuses.Skipped && m.Status != MemberMessageStatuses.Failed
+                        && m.Status != MemberMessageStatuses.Suppressed)))
             .GroupBy(m => m.MemberId).Select(g => new { MemberId = g.Key, At = g.Max(m => m.CreatedAtUtc) })
             .ToListAsync(ct);
         foreach (var m in messages.Where(m => ids.Contains(m.MemberId))) Offer(m.MemberId, m.At, "message");

@@ -24,7 +24,8 @@ namespace ACI.Application.Services;
 /// on a year, or on the member's form); the subscription's next period is billed and paid; or
 /// staff said so.</item>
 /// <item><b>At risk</b>: staff said so, or the member's at-risk score says so.</item>
-/// <item><b>Contacted</b>: staff said so, or someone wrote to them or logged a call, meeting or
+/// <item><b>Contacted</b>: staff said so, or someone at the club wrote to them (not an email the
+/// club sends on its own, such as a statement or a payment reminder) or logged a call, meeting or
 /// email on their contact in the 90 days before the end.</item>
 /// <item><b>Upcoming</b>: nothing of the above.</item>
 /// </list>

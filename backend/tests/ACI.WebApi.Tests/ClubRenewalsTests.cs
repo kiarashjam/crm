@@ -237,6 +237,50 @@ public class ClubRenewalsTests
     }
 
     [Fact]
+    public async Task WhatTheClubSendsOnItsOwn_IsNoContact_ButAMessageSomeoneWritesIs()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (owner, _, org) = await ClubAsync(factory);
+        var anna = await MemberAsync(owner, "Anna", 20);
+        // The month's statement, a payment reminder and the retention rules' own email went to
+        // her, as they go to every member whoever looks after them.
+        using (var scope = factory.Services.CreateScope())
+        await using (var db = scope.ServiceProvider.EveryWorkspace())
+        {
+            foreach (var source in new[] { OutboundSources.Statement, OutboundSources.PaymentReminder, OutboundSources.Retention })
+            {
+                var outbound = new OutboundMessage
+                {
+                    Id = Guid.NewGuid(), OrganizationId = org, Source = source, Status = OutboundStatuses.Sent, To = "anna@example.ch",
+                    Subject = source, CreatedAtUtc = DateTime.UtcNow, SentAtUtc = DateTime.UtcNow,
+                };
+                db.OutboundMessages.Add(outbound);
+                db.MemberMessages.Add(new MemberMessage
+                {
+                    Id = Guid.NewGuid(), OrganizationId = org, MemberId = anna, MemberName = "Anna Keller", Email = "anna@example.ch",
+                    Channel = CampaignChannels.Email, Category = "Dues", Purpose = ConsentPurposes.Service, Subject = source,
+                    Status = MemberMessageStatuses.Queued, OutboundMessageId = outbound.Id, CreatedAtUtc = DateTime.UtcNow,
+                });
+            }
+            await db.SaveChangesAsync();
+        }
+
+        var card = Card(await BoardAsync(owner), anna);
+        (card.GetProperty("stage").GetString(), card.GetProperty("stageReason").GetString())
+            .Should().Be((RenewalStages.Upcoming, "Nobody has been in touch about it yet"), "a statement or a reminder is nobody getting in touch about the renewal");
+        card.TryGetProperty("lastContactAtUtc", out _).Should().BeFalse();
+
+        // Someone writes to her from her page.
+        await Json(await owner.PostAsync("/api/communications/send", Body(new
+        {
+            memberId = anna, purpose = "service", subject = "Your renewal", body = "Shall we renew you for another year?",
+        })), "write to Anna");
+        var written = Card(await BoardAsync(owner), anna);
+        (written.GetProperty("stage").GetString(), written.GetProperty("stageReason").GetString()).Should().Be((RenewalStages.Contacted, "Someone wrote to them"));
+        written.GetProperty("lastContactKind").GetString().Should().Be("message");
+    }
+
+    [Fact]
     public async Task ASubscriptionPeriodBilledAndPaid_ShowsAsRenewed_AndMonthlyOnesShowOnlyWhenAsked()
     {
         using var factory = new CustomWebApplicationFactory();
