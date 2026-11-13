@@ -733,6 +733,11 @@ public sealed class ClubReservationService : IClubReservations
             .OrderBy(r => r.StartAtUtc).ThenBy(r => r.CreatedAtUtc)
             .ToListAsync(ct);
         if (holding.Count == 0) return null;
+        // A private event has the space to itself. Its hold is the room's capacity when it was
+        // made, so in a shared room a capacity raised since would have let bookings in beside the
+        // party; the hold is in the way whatever the numbers say.
+        if (holding.FirstOrDefault(r => r.PrivateEventId != null) is { } hire)
+            return DomainErrors.Reservation.Overlaps(resource.Name, Span(hire.StartAtUtc, hire.EndAtUtc, zone), hire.MemberName, StatusWords(hire.Status));
         if (resource.BookingMode != BookingModes.Shared)
         {
             var first = holding[0];

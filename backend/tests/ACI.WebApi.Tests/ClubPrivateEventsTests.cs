@@ -348,6 +348,28 @@ public class ClubPrivateEventsTests
         (await AccountAsync(client, "companies", acme)).GetProperty("owed").GetDecimal().Should().Be(0m);
     }
 
+    [Fact]
+    public async Task ASharedRoomHeldForAParty_TakesNoBookingBesideIt_EvenWhenItHoldsMorePeopleSince()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await ClubAsync(factory);
+        var acme = await CompanyAsync(client);
+        var garden = Id(await Json(await client.PostAsync("/api/resources", Body(new { name = "Garden", kind = "Dining", capacity = 40, bookingMode = "Shared" })), "add the garden"));
+        await EventAsync(client, Party(acme, garden));
+
+        // The garden is set to hold more people after the party took it: the party still has it to itself.
+        await Json(await client.PutAsync($"/api/resources/{garden}", Body(new { capacity = 60 })), "the garden holds 60 now");
+        var anna = await MemberAsync(client, "Anna");
+        (await Refused(await client.PostAsync("/api/reservations", Body(new
+        {
+            resourceId = garden, memberId = anna, partySize = 4, startAtUtc = At(Evening.AddHours(1)), endAtUtc = At(Evening.AddHours(2)),
+        })), HttpStatusCode.Conflict, "a table beside the party")).Should().Contain("Acme summer party");
+        await Json(await client.PostAsync("/api/reservations", Body(new
+        {
+            resourceId = garden, memberId = anna, partySize = 4, startAtUtc = At(Evening.AddHours(-2)), endAtUtc = At(Evening.AddHours(-1)),
+        })), "a table before the party");
+    }
+
     // ── contract ─────────────────────────────────────────────────────────────
 
     [Fact]
