@@ -90,6 +90,9 @@ describe('Contacts', () => {
     await user.click(screen.getByRole('button', { name: /^views$/i }));
     await user.click(await screen.findByRole('menuitem', { name: /^The Kellers/ }));
     await waitFor(() => expect(lastQuery()).toMatchObject({ search: 'Keller', status: 'archived' }));
+    // And it stays so once the page has written its search into the address.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(lastQuery()).toMatchObject({ search: 'Keller', status: 'archived' });
     expect(screen.getByLabelText('Search contacts')).toHaveValue('Keller');
   });
 
