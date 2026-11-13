@@ -175,6 +175,12 @@ public partial class AppDbContext : DbContext
     public bool RecordsAuditTrail { get; set; } = true;
 
     /// <summary>
+    /// Whether a record created by a save starts with its fields' defaults (FieldDefaults). Off
+    /// only while an organization is copied: the copied records bring their own values.
+    /// </summary>
+    public bool AppliesFieldDefaults { get; set; } = true;
+
+    /// <summary>
     /// The import running in this request, if one is. Every lead, contact and company
     /// added while it is set carries its id, whoever adds it: the importer, the contact
     /// a new lead is given, or the company its email domain names. That is what lets
@@ -212,6 +218,7 @@ public partial class AppDbContext : DbContext
         StampContactKeys();
         StampActivityTimes();
         await RecordDependents.RemoveAsync(this, cancellationToken);
+        await FieldDefaults.ApplyAsync(this, cancellationToken);
         var events = RecordsAuditTrail ? await AuditTrail.CaptureAsync(this, _currentUser, cancellationToken) : Array.Empty<AuditEvent>();
         AuditEvents.AddRange(events);
         try
@@ -234,6 +241,7 @@ public partial class AppDbContext : DbContext
         StampContactKeys();
         StampActivityTimes();
         RecordDependents.Remove(this);
+        FieldDefaults.Apply(this);
         var events = RecordsAuditTrail ? AuditTrail.Capture(this, _currentUser) : Array.Empty<AuditEvent>();
         AuditEvents.AddRange(events);
         try

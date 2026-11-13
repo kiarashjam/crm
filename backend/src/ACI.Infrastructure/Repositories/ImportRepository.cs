@@ -1,6 +1,7 @@
 using ACI.Application.Common;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
+using ACI.Application.Services;
 using ACI.Domain.Entities;
 using ACI.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -130,11 +131,19 @@ public sealed class ImportRepository : IImportRepository
 
     public async Task<IReadOnlyDictionary<Guid, string>> CustomValuesAsync(string entityType, Guid userId, Guid? organizationId, CancellationToken ct = default)
     {
-        var rows = await InWorkspace(_db.CustomFieldValues.AsNoTracking(), userId, organizationId, owner: "OwnerUserId")
+        // Each record's values as one JSON object keyed by field key, as the API writes them,
+        // so an update can tell what a row of the file would change.
+        var fields = (await InWorkspace(_db.CustomFieldDefinitions.AsNoTracking(), userId, organizationId, owner: "OwnerUserId")
+                .Where(d => d.EntityType == entityType)
+                .ToListAsync(ct))
+            .ToDictionary(d => d.Id);
+        var rows = await InWorkspace(_db.CustomFieldEntries.AsNoTracking(), userId, organizationId, owner: "OwnerUserId")
             .Where(v => v.EntityType == entityType)
-            .Select(v => new { v.RecordId, v.ValuesJson })
             .ToListAsync(ct);
-        return rows.GroupBy(r => r.RecordId).ToDictionary(g => g.Key, g => g.First().ValuesJson);
+        return rows.Where(r => fields.ContainsKey(r.FieldId))
+            .GroupBy(r => r.RecordId)
+            .ToDictionary(g => g.Key, g => System.Text.Json.JsonSerializer.Serialize(
+                g.GroupBy(r => r.FieldId).ToDictionary(f => fields[f.Key].Key, f => CustomFieldValues.Read(fields[f.Key], f.ToList()))));
     }
 
     public IDisposable StampNewRecords(Guid batchId)
@@ -342,7 +351,7 @@ public sealed class ImportRepository : IImportRepository
         _db.Attachments.Where(a => a.EntityType == entityType && ids.Contains(a.RecordId)).Select(a => a.RecordId).Distinct().ToListAsync(ct);
 
     private Task<List<Guid>> CustomFieldsSinceAsync(string entityType, IQueryable<Guid> ids, DateTime since, CancellationToken ct) =>
-        _db.CustomFieldValues
+        _db.CustomFieldEntries
             .Where(v => v.EntityType == entityType && ids.Contains(v.RecordId) && v.UpdatedAtUtc > since)
             .Select(v => v.RecordId)
             .Distinct()

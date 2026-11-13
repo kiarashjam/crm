@@ -181,6 +181,11 @@ public sealed class OrganizationRepository : IOrganizationRepository
         await _db.Attachments.Where(a => a.OwnerUserId == userId && a.OrganizationId == null).ExecuteUpdateAsync(s => s.SetProperty(a => a.OrganizationId, organizationId), ct);
         await _db.CustomFieldDefinitions.Where(d => d.OwnerUserId == userId && d.OrganizationId == null).ExecuteUpdateAsync(s => s.SetProperty(d => d.OrganizationId, organizationId), ct);
         await _db.CustomFieldValues.Where(v => v.OwnerUserId == userId && v.OrganizationId == null).ExecuteUpdateAsync(s => s.SetProperty(v => v.OrganizationId, organizationId), ct);
+        await _db.CustomFieldEntries.Where(v => v.OwnerUserId == userId && v.OrganizationId == null).ExecuteUpdateAsync(s => s.SetProperty(v => v.OrganizationId, organizationId), ct);
+        await _db.Tags.Where(t => t.OwnerUserId == userId && t.OrganizationId == null).ExecuteUpdateAsync(s => s.SetProperty(t => t.OrganizationId, organizationId), ct);
+        await _db.RecordTags.Where(t => t.OwnerUserId == userId && t.OrganizationId == null).ExecuteUpdateAsync(s => s.SetProperty(t => t.OrganizationId, organizationId), ct);
+        await _db.SavedViews.Where(v => v.OwnerUserId == userId && v.OrganizationId == null).ExecuteUpdateAsync(s => s.SetProperty(v => v.OrganizationId, organizationId), ct);
+        await _db.SavedViewDefaults.Where(d => d.UserId == userId && d.OrganizationId == null).ExecuteUpdateAsync(s => s.SetProperty(d => d.OrganizationId, organizationId), ct);
         // The price list and saved forecasts are kept per person outside an organization.
         // Members and rules can't be made there any more, but the ones made before that
         // rule went in are their creator's, and arrive with them.
