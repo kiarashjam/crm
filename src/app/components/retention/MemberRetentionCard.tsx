@@ -200,7 +200,8 @@ export function MemberRetentionCard({ memberId }: { memberId: string }) {
                 </label>
               ))}
             </div>
-            <Textarea value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000} rows={2}
+            {/* As long as the server keeps one (1,000 characters): a longer note was refused only on saving. */}
+            <Textarea value={note} onChange={(e) => setNote(e.target.value)} maxLength={1000} rows={2}
               placeholder="What happened, in a sentence or two" aria-label="Complaint or concern" />
             <Button type="submit" size="sm" disabled={!note.trim() || add.isPending}>
               {add.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />} Record

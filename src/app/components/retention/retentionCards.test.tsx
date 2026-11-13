@@ -119,6 +119,13 @@ describe("a member's at-risk score", () => {
     await waitFor(() => expect(api.addConcern).toHaveBeenCalledWith('m1', 'concern', 'Talked of moving away'));
   });
 
+  it('keeps a note within what the server takes', async () => {
+    api.risk.mockResolvedValue(RISK);
+    render(withQueries(<MemberRetentionCard memberId="m1" />));
+
+    expect(await screen.findByRole('textbox', { name: 'Complaint or concern' })).toHaveAttribute('maxLength', '1000');
+  });
+
   it('offers no recompute or recording to someone who may not manage members', async () => {
     as([PERMISSION.FrontDesk]);
     api.risk.mockResolvedValue(RISK);
