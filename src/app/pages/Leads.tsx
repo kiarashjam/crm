@@ -1543,27 +1543,35 @@ export default function Leads() {
   const allLeadColumns = [...leadColumns, ...flexColumns];
 
   /**
-   * Open the list as a saved view has it: the page's own filters live in its state as well
-   * as its address, so they are set from the view's address before it is put in place.
+   * Open the list as a saved view has it: its address is put in place first, and once it is,
+   * the page's own filters (kept in its state as well as its address) are read from it. They
+   * used to be set at the same moment as the address: the effects that mirror them into the
+   * address then ran against the address before the view and wrote it back over the view, so
+   * its tag and field conditions and its search were lost. The search follows the address on
+   * its own (the effect that keeps the box in step with it).
    */
+  const openingViewRef = useRef(false);
   const applyLeadView = (next: URLSearchParams) => {
-    const statuses = next.get('statuses');
-    setFilterStatuses(statuses ? statuses.split(',').map((x) => x.trim()).filter(Boolean) : []);
-    setFilterSource(next.get('source') ?? 'all');
-    const converted = next.get('converted');
-    setFilterConverted(converted === 'all' || converted === 'converted' ? converted : 'active');
-    setFilterAssignment(next.get('assignment') || 'all');
-    const kind = next.get('kind');
-    setFilterKind(kind === 'person' || kind === 'establishment' ? kind : 'all');
-    const sort = next.get('sort');
-    setSortField(sort === 'name' || sort === 'email' || sort === 'status' ? sort : 'createdAt');
-    setSortDirection(next.get('dir') === 'asc' ? 'asc' : 'desc');
-    setSalesFilters(Object.fromEntries((Object.keys(EMPTY_SALES_TRACKER_FILTERS) as (keyof SalesTrackerFilterState)[])
-      .map((key) => [key, next.get(`st.${key}`) ?? EMPTY_SALES_TRACKER_FILTERS[key]])) as unknown as SalesTrackerFilterState);
-    setSearchQuery(next.get('search') ?? '');
-    setDebouncedSearch(next.get('search') ?? '');
+    openingViewRef.current = true;
     setSearchParams(next);
   };
+  useEffect(() => {
+    if (!openingViewRef.current) return;
+    openingViewRef.current = false;
+    const statuses = searchParams.get('statuses');
+    setFilterStatuses(statuses ? statuses.split(',').map((x) => x.trim()).filter(Boolean) : []);
+    setFilterSource(searchParams.get('source') ?? 'all');
+    const converted = searchParams.get('converted');
+    setFilterConverted(converted === 'all' || converted === 'converted' ? converted : 'active');
+    setFilterAssignment(searchParams.get('assignment') || 'all');
+    const kind = searchParams.get('kind');
+    setFilterKind(kind === 'person' || kind === 'establishment' ? kind : 'all');
+    const sort = searchParams.get('sort');
+    setSortField(sort === 'name' || sort === 'email' || sort === 'status' ? sort : 'createdAt');
+    setSortDirection(searchParams.get('dir') === 'asc' ? 'asc' : 'desc');
+    setSalesFilters(Object.fromEntries((Object.keys(EMPTY_SALES_TRACKER_FILTERS) as (keyof SalesTrackerFilterState)[])
+      .map((key) => [key, searchParams.get(`st.${key}`) ?? EMPTY_SALES_TRACKER_FILTERS[key]])) as unknown as SalesTrackerFilterState);
+  }, [searchParams]);
 
   const leadHeroStats: PageStat[] = [
     { label: 'Total leads', value: stats.total, icon: Users, tone: 'orange', hint: `${stats.active.toLocaleString(currentNumberLocale())} active`, progress: shareOf(stats.active) },
