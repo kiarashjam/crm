@@ -111,6 +111,12 @@ public class OrganizationCloneTests
             }),
         };
         var definition = new CustomFieldDefinition { Id = Guid.NewGuid(), OrganizationId = org.Id, OwnerUserId = owner, EntityType = "deal", Key = "board_seat", Label = "Board seat", Type = "checkbox", CreatedAtUtc = now };
+        var vipTag = new Tag { Id = Guid.NewGuid(), OrganizationId = org.Id, OwnerUserId = owner, Name = "VIP", Color = "amber", CreatedAtUtc = now, UpdatedAtUtc = now };
+        var boardView = new SavedView
+        {
+            Id = Guid.NewGuid(), OrganizationId = org.Id, OwnerUserId = owner, List = SavedViewLists.Deals, Name = "VIP board seats", Shared = true,
+            QueryJson = $$"""{"tag":"{{vipTag.Id}}","field":"board_seat:true"}""", CreatedAtUtc = now, UpdatedAtUtc = now,
+        };
         var spouse = new Contact { Id = Guid.NewGuid(), UserId = owner, OrganizationId = org.Id, Name = "Marie Dupont", Email = $"marie@{name}.ch", CreatedAtUtc = now };
         var sentEmailId = Guid.NewGuid();
         var runId = Guid.NewGuid();
@@ -151,6 +157,13 @@ public class OrganizationCloneTests
             new AuditEvent { Id = Guid.NewGuid(), OrganizationId = org.Id, OwnerUserId = owner, EntityType = "deal", EntityId = deal.Id, Action = "updated", Summary = "Stage changed", ActorName = "Kia", CreatedAtUtc = now },
             new Attachment { Id = Guid.NewGuid(), OrganizationId = org.Id, OwnerUserId = owner, EntityType = "deal", RecordId = deal.Id, FileName = "terms.pdf", ContentType = "application/pdf", Size = 4, Content = "%PDF"u8.ToArray(), UploadedByName = "Kia", UploadedAtUtc = now },
             new CustomFieldValueSet { Id = Guid.NewGuid(), OrganizationId = org.Id, OwnerUserId = owner, EntityType = "deal", RecordId = deal.Id, ValuesJson = """{"board_seat":true}""", UpdatedAtUtc = now },
+            // The same value as a typed row, its tag, and a view of the deals list shared with
+            // everyone that filters by them, which the owner opens the list with.
+            new CustomFieldEntry { Id = Guid.NewGuid(), OrganizationId = org.Id, OwnerUserId = owner, EntityType = "deal", RecordId = deal.Id, FieldId = definition.Id, BoolValue = true, UpdatedAtUtc = now },
+            vipTag,
+            new RecordTag { Id = Guid.NewGuid(), OrganizationId = org.Id, OwnerUserId = owner, TagId = vipTag.Id, EntityType = "deal", RecordId = deal.Id, CreatedAtUtc = now },
+            boardView,
+            new SavedViewDefault { Id = Guid.NewGuid(), OrganizationId = org.Id, UserId = owner, List = SavedViewLists.Deals, SavedViewId = boardView.Id, UpdatedAtUtc = now },
             new Product { Id = Guid.NewGuid(), OrganizationId = org.Id, OwnerUserId = owner, Name = "Gold membership", UnitPrice = 2400, CreatedAtUtc = now },
             new ForecastSnapshot { Id = Guid.NewGuid(), OrganizationId = org.Id, SavedByUserId = owner, AssigneeId = rep, AssigneeName = "Rep", MonthUtc = new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc), SavedAtUtc = now },
             new SentMessage { Id = Guid.NewGuid(), OrganizationId = org.Id, SentByUserId = owner, To = $"jean@{name}.ch", Subject = "Welcome", Body = "Hello", LeadId = lead.Id, SentAtUtc = now },

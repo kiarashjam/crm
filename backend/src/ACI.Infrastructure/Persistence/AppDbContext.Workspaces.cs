@@ -88,6 +88,13 @@ public partial class AppDbContext
         Scope<AuditEvent>(model, e => e.OrganizationId, e => e.OwnerUserId);
         Scope<CustomFieldDefinition>(model, e => e.OrganizationId, e => e.OwnerUserId);
         Scope<CustomFieldValueSet>(model, e => e.OrganizationId, e => e.OwnerUserId);
+        // Custom field values, tags and saved views go with the records and lists they are on,
+        // which a person keeps in a personal workspace as well as in an organization.
+        Scope<CustomFieldEntry>(model, e => e.OrganizationId, e => e.OwnerUserId);
+        Scope<Tag>(model, e => e.OrganizationId, e => e.OwnerUserId);
+        Scope<RecordTag>(model, e => e.OrganizationId, e => e.OwnerUserId);
+        Scope<SavedView>(model, e => e.OrganizationId, e => e.OwnerUserId);
+        Scope<SavedViewDefault>(model, e => e.OrganizationId, e => e.UserId);
         Scope<Product>(model, e => e.OrganizationId, e => e.OwnerUserId);
         Scope<AutomationRule>(model, e => e.OrganizationId, e => e.OwnerUserId);
         Scope<ClubMember>(model, e => e.OrganizationId, e => e.OwnerUserId);

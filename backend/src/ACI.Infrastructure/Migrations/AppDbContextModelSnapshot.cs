@@ -4977,6 +4977,13 @@ namespace ACI.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("Currency")
+                        .HasMaxLength(3)
+                        .HasColumnType("nvarchar(3)");
+
+                    b.Property<string>("DefaultValueJson")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("EntityType")
                         .IsRequired()
                         .HasMaxLength(16)
@@ -4991,6 +4998,10 @@ namespace ACI.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(120)
                         .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("LinkEntityType")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
 
                     b.Property<string>("OptionsJson")
                         .HasColumnType("nvarchar(max)");
@@ -5017,6 +5028,83 @@ namespace ACI.Infrastructure.Migrations
                     b.HasIndex("OrganizationId", "EntityType");
 
                     b.ToTable("CustomFieldDefinitions", (string)null);
+                });
+
+            modelBuilder.Entity("ACI.Domain.Entities.CustomFieldEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool?>("BoolValue")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Currency")
+                        .HasMaxLength(3)
+                        .HasColumnType("nvarchar(3)");
+
+                    b.Property<DateOnly?>("DateValue")
+                        .HasColumnType("date");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<Guid>("FieldId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("LinkId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal?>("NumberValue")
+                        .HasPrecision(28, 8)
+                        .HasColumnType("decimal(28,8)");
+
+                    b.Property<Guid?>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("OwnerUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("RecordId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("TextKey")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("TextValue")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FieldId");
+
+                    b.HasIndex("OrganizationId", "FieldId", "DateValue");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("OrganizationId", "FieldId", "DateValue"), new[] { "RecordId" });
+
+                    b.HasIndex("OrganizationId", "FieldId", "LinkId");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("OrganizationId", "FieldId", "LinkId"), new[] { "RecordId" });
+
+                    b.HasIndex("OrganizationId", "FieldId", "NumberValue");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("OrganizationId", "FieldId", "NumberValue"), new[] { "RecordId", "BoolValue" });
+
+                    b.HasIndex("OrganizationId", "FieldId", "TextKey");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("OrganizationId", "FieldId", "TextKey"), new[] { "RecordId" });
+
+                    b.HasIndex("RecordId", "FieldId", "TextKey")
+                        .IsUnique();
+
+                    b.ToTable("CustomFieldEntries", (string)null);
                 });
 
             modelBuilder.Entity("ACI.Domain.Entities.CustomFieldValueSet", b =>
@@ -7356,6 +7444,44 @@ namespace ACI.Infrastructure.Migrations
                     b.ToTable("Products", (string)null);
                 });
 
+            modelBuilder.Entity("ACI.Domain.Entities.RecordTag", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<Guid?>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("OwnerUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("RecordId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TagId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId", "EntityType");
+
+                    b.HasIndex("RecordId", "TagId");
+
+                    b.HasIndex("TagId", "RecordId")
+                        .IsUnique();
+
+                    b.ToTable("RecordTags", (string)null);
+                });
+
             modelBuilder.Entity("ACI.Domain.Entities.RetentionRun", b =>
                 {
                     b.Property<Guid>("Id")
@@ -7455,6 +7581,88 @@ namespace ACI.Infrastructure.Migrations
                     b.ToTable("SalesTeamMembers", (string)null);
                 });
 
+            modelBuilder.Entity("ACI.Domain.Entities.SavedView", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ColumnsJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("List")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<Guid?>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("OwnerUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("QueryJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("Shared")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId", "List");
+
+                    b.ToTable("SavedViews", (string)null);
+                });
+
+            modelBuilder.Entity("ACI.Domain.Entities.SavedViewDefault", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("List")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)");
+
+                    b.Property<Guid?>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("SavedViewId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SavedViewId");
+
+                    b.HasIndex("UserId", "OrganizationId", "List")
+                        .IsUnique();
+
+                    b.ToTable("SavedViewDefaults", (string)null);
+                });
+
             modelBuilder.Entity("ACI.Domain.Entities.SentMessage", b =>
                 {
                     b.Property<Guid>("Id")
@@ -7506,6 +7714,41 @@ namespace ACI.Infrastructure.Migrations
                     b.HasIndex("OrganizationId", "SentAtUtc");
 
                     b.ToTable("SentMessages", (string)null);
+                });
+
+            modelBuilder.Entity("ACI.Domain.Entities.Tag", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Color")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<Guid?>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("OwnerUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId", "Name");
+
+                    b.ToTable("Tags", (string)null);
                 });
 
             modelBuilder.Entity("ACI.Domain.Entities.TaskComment", b =>
@@ -8337,6 +8580,15 @@ namespace ACI.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("ACI.Domain.Entities.CustomFieldEntry", b =>
+                {
+                    b.HasOne("ACI.Domain.Entities.CustomFieldDefinition", null)
+                        .WithMany()
+                        .HasForeignKey("FieldId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("ACI.Domain.Entities.Deal", b =>
                 {
                     b.HasOne("ACI.Domain.Entities.User", "Assignee")
@@ -8635,6 +8887,28 @@ namespace ACI.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Organization");
+                });
+
+            modelBuilder.Entity("ACI.Domain.Entities.RecordTag", b =>
+                {
+                    b.HasOne("ACI.Domain.Entities.Tag", "Tag")
+                        .WithMany()
+                        .HasForeignKey("TagId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tag");
+                });
+
+            modelBuilder.Entity("ACI.Domain.Entities.SavedViewDefault", b =>
+                {
+                    b.HasOne("ACI.Domain.Entities.SavedView", "SavedView")
+                        .WithMany()
+                        .HasForeignKey("SavedViewId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("SavedView");
                 });
 
             modelBuilder.Entity("ACI.Domain.Entities.TaskComment", b =>

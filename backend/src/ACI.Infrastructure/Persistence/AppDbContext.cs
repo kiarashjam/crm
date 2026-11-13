@@ -68,6 +68,11 @@ public partial class AppDbContext : DbContext
     public DbSet<Attachment> Attachments => Set<Attachment>();
     public DbSet<CustomFieldDefinition> CustomFieldDefinitions => Set<CustomFieldDefinition>();
     public DbSet<CustomFieldValueSet> CustomFieldValues => Set<CustomFieldValueSet>();
+    public DbSet<CustomFieldEntry> CustomFieldEntries => Set<CustomFieldEntry>();
+    public DbSet<Tag> Tags => Set<Tag>();
+    public DbSet<RecordTag> RecordTags => Set<RecordTag>();
+    public DbSet<SavedView> SavedViews => Set<SavedView>();
+    public DbSet<SavedViewDefault> SavedViewDefaults => Set<SavedViewDefault>();
     public DbSet<DealLineItem> DealLineItems => Set<DealLineItem>();
     public DbSet<Product> Products => Set<Product>();
     public DbSet<ForecastSnapshot> ForecastSnapshots => Set<ForecastSnapshot>();
