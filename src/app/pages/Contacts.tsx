@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   Search, Plus, Pencil, Trash2, Building2, Mail, Phone, Briefcase,
@@ -185,6 +185,21 @@ export default function Contacts() {
     }
     setSearchParams(params, { replace: true });
   }, [debouncedSearch]);
+
+  // A saved view, or the browser's back and forward buttons, can change the search in the
+  // address without the box: the box and the list then follow the address, or the list went
+  // on searching for what was typed before while the address showed the view's search. Read
+  // against a ref, so the search this page writes into the address itself is never read back
+  // over what is being typed.
+  const debouncedSearchRef = useRef(debouncedSearch);
+  useEffect(() => {
+    debouncedSearchRef.current = debouncedSearch;
+  }, [debouncedSearch]);
+  useEffect(() => {
+    if (searchFromUrl === debouncedSearchRef.current) return;
+    setDebouncedSearch(searchFromUrl);
+    setSearchQuery(searchFromUrl);
+  }, [searchFromUrl]);
 
   // The page of contacts and everything around it, through the shared cache: keyed by
   // page and filters, so a later search can never be overwritten by an earlier one's

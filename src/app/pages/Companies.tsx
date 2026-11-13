@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { 
   Building2, Search, Plus, Pencil, Trash2, Globe, Briefcase, Users, X,
@@ -206,6 +206,21 @@ export default function Companies() {
       setSearchParams(params);
     }
   }, [debouncedSearch]);
+
+  // A saved view, or the browser's back and forward buttons, can change the search in the
+  // address without the box: the box and the list then follow the address, or the list went
+  // on searching for what was typed before while the address showed the view's search. Read
+  // against a ref, so the search this page writes into the address itself is never read back
+  // over what is being typed.
+  const debouncedSearchRef = useRef(debouncedSearch);
+  useEffect(() => {
+    debouncedSearchRef.current = debouncedSearch;
+  }, [debouncedSearch]);
+  useEffect(() => {
+    if (searchFromUrl === debouncedSearchRef.current) return;
+    setDebouncedSearch(searchFromUrl);
+    setSearchQuery(searchFromUrl);
+  }, [searchFromUrl]);
 
   // The page of companies, each with its own counts, and the figures above the list
   // with the server's count of the whole workspace, through the shared cache: keyed by
