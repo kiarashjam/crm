@@ -662,7 +662,9 @@ on the referrer's house account, by setting) is given once when the referred app
 a member: one row per member brought in, which the database will not take twice. A credit is
 money: an approval by someone without `money.manage` leaves it pending for whoever finishes
 the money, and it goes through the ledger with its own idempotency key (it appears in the
-accounting export as a correction).
+accounting export as a correction). While one request gives a bonus it holds the row (two
+minutes at most, taken with one conditional update), so a second press at the same moment is
+answered 409 and a request that stopped part way is finished by the next one.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
