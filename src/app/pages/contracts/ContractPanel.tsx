@@ -614,7 +614,11 @@ export function ContractPanel({ leadId, dealId, leadName, readOnly, onLeadChange
 
           {!readOnly && (
             <li>
-              <Button variant="outline" size="sm" onClick={() => void draft()} disabled={busy === 'draft'} className="gap-1.5">
+              {/* A second contract (after one was voided or declined) can be a membership
+                  contract with its deposit too. */}
+              <MembershipTermsFields tier={tier} onTier={(t) => { setTier(t); if (!t) setDeposit(''); }}
+                deposit={deposit} onDeposit={setDeposit} />
+              <Button variant="outline" size="sm" onClick={() => void draft()} disabled={busy === 'draft'} className="mt-3 gap-1.5">
                 <Sparkles className="h-3.5 w-3.5" aria-hidden /> New draft
               </Button>
             </li>
