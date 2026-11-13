@@ -281,6 +281,33 @@ public class ClubRenewalsTests
     }
 
     [Fact]
+    public async Task ARenewalDateCorrected_MovesTheCardToTheNewEnd_InsteadOfLeavingTheOldOneBehind()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (owner, _, org) = await ClubAsync(factory);
+        var anna = await MemberAsync(owner, "Anna", 20);
+        var ben = await MemberAsync(owner, "Ben", 10);
+        var annaEnd = await factory.Services.Read(db => db.ClubMembers.Single(m => m.Id == anna).RenewsAtUtc);
+        var benEnd = await factory.Services.Read(db => db.ClubMembers.Single(m => m.Id == ben).RenewsAtUtc);
+        // The daily run notes both renewals; then their dates are put right on the members' forms:
+        // Anna's five days later, Ben's to the date his membership really ended, a month back.
+        await TrackAsync(factory, org);
+        await Json(await owner.PutAsync($"/api/members/{anna}", Body(new { renewsAtUtc = annaEnd.AddDays(5) })), "correct Anna's date");
+        await Json(await owner.PutAsync($"/api/members/{ben}", Body(new { renewsAtUtc = benEnd.AddDays(-30) })), "correct Ben's date");
+
+        var board = await BoardAsync(owner);
+
+        var annas = Cards(board).Where(c => c.GetProperty("memberId").GetGuid() == anna).ToList();
+        annas.Should().ContainSingle("a date put right is the same renewal, not a second one");
+        annas[0].GetProperty("endsAtUtc").GetDateTime().Should().Be(annaEnd.AddDays(5));
+        annas[0].GetProperty("stage").GetString().Should().Be(RenewalStages.Upcoming);
+        var bens = Cards(board).Where(c => c.GetProperty("memberId").GetGuid() == ben).ToList();
+        bens.Should().ContainSingle();
+        (bens[0].GetProperty("endsAtUtc").GetDateTime(), bens[0].GetProperty("stage").GetString()).Should().Be((benEnd.AddDays(-30), RenewalStages.Lapsed));
+        Column(board, RenewalStages.Upcoming).GetProperty("count").GetInt32().Should().Be(1, "Ben's old date is not counted as upcoming as well");
+    }
+
+    [Fact]
     public async Task ASubscriptionPeriodBilledAndPaid_ShowsAsRenewed_AndMonthlyOnesShowOnlyWhenAsked()
     {
         using var factory = new CustomWebApplicationFactory();

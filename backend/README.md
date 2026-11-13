@@ -652,7 +652,8 @@ one the club sends on its own such as a statement or a payment reminder; a call,
 email logged on their contact; or marked contacted; in the 90 days before the end), else
 *upcoming*. Marking a membership renewed moves its end on a year (or to the date given) once,
 and never back from a date the member's form set. The daily run notes the renewals of the
-next 90 days, so a renewal done elsewhere still shows as renewed.
+next 90 days, so a renewal done elsewhere still shows as renewed; a membership date put right
+by less than four weeks (or moved back) takes its card with it, leaving no card at the old date.
 
 **Referrals and sponsors.** An application names its referrer, proposer and seconder as
 members (not names typed in); the approval carries the referrer onto the new member. With the

@@ -103,6 +103,14 @@ public sealed class ClubRenewalService : IClubRenewals
     /// from the board has moved its member's date out of it). A subscription period ending close
     /// to its member's membership end is the same renewal and is shown once, as the membership.
     /// </summary>
+    /// <remarks>
+    /// A membership's end that is no longer the member's renewal date was renewed when the date
+    /// moved on by four weeks or more. A smaller move, or one back, put the date right: the
+    /// renewal is the one at the new date, which has its own card, so the daily run's note of
+    /// the old date is not shown beside it (it turned "lapsed, ended without a renewal" once the
+    /// old date passed, for a member renewing on the new one). A record staff set something on
+    /// (a stage, a note) still shows: what they decided is not hidden.
+    /// </remarks>
     private static List<Candidate> Candidates(IReadOnlyList<MemberRow> members, IReadOnlyList<SubscriptionRow> subscriptions, IReadOnlyList<ClubRenewal> rows,
         DateTime from, DateTime to, bool monthly)
     {
@@ -112,8 +120,14 @@ public sealed class ClubRenewalService : IClubRenewals
         foreach (var s in subscriptions.Where(s => s.Status is "Active" or "PastDue" && s.NextChargeAtUtc is DateTime next && next >= from && next <= to
                      && (monthly || s.Cadence != "Monthly")))
             all.Add(new Candidate(s.MemberId, RenewalSources.Subscription, s.Id, s.NextChargeAtUtc!.Value));
+        var renewsAt = members.ToDictionary(m => m.Id, m => m.RenewsAtUtc);
         foreach (var r in rows)
+        {
+            if (r.Source == RenewalSources.Membership && r.Stage == null && r.Note == null
+                && renewsAt.TryGetValue(r.MemberId, out var current) && current != r.EndsAtUtc && current - r.EndsAtUtc < RenewedIfMovedBy)
+                continue;
             all.Add(new Candidate(r.MemberId, r.Source, r.SubscriptionId, r.EndsAtUtc));
+        }
         var distinct = all.DistinctBy(c => (c.MemberId, c.Source, c.SubscriptionId, c.EndsAtUtc)).ToList();
         var memberships = distinct.Where(c => c.Source == RenewalSources.Membership).ToLookup(c => c.MemberId);
         return distinct.Where(c => c.Source == RenewalSources.Membership
