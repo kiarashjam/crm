@@ -506,14 +506,16 @@ resource starts `off`. A member's portal actions run the workspace's automations
 registration does.
 
 **The club's own portal opening a session here.** A member added through the welcome handoff may
-also use the club's own portal. It can send them here without a second sign-in: it posts any small
-JSON body (with a random nonce in it) to `/api/public/portal/handoff/{onboardingId}/link`, signed as
-the handoff itself is (`X-Cadence-Timestamp`: Unix seconds; `X-Cadence-Signature-256`:
-`sha256=` + hex HMAC-SHA256 of `{timestamp}.{body}` with the handoff's secret), and gets back
-`{ url, expiresAtUtc }`, a sign-in link for that handoff's member that works once, for two minutes,
-to send the member's browser to. A request more than five minutes from now, a signature already
-used, or one made with a secret since replaced is refused (401, the same answer as an unknown
-handoff); the portal being off is 403. The handoff's own contract (its payload, signatures,
+also use the club's own portal. It can send them here without a second sign-in: it posts a small
+JSON body naming the handoff, with a random nonce, `{ "onboardingId": "…", "nonce": "…" }`, to
+`/api/public/portal/handoff/{onboardingId}/link`, signed as the handoff itself is
+(`X-Cadence-Timestamp`: Unix seconds; `X-Cadence-Signature-256`: `sha256=` + hex HMAC-SHA256 of
+`{timestamp}.{body}` with the handoff's secret), and gets back `{ url, expiresAtUtc }`, a sign-in
+link for that handoff's member that works once, for two minutes, to send the member's browser to.
+The signature covers the body, not the address, so the body's `onboardingId` must be the one in
+the address. A request more than five minutes from now, a signature already used, a body naming
+another handoff (or none), or one signed with a secret since replaced is refused (401, the same
+answer as an unknown handoff); the portal being off is 403. The handoff's own contract (its payload, signatures,
 callback and events) is unchanged.
 
 ### Organizations & Team

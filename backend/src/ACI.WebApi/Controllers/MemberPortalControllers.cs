@@ -190,7 +190,8 @@ public class PublicMemberPortalController : ControllerBase
     /// <summary>
     /// The club's own portal asks for a one-time sign-in link for the member a welcome hand-over
     /// added, signed with the hand-over's secret as the hand-over itself is (X-Cadence-Timestamp,
-    /// X-Cadence-Signature-256 over "{timestamp}.{body}"). The body is any JSON, a random nonce in it.
+    /// X-Cadence-Signature-256 over "{timestamp}.{body}"). The body names the hand-over, beside a
+    /// random nonce: {"onboardingId": "…", "nonce": "…"}.
     /// </summary>
     [HttpPost("handoff/{onboardingId:guid}/link")]
     [EnableRateLimiting("portal-sign-in")]

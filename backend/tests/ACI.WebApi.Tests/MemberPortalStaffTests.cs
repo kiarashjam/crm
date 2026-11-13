@@ -128,7 +128,7 @@ public class MemberPortalStaffTests
     private static HttpRequestMessage SignedHandoffRequest(Guid onboardingId, string secret, long? timestamp = null, string? body = null)
     {
         var at = timestamp ?? DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        var json = body ?? JsonSerializer.Serialize(new { nonce = Guid.NewGuid().ToString("N") });
+        var json = body ?? JsonSerializer.Serialize(new { onboardingId, nonce = Guid.NewGuid().ToString("N") });
         var request = new HttpRequestMessage(HttpMethod.Post, $"/api/public/portal/handoff/{onboardingId}/link")
         {
             Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json"),
@@ -194,6 +194,47 @@ public class MemberPortalStaffTests
             await db.SaveChangesAsync();
         }
         await Refused(await portal.SendAsync(SignedHandoffRequest(onboardingId, secret)), HttpStatusCode.Unauthorized, "a request signed with the replaced secret");
+    }
+
+    [Fact]
+    public async Task ARequestSignedForOneHandoff_OpensNoOtherHandoffsMember()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (staff, owner, org) = await ClubAsync(factory, "owner@handoff-bound.ch");
+        var camille = await MemberAsync(staff, "Camille");
+        var david = await MemberAsync(staff, "David");
+        var secret = WebhookSigning.NewSecret();
+        await SetSenderAsync(factory, org, secret);
+        var camilles = Guid.NewGuid();
+        var davids = Guid.NewGuid();
+        using (var scope = factory.Services.CreateScope())
+        {
+            await using var db = scope.ServiceProvider.EveryWorkspace();
+            foreach (var (id, memberId, name) in new[] { (camilles, camille, "Camille Muster"), (davids, david, "David Muster") })
+                db.DealOnboardings.Add(new DealOnboarding
+                {
+                    Id = id, OrganizationId = org, DealId = Guid.NewGuid(), ClubMemberId = memberId, Name = name, Email = $"{name.Split(' ')[0].ToLowerInvariant()}@example.ch",
+                    Status = OnboardingStatuses.Active, CreatedAtUtc = DateTime.UtcNow, CreatedByUserId = owner, UpdatedAtUtc = DateTime.UtcNow,
+                });
+            await db.SaveChangesAsync();
+        }
+        await OpenPortalAsync(staff);
+        var portal = factory.CreateClient();
+
+        // The workspace's one secret signs for every hand-over, and the signature covers the body,
+        // not the address: a request for Camille's hand-over that got out before it was used is
+        // refused at David's address, and so is one whose body names no hand-over at all.
+        var forCamille = JsonSerializer.Serialize(new { onboardingId = camilles, nonce = Guid.NewGuid().ToString("N") });
+        await Refused(await portal.SendAsync(SignedHandoffRequest(davids, secret, body: forCamille)), HttpStatusCode.Unauthorized, "Camille's signed request at David's address");
+        var namingNobody = JsonSerializer.Serialize(new { nonce = Guid.NewGuid().ToString("N") });
+        await Refused(await portal.SendAsync(SignedHandoffRequest(davids, secret, body: namingNobody)), HttpStatusCode.Unauthorized, "a signed request naming no hand-over");
+        await Refused(await portal.SendAsync(SignedHandoffRequest(davids, secret, body: "not json")), HttpStatusCode.Unauthorized, "a signed body that is no JSON");
+        (await factory.Services.Read(db => db.MemberPortalLinks.Count())).Should().Be(0, "no link was made for anyone");
+
+        // The same request at Camille's own address still works: it was never used.
+        var link = await Ok(await portal.SendAsync(SignedHandoffRequest(camilles, secret, body: forCamille)), "Camille's request at her own address");
+        link.GetProperty("url").GetString().Should().Contain("#token=");
+        (await factory.Services.Read(db => db.MemberPortalLinks.Single())).MemberId.Should().Be(camille);
     }
 
     [Fact]

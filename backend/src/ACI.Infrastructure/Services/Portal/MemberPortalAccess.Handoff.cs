@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using ACI.Application.Common;
 using ACI.Application.Services;
 using ACI.Domain.Entities;
@@ -18,8 +19,9 @@ namespace ACI.Infrastructure.Services.Portal;
 /// that works once, for two minutes; it sends the member's browser there.
 /// </para>
 /// <list type="bullet">
-/// <item><b>Tied to the hand-over and its member.</b> The hand-over names the member it added;
-/// no other member can be reached through it.</item>
+/// <item><b>Tied to the hand-over and its member.</b> The signed body names the hand-over
+/// ({"onboardingId": "…"}, beside a random nonce), which must be the one in the address, and the
+/// hand-over names the member it added; no other member can be reached through it.</item>
 /// <item><b>Fresh and used once.</b> A request more than five minutes from now is refused, and
 /// each signature is taken once (kept as a sign-in step, which runs out with it).</item>
 /// <item><b>Refused once the secret is replaced.</b> It is checked against the secret the
@@ -54,6 +56,10 @@ public sealed partial class MemberPortalAccess
         var handoff = await _db.OnboardingSettings.AsNoTracking().FirstOrDefaultAsync(s => s.OrganizationId == onboarding.OrganizationId, ct);
         if (string.IsNullOrWhiteSpace(handoff?.WebhookSecret) || !WebhookSigning.IsSignature(handoff.WebhookSecret, seconds, body, signature))
             return refused;
+        // The signature covers the body and not the address, and one secret signs for every
+        // hand-over of the workspace: the body names the hand-over too, so a signed request that
+        // got out before it was used opens nobody's account but the member it was signed for.
+        if (!NamesHandoff(body, onboardingId)) return refused;
 
         // Each signed request once: a copy of it replayed within its five minutes is refused.
         var nonce = Hash(signature!.Trim().ToLowerInvariant());
@@ -116,5 +122,23 @@ public sealed partial class MemberPortalAccess
         });
         await _db.SaveChangesAsync(ct);
         return new PortalHandoffLinkDto(SignInUrl(settings.PortalKey, secret, handoff: true), expires);
+    }
+
+    /// <summary>Whether the signed body is a JSON object whose "onboardingId" is this hand-over's.</summary>
+    private static bool NamesHandoff(string body, Guid onboardingId)
+    {
+        try
+        {
+            using var json = JsonDocument.Parse(body);
+            return json.RootElement.ValueKind == JsonValueKind.Object
+                && json.RootElement.TryGetProperty("onboardingId", out var named)
+                && named.ValueKind == JsonValueKind.String
+                && Guid.TryParse(named.GetString(), out var id)
+                && id == onboardingId;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 }
