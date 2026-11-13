@@ -85,6 +85,35 @@ public class RetentionTests
     };
 
     [Fact]
+    public async Task AStaleLeadsContactWhoHiresTheClub_StaysWhenTheLeadGoes()
+    {
+        var (factory, client, s) = await ClubAsync();
+        using var _ = factory;
+        // The contact made for the old lead is the club's client for a wedding next month: arranging
+        // it never touched the contact's row, so the contact looked as untouched as the lead.
+        var wedding = Guid.NewGuid();
+        await using (var db = factory.Services.EveryWorkspace())
+        {
+            var start = DateTime.UtcNow.Date.AddMonths(1).AddHours(16);
+            db.ClubPrivateEvents.Add(new ClubPrivateEvent
+            {
+                Id = wedding, OrganizationId = s.Org, Title = "Prospect wedding", ContactId = s.StaleContact, StartAtUtc = start, EndAtUtc = start.AddHours(8),
+                GuestCount = 80, Status = PrivateEventStatuses.Confirmed, Currency = "CHF", CreatedAtUtc = DateTime.UtcNow, UpdatedAtUtc = DateTime.UtcNow, EditVersion = Guid.NewGuid(),
+            });
+            await db.SaveChangesAsync();
+        }
+        await Ok(await client.PutAsync("/api/privacy/settings", Body(Periods(leads: 24))), "set the lead period");
+
+        var run = await Ok(await client.PostAsync("/api/privacy/retention/run", null), "run now");
+
+        run.GetProperty("leadsDeleted").GetInt32().Should().Be(1, "the lead nobody worked on still goes");
+        await using var after = factory.Services.EveryWorkspace();
+        after.Leads.Any(l => l.Id == s.StaleLead).Should().BeFalse();
+        after.Contacts.Any(c => c.Id == s.StaleContact).Should().BeTrue("the club's client for next month's wedding is kept");
+        after.ClubPrivateEvents.Single(e => e.Id == wedding).ContactId.Should().Be(s.StaleContact);
+    }
+
+    [Fact]
     public async Task NothingIsRemovedUntilTheWorkspaceSetsAPeriod()
     {
         var (factory, client, s) = await ClubAsync();

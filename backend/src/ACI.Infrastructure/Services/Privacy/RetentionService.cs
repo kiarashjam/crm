@@ -300,7 +300,16 @@ public sealed class RetentionService : IRetention
                     && !_db.TaskItems.Any(t => t.ContactId == c.Id && t.Status != TaskStatus.Completed && t.Status != TaskStatus.Cancelled)
                     && !_db.OutboundMessages.Any(m => m.ContactId == c.Id && m.CreatedAtUtc >= cutoff)
                     && !_db.ClubMembers.Any(m => m.ContactId == c.Id)
-                    && !_db.ClubHouseholdMembers.Any(h => h.ContactId == c.Id))
+                    && !_db.ClubHouseholdMembers.Any(h => h.ContactId == c.Id)
+                    // Nor the club's private client: a private event of theirs still to come (or held
+                    // since), money on their house account since (its entries name the contact), or a
+                    // company's running corporate membership whose bills they look after. Working on
+                    // those never touches the contact's row, so it read as nobody's work.
+                    && !_db.ClubPrivateEvents.Any(e => e.ContactId == c.Id
+                        && (e.Status == PrivateEventStatuses.Enquiry || e.Status == PrivateEventStatuses.Confirmed || e.EndAtUtc >= cutoff))
+                    && !_db.ClubCharges.Any(ch => ch.MemberId == c.Id && ch.PostedAtUtc >= cutoff)
+                    && !_db.ClubPayments.Any(p => p.MemberId == c.Id && p.ReceivedAtUtc >= cutoff)
+                    && !_db.ClubCorporateMemberships.Any(m => m.BillingContactId == c.Id && m.Status == CorporateMembershipStatuses.Active))
                 .Select(c => (Guid?)c.Id)
                 .FirstOrDefaultAsync(ct);
             var selection = new PersonSelection { LeadIds = [leadId], ContactIds = contactId is Guid c ? [c] : [] };
