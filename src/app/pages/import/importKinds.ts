@@ -90,6 +90,37 @@ export const IMPORT_KINDS: Record<ImportKind, ImportKindInfo> = {
   },
 };
 
+/**
+ * Leads where they can be establishments: a place's columns in the template, and a place
+ * is matched as the server matches it (the same email, or the same name in the same city).
+ * With both, the "kind" column says which each row is; a row without it is a person.
+ */
+export function leadImportInfo(mode: 'establishment' | 'both'): ImportKindInfo {
+  const base = IMPORT_KINDS.lead;
+  const header = 'name,establishment type,address,postal code,city,country,phone,email,website,seats,contact person name,contact person role,contact person email,contact person phone,source,status,notes';
+  const rows = [
+    'Trattoria Bella,Restaurant,Rue du Lac 4,1003,Lausanne,Switzerland,+41 21 000 00 00,,trattoria.ch,60,Marco Rossi,Owner,marco@trattoria.ch,+41 79 000 00 00,Referral,New,Terrace in summer',
+    'Café du Marché,Café,Place du Marché 2,1204,Genève,Switzerland,+41 22 000 00 00,hello@cafedumarche.ch,cafedumarche.ch,24,Léa Dubois,Manager,lea@cafedumarche.ch,,Website,Contacted,',
+  ];
+  return {
+    ...base,
+    subtitle: mode === 'both'
+      ? 'Bring in a spreadsheet of people and establishments, check what will happen, and undo it if it was the wrong file'
+      : 'Bring in a spreadsheet of establishments, check what will happen, and undo it if it was the wrong file',
+    matchedBy: mode === 'both'
+      ? 'the same email, the same name and phone number for a person, or the same name in the same city for an establishment'
+      : 'the same email, or the same name in the same city',
+    matchNote: mode === 'both' ? base.matchNote : undefined,
+    sample: mode === 'both'
+      ? [
+        `kind,${header},job title`,
+        `Establishment,${rows[0]},`,
+        'Person,Anna Müller,,,,,,+41 79 123 45 67,anna.mueller@example.com,,,,,,,Referral,New,Met at the spring open evening,Partner',
+      ].join('\r\n')
+      : [header, ...rows].join('\r\n'),
+  };
+}
+
 /** "1 lead", "3 leads". */
 export function count(n: number, info: Pick<ImportKindInfo, 'one' | 'many'>): string {
   return `${n.toLocaleString()} ${n === 1 ? info.one : info.many}`;

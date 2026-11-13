@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using ACI.Application.Common;
 using ACI.Application.DTOs;
@@ -85,6 +86,8 @@ internal sealed class ImportPlanner
     private readonly IReadOnlyList<LeadSource> _sources;
     private readonly (string Name, Guid? Id) _defaultStatus;
     private readonly (string Name, Guid? Id)? _defaultSource;
+    /// <summary>What the workspace's leads are (Organization.LeadKinds); null for a personal workspace.</summary>
+    private readonly string? _leadKinds;
 
     private readonly Dictionary<string, List<ImportExisting>> _existing = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ImportExisting> _existingByPhone = new(StringComparer.Ordinal);
@@ -111,9 +114,11 @@ internal sealed class ImportPlanner
         IReadOnlyList<LeadStatus>? statuses,
         IReadOnlyList<LeadSource> sources,
         string? defaultStatus,
-        string? defaultSource)
+        string? defaultSource,
+        string? leadKinds = null)
     {
         _kind = kind;
+        _leadKinds = leadKinds;
         _columns = columns;
         _fields = fields.ToDictionary(f => f.Key, StringComparer.Ordinal);
         _update = update;
@@ -185,10 +190,28 @@ internal sealed class ImportPlanner
         planned.Label = cells.GetValueOrDefault("name") ?? cells.GetValueOrDefault("email") ?? "(no name)";
 
         var errors = new List<string>();
+        // A lead is a person or an establishment: as the row says, else the workspace's own.
+        // A workspace of people is never offered the column, so its rows are people.
+        // Only a kind the file states changes a lead it updates; one it adds takes the default.
+        string? rowKind = null;
+        if (_kind == RecordTypes.Lead && _leadKinds is LeadKinds.Establishment or LeadKinds.Both)
+        {
+            rowKind = LeadKinds.DefaultFor(_leadKinds);
+            if (cells.TryGetValue("kind", out var said))
+            {
+                if (ImportFields.LeadKind(said) is { } read) rowKind = read;
+                else errors.Add($"{ImportValues.Show(said)} is not person or establishment");
+                cells.Remove("kind");
+                planned.Values["kind"] = rowKind;
+            }
+        }
+        var establishment = rowKind == LeadKinds.Establishment;
+
         // A company is matched by its name, so it always needs one. A person needs one only
         // to be added: a file of emails and new phone numbers can update the people it names.
+        // An establishment needs no email: a place found on the street.
         if (!IsPerson && !cells.ContainsKey("name")) errors.Add("No company name");
-        if (IsPerson && !cells.ContainsKey("email")) errors.Add("No email address");
+        if (IsPerson && !establishment && !cells.ContainsKey("email")) errors.Add("No email address");
         foreach (var (key, text) in cells)
         {
             var field = _fields[key];
@@ -202,13 +225,17 @@ internal sealed class ImportPlanner
             if (Read(field, text, out var read) is { } problem) errors.Add(problem);
             else if (read != null) planned.Values[key] = read;
         }
+        if (establishment && LeadKindRules.CheckEstablishment(
+                planned.Values.GetValueOrDefault("establishmentType"), planned.Values.GetValueOrDefault("website"),
+                planned.Values.GetValueOrDefault("contactPersonEmail"), null) is { } badPlace)
+            errors.Add(badPlace.Description);
         if (errors.Count > 0)
         {
             planned.Fail(string.Join("; ", errors));
             return planned;
         }
 
-        var keys = MatchKeys(k => planned.Values.GetValueOrDefault(k));
+        var keys = MatchKeys(k => k == "kind" ? rowKind : planned.Values.GetValueOrDefault(k));
 
         // A row the file has already had: the first one stands.
         foreach (var (key, how) in keys)
@@ -240,8 +267,9 @@ internal sealed class ImportPlanner
                 return planned;
             }
             Remember(keys, row.Number);
+            if (rowKind != null) planned.Values["kind"] = rowKind;
             PlanCreate(planned);
-            NoteSharedPhone(planned);
+            if (!establishment) NoteSharedPhone(planned);
             return planned;
         }
 
@@ -297,6 +325,19 @@ internal sealed class ImportPlanner
             case ImportValue.Domain:
                 value = ImportValues.DomainKey(text);
                 return value.Length > 0 && ValidationHelper.IsValidDomain(value) ? null : $"{ImportValues.Show(text)} is not a domain";
+            case ImportValue.LeadKind:
+                value = ImportFields.LeadKind(text);
+                return value != null ? null : $"{ImportValues.Show(text)} is not person or establishment";
+            case ImportValue.EstablishmentType:
+                value = ImportFields.EstablishmentType(text);
+                return null;
+            case ImportValue.Count:
+                if (int.TryParse(text.Replace("'", "").Replace(" ", ""), NumberStyles.Integer, CultureInfo.InvariantCulture, out var count) && count is >= 0 and <= 100000)
+                {
+                    value = count.ToString(CultureInfo.InvariantCulture);
+                    return null;
+                }
+                return $"{field.Label} should be a whole number, not {ImportValues.Show(text)}";
             case ImportValue.YesNo:
                 switch (ImportValues.YesNo(text))
                 {
@@ -343,7 +384,9 @@ internal sealed class ImportPlanner
             PlanCompany(planned, company);
         }
         else if (_kind == RecordTypes.Lead
-                 && LeadDomainEnricher.TryCompanyFromEmail(planned.Values["email"], out var domain, out var named))
+                 && planned.Values.GetValueOrDefault("kind") != LeadKinds.Establishment
+                 && planned.Values.TryGetValue("email", out var email)
+                 && LeadDomainEnricher.TryCompanyFromEmail(email, out var domain, out var named))
         {
             // What saving a lead does anyway: a lead from a business address is linked to
             // the company with that domain, which is added if there is none.
@@ -401,7 +444,7 @@ internal sealed class ImportPlanner
                 planned.Values.Remove(key);
                 continue;
             }
-            planned.Changes.Add($"{_fields[key].Label}: {ImportValues.Show(was)} → {ImportValues.Show(now)}");
+            planned.Changes.Add($"{(_fields.TryGetValue(key, out var changed) ? changed.Label : "Person or establishment")}: {ImportValues.Show(was)} → {ImportValues.Show(now)}");
             if (key == "company") PlanCompany(planned, now);
         }
         if (!planned.Values.ContainsKey("status")) planned.StatusId = null;
@@ -450,6 +493,10 @@ internal sealed class ImportPlanner
             var name = ImportValues.NameKey(value("name"));
             var phone = ImportValues.PhoneKey(value("phone"));
             if (name.Length > 0 && phone.Length > 0) keys.Add(($"name+phone:{name}|{phone}", "name and phone"));
+            // The same place: its name in its city, as a lead's form finds it.
+            var city = ImportValues.NameKey(value("city"));
+            if (value("kind") == LeadKinds.Establishment && name.Length > 0 && city.Length > 0)
+                keys.Add(($"place:{name}|{city}", "name and city"));
         }
         else
         {

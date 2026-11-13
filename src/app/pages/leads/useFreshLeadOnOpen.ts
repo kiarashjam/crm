@@ -22,9 +22,22 @@ export function leadEditForm(lead: Lead, sourceOptions: Option[], statusOptions:
   const sourceOpt = sourceOptions.find((s) => s.id === lead.leadSourceId || s.name === lead.source);
   const statusOpt = statusOptions.find((s) => s.id === lead.leadStatusId || s.name === lead.status);
   return {
+    kind: lead.kind === 'establishment' ? 'establishment' : 'person',
     name: lead.name,
     email: lead.email,
     phone: lead.phone ?? '',
+    jobTitle: lead.jobTitle ?? '',
+    establishmentType: lead.establishmentType ?? '',
+    addressLine: lead.addressLine ?? '',
+    postalCode: lead.postalCode ?? '',
+    city: lead.city ?? '',
+    country: lead.country ?? '',
+    website: lead.website ?? '',
+    seats: lead.seats != null ? String(lead.seats) : '',
+    contactPersonName: lead.contactPersonName ?? '',
+    contactPersonRole: lead.contactPersonRole ?? '',
+    contactPersonEmail: lead.contactPersonEmail ?? '',
+    contactPersonPhone: lead.contactPersonPhone ?? '',
     referredByContactId: lead.referredByContactId ?? '',
     companyId: lead.companyId ?? '',
     source: lead.source ?? (sourceOpt?.name ?? 'Manual'),

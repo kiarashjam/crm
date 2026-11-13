@@ -1,4 +1,4 @@
-import type { Lead, PagedResult, PaginationParams } from './types';
+import type { Lead, LeadKind, PagedResult, PaginationParams } from './types';
 import type { ContactRelationship } from './relationships';
 import { mockLeads } from './mockData';
 import { servesDemoData, authFetchJson, authFetch, type RequestOptions } from './apiClient';
@@ -19,8 +19,9 @@ const leadStore = createMockStore<Lead>({
 
 export type LeadRaw = {
   id: string;
+  kind?: string | null;
   name: string;
-  email: string;
+  email?: string | null;
   phone?: string | null;
   companyId?: string | null;
   companyName?: string | null;
@@ -53,14 +54,25 @@ export type LeadRaw = {
   referredByContactId?: string | null;
   referredByContactName?: string | null;
   relationships?: ContactRelationship[] | null;
+  establishmentType?: string | null;
+  addressLine?: string | null;
+  postalCode?: string | null;
+  city?: string | null;
+  website?: string | null;
+  seats?: number | null;
+  contactPersonName?: string | null;
+  contactPersonRole?: string | null;
+  contactPersonEmail?: string | null;
+  contactPersonPhone?: string | null;
   version?: string | null;
 };
 
 export function mapLead(d: LeadRaw): Lead {
   return {
     id: d.id,
+    kind: d.kind === 'establishment' ? 'establishment' : 'person',
     name: d.name,
-    email: d.email,
+    email: d.email ?? '',
     phone: d.phone ?? undefined,
     companyId: d.companyId ?? undefined,
     companyName: d.companyName ?? undefined,
@@ -93,6 +105,16 @@ export function mapLead(d: LeadRaw): Lead {
     referredByContactId: d.referredByContactId ?? undefined,
     referredByContactName: d.referredByContactName ?? undefined,
     relationships: d.relationships?.length ? d.relationships : undefined,
+    establishmentType: d.establishmentType ?? undefined,
+    addressLine: d.addressLine ?? undefined,
+    postalCode: d.postalCode ?? undefined,
+    city: d.city ?? undefined,
+    website: d.website ?? undefined,
+    seats: d.seats ?? undefined,
+    contactPersonName: d.contactPersonName ?? undefined,
+    contactPersonRole: d.contactPersonRole ?? undefined,
+    contactPersonEmail: d.contactPersonEmail ?? undefined,
+    contactPersonPhone: d.contactPersonPhone ?? undefined,
     version: d.version ?? undefined,
   };
 }
@@ -111,6 +133,8 @@ export interface LeadListParams extends PaginationParams {
   status?: string;
   source?: string;
   converted?: 'all' | 'active' | 'converted';
+  /** People or establishments alone; left out (or 'all'), both. */
+  kind?: 'all' | 'person' | 'establishment';
   sortBy?: 'name' | 'email' | 'status' | 'createdAt';
   sortDir?: 'asc' | 'desc';
 }
@@ -129,7 +153,7 @@ export interface LeadStats {
 
 function applyMockLeadFilters(leads: Lead[], params: LeadListParams): Lead[] {
   let result = [...leads];
-  const { search, status, source, converted, sortBy = 'createdAt', sortDir = 'desc' } = params;
+  const { search, status, source, converted, kind, sortBy = 'createdAt', sortDir = 'desc' } = params;
 
   if (search?.trim()) {
     const q = search.trim().toLowerCase();
@@ -150,6 +174,9 @@ function applyMockLeadFilters(leads: Lead[], params: LeadListParams): Lead[] {
     result = result.filter((l) => l.isConverted);
   } else if (converted === 'active') {
     result = result.filter((l) => !l.isConverted);
+  }
+  if (kind && kind !== 'all') {
+    result = result.filter((l) => (l.kind ?? 'person') === kind);
   }
 
   const toTs = (value?: string) => {
@@ -189,6 +216,7 @@ export async function getLeadsPaged(params: LeadListParams = {}, req?: RequestOp
     status,
     source,
     converted,
+    kind,
     sortBy = 'createdAt',
     sortDir = 'desc',
   } = params;
@@ -204,6 +232,7 @@ export async function getLeadsPaged(params: LeadListParams = {}, req?: RequestOp
     if (status && status !== 'all') queryParams.set('status', status);
     if (source && source !== 'all') queryParams.set('source', source);
     if (converted && converted !== 'all') queryParams.set('converted', converted);
+    if (kind && kind !== 'all') queryParams.set('kind', kind);
 
     const result = await authFetchJson<ApiPagedResult<LeadRaw>>(`/api/leads?${queryParams}`, req);
     return {
@@ -325,9 +354,38 @@ export async function searchLeads(query: string): Promise<Lead[]> {
   return leads.filter((l) => l.name.toLowerCase().includes(q) || l.email.toLowerCase().includes(q));
 }
 
+/** What an establishment adds to a lead, and the person fields any lead may carry. Sent as null on an update, a field is taken off. */
+export interface LeadProfileFields {
+  jobTitle?: string | null;
+  country?: string | null;
+  establishmentType?: string | null;
+  addressLine?: string | null;
+  postalCode?: string | null;
+  city?: string | null;
+  website?: string | null;
+  seats?: number | null;
+  contactPersonName?: string | null;
+  contactPersonRole?: string | null;
+  contactPersonEmail?: string | null;
+  contactPersonPhone?: string | null;
+}
+
+/** The profile fields as a demo record keeps them: absent rather than null. */
+function demoProfile(params: LeadProfileFields): Partial<Lead> {
+  const out: Partial<Lead> = {};
+  for (const [key, value] of Object.entries(params) as [keyof LeadProfileFields, unknown][]) {
+    if (value === null || value === undefined || value === '') continue;
+    (out as Record<string, unknown>)[key] = value;
+  }
+  return out;
+}
+
 /** Create a lead. */
-export async function createLead(params: {
+export async function createLead(params: LeadProfileFields & {
+  /** A person (the default) or an establishment. A workspace that does not use the kind refuses it. */
+  kind?: LeadKind;
   name: string;
+  /** May be empty for an establishment. */
   email: string;
   phone?: string;
   companyId?: string;
@@ -362,9 +420,11 @@ export async function createLead(params: {
   await delay(200);
   const created: Lead = {
     id: mockId('lead'),
+    kind: params.kind ?? 'person',
     name: params.name,
     email: params.email,
     phone: params.phone,
+    ...demoProfile(params),
     companyId: params.companyId,
     source: params.source,
     status: params.status ?? 'New',
@@ -393,7 +453,8 @@ export async function createLead(params: {
  */
 export async function updateLead(
   id: string,
-  params: Partial<{
+  params: LeadProfileFields & Partial<{
+    kind: LeadKind;
     name: string;
     email: string;
     phone: string | null;

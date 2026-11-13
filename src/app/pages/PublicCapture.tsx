@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { getPublicCaptureForm, submitPublicCapture, PublicCaptureError } from '@/app/api/leadOps';
+import { ESTABLISHMENT_TYPES, leadKindsMode, type LeadKindsMode } from '@/app/lib/leadKinds';
 
 /**
  * The public form a stranger fills in on the club's website.
@@ -12,6 +13,7 @@ import { getPublicCaptureForm, submitPublicCapture, PublicCaptureError } from '@
  * ignore the thank-you message the workspace configured.
  */
 type FormState = 'loading' | 'ready' | 'missing' | 'unreachable';
+type Kind = 'person' | 'establishment';
 
 export default function PublicCapture() {
   const { token = '' } = useParams();
@@ -26,6 +28,15 @@ export default function PublicCapture() {
   const [jobTitle, setJobTitle] = useState('');
   const [country, setCountry] = useState('');
   const [website, setWebsite] = useState('');
+  // A workspace whose leads are establishments asks for the place, then who is writing.
+  const [mode, setMode] = useState<LeadKindsMode>('person');
+  const [kind, setKind] = useState<Kind>('person');
+  const [placeName, setPlaceName] = useState('');
+  const [placeType, setPlaceType] = useState('');
+  const [street, setStreet] = useState('');
+  const [postalCode, setPostalCode] = useState('');
+  const [city, setCity] = useState('');
+  const [businessWebsite, setBusinessWebsite] = useState('');
   const [busy, setBusy] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const thanksRef = useRef<HTMLHeadingElement>(null);
@@ -37,6 +48,9 @@ export default function PublicCapture() {
       .then((form) => {
         if (cancelled) return;
         if (form.name?.trim()) setTitle(form.name.trim());
+        const m = leadKindsMode(form.leadKinds);
+        setMode(m);
+        setKind(m === 'establishment' ? 'establishment' : 'person');
         setState('ready');
       })
       .catch((err: unknown) => {
@@ -60,13 +74,25 @@ export default function PublicCapture() {
     setBusy(true);
     setError(null);
     try {
-      const message = await submitPublicCapture(token, { name, email, phone, company, jobTitle, country, website });
+      const place = kind === 'establishment';
+      const message = await submitPublicCapture(token, {
+        name, email, phone, jobTitle, country, website,
+        // A business's own name is the establishment's; "Company" is asked of a person only.
+        ...(place ? {} : { company }),
+        // A people-only form sends what it always did.
+        ...(mode === 'person' ? {} : { kind }),
+        ...(place
+          ? { establishmentName: placeName, establishmentType: placeType || undefined, addressLine: street, postalCode, city, businessWebsite }
+          : {}),
+      });
       setDone(message ?? "Thanks. We'll be in touch.");
     } catch (err) {
       const status = err instanceof PublicCaptureError ? err.status : 0;
       setError(
         status === 429 ? 'A lot of messages are arriving right now. Please try again in a minute.'
-          : status === 400 ? 'Please check the email address and that each field is not too long.'
+          : status === 400 ? (kind === 'establishment'
+            ? 'Please check the establishment’s name, the email address, and that each field is not too long.'
+            : 'Please check the email address and that each field is not too long.')
           : status === 404 ? 'This form is no longer available.'
           : 'That could not be sent. Please check your connection and try again.',
       );
@@ -105,14 +131,67 @@ export default function PublicCapture() {
         ) : (
           <form onSubmit={submit} aria-busy={state === 'loading' || busy}>
             <h1 className="text-xl font-semibold text-slate-900">{state === 'loading' ? 'Loading…' : title}</h1>
-            <p className="mt-1 text-sm text-slate-500">Leave your details and we will get back to you.</p>
+            <p className="mt-1 text-sm text-slate-500">
+              {kind === 'establishment'
+                ? 'Tell us about your establishment and we will get back to you.'
+                : 'Leave your details and we will get back to you.'}
+            </p>
             <fieldset disabled={state !== 'ready' || busy} className="mt-6 space-y-3">
+              {mode === 'both' && (
+                <div role="radiogroup" aria-label="You are writing" className="grid grid-cols-2 gap-2">
+                  {([['person', 'For myself'], ['establishment', 'For a business']] as const).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      role="radio"
+                      aria-checked={kind === value}
+                      onClick={() => setKind(value)}
+                      className={`h-10 rounded-xl border text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 ${
+                        kind === value ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {kind === 'establishment' ? (
+                <>
+                  <Field label="Establishment name" value={placeName} onChange={setPlaceName} autoComplete="organization" maxLength={256} required />
+                  <label className="block text-sm text-slate-700">
+                    Type
+                    <select
+                      value={placeType}
+                      onChange={(e) => setPlaceType(e.target.value)}
+                      className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                    >
+                      <option value="">Choose…</option>
+                      {ESTABLISHMENT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                    </select>
+                  </label>
+                  <Field label="Street and number" value={street} onChange={setStreet} autoComplete="street-address" maxLength={256} />
+                  <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-3">
+                    <Field label="Postal code" value={postalCode} onChange={setPostalCode} autoComplete="postal-code" maxLength={20} />
+                    <Field label="City" value={city} onChange={setCity} autoComplete="address-level2" maxLength={120} />
+                  </div>
+                  <Field label="Country" value={country} onChange={setCountry} autoComplete="country-name" maxLength={80} />
+                  <Field label="Establishment website" value={businessWebsite} onChange={setBusinessWebsite} autoComplete="url" maxLength={256} />
+                  <p className="pt-2 text-sm font-medium text-slate-900">Your details</p>
+                  <Field label="Your name" value={name} onChange={setName} autoComplete="name" maxLength={256} required />
+                  <Field label="Your role" value={jobTitle} onChange={setJobTitle} autoComplete="organization-title" maxLength={200} />
+                  <Field label="Email" value={email} onChange={setEmail} type="email" autoComplete="email" maxLength={256} required />
+                  <Field label="Phone" value={phone} onChange={setPhone} type="tel" autoComplete="tel" maxLength={64} />
+                </>
+              ) : (
+                <>
               <Field label="Name" value={name} onChange={setName} autoComplete="name" maxLength={256} required />
               <Field label="Email" value={email} onChange={setEmail} type="email" autoComplete="email" maxLength={256} required />
               <Field label="Phone" value={phone} onChange={setPhone} type="tel" autoComplete="tel" maxLength={64} />
               <Field label="Company" value={company} onChange={setCompany} autoComplete="organization" maxLength={200} />
               <Field label="Job title" value={jobTitle} onChange={setJobTitle} autoComplete="organization-title" maxLength={200} />
               <Field label="Country" value={country} onChange={setCountry} autoComplete="country-name" maxLength={80} />
+                </>
+              )}
               {/* Honeypot: hidden from people and from assistive technology. A bot
                   that fills every field fills this one, and nothing is saved. */}
               <div aria-hidden="true" className="absolute left-[-10000px] top-auto h-px w-px overflow-hidden">

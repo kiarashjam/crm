@@ -200,6 +200,43 @@ Every read of one of these returns its `version`, and `GET /api/{records}/{id}` 
 | `DELETE` | `/api/leads/{id}` | Delete lead |
 | `POST` | `/api/leads/{id}/convert` | Convert to Contact/Company/Deal |
 
+#### People and establishments
+
+A lead is a person (`kind: "person"`) or an establishment such as a restaurant
+(`kind: "establishment"`). Each workspace says which it takes:
+`PUT /api/organizations/{id}/settings` with `leadKinds` set to `person`, `establishment` or `both`.
+
+- **`person`** is the default, and every existing workspace has it. Such a workspace
+  works as it always has. It takes no establishments from the app, the webhook, a capture
+  form or an import (`Lead.KindNotUsed`, 400).
+- **`establishment`**: a lead sent without a kind is an establishment.
+- **`both`**: a lead sent without a kind is a person.
+
+An establishment needs only its name; its `email` (its general address) is optional. It has:
+- `establishmentType`: one of `restaurant`, `cafe`, `bar`, `hotel`, `bakery`, `catering`,
+  `food_truck`, `shop`, `other`;
+- `addressLine`, `postalCode`, `city`, `website`, `seats`;
+- a contact person: `contactPersonName`, `contactPersonRole`, `contactPersonEmail`, `contactPersonPhone`.
+
+What follows from it:
+- **Company.** The establishment is its own company. It is linked to the workspace's
+  company of that name, preferring one in the same city; otherwise a company is made with
+  its website, domain, type and address.
+- **Contact.** The lead's contact is the contact person, made once they have a name and an
+  email. Converting with `createContact` without a contact person answers
+  `Lead.ContactPersonMissing`; converting to a deal only works.
+- **Duplicates.** The same name in the same city is the same place. Two leads without an
+  email are never duplicates of each other.
+- **Email.** Sequences and automations write to the contact person, else to the
+  establishment's own address, and greet the contact person by name.
+- **Webhook.** `POST /api/webhook/leads` takes `kind` and the same fields.
+- **Capture form.** The public form (`GET /api/public/capture/{token}`) tells the page
+  which kinds the workspace takes (`leadKinds`). For an establishment, the name and email
+  are the person filling it in, who becomes the contact person, and `establishmentName` is
+  the place. Its own website comes as `businessWebsite`, because `website` is the honeypot.
+- **Import.** A lead import in an establishment workspace offers the establishment's
+  columns, and matches a place by its name and city.
+
 ### Imports (leads, contacts, companies)
 
 The file travels with each request, base64-encoded, up to 5 MB and 2,000 rows.

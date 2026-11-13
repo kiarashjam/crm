@@ -20,6 +20,11 @@ export interface Organization {
   timeZone?: string;
   /** Days without activity after which an open deal is stale, unless its pipeline says otherwise; 0 never. Older servers send none. */
   staleDealDays?: number;
+  /**
+   * What the workspace's leads are: "person" (people only, the default), "establishment"
+   * (businesses such as restaurants) or "both". Older servers send none: people.
+   */
+  leadKinds?: 'person' | 'establishment' | 'both';
 }
 
 /** Role ids as persisted by the backend (OrgMemberRole). */
@@ -208,7 +213,7 @@ export async function createOrganization(name: string): Promise<Organization | n
  */
 export async function updateOrganizationSettings(
   id: string,
-  settings: { currency?: string; locale?: string; timeZone?: string; staleDealDays?: number },
+  settings: { currency?: string; locale?: string; timeZone?: string; staleDealDays?: number; leadKinds?: 'person' | 'establishment' | 'both' },
 ): Promise<Organization | null> {
   const org = await authFetchJson<Organization>(`/api/organizations/${id}/settings`, {
     method: 'PUT',

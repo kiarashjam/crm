@@ -322,7 +322,10 @@ public sealed class ContactRepository : IContactRepository
 
     public async Task EnsurePersonContactAsync(Lead lead, CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(lead.Name) || string.IsNullOrWhiteSpace(lead.Email))
+        // The person behind the lead: the lead itself, or an establishment's contact person.
+        // An establishment with nobody named yet has no person to make a contact of.
+        var person = LeadKindRules.PersonOf(lead);
+        if (person.Name == null || person.Email == null)
             return;
 
         // Only contacts in the lead's own workspace. Matched by organization alone,
@@ -373,7 +376,7 @@ public sealed class ContactRepository : IContactRepository
             }
         }
 
-        var email = lead.Email.Trim();
+        var email = person.Email;
         var byEmail = await workspace.FirstOrDefaultAsync(c => !c.IsArchived && c.Email == email, ct);
         if (byEmail != null)
         {
@@ -395,11 +398,14 @@ public sealed class ContactRepository : IContactRepository
             Id = Guid.NewGuid(),
             UserId = lead.UserId,
             OrganizationId = lead.OrganizationId,
-            Name = lead.Name.Trim(),
+            Name = person.Name,
             Email = email,
-            Phone = string.IsNullOrWhiteSpace(lead.Phone) ? null : lead.Phone.Trim(),
+            Phone = person.Phone,
+            // At an establishment: their role there, and the place as their company.
+            JobTitle = lead.Kind == LeadKinds.Establishment && !string.IsNullOrWhiteSpace(lead.ContactPersonRole) ? lead.ContactPersonRole.Trim() : null,
             CompanyId = lead.CompanyId,
-            Description = string.IsNullOrWhiteSpace(lead.Description) ? null : lead.Description.Trim(),
+            // A person's notes are about them; an establishment's are about the place.
+            Description = lead.Kind != LeadKinds.Establishment && !string.IsNullOrWhiteSpace(lead.Description) ? lead.Description.Trim() : null,
             CreatedAtUtc = DateTime.UtcNow,
             ConvertedFromLeadId = lead.Id,
         };
@@ -424,7 +430,10 @@ public sealed class ContactRepository : IContactRepository
         {
             var missing = await _db.Leads
                 .IgnoreQueryFilters()
-                .Where(l => l.Name.Trim() != "" && l.Email.Trim() != "" && l.ConvertedToContactId == null
+                .Where(l => (l.Kind == LeadKinds.Establishment
+                        ? l.ContactPersonName != null && l.ContactPersonName.Trim() != "" && l.ContactPersonEmail != null && l.ContactPersonEmail.Trim() != ""
+                        : l.Name.Trim() != "" && l.Email.Trim() != "")
+                    && l.ConvertedToContactId == null
                     && l.PersonContactRemovedAtUtc == null && !linkedLeadIds.Contains(l.Id) && !seen.Contains(l.Id))
                 .OrderBy(l => l.CreatedAtUtc)
                 .Take(Math.Min(50, maxLeads - seen.Count))
@@ -461,8 +470,9 @@ public sealed class ContactRepository : IContactRepository
         // Not linked yet: the contact the next save links the lead to (see
         // EnsurePersonContactAsync), so the lead page shows the person someone added again
         // after deleting the lead's contact, instead of saying it was deleted.
-        if (string.IsNullOrWhiteSpace(lead.Name) || string.IsNullOrWhiteSpace(lead.Email)) return null;
-        var email = lead.Email.Trim();
+        var person = LeadKindRules.PersonOf(lead);
+        if (person.Name == null || person.Email == null) return null;
+        var email = person.Email;
         return await workspace.FirstOrDefaultAsync(c => !c.IsArchived && c.Email == email, ct);
     }
 
@@ -608,9 +618,10 @@ public sealed class ContactRepository : IContactRepository
         {
             var lead = await _db.Leads.AsNoTracking()
                 .Where(l => l.Id == lid && l.OrganizationId == organizationId)
-                .Select(l => new { l.Email, l.ConvertedToContactId })
+                .Select(l => new { l.Kind, l.Email, l.ContactPersonEmail, l.ConvertedToContactId })
                 .FirstOrDefaultAsync(ct);
-            if (lead != null && await DoNotContactRules.LeadAsync(_db, organizationId, lid, lead.ConvertedToContactId, lead.Email, ct))
+            if (lead != null && await DoNotContactRules.LeadAsync(_db, organizationId, lid, lead.ConvertedToContactId,
+                    LeadKindRules.EmailOf(lead.Kind, lead.Email, lead.ContactPersonEmail) ?? "", ct))
                 return true;
         }
         return false;
@@ -620,7 +631,8 @@ public sealed class ContactRepository : IContactRepository
     {
         var address = DoNotContactRules.Normalize(email);
         var leads = await _db.Leads
-            .Where(l => l.OrganizationId == organizationId && l.Email.Trim().ToLower() == address)
+            .Where(l => l.OrganizationId == organizationId && (l.Email.Trim().ToLower() == address
+                || (l.Kind == LeadKinds.Establishment && l.ContactPersonEmail != null && l.ContactPersonEmail.Trim().ToLower() == address)))
             .ToListAsync(ct);
         // A lead keeps its "stop" on its person contact, so each needs one.
         foreach (var lead in leads)

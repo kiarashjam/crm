@@ -17,9 +17,9 @@ public record UpdateLeadRequest : IMergePatchRequest
     public string? Name { get; init; }
 
     /// <summary>
-    /// Lead's email address.
+    /// Lead's email address. An establishment's may be sent empty, which takes it off;
+    /// a person's must stay a valid address. Checked by the service.
     /// </summary>
-    [EmailAddress(ErrorMessage = "Invalid email format")]
     [StringLength(254, ErrorMessage = "Email cannot exceed 254 characters")]
     public string? Email { get; init; }
 
@@ -102,6 +102,42 @@ public record UpdateLeadRequest : IMergePatchRequest
 
     [StringLength(40)]
     public string? CompanySize { get; init; }
+
+    /// <summary>"person" or "establishment". Left out: unchanged.</summary>
+    [StringLength(20)]
+    public string? Kind { get; init; }
+
+    /// <summary>For an establishment: restaurant, cafe, bar, hotel, bakery, catering, food_truck, shop or other.</summary>
+    [StringLength(40)]
+    public string? EstablishmentType { get; init; }
+
+    [StringLength(200)]
+    public string? AddressLine { get; init; }
+
+    [StringLength(20)]
+    public string? PostalCode { get; init; }
+
+    [StringLength(100)]
+    public string? City { get; init; }
+
+    [StringLength(300)]
+    public string? Website { get; init; }
+
+    [Range(0, 100000)]
+    public int? Seats { get; init; }
+
+    /// <summary>The person to speak to at an establishment.</summary>
+    [StringLength(200)]
+    public string? ContactPersonName { get; init; }
+
+    [StringLength(100)]
+    public string? ContactPersonRole { get; init; }
+
+    [StringLength(254)]
+    public string? ContactPersonEmail { get; init; }
+
+    [StringLength(50)]
+    public string? ContactPersonPhone { get; init; }
 
     /// <summary>
     /// "import" when an import updates the lead from a row of its file. A status it changes

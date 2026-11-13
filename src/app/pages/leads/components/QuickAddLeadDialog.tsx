@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, Loader2, Sparkles, UserPlus, X } from 'lucide-react';
+import { ChevronDown, Loader2, Sparkles, Store, UserPlus, X } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
 import { Dialog, DialogContent, DialogTitle } from '@/app/components/ui/dialog';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -11,6 +12,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/app/components/ui/select';
+import { useLeadKinds } from '@/app/lib/leadKinds';
+import type { LeadKind } from '@/app/api/types';
+import type { LeadProfileFields } from '@/app/api/leads';
+import {
+  EMPTY_ESTABLISHMENT, EstablishmentFields, LeadKindChooser, establishmentPayload, establishmentProblem, type EstablishmentDraft,
+} from './LeadKindFields';
 
 interface StatusOption {
   id: string;
@@ -27,29 +34,25 @@ interface CompanyOption {
   name: string;
 }
 
+/** What quick add hands on: a person's or an establishment's fields, and the shared ones. */
+export type QuickLeadInput = LeadProfileFields & {
+  kind: LeadKind;
+  name: string;
+  email: string;
+  phone?: string;
+  companyId?: string;
+  source?: string;
+  status?: string;
+  description?: string;
+};
+
 interface QuickAddLeadDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Persist the lead. Resolve once it's saved; resolve `false` to keep the dialog open. */
-  onSubmit: (input: {
-    name: string;
-    email: string;
-    phone?: string;
-    companyId?: string;
-    source?: string;
-    status?: string;
-    description?: string;
-  }) => Promise<boolean | void>;
+  onSubmit: (input: QuickLeadInput) => Promise<boolean | void>;
   /** Switch over to the full multi-step editor without losing what the user typed. */
-  onOpenFullEditor: (prefill: {
-    name: string;
-    email: string;
-    phone?: string;
-    companyId?: string;
-    source?: string;
-    status?: string;
-    description?: string;
-  }) => void;
+  onOpenFullEditor: (prefill: QuickLeadInput) => void;
   statusOptions: StatusOption[];
   sourceOptions: SourceOption[];
   companies: CompanyOption[];
@@ -79,6 +82,11 @@ export function QuickAddLeadDialog({
   const [showMore, setShowMore] = useState(false);
   const [saving, setSaving] = useState(false);
   const nameRef = useRef<HTMLInputElement | null>(null);
+  // What the lead is: asked first only where the workspace has both people and establishments.
+  const { choose, defaultKind } = useLeadKinds();
+  const [kind, setKind] = useState<LeadKind>(defaultKind);
+  const [place, setPlace] = useState<EstablishmentDraft>(EMPTY_ESTABLISHMENT);
+  const establishment = kind === 'establishment';
 
   // Reset on open so each invocation is a fresh form.
   useEffect(() => {
@@ -91,36 +99,27 @@ export function QuickAddLeadDialog({
       setStatus(statusOptions[0]?.name ?? '');
       setDescription('');
       setShowMore(false);
+      setKind(defaultKind);
+      setPlace(EMPTY_ESTABLISHMENT);
       // Focus the name field for fastest possible entry.
       setTimeout(() => nameRef.current?.focus(), 30);
     }
-  }, [open, statusOptions]);
+  }, [open, statusOptions, defaultKind]);
 
-  const valid = name.trim().length > 0 && email.trim().length > 0;
+  // A person needs a name and an email; an establishment its name (see establishmentProblem).
+  const problem = establishment ? establishmentProblem(place) : null;
+  const valid = establishment ? problem === null : name.trim().length > 0 && email.trim().length > 0;
 
-  const handleSubmit = async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    if (!valid || saving) return;
-    setSaving(true);
-    try {
-      const saved = await onSubmit({
-        name: name.trim(),
-        email: email.trim(),
-        phone: phone.trim() || undefined,
-        companyId: companyId || undefined,
-        source: source || undefined,
-        status: status || undefined,
-        description: description.trim() || undefined,
-      });
-      if (saved !== false) onOpenChange(false);
-    } finally {
-      setSaving(false);
+  /** Everything typed, whichever the lead is, for saving or for the full editor. */
+  const collected = (): QuickLeadInput => (establishment
+    ? {
+      ...establishmentPayload(place),
+      source: source || undefined,
+      status: status || undefined,
+      description: description.trim() || undefined,
     }
-  };
-
-  const switchToFullEditor = () => {
-    onOpenChange(false);
-    onOpenFullEditor({
+    : {
+      kind: 'person',
       name: name.trim(),
       email: email.trim(),
       phone: phone.trim() || undefined,
@@ -129,6 +128,22 @@ export function QuickAddLeadDialog({
       status: status || undefined,
       description: description.trim() || undefined,
     });
+
+  const handleSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!valid || saving) return;
+    setSaving(true);
+    try {
+      const saved = await onSubmit(collected());
+      if (saved !== false) onOpenChange(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const switchToFullEditor = () => {
+    onOpenChange(false);
+    onOpenFullEditor(collected());
   };
 
   return (
@@ -140,7 +155,7 @@ export function QuickAddLeadDialog({
           <div className="relative flex items-center justify-between p-5 text-white">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20 backdrop-blur-sm">
-                <UserPlus className="h-5 w-5" />
+                {establishment ? <Store className="h-5 w-5" /> : <UserPlus className="h-5 w-5" />}
               </div>
               <div>
                 <DialogTitle className="text-base font-semibold">Quick add lead</DialogTitle>
@@ -161,6 +176,48 @@ export function QuickAddLeadDialog({
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          {choose && <LeadKindChooser value={kind} onChange={setKind} compact />}
+
+          <AnimatePresence mode="wait" initial={false}>
+          {establishment ? (
+            <motion.div
+              key="establishment"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.18 }}
+              className="space-y-3"
+            >
+              <EstablishmentFields value={place} onChange={setPlace} idPrefix="quick-add-est" parts={['essentials']} nameRef={nameRef} />
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="quick-add-est-city" className="text-xs font-semibold text-slate-700">City</Label>
+                  <Input id="quick-add-est-city" value={place.city} onChange={(e) => setPlace({ ...place, city: e.target.value })} placeholder="Lausanne" className="mt-1" />
+                </div>
+                <div>
+                  <Label htmlFor="quick-add-est-phone" className="text-xs font-semibold text-slate-700">Phone</Label>
+                  <Input id="quick-add-est-phone" type="tel" value={place.phone} onChange={(e) => setPlace({ ...place, phone: e.target.value })} placeholder="+41 21 000 00 00" className="mt-1" />
+                </div>
+                <div>
+                  <Label htmlFor="quick-add-est-cp-name" className="text-xs font-semibold text-slate-700">Contact person</Label>
+                  <Input id="quick-add-est-cp-name" value={place.contactPersonName} onChange={(e) => setPlace({ ...place, contactPersonName: e.target.value })} placeholder="Marco Rossi" className="mt-1" />
+                </div>
+                <div>
+                  <Label htmlFor="quick-add-est-cp-email" className="text-xs font-semibold text-slate-700">Their email</Label>
+                  <Input id="quick-add-est-cp-email" type="email" value={place.contactPersonEmail} onChange={(e) => setPlace({ ...place, contactPersonEmail: e.target.value })} placeholder="marco@trattoria.ch" className="mt-1" />
+                </div>
+              </div>
+              {problem && place.name.trim() && <p role="alert" className="text-xs text-rose-600">{problem}</p>}
+            </motion.div>
+          ) : (
+          <motion.div
+            key="person"
+            initial={choose ? { opacity: 0, y: 6 } : false}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.18 }}
+            className="space-y-4"
+          >
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <Label htmlFor="quick-add-name" className="text-xs font-semibold text-slate-700">
@@ -205,6 +262,9 @@ export function QuickAddLeadDialog({
               className="mt-1"
             />
           </div>
+          </motion.div>
+          )}
+          </AnimatePresence>
 
           <button
             type="button"
@@ -219,6 +279,47 @@ export function QuickAddLeadDialog({
 
           {showMore && (
             <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/50 p-3">
+              {establishment && (
+                <>
+                  {/* The rest of the address: the city is asked above. */}
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_6rem]">
+                    <div>
+                      <Label htmlFor="quick-add-est-street" className="text-xs font-semibold text-slate-700">Street and number</Label>
+                      <Input id="quick-add-est-street" value={place.addressLine} onChange={(e) => setPlace({ ...place, addressLine: e.target.value })} placeholder="Rue du Lac 4" autoComplete="street-address" className="mt-1 bg-white" />
+                    </div>
+                    <div>
+                      <Label htmlFor="quick-add-est-postal" className="text-xs font-semibold text-slate-700">Postal code</Label>
+                      <Input id="quick-add-est-postal" value={place.postalCode} onChange={(e) => setPlace({ ...place, postalCode: e.target.value })} placeholder="1003" autoComplete="postal-code" className="mt-1 bg-white" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <Label htmlFor="quick-add-est-country" className="text-xs font-semibold text-slate-700">Country</Label>
+                      <Input id="quick-add-est-country" value={place.country} onChange={(e) => setPlace({ ...place, country: e.target.value })} placeholder="Switzerland" autoComplete="country-name" className="mt-1 bg-white" />
+                    </div>
+                    <div>
+                      <Label htmlFor="quick-add-est-seats" className="text-xs font-semibold text-slate-700">Seats</Label>
+                      <Input id="quick-add-est-seats" inputMode="numeric" value={place.seats} onChange={(e) => setPlace({ ...place, seats: e.target.value.replace(/[^\d]/g, '').slice(0, 5) })} placeholder="60" className="mt-1 bg-white" />
+                    </div>
+                    <div>
+                      <Label htmlFor="quick-add-est-email" className="text-xs font-semibold text-slate-700">Establishment email</Label>
+                      <Input id="quick-add-est-email" type="email" value={place.email} onChange={(e) => setPlace({ ...place, email: e.target.value })} placeholder="info@trattoria.ch" className="mt-1 bg-white" />
+                    </div>
+                    <div>
+                      <Label htmlFor="quick-add-est-website" className="text-xs font-semibold text-slate-700">Website</Label>
+                      <Input id="quick-add-est-website" value={place.website} onChange={(e) => setPlace({ ...place, website: e.target.value })} placeholder="trattoria.ch" className="mt-1 bg-white" />
+                    </div>
+                    <div>
+                      <Label htmlFor="quick-add-est-role" className="text-xs font-semibold text-slate-700">Contact person’s role</Label>
+                      <Input id="quick-add-est-role" value={place.contactPersonRole} onChange={(e) => setPlace({ ...place, contactPersonRole: e.target.value })} placeholder="Owner, manager…" className="mt-1 bg-white" />
+                    </div>
+                    <div>
+                      <Label htmlFor="quick-add-est-cp-phone" className="text-xs font-semibold text-slate-700">Contact person’s phone</Label>
+                      <Input id="quick-add-est-cp-phone" type="tel" value={place.contactPersonPhone} onChange={(e) => setPlace({ ...place, contactPersonPhone: e.target.value })} placeholder="+41 79 000 00 00" className="mt-1 bg-white" />
+                    </div>
+                  </div>
+                </>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs font-semibold text-slate-700">Status</Label>
@@ -252,7 +353,7 @@ export function QuickAddLeadDialog({
                 </div>
               </div>
 
-              <div>
+              {!establishment && <div>
                 <Label className="text-xs font-semibold text-slate-700">Company</Label>
                 <Select value={companyId} onValueChange={setCompanyId}>
                   <SelectTrigger aria-label="Company" className="mt-1 bg-white">
@@ -266,7 +367,7 @@ export function QuickAddLeadDialog({
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
+              </div>}
 
               <div>
                 <Label htmlFor="quick-add-desc" className="text-xs font-semibold text-slate-700">

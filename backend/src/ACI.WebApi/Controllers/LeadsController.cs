@@ -58,6 +58,7 @@ public class LeadsController : ControllerBase
         [FromQuery] string? converted = null,
         [FromQuery] string? sortBy = null,
         [FromQuery] string? sortDir = null,
+        [FromQuery] string? kind = null,
         CancellationToken ct = default)
     {
         var userId = _currentUser.UserId;
@@ -79,6 +80,7 @@ public class LeadsController : ControllerBase
             Status = status,
             Source = source,
             IsConverted = isConverted,
+            Kind = kind,
             SortBy = string.IsNullOrWhiteSpace(sortBy) ? "createdAt" : sortBy,
             SortDir = string.IsNullOrWhiteSpace(sortDir) ? "desc" : sortDir,
         };

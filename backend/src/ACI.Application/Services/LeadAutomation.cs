@@ -7,6 +7,8 @@ namespace ACI.Application.Services;
 public interface ILeadAutomation
 {
     Task<Lead?> FindOpenDuplicateAsync(Guid userId, Guid? organizationId, string email, Guid? exceptId, CancellationToken ct = default);
+    /// <summary>An open establishment with this name in this city: the same place entered twice.</summary>
+    Task<Lead?> FindOpenEstablishmentAsync(Guid userId, Guid? organizationId, string name, string city, Guid? exceptId, CancellationToken ct = default);
     Task PrepareNewAsync(Lead lead, CancellationToken ct = default);
     Task RecordStatusAsync(Lead lead, string? fromStatus, string toStatus, Guid actorId, CancellationToken ct = default);
     Task RescoreAsync(Lead lead, CancellationToken ct = default);
@@ -36,6 +38,9 @@ public sealed class LeadAutomation : ILeadAutomation
 
     public Task<Lead?> FindOpenDuplicateAsync(Guid userId, Guid? organizationId, string email, Guid? exceptId, CancellationToken ct = default) =>
         _ops.FindOpenByEmailAsync(userId, organizationId, email, exceptId, ct);
+
+    public Task<Lead?> FindOpenEstablishmentAsync(Guid userId, Guid? organizationId, string name, string city, Guid? exceptId, CancellationToken ct = default) =>
+        _ops.FindOpenEstablishmentAsync(userId, organizationId, name, city, exceptId, ct);
 
     public async Task PrepareNewAsync(Lead lead, CancellationToken ct = default)
     {

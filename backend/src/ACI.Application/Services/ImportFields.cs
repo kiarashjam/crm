@@ -25,6 +25,12 @@ internal enum ImportValue
     Website,
     YesNo,
     Custom,
+    /// <summary>Person or establishment (<see cref="LeadKinds"/>).</summary>
+    LeadKind,
+    /// <summary>An establishment's type: one of <see cref="LeadKinds.EstablishmentTypes"/>, from a word for it.</summary>
+    EstablishmentType,
+    /// <summary>A whole number from 0 to 100,000.</summary>
+    Count,
 }
 
 /// <summary>A field a column of an import can go into.</summary>
@@ -132,15 +138,116 @@ internal static class ImportFields
         new ImportField("description", "Notes", ImportValue.Text, 2000, NotesHeaders),
     };
 
+    // An establishment's own columns (see LeadKinds), offered where the workspace's leads
+    // can be establishments. A workspace of people imports exactly as it always has.
+    private static readonly string[] EstablishmentNameHeaders =
+    {
+        "name", "establishment", "establishment name", "restaurant", "restaurant name", "business", "business name", "venue",
+        "company", "company name", "betrieb", "lokal", "restaurantname", "établissement", "etablissement", "nom", "ristorante", "locale",
+    };
+    private static readonly string[] ContactPersonHeaders =
+    {
+        "contact person", "contact name", "contact", "kontaktperson", "ansprechpartner", "ansprechperson", "kontakt",
+        "personne de contact", "persona di contatto", "referente",
+    };
+
+    private static IEnumerable<ImportField> EstablishmentOwn() => new[]
+    {
+        new ImportField("establishmentType", "Type of establishment", ImportValue.EstablishmentType, 40,
+            new[] { "establishment type", "type", "category", "kind of business", "typ", "kategorie", "catégorie", "categorie", "tipo", "categoria" },
+            Hint: "Restaurant, café, bar, hotel, bakery, catering, food truck or shop; anything else is Other"),
+        new ImportField("addressLine", "Street address", ImportValue.Text, 200,
+            new[] { "address", "street", "street address", "address line", "adresse", "strasse", "straße", "rue", "indirizzo", "via" }),
+        new ImportField("postalCode", "Postal code", ImportValue.Text, 20,
+            new[] { "postal code", "postcode", "zip", "zip code", "plz", "npa", "code postal", "cap" }),
+        new ImportField("city", "City", ImportValue.Text, 100,
+            new[] { "city", "town", "ort", "stadt", "ortschaft", "ville", "localité", "localite", "città", "citta", "località" }),
+        new ImportField("website", "Website", ImportValue.Website, 300,
+            new[] { "website", "web site", "web", "url", "homepage", "site", "site web", "webseite", "internet", "sito web" }),
+        new ImportField("seats", "Seats", ImportValue.Count, 6,
+            new[] { "seats", "covers", "capacity", "sitzplätze", "plätze", "couverts", "places", "coperti", "posti" }),
+        new ImportField("contactPersonName", "Contact person", ImportValue.Name, 200, ContactPersonHeaders),
+        new ImportField("contactPersonEmail", "Contact person email", ImportValue.Email, 256,
+            new[] { "contact email", "contact person email", "contact e-mail", "e-mail kontaktperson", "email contact" }),
+        new ImportField("contactPersonPhone", "Contact person phone", ImportValue.Phone, 64,
+            new[] { "contact phone", "contact person phone", "telefon kontaktperson", "téléphone contact" }),
+    };
+
+    /// <summary>A workspace of establishments: the place is the lead, and the person there its contact.</summary>
+    private static readonly IReadOnlyList<ImportField> EstablishmentLeadFields = new ImportField[]
+    {
+        new("name", "Establishment name", ImportValue.Text, 200, EstablishmentNameHeaders, Required: true),
+        new("email", "Email", ImportValue.Email, 254, EmailHeaders, Hint: "The establishment's own address, if it has one"),
+        Phone(),
+    }.Concat(EstablishmentOwn()).Concat(new ImportField[]
+    {
+        new("contactPersonRole", "Contact person's role", ImportValue.Text, 100, new[] { "contact role", "role" }.Concat(JobTitleHeaders).ToArray()),
+        new("country", "Country", ImportValue.Text, 80, new[] { "country", "land", "pays", "paese", "nation", "country region" }),
+        new("source", "Source", ImportValue.Source, 64, new[] { "source", "lead source", "origin", "channel", "quelle", "herkunft", "provenance", "fonte" }),
+        new("status", "Status", ImportValue.Status, 50, new[] { "status", "lead status", "stage", "lead stage", "statut", "stato" },
+            Hint: "One of the workspace's statuses; any other is imported as the default status"),
+        new("description", "Notes", ImportValue.Text, 2000, NotesHeaders),
+    }).ToList();
+
+    /// <summary>A workspace of both: a person's columns, a column saying which each row is, and an establishment's.</summary>
+    private static readonly IReadOnlyList<ImportField> MixedLeadFields = LeadFields
+        .Select(f => f.Key == "email" ? f with { Required = false, Hint = "Needed for a person; optional for an establishment" } : f)
+        .Concat(new[]
+        {
+            new ImportField("kind", "Person or establishment", ImportValue.LeadKind, 20,
+                new[] { "kind", "lead type", "record type", "person or establishment", "art", "genre" },
+                Hint: "Person or establishment; empty is a person"),
+        })
+        .Concat(EstablishmentOwn())
+        .Concat(new[] { new ImportField("contactPersonRole", "Contact person's role", ImportValue.Text, 100, new[] { "contact role" }) })
+        .ToList();
+
+    /// <summary>The lead fields for a workspace whose leads are <paramref name="leadKinds"/> (null: a personal workspace, people).</summary>
+    private static IReadOnlyList<ImportField> LeadFieldsFor(string? leadKinds) => leadKinds switch
+    {
+        LeadKinds.Establishment => EstablishmentLeadFields,
+        LeadKinds.Both => MixedLeadFields,
+        _ => LeadFields,
+    };
+
+    /// <summary>An establishment type from a word for one ("Pizzeria", "Bäckerei"); Other when none fits.</summary>
+    public static string EstablishmentType(string text)
+    {
+        var key = HeaderKey(text).Replace(" ", "");
+        if (LeadKinds.EstablishmentTypes.Contains(key)) return key;
+        return key switch
+        {
+            "foodtruck" => "food_truck",
+            "ristorante" or "gasthaus" or "gasthof" or "pizzeria" or "brasserie" or "bistro" or "trattoria" or "osteria" or "beizli" or "beiz" => "restaurant",
+            "coffee" or "coffeeshop" or "kaffee" or "kaffeehaus" or "cafeteria" or "tearoom" => "cafe",
+            "pub" or "lounge" or "weinbar" or "winebar" or "club" => "bar",
+            "hotel" or "hostel" or "guesthouse" or "auberge" or "pension" or "albergo" => "hotel",
+            "bakery" or "backerei" or "baeckerei" or "boulangerie" or "patisserie" or "konditorei" or "panetteria" or "panificio" => "bakery",
+            "traiteur" or "caterer" => "catering",
+            "store" or "laden" or "geschaft" or "magasin" or "boutique" or "negozio" or "deli" or "epicerie" => "shop",
+            _ => "other",
+        };
+    }
+
+    /// <summary>"person" or "establishment" from a cell, or null when it is neither.</summary>
+    public static string? LeadKind(string text) => HeaderKey(text) switch
+    {
+        "person" or "people" or "individual" or "personne" or "persona" or "privat" or "private" => LeadKinds.Person,
+        "establishment" or "business" or "venue" or "place" or "restaurant" or "company" or "etablissement" or "betrieb" or "lokal"
+            or "unternehmen" or "entreprise" or "azienda" or "locale" => LeadKinds.Establishment,
+        _ => null,
+    };
+
     /// <summary>Whether this is a kind of record that can be imported.</summary>
     public static bool IsKind(string? kind) => kind is RecordTypes.Lead or RecordTypes.Contact or RecordTypes.Company;
 
     /// <summary>The fields a file of <paramref name="kind"/> can fill, its custom fields last.</summary>
-    public static IReadOnlyList<ImportField> For(string kind, IEnumerable<CustomFieldDefinition> custom)
+    /// <param name="leadKinds">What the workspace's leads are (Organization.LeadKinds); null for a personal workspace.</param>
+    public static IReadOnlyList<ImportField> For(string kind, IEnumerable<CustomFieldDefinition> custom, string? leadKinds = null)
     {
         var standard = kind switch
         {
-            RecordTypes.Lead => LeadFields,
+            RecordTypes.Lead => LeadFieldsFor(leadKinds),
             RecordTypes.Contact => ContactFields,
             RecordTypes.Company => CompanyFields,
             _ => Array.Empty<ImportField>(),

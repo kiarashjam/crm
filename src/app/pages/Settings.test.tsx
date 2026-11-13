@@ -2,8 +2,8 @@
 // TOTP secret whenever 2FA was on, and kept it in React state. Opening the page now
 // asks only whether 2FA is on.
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 const twoFactorSetup = vi.fn(async () => ({ enabled: true, secret: 'JBSWY3DPEHPK3PXP', otpauthUri: 'otpauth://totp/x' }));
@@ -42,6 +42,16 @@ import Settings from './Settings';
 beforeEach(() => {
   twoFactorSetup.mockClear();
   twoFactorStatus.mockClear();
+});
+
+// The 2FA code boxes (input-otp) start timers at 0, 10 and 50 ms each time they render, and
+// never clear them. This test can end within those 50 ms; a timer that then fires after the
+// file's DOM is gone throws "window is not defined", and Vitest fails the whole run although
+// every test passed (it did on PR #91). So the page is unmounted and the timers are let run
+// out while there is still a DOM, as Login.twoFactor.test.tsx does.
+afterEach(async () => {
+  cleanup();
+  await new Promise((resolve) => setTimeout(resolve, 100));
 });
 
 describe('opening Settings', () => {

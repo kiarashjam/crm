@@ -6,6 +6,9 @@ public interface ILeadOpsRepository
 {
     /// <summary>An open lead with this email in the workspace: the organization's, or with none, the user's own.</summary>
     Task<Lead?> FindOpenByEmailAsync(Guid userId, Guid? organizationId, string email, Guid? exceptId, CancellationToken ct = default);
+
+    /// <summary>An open establishment lead with this name in this city, in the workspace.</summary>
+    Task<Lead?> FindOpenEstablishmentAsync(Guid userId, Guid? organizationId, string name, string city, Guid? exceptId, CancellationToken ct = default);
     /// <summary>A company with this domain in the workspace: the organization's, or with none, the user's own.</summary>
     Task<Company?> FindCompanyByDomainAsync(Guid userId, Guid? organizationId, string domain, CancellationToken ct = default);
     Task<IReadOnlyList<LeadScoringRule>> GetScoringRulesAsync(Guid? organizationId, CancellationToken ct = default);

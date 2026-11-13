@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 import {
   Building2, Calendar, Check, CheckCircle2, ChevronDown, Clock, Gauge, Mail,
-  Heart, MessageSquarePlus, Phone, Sparkles, Tag, User, UserCircle, UserPlus, Users, Zap,
+  Heart, MapPin, MessageSquarePlus, Phone, Sparkles, Store, Tag, User, UserCircle, UserPlus, UserRound, Users, Zap,
   Activity as ActivityIcon,
 } from 'lucide-react';
 import type { Activity, Lead } from '@/app/api/types';
@@ -26,6 +26,9 @@ import {
   lostReason, parsePipeline, phaseCaptions, phaseCompletion, type LeadPipeline,
 } from './leadPipeline';
 import { leadInitials } from './leadText';
+import {
+  establishmentSummary, establishmentTypeOption, isEstablishment, leadReachEmail, leadReachPhone,
+} from '@/app/lib/leadKinds';
 import { formatDate } from './utils';
 import type { useLeadStatusSync } from './useLeadStatusSync';
 
@@ -281,7 +284,11 @@ export function LeadGalleryCard({
   const recent = interactions.slice(0, 2);
   const hasScore = lead.leadScore !== undefined && lead.leadScore !== null;
   const hot = (hasScore && (lead.leadScore ?? 0) >= 70) || lead.lifecycleStage === 'Hot';
-  const email = lead.email?.trim();
+  // An establishment is reached at its own address and number, else its contact person's.
+  const email = leadReachEmail(lead);
+  const phone = leadReachPhone(lead);
+  const place = isEstablishment(lead);
+  const PlaceIcon = establishmentTypeOption(lead.establishmentType)?.icon ?? Store;
   // Spouse or partner (the couples package) gets its own chip; other relatives share one.
   const couple = lead.relationships?.find((r) => isCouple(r.type));
   const relatives = lead.relationships?.filter((r) => !isCouple(r.type)) ?? [];
@@ -349,7 +356,7 @@ export function LeadGalleryCard({
               )}
               aria-hidden
             >
-              {initials || <User className="h-5 w-5" />}
+              {place ? <PlaceIcon className="h-6 w-6" /> : initials || <User className="h-5 w-5" />}
             </div>
             {lead.isConverted && (
               <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-emerald-500 text-white shadow" aria-hidden>
@@ -380,7 +387,12 @@ export function LeadGalleryCard({
                 {lead.name}
               </button>
             </h3>
-            {(company || lead.jobTitle) && (
+            {place ? (
+              <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-slate-500">
+                <MapPin className="h-3.5 w-3.5 shrink-0 text-violet-500" aria-hidden />
+                <span className="truncate">{establishmentSummary(lead)}</span>
+              </p>
+            ) : (company || lead.jobTitle) && (
               <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-slate-500">
                 <Building2 className="h-3.5 w-3.5 shrink-0 text-slate-500" aria-hidden />
                 <span className="truncate">{[lead.jobTitle, company].filter(Boolean).join(' · ')}</span>
@@ -496,8 +508,19 @@ export function LeadGalleryCard({
         </div>
 
         {/* How to reach them, who sent them, and who they come with. */}
-        {(email || lead.phone || (lead.referredByContactId && lead.referredByContactName) || couple || relatives.length > 0) && (
+        {(email || phone || (place && lead.contactPersonName) || (lead.referredByContactId && lead.referredByContactName) || couple || relatives.length > 0) && (
           <div className="flex flex-wrap items-center gap-1.5">
+            {place && lead.contactPersonName && (
+              <span
+                title={['Contact person', lead.contactPersonRole].filter(Boolean).join(': ')}
+                className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-800 ring-1 ring-violet-200/70"
+              >
+                <UserRound className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                <span className="truncate">
+                  {lead.contactPersonName}{lead.contactPersonRole ? ` · ${lead.contactPersonRole}` : ''}
+                </span>
+              </span>
+            )}
             {email && (
               <a
                 href={`mailto:${email}`}
@@ -508,14 +531,14 @@ export function LeadGalleryCard({
                 <span className="truncate">{email}</span>
               </a>
             )}
-            {lead.phone && (
+            {phone && (
               <a
-                href={`tel:${lead.phone}`}
+                href={`tel:${phone}`}
                 onClick={(e) => e.stopPropagation()}
                 className="inline-flex items-center gap-1.5 rounded-full bg-teal-50 px-2.5 py-1 text-xs font-medium text-teal-800 ring-1 ring-teal-200/70 transition-colors hover:bg-teal-100"
               >
                 <Phone className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                {lead.phone}
+                {phone}
               </a>
             )}
             {lead.referredByContactId && lead.referredByContactName && (

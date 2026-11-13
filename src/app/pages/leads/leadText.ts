@@ -24,7 +24,8 @@ function text(value: unknown): string {
 }
 
 /**
- * Whether a lead matches a free-text query, across name, email and phone.
+ * Whether a lead matches a free-text query, across name, email and phone, and for an
+ * establishment its city and contact person.
  *
  * An empty or whitespace-only query matches everything, so clearing the box
  * restores the full list rather than emptying it.
@@ -36,7 +37,12 @@ export function matchesLeadSearch(lead: Partial<Lead>, query: string): boolean {
     || text(lead.email).toLowerCase().includes(q)
     // Phone is matched unlowered: it has no case, and lowering it would only
     // hide the fact that the query was never letters to begin with.
-    || text(lead.phone).includes(q);
+    || text(lead.phone).includes(q)
+    // An establishment is also found by its town and by the person to speak to there.
+    || text(lead.city).toLowerCase().includes(q)
+    || text(lead.contactPersonName).toLowerCase().includes(q)
+    || text(lead.contactPersonEmail).toLowerCase().includes(q)
+    || text(lead.contactPersonPhone).includes(q);
 }
 
 /**

@@ -31,7 +31,13 @@ public record CaptureFormDto(Guid Id, string Name, string PublicToken, bool IsAc
 /// </remarks>
 /// <param name="Website">
 /// A honeypot. The form renders it hidden from people; a bot filling every field
-/// fills this one too, and is told "thanks" while nothing is saved.
+/// fills this one too, and is told "thanks" while nothing is saved. An establishment's
+/// real website comes as <paramref name="BusinessWebsite"/>.
+/// </param>
+/// <param name="Kind">
+/// "person" or "establishment"; left out, the workspace's own. For an establishment the
+/// name, email, phone and job title are the person filling the form in (its contact
+/// person), and <paramref name="EstablishmentName"/> is the place.
 /// </param>
 public record PublicCaptureRequest(
     [System.ComponentModel.DataAnnotations.Required, System.ComponentModel.DataAnnotations.StringLength(256, MinimumLength = 1)] string Name,
@@ -40,12 +46,20 @@ public record PublicCaptureRequest(
     [System.ComponentModel.DataAnnotations.StringLength(200)] string? JobTitle,
     [System.ComponentModel.DataAnnotations.StringLength(80)] string? Country,
     [System.ComponentModel.DataAnnotations.StringLength(200)] string? Company,
-    [System.ComponentModel.DataAnnotations.StringLength(200)] string? Website = null);
+    [System.ComponentModel.DataAnnotations.StringLength(200)] string? Website = null,
+    [System.ComponentModel.DataAnnotations.StringLength(20)] string? Kind = null,
+    [System.ComponentModel.DataAnnotations.StringLength(200)] string? EstablishmentName = null,
+    [System.ComponentModel.DataAnnotations.StringLength(40)] string? EstablishmentType = null,
+    [System.ComponentModel.DataAnnotations.StringLength(200)] string? AddressLine = null,
+    [System.ComponentModel.DataAnnotations.StringLength(20)] string? PostalCode = null,
+    [System.ComponentModel.DataAnnotations.StringLength(100)] string? City = null,
+    [System.ComponentModel.DataAnnotations.StringLength(300)] string? BusinessWebsite = null);
 
 /// <summary>The whole of what the public capture endpoint says back: no record, no ids.</summary>
 public record PublicCaptureReceipt(string Message);
 
-public record PublicCaptureFormDto(string Name, string? SuccessMessage);
+/// <param name="LeadKinds">What the workspace's leads are ("person", "establishment" or "both"), so the form asks the right questions.</param>
+public record PublicCaptureFormDto(string Name, string? SuccessMessage, string LeadKinds = "person");
 
 public record BulkLeadUpdateRequest(
     IReadOnlyList<Guid> Ids,

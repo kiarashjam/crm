@@ -5,7 +5,7 @@ import {
   ArrowLeft, Mail, Phone, Building2, Sparkles, Trash2,
   User as UserIcon, CheckCircle2, Loader2, Pencil, Plus, Calendar,
   MessageSquarePlus, FileText, Clock, UserPlus, Copy, Check, AlertCircle,
-  ArrowRightCircle, Eye,
+  ArrowRightCircle, Eye, Store, MapPin, UserRound, Globe,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ApiError } from '@/app/api/apiClient';
@@ -55,6 +55,12 @@ import { isValidGuid } from './leads/utils';
 import { loadLeadAssignments, setLeadAssignment } from './leads/leadAssignmentStore';
 import type { LeadForm } from './leads/types';
 import { InlineField } from './leads/detail/InlineField';
+import { ContactPersonDetails, EstablishmentDetails } from './leads/detail/EstablishmentCards';
+import {
+  establishmentAddress, establishmentMapUrl, establishmentSummary, establishmentTypeOption, isEstablishment, leadKindOf,
+  leadReachEmail, leadReachPhone, websiteHref, websiteLabel,
+} from '@/app/lib/leadKinds';
+import { leadFormProblem, leadProfilePayload } from './leads/leadFormPayload';
 import { ActivityTimeline } from './leads/detail/ActivityTimeline';
 import { withActivity } from '@/app/components/RecordActivity';
 import { MentionTextarea, useWorkspacePeople } from '@/app/components/MentionTextarea';
@@ -580,7 +586,8 @@ export default function LeadDetailPage() {
   };
 
   const handleSendEmail = async () => {
-    if (!lead?.email) { toast.error('Lead has no email address'); return; }
+    const to = lead ? leadReachEmail(lead) : undefined;
+    if (!lead || !to) { toast.error('Lead has no email address'); return; }
     if (!emailBody.trim() || sendingEmail) return;
     setSendingEmail(true);
     try {
@@ -592,7 +599,7 @@ export default function LeadDetailPage() {
       });
       if (a) setActivities((prev) => [a, ...prev]);
       void bumpLastContacted();
-      const mailto = `mailto:${encodeURIComponent(lead.email)}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
+      const mailto = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
       window.location.href = mailto;
       setEmailSubject('');
       setEmailBody('');
@@ -730,8 +737,9 @@ export default function LeadDetailPage() {
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!lead) return;
-    if (!editForm.name.trim() || !editForm.email.trim()) {
-      toast.error(messages.validation.nameAndEmailRequired);
+    const problem = leadFormProblem(editForm);
+    if (problem) {
+      toast.error(editForm.kind === 'establishment' ? problem : messages.validation.nameAndEmailRequired);
       return;
     }
     setSavingEdit(true);
@@ -744,6 +752,8 @@ export default function LeadDetailPage() {
       const validLeadScore = parsedScore !== undefined && !Number.isNaN(parsedScore) && parsedScore >= 0 && parsedScore <= 100 ? parsedScore : undefined;
 
       const updated = await updateLead(lead.id, {
+        // The kind and its own fields: an establishment's address and contact person.
+        ...leadProfilePayload(editForm, 'update', leadKindOf(lead)),
         name: editForm.name.trim(),
         email: editForm.email.trim(),
         // An emptied field is sent as null, which takes it off; left out, it was kept.
@@ -843,6 +853,14 @@ export default function LeadDetailPage() {
 
   const noteActivities = activities.filter((a) => a.type === 'note');
   const openTaskCount = tasks.filter((t) => t.status !== 'completed').length;
+  // An establishment: its type for a picture, its place and contact person in the header,
+  // and its own sidebar. Reached at its own email and number, else its contact person's.
+  const place = isEstablishment(lead);
+  const PlaceIcon = establishmentTypeOption(lead.establishmentType)?.icon ?? Store;
+  const reachEmail = leadReachEmail(lead);
+  const reachPhone = leadReachPhone(lead);
+  const mapUrl = place ? establishmentMapUrl(lead) : undefined;
+  const site = place ? websiteHref(lead.website) : undefined;
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
@@ -853,7 +871,7 @@ export default function LeadDetailPage() {
               numbers that matter and what you can do, in one band. The panel with the
               next step stays in the main column below, beside the sidebar. */}
           <PageHero
-            icon={UserIcon}
+            icon={place ? Store : UserIcon}
             tone="orange"
             noAgentSlot
             back={{ to: backUrl, label: 'Back to Leads' }}
@@ -878,7 +896,7 @@ export default function LeadDetailPage() {
                     gradient,
                   )}
                 >
-                  {initialsOf(lead.name) || <UserIcon className="w-6 h-6" />}
+                  {place ? <PlaceIcon className="w-6 h-6" aria-hidden /> : initialsOf(lead.name) || <UserIcon className="w-6 h-6" />}
                 </div>
                 {lead.isConverted && (
                   <span
@@ -920,17 +938,20 @@ export default function LeadDetailPage() {
                 )}
               </>
             }
-            subtitle={[company?.name, lead.source ? `from ${lead.source.replace(/_/g, ' ')}` : null].filter(Boolean).join(' · ') || undefined}
+            subtitle={[
+              place ? establishmentSummary(lead) : company?.name,
+              lead.source ? `from ${lead.source.replace(/_/g, ' ')}` : null,
+            ].filter(Boolean).join(' · ') || undefined}
             actions={
               <>
-                {lead.phone && (
+                {reachPhone && (
                   <Button asChild variant="outline" className={heroSecondary}>
-                    <a href={`tel:${lead.phone}`}><Phone className="h-4 w-4" /> Call</a>
+                    <a href={`tel:${reachPhone}`}><Phone className="h-4 w-4" /> Call</a>
                   </Button>
                 )}
-                {lead.email && (isReadOnly ? (
+                {reachEmail && (isReadOnly ? (
                   <Button asChild variant="outline" className={heroSecondary}>
-                    <a href={`mailto:${lead.email}`}><Mail className="h-4 w-4" /> Email</a>
+                    <a href={`mailto:${reachEmail}`}><Mail className="h-4 w-4" /> Email</a>
                   </Button>
                 ) : (
                   <Button type="button" variant="outline" onClick={() => setEmailOpen(true)} className={heroSecondary}>
@@ -952,10 +973,13 @@ export default function LeadDetailPage() {
                       <Pencil className="h-4 w-4" />
                       <span className="hidden md:inline">Edit</span>
                     </Button>
-                    <Button type="button" variant="outline" onClick={() => setSaveContactOpen(true)} className={heroSecondary} aria-label="Save as contact">
-                      <UserPlus className="h-4 w-4" />
-                      <span className="hidden 2xl:inline">Save as contact</span>
-                    </Button>
+                    {/* An establishment's contact person becomes a contact on their own (with a name and an email). */}
+                    {!place && (
+                      <Button type="button" variant="outline" onClick={() => setSaveContactOpen(true)} className={heroSecondary} aria-label="Save as contact">
+                        <UserPlus className="h-4 w-4" />
+                        <span className="hidden 2xl:inline">Save as contact</span>
+                      </Button>
+                    )}
                     {!lead.isConverted && (
                       <Button type="button" onClick={() => navigate(`/leads?convertLeadId=${lead.id}`)} className={heroPrimary('orange')}>
                         <ArrowRightCircle className="h-4 w-4" />
@@ -997,6 +1021,19 @@ export default function LeadDetailPage() {
               </div>
               {company && (
                 <InfoChip tone="indigo" icon={<Building2 className="w-3 h-3" />} to={`/companies/${company.id}`}>{company.name}</InfoChip>
+              )}
+              {place && establishmentAddress(lead) && (
+                <InfoChip tone="violet" icon={<MapPin className="w-3 h-3" />} href={mapUrl} external>
+                  {establishmentAddress(lead)}
+                </InfoChip>
+              )}
+              {place && lead.contactPersonName && (
+                <InfoChip tone="purple" icon={<UserRound className="w-3 h-3" />}>
+                  {lead.contactPersonName}{lead.contactPersonRole ? ` · ${lead.contactPersonRole}` : ''}
+                </InfoChip>
+              )}
+              {site && (
+                <InfoChip tone="teal" icon={<Globe className="w-3 h-3" />} href={site} external>{websiteLabel(lead.website)}</InfoChip>
               )}
               {lead.email && (
                 <InfoChip
@@ -1400,16 +1437,34 @@ export default function LeadDetailPage() {
                 <ReferralCard lead={lead} contacts={contacts} readOnly={isReadOnly} onChange={saveReferral} />
               </motion.div>
 
-              {/* Spouse or partner (the couples package) and family, from either side. */}
-              <motion.div {...card(2)}>
-                <RelationshipsCard
-                  owner={{ leadId: lead.id }}
-                  personName={lead.name}
-                  contacts={contacts}
-                  readOnly={isReadOnly}
-                  onChanged={noteRelationship}
-                />
-              </motion.div>
+              {/* Spouse or partner (the couples package) and family, from either side: a person's. */}
+              {!place && (
+                <motion.div {...card(2)}>
+                  <RelationshipsCard
+                    owner={{ leadId: lead.id }}
+                    personName={lead.name}
+                    contacts={contacts}
+                    readOnly={isReadOnly}
+                    onChanged={noteRelationship}
+                  />
+                </motion.div>
+              )}
+
+              {/* An establishment: where and what it is, then the person to speak to there. */}
+              {place && (
+                <>
+                  <motion.div {...card(3)}>
+                    <SideCard title="Establishment" tone="violet" icon={<Store className="w-3.5 h-3.5" />}>
+                      <EstablishmentDetails lead={lead} readOnly={isReadOnly} patch={patchLead} />
+                    </SideCard>
+                  </motion.div>
+                  <motion.div {...card(3)}>
+                    <SideCard title="Contact person" tone="sky" icon={<UserRound className="w-3.5 h-3.5" />}>
+                      <ContactPersonDetails lead={lead} readOnly={isReadOnly} patch={patchLead} />
+                    </SideCard>
+                  </motion.div>
+                </>
+              )}
 
               {/* The club: the member this lead became, their applications and household. */}
               <motion.div {...card(2)}>
@@ -1417,6 +1472,7 @@ export default function LeadDetailPage() {
               </motion.div>
 
               {/* Contact: the fields edit in place. */}
+              {!place && (
               <motion.div {...card(3)}>
                 <SideCard title="Contact" tone="sky" icon={<UserIcon className="w-3.5 h-3.5" />}>
                   <div className="space-y-2.5">
@@ -1434,6 +1490,7 @@ export default function LeadDetailPage() {
                   </div>
                 </SideCard>
               </motion.div>
+              )}
 
               {/* Details: company, source, stage and owner side by side, two to a row. */}
               <motion.div {...card(4)}>
@@ -1556,11 +1613,11 @@ export default function LeadDetailPage() {
         saving={savingEdit}
       />
 
-      {lead.email && (
+      {reachEmail && (
         <EmailComposerDialog
           open={emailOpen}
           onOpenChange={setEmailOpen}
-          to={lead.email}
+          to={reachEmail}
           context={{ leadId: lead.id }}
           aiContext={`${lead.name}${lead.companyName ? ` at ${lead.companyName}` : ''} · ${lead.status} lead`}
           onSent={() => {
@@ -1645,11 +1702,13 @@ const CHIP_TONE: Record<Tone, string> = {
 };
 
 /** A coloured chip in the header: a way to reach the person, or something about them. */
-function InfoChip({ tone, icon, to, href, trailing, children }: {
+function InfoChip({ tone, icon, to, href, external, trailing, children }: {
   tone: Tone;
   icon: React.ReactNode;
   to?: string;
   href?: string;
+  /** Opens in a new tab: a map or a website. */
+  external?: boolean;
   trailing?: React.ReactNode;
   children: React.ReactNode;
 }) {
@@ -1666,7 +1725,7 @@ function InfoChip({ tone, icon, to, href, trailing, children }: {
   const chip = to
     ? <Link to={to} className={className}>{inner}</Link>
     : href
-      ? <a href={href} className={className}>{inner}</a>
+      ? <a href={href} className={className} {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>{inner}</a>
       : <span className={className}>{inner}</span>;
   return (
     <motion.span

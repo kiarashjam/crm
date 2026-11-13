@@ -29,7 +29,10 @@ function digits(value?: string | null): string {
   return (value ?? '').replace(/\D/g, '');
 }
 
-function readDemoLeads(): Array<{ id: string; name: string; email: string; phone?: string; companyId?: string; description?: string }> {
+function readDemoLeads(): Array<{
+  id: string; name: string; email: string; phone?: string; companyId?: string; description?: string;
+  kind?: string; contactPersonName?: string; contactPersonEmail?: string; contactPersonPhone?: string;
+}> {
   if (typeof localStorage === 'undefined') return [];
   try {
     const raw = localStorage.getItem(LEADS_KEY);
@@ -41,13 +44,17 @@ function readDemoLeads(): Array<{ id: string; name: string; email: string; phone
   return mockLeads;
 }
 
-/** Demo mode: every lead with a name and email also exists as a contact. */
+/**
+ * Demo mode: every lead with a name and email also exists as a contact, as on the server.
+ * For an establishment that person is its contact person, not the business.
+ */
 export function ensureDemoPersonContacts(): void {
   const leads = readDemoLeads();
   const contacts = contactStore.list();
   for (const lead of leads) {
-    const name = lead.name?.trim() ?? '';
-    const email = lead.email?.trim() ?? '';
+    const establishment = lead.kind === 'establishment';
+    const name = (establishment ? lead.contactPersonName : lead.name)?.trim() ?? '';
+    const email = (establishment ? lead.contactPersonEmail : lead.email)?.trim() ?? '';
     if (!name || !email) continue;
     if (contacts.some((contact) => !contact.isArchived && contact.convertedFromLeadId === lead.id)) continue;
     const byEmail = contacts.find(
@@ -67,7 +74,7 @@ export function ensureDemoPersonContacts(): void {
       id: mockId('contact'),
       name,
       email,
-      phone: lead.phone,
+      phone: establishment ? lead.contactPersonPhone : lead.phone,
       companyId: lead.companyId,
       description: lead.description,
       convertedFromLeadId: lead.id,
