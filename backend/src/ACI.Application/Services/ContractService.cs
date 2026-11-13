@@ -52,8 +52,16 @@ public class ContractService : IContractService
         ILeadStatusSync statusSync,
         ITenantContext? tenant = null,
         IClubApplications? admissions = null,
-        IAutomationEngine? automations = null)
+        IAutomationEngine? automations = null,
+        IDealRepository? deals = null,
+        IDealLineItemRepository? lineItems = null,
+        IClubCatalog? catalog = null,
+        IWorkspaceModules? modules = null)
     {
+        _deals = deals;
+        _lineItems = lineItems;
+        _catalog = catalog;
+        _modules = modules;
         _automations = automations;
         _contracts = contracts;
         _leads = leads;
@@ -70,6 +78,10 @@ public class ContractService : IContractService
     private readonly ITenantContext? _tenant;
     private readonly IClubApplications? _admissions;
     private readonly IAutomationEngine? _automations;
+    private readonly IDealRepository? _deals;
+    private readonly IDealLineItemRepository? _lineItems;
+    private readonly IClubCatalog? _catalog;
+    private readonly IWorkspaceModules? _modules;
 
     /// <summary>
     /// The workspace's rules for a signature, as the contract's lead or deal. A contract is
@@ -105,11 +117,31 @@ public class ContractService : IContractService
             if (lead is null) return Result.Failure<ContractDto>(DomainErrors.Contract.LeadNotFound);
         }
 
-        var template = string.IsNullOrWhiteSpace(request.TemplateOverride)
-            ? ContractTemplate.DefaultTemplate
-            : request.TemplateOverride!;
+        // The deal: the one named, or the one the lead became. Read as this person, so a private
+        // deal they may not see cannot be drafted on, or have its figures merged into a contract.
+        Deal? deal = null;
+        if ((request.DealId ?? lead?.ConvertedToDealId) is Guid dealId && _deals != null)
+        {
+            deal = await _deals.GetByIdAsync(dealId, userId, organizationId, ct);
+            if (deal is null && request.DealId.HasValue) return Result.Failure<ContractDto>(DomainErrors.Contract.DealNotFound);
+        }
+        // A deal's contract is with the lead it came from, when it came from one: countersigning
+        // then moves that lead's pipeline and finds the membership application started on it.
+        if (lead is null && deal != null && await _contracts.LeadOfDealAsync(deal.Id, organizationId, ct) is Guid leadOfDeal)
+            lead = await _leads.GetByIdAsync(leadOfDeal, userId, organizationId, ct);
 
-        var values = BuildMergeValues(orgName, lead, request.Values);
+        var tier = await TierAsync(organizationId, request.MembershipTier, ct);
+        if (tier.IsFailure) return Result.Failure<ContractDto>(tier.Error);
+
+        var lines = deal != null && _lineItems != null
+            ? (await _lineItems.ListAsync(deal.Id, ct)).Select(l => new ContractFeeLine(l.Name, l.Quantity, l.UnitPrice, l.VatRate)).ToList()
+            : new List<ContractFeeLine>();
+        var template = !string.IsNullOrWhiteSpace(request.TemplateOverride) ? request.TemplateOverride!
+            : lines.Count > 0 ? ContractTemplate.DealTemplate
+            : ContractTemplate.DefaultTemplate;
+
+        var person = Counterparty(lead, deal);
+        var values = BuildMergeValues(orgName, person, deal, lines, tier.Value, ContractDealFields.CultureOf(org?.Locale), request.Values);
         var merged = ContractTemplate.Fill(template, values, ContractTemplate.OptionalFields);
 
         var now = DateTime.UtcNow;
@@ -117,15 +149,16 @@ public class ContractService : IContractService
         {
             Id = Guid.NewGuid(),
             OrganizationId = organizationId,
-            LeadId = request.LeadId,
-            DealId = request.DealId,
+            LeadId = lead?.Id ?? request.LeadId,
+            DealId = deal?.Id ?? request.DealId,
             Status = ContractStatuses.Draft,
             Title = string.IsNullOrWhiteSpace(request.Title)
-                ? (lead is null ? "Contract" : $"Membership Agreement — {lead.Name}")
+                ? (person.Name is null ? "Contract" : $"Membership Agreement — {person.Name}")
                 : request.Title!.Trim(),
             Body = merged.Body,
-            CounterpartyName = lead?.Name ?? "",
-            CounterpartyEmail = lead?.Email ?? "",
+            CounterpartyName = person.Name ?? "",
+            CounterpartyEmail = person.Email ?? "",
+            MembershipTier = tier.Value,
             CreatedByUserId = userId,
             CreatedAtUtc = now,
             UpdatedAtUtc = now,
@@ -146,14 +179,15 @@ public class ContractService : IContractService
     /// unresolved rather than blanked — see <see cref="ContractTemplate"/>.
     /// </remarks>
     private static Dictionary<string, string?> BuildMergeValues(
-        string orgName, Lead? lead, IReadOnlyDictionary<string, string?>? overrides)
+        string orgName, (string? Name, string? Email, string? Phone) person, Deal? deal, IReadOnlyList<ContractFeeLine> lines,
+        string? tier, System.Globalization.CultureInfo culture, IReadOnlyDictionary<string, string?>? overrides)
     {
         var values = new Dictionary<string, string?>(StringComparer.Ordinal)
         {
             ["org.name"] = orgName,
             ["today"] = DateTime.UtcNow.ToString("d MMMM yyyy"),
-            ["lead.name"] = lead?.Name,
-            ["lead.email"] = lead?.Email,
+            ["lead.name"] = person.Name,
+            ["lead.email"] = person.Email,
             // A clause rather than a bare value, so a lead with no phone number
             // produces a sentence that still reads correctly instead of a dangling
             // comma. The template asks for the clause, not the number.
@@ -163,14 +197,53 @@ public class ContractService : IContractService
             // "{{lead.phoneClause}}" — and sending is refused while any placeholder
             // is unresolved, so that contract could never be sent at all. See
             // ContractTemplate.OptionalFields.
-            ["lead.phoneClause"] = string.IsNullOrWhiteSpace(lead?.Phone) ? "" : $", {lead!.Phone}",
+            ["lead.phoneClause"] = string.IsNullOrWhiteSpace(person.Phone) ? "" : $", {person.Phone}",
+            ["contract.tier"] = tier,
+            // No deposit asked yet: the clause says nothing (ContractTemplate.OptionalFields).
+            ["contract.depositClause"] = "",
         };
+
+        if (deal is not null)
+        {
+            // The deal's figures, in its own currency: its line items as the fee table, and
+            // their total (or the deal's value, when it has no lines) as the fee itself, so
+            // what was quoted is what gets signed without anybody typing it again.
+            var dealFields = ContractDealFields.For(deal.Name, deal.Amount, deal.Currency, lines, culture);
+            foreach (var (key, value) in dealFields) values[key] = value;
+            if (dealFields.TryGetValue("deal.total", out var fee)) values["contract.fee"] = fee;
+        }
 
         if (overrides is not null)
         {
             foreach (var (key, value) in overrides) values[key] = value;
         }
         return values;
+    }
+
+    /// <summary>
+    /// Whom the contract is with: the lead, or, for a deal that came from no lead, the deal's
+    /// contact. The template calls them <c>lead.*</c> either way.
+    /// </summary>
+    private static (string? Name, string? Email, string? Phone) Counterparty(Lead? lead, Deal? deal) =>
+        lead is not null ? (lead.Name, lead.Email, lead.Phone)
+        : deal?.Contact is { } contact ? (contact.Name, contact.Email, contact.Phone)
+        : (null, null, null);
+
+    /// <summary>
+    /// The membership tier a contract names, as the club's catalogue spells it: one of its
+    /// tiers on sale, in a workspace whose club is turned on. None asked for is none.
+    /// </summary>
+    private async Task<Result<string?>> TierAsync(Guid organizationId, string? requested, CancellationToken ct)
+    {
+        var name = requested?.Trim();
+        if (string.IsNullOrEmpty(name)) return Result.Success<string?>(null);
+        if (_modules != null && !await _modules.IsOnAsync(organizationId, Domain.Common.WorkspaceModules.Club, ct))
+            return Result.Failure<string?>(DomainErrors.Contract.ClubOff);
+        if (_catalog == null) return Result.Success<string?>(name.Length > 32 ? name[..32] : name);
+        var tier = await _catalog.TierAsync(organizationId, name, ct);
+        if (tier == null) return Result.Failure<string?>(DomainErrors.Club.TierUnknown(name));
+        if (!tier.IsActive) return Result.Failure<string?>(DomainErrors.Club.TierNotOnSale(tier.Name));
+        return Result.Success<string?>(tier.Name);
     }
 
     /* -------------------------------------------------------- step 2: edit */
@@ -188,6 +261,12 @@ public class ContractService : IContractService
             return Result.Failure<ContractDto>(DomainErrors.Contract.NotAllowedInThisState);
         }
 
+        if (request.MembershipTier is not null || request.Clears(nameof(request.MembershipTier)))
+        {
+            var tier = await TierAsync(organizationId, request.MembershipTier, ct);
+            if (tier.IsFailure) return Result.Failure<ContractDto>(tier.Error);
+            contract.MembershipTier = tier.Value;
+        }
         if (request.Title is not null) contract.Title = request.Title.Trim();
         if (request.Body is not null) contract.Body = request.Body;
         if (request.CounterpartyName is not null) contract.CounterpartyName = request.CounterpartyName.Trim();
@@ -798,6 +877,19 @@ public class ContractService : IContractService
         return dtos;
     }
 
+    public async Task<Result<IReadOnlyList<ContractDto>>> ListForDealAsync(
+        Guid dealId, Guid userId, Guid organizationId, CancellationToken ct = default)
+    {
+        // As visible as the deal: a private deal's contracts are not listed to someone who may
+        // not open the deal itself.
+        if (_deals != null && await _deals.GetByIdAsync(dealId, userId, organizationId, ct) is null)
+            return Result.Failure<IReadOnlyList<ContractDto>>(DomainErrors.Contract.DealNotFound);
+        var list = await _contracts.GetForDealAsync(dealId, organizationId, ct);
+        var dtos = new List<ContractDto>(list.Count);
+        foreach (var c in list) dtos.Add(await ToDtoAsync(c, ct));
+        return Result.Success<IReadOnlyList<ContractDto>>(dtos);
+    }
+
     /* -------------------------------------------------------------- shared */
 
     /// <summary>
@@ -955,7 +1047,10 @@ public class ContractService : IContractService
             null,
             Utc(c.SigningTokenExpiresAtUtc),
             BodyMatchesHash(c),
-            events.Select(e => new ContractEventDto(e.Id, e.Type, e.Detail, e.ActorLabel, Utc(e.AtUtc))).ToList());
+            events.Select(e => new ContractEventDto(e.Id, e.Type, e.Detail, e.ActorLabel, Utc(e.AtUtc))).ToList(),
+            c.MembershipTier,
+            c.DepositAmount,
+            c.DepositCurrency);
     }
 
     /// <summary>

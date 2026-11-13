@@ -60,6 +60,23 @@ public class ContractsController : ControllerBase
         return Ok(await _contracts.ListForLeadAsync(leadId, orgId.Value, ct));
     }
 
+    /// <summary>
+    /// Every contract on a deal, newest first: those drafted on it, and those of the lead it
+    /// was converted from.
+    /// </summary>
+    /// <response code="404">The deal is not one this person may see.</response>
+    [HttpGet("for-deal/{dealId:guid}")]
+    [ProducesResponseType(typeof(IReadOnlyList<ContractDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IReadOnlyList<ContractDto>>> ListForDeal(Guid dealId, CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        var orgId = _currentUser.CurrentOrganizationId;
+        if (userId is null || orgId is null) return Unauthorized();
+        var result = await _contracts.ListForDealAsync(dealId, userId.Value, orgId.Value, ct);
+        return result.ToActionResult();
+    }
+
     /// <summary>One contract, with its audit trail.</summary>
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(ContractDto), StatusCodes.Status200OK)]

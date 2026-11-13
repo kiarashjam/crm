@@ -159,10 +159,27 @@ public class ContractTemplateTests
             "org.name", "lead.name", "lead.email", "lead.phoneClause", "today",
             "contract.startDate", "contract.fee", "contract.paymentTerms",
             "contract.term", "contract.noticePeriod", "contract.jurisdiction",
+            // Always supplied by the draft, empty when the contract asks for no deposit.
+            "contract.depositClause",
         };
 
         ContractTemplate.FieldsUsed(ContractTemplate.DefaultTemplate)
             .Should().OnlyContain(f => supported.Contains(f));
+    }
+
+    [Fact]
+    public void TheDealTemplateOnlyUsesFieldsADealsDraftCanSupply()
+    {
+        // The deal template is chosen only for a deal with line items, so the fee table and its
+        // total are always there; the rest are the default template's.
+        var supported = new[]
+        {
+            "org.name", "lead.name", "lead.email", "lead.phoneClause", "today",
+            "contract.startDate", "contract.paymentTerms", "contract.term", "contract.noticePeriod",
+            "contract.jurisdiction", "contract.depositClause", "deal.lineItems", "deal.total",
+        };
+
+        ContractTemplate.FieldsUsed(ContractTemplate.DealTemplate).Should().OnlyContain(f => supported.Contains(f));
     }
 
     [Fact]

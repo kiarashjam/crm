@@ -20,6 +20,15 @@ public interface IContractRepository
     Task<IReadOnlyList<Contract>> GetForLeadAsync(Guid leadId, Guid organizationId, CancellationToken ct = default);
 
     /// <summary>
+    /// Contracts for one deal, newest first: those drafted on it, and those of the lead that
+    /// became it (drafted before the lead was converted, so they name only the lead).
+    /// </summary>
+    Task<IReadOnlyList<Contract>> GetForDealAsync(Guid dealId, Guid organizationId, CancellationToken ct = default);
+
+    /// <summary>The lead that was converted into the deal, if one was (the latest, should there be several).</summary>
+    Task<Guid?> LeadOfDealAsync(Guid dealId, Guid organizationId, CancellationToken ct = default);
+
+    /// <summary>
     /// Looked up by token hash alone — the public signing path.
     /// </summary>
     /// <remarks>

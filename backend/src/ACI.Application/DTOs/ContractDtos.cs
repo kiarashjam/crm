@@ -68,7 +68,10 @@ public record ContractDto(
     string? SigningUrl,
     DateTime? SigningLinkExpiresAtUtc,
     bool BodyMatchesHashAtSend,
-    IReadOnlyList<ContractEventDto> Events
+    IReadOnlyList<ContractEventDto> Events,
+    string? MembershipTier = null,
+    decimal? DepositAmount = null,
+    string? DepositCurrency = null
 );
 
 /// <summary>
@@ -108,8 +111,19 @@ public record PublicContractDto(
 public class CreateContractDraftRequest
 {
     public Guid? LeadId { get; set; }
+
+    /// <summary>
+    /// The deal the contract is for. Its value and line items are merged into the template
+    /// (deal.*), and its lead, when it came from one, is the contract's lead.
+    /// </summary>
     public Guid? DealId { get; set; }
     public string? Title { get; set; }
+
+    /// <summary>
+    /// The club tier the contract admits its counterparty at, which makes it a membership
+    /// contract (see Contract.MembershipTier). One of the club's tiers on sale.
+    /// </summary>
+    public string? MembershipTier { get; set; }
     /// <summary>Overrides the organisation's template for this one draft.</summary>
     public string? TemplateOverride { get; set; }
     /// <summary>
@@ -119,12 +133,23 @@ public class CreateContractDraftRequest
     public Dictionary<string, string?>? Values { get; set; }
 }
 
-public class UpdateContractRequest
+/// <summary>
+/// A change to a draft. A field left out is kept; the membership tier is taken off when sent
+/// as null (a merge patch).
+/// </summary>
+public class UpdateContractRequest : ACI.Application.Common.IMergePatchRequest
 {
     public string? Title { get; set; }
     public string? Body { get; set; }
     public string? CounterpartyName { get; set; }
     public string? CounterpartyEmail { get; set; }
+
+    /// <summary>The club tier the contract admits its counterparty at; null takes it off.</summary>
+    public string? MembershipTier { get; set; }
+
+    /// <inheritdoc />
+    [System.Text.Json.Serialization.JsonIgnore]
+    public ISet<string> NullsSent { get; } = new HashSet<string>(StringComparer.Ordinal);
 }
 
 public class SignContractRequest

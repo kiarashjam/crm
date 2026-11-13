@@ -4102,6 +4102,14 @@ namespace ACI.Infrastructure.Migrations
                     b.Property<Guid?>("DealId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<decimal?>("DepositAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("DepositCurrency")
+                        .HasMaxLength(3)
+                        .HasColumnType("nvarchar(3)");
+
                     b.Property<DateTime?>("ExecutedCopySentAtUtc")
                         .HasColumnType("datetime2");
 
@@ -4110,6 +4118,10 @@ namespace ACI.Infrastructure.Migrations
 
                     b.Property<Guid?>("LeadId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("MembershipTier")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
 
                     b.Property<Guid>("OrganizationId")
                         .HasColumnType("uniqueidentifier");
@@ -4502,6 +4514,10 @@ namespace ACI.Infrastructure.Migrations
                     b.Property<decimal>("UnitPrice")
                         .HasPrecision(18, 4)
                         .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal?>("VatRate")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
 
                     b.HasKey("Id");
 

@@ -30,6 +30,13 @@ public interface IContractService
     Task<IReadOnlyList<ContractDto>> ListForLeadAsync(
         Guid leadId, Guid organizationId, CancellationToken ct = default);
 
+    /// <summary>
+    /// The contracts of a deal the person may see: those drafted on it and those of the lead
+    /// it came from. A deal they may not open answers not found.
+    /// </summary>
+    Task<Result<IReadOnlyList<ContractDto>>> ListForDealAsync(
+        Guid dealId, Guid userId, Guid organizationId, CancellationToken ct = default);
+
     Task<Result<ContractDto>> UpdateDraftAsync(
         Guid contractId, Guid userId, Guid organizationId, UpdateContractRequest request, CancellationToken ct = default);
 

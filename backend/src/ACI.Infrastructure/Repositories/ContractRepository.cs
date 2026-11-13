@@ -26,6 +26,21 @@ public class ContractRepository : IContractRepository
             .OrderByDescending(c => c.CreatedAtUtc)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<Contract>> GetForDealAsync(Guid dealId, Guid organizationId, CancellationToken ct = default)
+    {
+        var leads = _db.Leads.Where(l => l.OrganizationId == organizationId && l.ConvertedToDealId == dealId).Select(l => (Guid?)l.Id);
+        return await _db.Contracts
+            .Where(c => c.OrganizationId == organizationId && (c.DealId == dealId || (c.DealId == null && leads.Contains(c.LeadId))))
+            .OrderByDescending(c => c.CreatedAtUtc)
+            .ToListAsync(ct);
+    }
+
+    public async Task<Guid?> LeadOfDealAsync(Guid dealId, Guid organizationId, CancellationToken ct = default) =>
+        await _db.Leads.Where(l => l.OrganizationId == organizationId && l.ConvertedToDealId == dealId)
+            .OrderByDescending(l => l.UpdatedAtUtc ?? l.CreatedAtUtc)
+            .Select(l => (Guid?)l.Id)
+            .FirstOrDefaultAsync(ct);
+
     public async Task<Contract?> GetBySigningTokenHashAsync(string tokenHash, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(tokenHash)) return null;

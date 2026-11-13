@@ -46,6 +46,9 @@ public static partial class DomainErrors
         public static readonly Error TooLarge = new(
             "DealLineItem.TooLarge", "That quantity or price is too large");
 
+        public static readonly Error VatRateInvalid = new(
+            "DealLineItem.VatRateInvalid", "A VAT rate is a percentage between 0 and 50 with at most two decimals, such as 8.1");
+
         // Codes ending ".NotFound" map to 404.
         public static readonly Error DealNotFound = new(
             "DealLineItemDeal.NotFound", "The deal was not found");
@@ -333,6 +336,13 @@ public static partial class DomainErrors
 
         public static readonly Error LeadNotFound = new(
             "Contract.LeadNotFound", "The lead this contract is for was not found");
+
+        public static readonly Error DealNotFound = new(
+            "ContractDeal.NotFound", "The deal this contract is for was not found");
+
+        /// <summary>A membership contract names a tier of the club, which needs the club turned on.</summary>
+        public static readonly Error ClubOff = new(
+            "Contract.ClubOff", "The club is turned off in this workspace, so a contract cannot admit a member or take a deposit");
 
         public static readonly Error BodyRequired = new(
             "Contract.BodyRequired", "The contract needs a body before it can be sent");
