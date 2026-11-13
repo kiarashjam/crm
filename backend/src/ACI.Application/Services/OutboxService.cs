@@ -953,7 +953,6 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
     private static IReadOnlyList<string> Split(string? list) =>
         string.IsNullOrWhiteSpace(list) ? [] : list.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-    /// <summary>A line break in a subject would start a new header line, so a subject stays one line.</summary>
     /// <summary>A from address a request names, when the mail service has verified its domain for this workspace; else null.</summary>
     private string? VerifiedFromAddress(string? address, Guid organizationId)
     {
@@ -962,6 +961,7 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
         return _settings.IsVerifiedSendingDomain(value[(value.LastIndexOf('@') + 1)..], organizationId) ? value.ToLowerInvariant() : null;
     }
 
+    /// <summary>A line break in a subject would start a new header line, so a subject stays one line.</summary>
     internal static string OneLine(string? text) =>
         string.Join(' ', (text ?? "").Split('\r', '\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)).Trim();
 
