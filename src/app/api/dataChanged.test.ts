@@ -98,6 +98,20 @@ describe('what a write changes', () => {
     }
   });
 
+  it("every merge refreshes the custom values and tags it moved, beside the club's records a merge moves", () => {
+    // Two groups add to what a merge changes. The club: a company's or contact's merge moves
+    // its corporate membership, private events and house account, and a member's merge their
+    // seat. The workspace's own fields: every merge moves the duplicate's custom values and
+    // tags to the record kept. Neither may push the other's out.
+    for (const path of ['/api/leads/l-1/merge', '/api/contacts/c-1/merge', '/api/companies/co-1/merge', '/api/deals/d-1/merge', '/api/members/m-1/merge']) {
+      expect(resourcesChangedBy('POST', path)).toEqual(expect.arrayContaining(['custom-fields', 'tags']));
+    }
+    expect(resourcesChangedBy('POST', '/api/companies/co-1/merge')).toEqual(
+      expect.arrayContaining(['companies', 'club-accounts', 'corporate', 'private-events', 'custom-fields', 'tags']),
+    );
+    expect(resourcesChangedBy('POST', '/api/members/m-1/merge')).toEqual(expect.arrayContaining(['members', 'corporate', 'private-events', 'tags']));
+  });
+
   it('a club write changes only its own records, whatever the query string', () => {
     // A check-in writes the points it earns with the visit, so the loyalty ledger moves too,
     // and the day's check-ins on Today at the Club.

@@ -94,6 +94,13 @@ export function changesRecords(method: string | undefined, path: string): boolea
 const LINKED = ['leads', 'contacts', 'companies', 'deals', 'tasks', 'activities', 'sequences', 'duplicates', 'work-queue', 'reports'];
 
 /**
+ * What any merge also changes: the duplicate's custom values and tags are the kept record's
+ * now, and link fields that pointed at the duplicate point at the kept record (RecordMerge),
+ * so the record pages' fields and tags cards and the lists' columns read them again.
+ */
+const FLEX_MERGE = ['custom-fields', 'tags'];
+
+/**
  * What merging two club members changes: every record that carried the duplicate's id
  * (visits, points, the ledger's charges, payments and tabs, bookings, gift cards,
  * consent, messages…) is the kept member's now, so is their statement, and the pair
@@ -103,7 +110,7 @@ const MEMBER_MERGE = [
   'members', 'campaigns', 'communications', 'duplicates', 'visits', 'loyalty', 'charges', 'payments', 'statements',
   'tabs', 'reservations', 'events', 'gift-cards', 'donations', 'subscriptions', 'households', 'applications',
   'payment-profile', 'online-payments', 'bank', 'sales', 'pos', 'member-codes', 'club-reports',
-  'retention', 'renewals', 'referrals', 'corporate', 'private-events',
+  'retention', 'renewals', 'referrals', 'corporate', 'private-events', ...FLEX_MERGE,
 ];
 
 /**
@@ -351,9 +358,12 @@ export function resourcesChangedBy(method: string | undefined, path: string, bod
   // A merge moves everything linked to the record merged away; a conversion makes
   // a contact, a company and a deal from the lead.
   if (last === 'merge' && (base === 'companies' || base === 'contacts')) {
-    return [...new Set([...LINKED, 'club-accounts', 'corporate', 'private-events', 'charges', 'payments', 'subscriptions', 'members', 'statements', 'households'])];
+    return [...new Set([
+      ...LINKED, ...FLEX_MERGE, 'club-accounts', 'corporate', 'private-events', 'charges', 'payments', 'subscriptions', 'members', 'statements', 'households',
+    ])];
   }
-  if (last === 'merge' || (base === 'leads' && last === 'convert')) return [...LINKED];
+  if (last === 'merge') return [...LINKED, ...FLEX_MERGE];
+  if (base === 'leads' && last === 'convert') return [...LINKED];
   if (base === 'activities' && (method ?? 'GET').toUpperCase() === 'POST') {
     const links = activityLinks(body);
     if (links) return [...new Set(['activities', ...links, 'work-queue', 'reports'])];
