@@ -182,6 +182,14 @@ public partial class AppDbContext
         // said where), then acts for each run's own.
         Scope<AutomationRun>(model, e => e.OrganizationId);
         Scope<AutomationRunStep>(model, e => e.OrganizationId);
+        // The member portal: an organization's alone. A member signing in names no workspace
+        // until their link or session is found, which is looked up across workspaces by its
+        // secret's hash or its id (IgnoreQueryFilters, said where); a signed-in member reads as
+        // the organization their session names (TenantContext).
+        Scope<MemberPortalSettings>(model, e => e.OrganizationId);
+        Scope<MemberPortalAccount>(model, e => e.OrganizationId);
+        Scope<MemberPortalSession>(model, e => e.OrganizationId);
+        Scope<MemberPortalLink>(model, e => e.OrganizationId);
 
         // Copy templates follow a person rather than a workspace (TemplateRepository): the
         // system's templates are everyone's, a person's own go with them, and a team's

@@ -70,6 +70,8 @@ internal sealed class ClubResourceConfiguration : IEntityTypeConfiguration<ClubR
         builder.Property(e => e.DepositAmount).HasPrecision(18, 2);
         builder.Property(e => e.NoShowFee).HasPrecision(18, 2);
         builder.Property(e => e.Currency).HasMaxLength(3).IsRequired();
+        // Every resource there is stays out of the member portal until the club offers it there.
+        builder.Property(e => e.MemberBooking).HasMaxLength(10).IsRequired().HasDefaultValue(MemberBookingModes.Off);
         builder.Property(e => e.Version).IsConcurrencyToken();
         builder.HasIndex(e => e.OrganizationId);
     }

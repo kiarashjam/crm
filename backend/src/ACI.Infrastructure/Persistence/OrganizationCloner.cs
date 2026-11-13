@@ -71,6 +71,9 @@ public sealed class OrganizationCloner
         [typeof(AuthChallenge)] = "Sign-in steps in progress, which belong to no organization.",
         [typeof(Organization)] = "The copy is a new organization, made rather than copied row for row.",
         [typeof(JoinRequest)] = "Requests to join the original. Everyone in it is a member of the copy already.",
+        [typeof(MemberPortalSession)] = "Members signed in to the original's member portal. Their sessions name the original; the copy's portal starts with nobody signed in.",
+        [typeof(MemberPortalLink)] = "Sign-in links emailed for the original's member portal, which sign in to the original only.",
+        [typeof(MemberPortalAccount)] = "Who was invited to and used the original's member portal; nobody has used the copy's yet.",
     };
 
     private static readonly Regex GuidText = new(
@@ -564,6 +567,14 @@ public sealed class OrganizationCloner
                 payment.Status = OnlinePaymentStatuses.Canceled;
                 payment.FailureMessage = "Copied with its organization while still with Stripe; the original records how it ends.";
                 return "Online payments still with Stripe are recorded by the original only";
+            case MemberPortalSettings portal:
+                // The members are the same people in both organizations: the copy does not open a
+                // second portal to them, or invite them from it, until someone turns it on there.
+                // Its address is its own (one organization per address).
+                portal.Enabled = false;
+                portal.PortalKey = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16))
+                    .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+                return "The member portal starts off in the copy, at an address of its own";
             case OnboardingSettings s when s.WebhookUrl != null || s.WebhookSecret != null:
                 // Like its events address: a customer won in the copy is never handed to the
                 // original's portal, signed as the original. The template and choices stay.

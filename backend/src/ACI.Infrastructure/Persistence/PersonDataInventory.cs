@@ -85,6 +85,9 @@ public static class PersonDataInventory
         [typeof(ClubPosTicket)] = "Anonymised; the till's raw data removed.",
         [typeof(ClubDocument)] = "Read-only older records, read as JSON: in one of theirs, names, addresses, phones and notes go; elsewhere a mention is replaced by the pseudonym.",
         [typeof(PersonErasure)] = "The log of erasures itself: numbers, dates and counts, naming nobody.",
+        [typeof(MemberPortalAccount)] = "Deleted: when they were invited to the member portal and when they used it.",
+        [typeof(MemberPortalSession)] = "Deleted: their member portal sessions end.",
+        [typeof(MemberPortalLink)] = "Deleted: sign-in links not yet used stop working.",
     };
 
     /// <summary>Tables that hold nothing about the people a workspace keeps records of, and why.</summary>
@@ -121,6 +124,7 @@ public static class PersonDataInventory
         [typeof(ForecastSnapshot)] = "Forecast totals per assignee (staff) and month.",
         [typeof(AutomationRule)] = "Settings: automation rules.",
         [typeof(OnboardingSettings)] = "Settings: the hand-over to the member portal.",
+        [typeof(MemberPortalSettings)] = "Settings: whether members can sign in to the member portal.",
         [typeof(EmailImage)] = "Images used in the workspace's emails.",
         [typeof(ClubCatalogItem)] = "The club's price catalogue.",
         [typeof(ClubBillingRun)] = "What a billing run did, in counts.",

@@ -271,6 +271,13 @@ public class ClubResource : Common.BaseEntity, Common.IVersioned
     /// <summary>Whether it can be booked. One with bookings is set inactive rather than deleted.</summary>
     public bool Active { get; set; } = true;
 
+    /// <summary>
+    /// Whether members book it themselves in the member portal, and whether such a booking is
+    /// confirmed at once or waits for staff (<see cref="MemberBookingModes"/>). Off until the
+    /// club says otherwise: not every room is one a member should take without asking.
+    /// </summary>
+    public string MemberBooking { get; set; } = MemberBookingModes.Off;
+
     public int SortOrder { get; set; }
     public DateTime CreatedAtUtc { get; set; }
     public Guid? CreatedByUserId { get; set; }
