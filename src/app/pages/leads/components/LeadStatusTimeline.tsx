@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getLeadHistory, type LeadStatusEvent } from '@/app/api/leadOps';
+import { currentDateLocale } from '@/app/i18n/current';
 
 /**
  * The server stores UTC but sends it without a zone ("2026-10-17T08:00:00"), which
@@ -34,7 +35,7 @@ export function LeadStatusTimeline({ leadId, status }: { leadId: string; status?
         <p key={event.id} className="text-xs text-slate-600">
           {event.fromStatus ? `${event.fromStatus} → ` : ''}{event.toStatus}
           {' · '}
-          {utc(event.changedAtUtc).toLocaleString()}
+          {utc(event.changedAtUtc).toLocaleString(currentDateLocale())}
         </p>
       ))}
     </div>

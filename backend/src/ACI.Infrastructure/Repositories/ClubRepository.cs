@@ -18,6 +18,16 @@ public sealed class ClubRepository : IClubRepository
     public Task<ClubMember?> MemberAsync(Guid id, Guid? organizationId, CancellationToken ct = default) =>
         _db.ClubMembers.FirstOrDefaultAsync(m => m.Id == id && m.OrganizationId == organizationId, ct);
 
+    public async Task<DateTime?> ErasedAtAsync(Guid? organizationId, string email, CancellationToken ct = default)
+    {
+        var key = ACI.Application.Common.ErasedAddresses.Key(email);
+        if (organizationId is not Guid org || key.Length == 0) return null;
+        return await _db.EmailSuppressions.AsNoTracking()
+            .Where(s => s.OrganizationId == org && s.Email == key && s.Reason == EmailSuppressionReasons.Erased)
+            .Select(s => (DateTime?)s.CreatedAtUtc)
+            .FirstOrDefaultAsync(ct);
+    }
+
     public async Task SaveMemberAsync(ClubMember member, CancellationToken ct = default)
     {
         var existing = await _db.ClubMembers.FirstOrDefaultAsync(m => m.Id == member.Id, ct);
@@ -69,6 +79,12 @@ public sealed class ClubRepository : IClubRepository
         }
         // Nothing more is charged to a card the member saved.
         await MemberPayments.ForgetDeletedMemberAsync(_db, id, organizationId, ct);
+        // And no code names them at the POS any more.
+        await MemberPos.ForgetDeletedMemberAsync(_db, id, organizationId, ct);
+        // Their score, renewals and concerns go, and nobody is named as referred or sponsored by them.
+        await MemberRetention.ForgetDeletedMemberAsync(_db, id, organizationId, ct);
+        // Their corporate seats go (one they hold is free for the company); guest lists keep them by name.
+        await MemberCorporate.ForgetDeletedMemberAsync(_db, id, organizationId, ct);
         _db.ClubMembers.Remove(row);
         await _db.SaveChangesAsync(ct);
         return true;
@@ -98,6 +114,9 @@ public sealed class ClubRepository : IClubRepository
                 visit.MemberId = keepId;
                 visit.MemberName = name;
             }
+            // The duplicate's custom field values fill the kept member's empty fields, and its tags
+            // join theirs, before deleting it would take them away (RecordDependents).
+            await RecordMerge.MoveFieldsAndTagsAsync(_db, keepId, dropId, ct);
             foreach (var entry in await _db.LoyaltyLedger.Where(e => e.MemberId == dropId && e.OrganizationId == organizationId).ToListAsync(ct))
             {
                 entry.MemberId = keepId;
@@ -181,9 +200,18 @@ public sealed class ClubRepository : IClubRepository
             // confirmed later still lands on an account.
             await MemberPayments.MoveToKeptMemberAsync(_db, keepId, dropId, organizationId, name, ct);
 
+            // Their codes at the POS, their sales and the POS tickets posted to them.
+            await MemberPos.MoveToKeptMemberAsync(_db, keepId, dropId, organizationId, name, ct);
+
             // Consent answers and messages are the person's, so they move too.
             await MemberCommunications.MoveToKeptMemberAsync(_db, keepId, dropId, organizationId, ct);
             await MemberCommunications.MoveMessagesToKeptMemberAsync(_db, keepId, dropId, organizationId, name, ct);
+
+            // Their concerns and renewals, and the members they referred or sponsored, are the kept member's.
+            await MemberRetention.MoveToKeptMemberAsync(_db, keepId, dropId, organizationId, ct);
+            // Their seat on a company's corporate membership (one a member), and the guest lists they are on.
+            await MemberCorporate.MoveToKeptMemberAsync(_db, keepId, dropId, organizationId, name, ct);
+            if (keep.ReferredByMemberId == null && drop.ReferredByMemberId is { } referrer && referrer != keepId) keep.ReferredByMemberId = referrer;
 
             keep.Phone = RecordMerge.Fill(keep.Phone, drop.Phone);
             keep.ContactId ??= drop.ContactId;

@@ -19,6 +19,7 @@ import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import EmptyState from '@/app/components/EmptyState';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
+import { DateInput } from '@/app/components/DateInput';
 import { Label } from '@/app/components/ui/label';
 import {
   Dialog,
@@ -62,6 +63,7 @@ import {
 import { useClubMoney } from '@/app/hooks/useClubMoney';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { PERMISSION } from '@/app/api/organizations';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const STATUS_BADGE: Record<SubscriptionStatus, string> = {
   Active: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
@@ -72,7 +74,7 @@ const STATUS_BADGE: Record<SubscriptionStatus, string> = {
 
 function formatDate(iso: string): string {
   try {
-    return new Date(iso).toLocaleDateString(undefined, {
+    return new Date(iso).toLocaleDateString(currentDateLocale(), {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
@@ -211,7 +213,7 @@ export default function Subscriptions() {
   const togglePause = async (s: Subscription) => {
     const newStatus: SubscriptionStatus = s.status === 'Paused' ? 'Active' : 'Paused';
     try {
-      await updateSubscription(s.id, { status: newStatus });
+      await updateSubscription(s.id, { status: newStatus }, s.version);
       toast.success(`Subscription ${newStatus.toLowerCase()}`);
       await load();
     } catch (err) {
@@ -222,7 +224,7 @@ export default function Subscriptions() {
   const cancel = async (s: Subscription) => {
     if (!confirm(`Cancel ${s.name} for ${s.memberName}?`)) return;
     try {
-      await updateSubscription(s.id, { status: 'Cancelled' });
+      await updateSubscription(s.id, { status: 'Cancelled' }, s.version);
       toast.success('Cancelled');
       await load();
     } catch (err) {
@@ -502,6 +504,7 @@ export default function Subscriptions() {
               }
               actionLabel={subscriptions.length === 0 ? 'New subscription' : undefined}
               onAction={subscriptions.length === 0 ? openCreate : undefined}
+              actionPermission={PERMISSION.ManageMoney}
               variant="orange"
             />
           ) : (
@@ -642,10 +645,9 @@ export default function Subscriptions() {
             </div>
             <div>
               <Label>First billing date</Label>
-              <Input aria-label="First billing date"
-                type="date"
+              <DateInput aria-label="First billing date"
                 value={form.firstBilling}
-                onChange={(e) => setForm({ ...form, firstBilling: e.target.value })}
+                onChange={(day) => setForm({ ...form, firstBilling: day })}
               />
               <p className="mt-1 text-xs text-slate-500">
                 Billed in advance: the first period starts on this day and is billed then, the next one a period later.

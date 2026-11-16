@@ -27,8 +27,8 @@ public interface IContactService
     /// <summary>The figures above the contacts list, over the whole workspace.</summary>
     Task<ContactStatsDto> GetStatsAsync(Guid userId, Guid? organizationId, CancellationToken ct = default);
 
-    /// <summary>Every contact the list would show with these filters, as a CSV file.</summary>
-    Task<ExportFile> ExportAsync(Guid userId, Guid? organizationId, ContactQueryOptions options, CancellationToken ct = default);
+    /// <summary>Every contact the list would show with these filters, as a CSV file split by <paramref name="separator"/>.</summary>
+    Task<ExportFile> ExportAsync(Guid userId, Guid? organizationId, ContactQueryOptions options, char separator = CsvExport.Comma, CancellationToken ct = default);
 
     /// <summary>
     /// Retrieves all contacts for a user within an organization.

@@ -158,6 +158,8 @@ export default function MemberImport() {
             status: row.status,
             joinedAtUtc: new Date().toISOString(),
             renewsAtUtc: new Date(Date.now() + 365 * day).toISOString(),
+            // Members the club already has: no welcome email or task for each of them.
+            origin: 'import',
           });
           ok++;
           setImported(ok);
@@ -240,6 +242,9 @@ export default function MemberImport() {
                   Required columns: <code>firstName</code>, <code>lastName</code>,{' '}
                   <code>email</code>. Optional: <code>phone</code>, <code>tier</code>,{' '}
                   <code>status</code>. Dues default to the tier's monthly rate.
+                </p>
+                <p className="text-xs text-slate-500 mt-1">
+                  Imported members do not set off the &quot;When a member is added&quot; automations, so nobody on the list gets a welcome email or a task.
                 </p>
               </StaggerItem>
 

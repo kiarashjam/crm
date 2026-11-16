@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
-import { orgCan, PERMISSION, type Permission } from '@/app/api/organizations';
+import { PERMISSION, type Permission } from '@/app/api/organizations';
+import { mayIn } from '@/app/hooks/useMay';
 
 /**
  * Renders its children only for members who may do what they offer: by default
@@ -29,9 +30,6 @@ export function WriteOnly({
   all?: boolean;
 }) {
   const org = useOrgOptional();
-  if (org?.isReadOnly) return null;
-  const wanted: readonly Permission[] = typeof permission === 'string' ? [permission] : permission;
-  const may = (p: Permission) => orgCan(org?.currentOrg ?? null, p);
-  if (org && !(all ? wanted.every(may) : wanted.some(may))) return null;
+  if (!mayIn(org, permission, all)) return null;
   return <>{children}</>;
 }

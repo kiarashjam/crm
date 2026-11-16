@@ -49,6 +49,9 @@ public static class AuditVocabulary
         "lead", "contact", "company", "deal", "task", "sequence", "automation",
         // Club money: written by the server alone, from the save that changed it.
         "charge", "payment", "gift_card", "tab", "subscription", "donation", "member",
+        // A person's data exported or erased, and the retention runs: written by the server,
+        // and naming nobody where the line is about an erasure.
+        "privacy",
     };
 
     public static readonly IReadOnlySet<string> Actions = new HashSet<string>(StringComparer.Ordinal)
@@ -56,6 +59,9 @@ public static class AuditVocabulary
         "created", "updated", "deleted", "status_changed", "assigned", "email_sent", "merged", "converted",
         // A money record taken back: it stays, marked void, instead of being deleted.
         "voided",
+        // Everything held about a person downloaded; a person erased; data past its
+        // retention period removed.
+        "exported", "erased", "purged",
     };
 
     /// <summary>The actor name for a change with no signed-in user behind it.</summary>

@@ -1,16 +1,41 @@
+using ACI.Application.Interfaces;
 using ACI.Application.Services;
 
 namespace ACI.WebApi.Services;
 
+/// <summary>Wakes the campaign scheduler on this instance when a campaign has just been sent (see <see cref="ICampaignSignal"/>).</summary>
+public sealed class CampaignSignal : ICampaignSignal
+{
+    // At most one wake-up waiting: two campaigns sent at once need one pass, not two.
+    private readonly SemaphoreSlim _wake = new(0, 1);
+
+    public void Notify()
+    {
+        try
+        {
+            _wake.Release();
+        }
+        catch (SemaphoreFullException)
+        {
+            // A wake-up is already waiting.
+        }
+    }
+
+    /// <summary>Waits until a campaign is sent, or <paramref name="timeout"/> passes.</summary>
+    public Task WaitAsync(TimeSpan timeout, CancellationToken ct) => _wake.WaitAsync(timeout, ct);
+}
+
 /// <summary>
-/// Sends club campaigns at the time set for them, and finishes any whose sending stopped
-/// part-way (see <see cref="CampaignService.RunDueAsync"/>).
+/// Sends club campaigns: at the time set for them, as soon as someone presses Send, and any
+/// whose sending stopped part-way (see <see cref="CampaignService.RunDueAsync"/>).
 /// </summary>
 /// <remarks>
 /// Nothing acted on a campaign's planned time: it stayed "Scheduled" for ever. Every
 /// instance runs this, and each campaign is claimed with one conditional update before it
 /// is sent, so two instances (or a pass that overlaps the press of Send) send it once. It
-/// looks every half minute; the emails themselves go out through the outbox's dispatcher.
+/// looks every half minute, and at once when Send is pressed on this instance (Send claims
+/// the campaign and leaves the sending to this job, so the request answers at once); the
+/// emails themselves go out through the outbox's dispatcher.
 /// </remarks>
 public sealed class CampaignSchedulerBackgroundService : BackgroundService
 {
@@ -18,11 +43,13 @@ public sealed class CampaignSchedulerBackgroundService : BackgroundService
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(30);
 
     private readonly IServiceScopeFactory _scopes;
+    private readonly CampaignSignal _signal;
     private readonly ILogger<CampaignSchedulerBackgroundService> _logger;
 
-    public CampaignSchedulerBackgroundService(IServiceScopeFactory scopes, ILogger<CampaignSchedulerBackgroundService> logger)
+    public CampaignSchedulerBackgroundService(IServiceScopeFactory scopes, CampaignSignal signal, ILogger<CampaignSchedulerBackgroundService> logger)
     {
         _scopes = scopes;
+        _signal = signal;
         _logger = logger;
     }
 
@@ -30,7 +57,7 @@ public sealed class CampaignSchedulerBackgroundService : BackgroundService
     {
         try
         {
-            await Task.Delay(FirstPass, stoppingToken);
+            await _signal.WaitAsync(FirstPass, stoppingToken);
         }
         catch (OperationCanceledException)
         {
@@ -58,7 +85,7 @@ public sealed class CampaignSchedulerBackgroundService : BackgroundService
 
             try
             {
-                await Task.Delay(Interval, stoppingToken);
+                await _signal.WaitAsync(Interval, stoppingToken);
             }
             catch (OperationCanceledException)
             {

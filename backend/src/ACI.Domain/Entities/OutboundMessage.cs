@@ -225,12 +225,27 @@ public static class OutboundSources
     public const string Welcome = "welcome";
     /// <summary>A link for a member to pay their account online or save a card, sent by staff.</summary>
     public const string PaymentLink = "payment_link";
+    /// <summary>
+    /// The member portal: an invitation staff sent, or a sign-in link the member asked for;
+    /// <see cref="OutboundMessage.SourceId"/> is the member.
+    /// </summary>
+    public const string Portal = "portal";
     public const string Webhook = "webhook";
     /// <summary>
     /// A new customer handed to the workspace's onboarding address (see DealOnboarding),
     /// posted there rather than to its events address, with SourceId the handoff.
     /// </summary>
     public const string Onboarding = "onboarding";
+    /// <summary>
+    /// A person's morning brief, to their own address when they asked for it by email;
+    /// <see cref="OutboundMessage.SourceId"/> is the brief (AssistantBrief).
+    /// </summary>
+    public const string Brief = "brief";
+    /// <summary>
+    /// The email the club's retention rules send a member who has just become at risk;
+    /// <see cref="OutboundMessage.SourceId"/> is the member.
+    /// </summary>
+    public const string Retention = "retention";
 }
 
 /// <summary>

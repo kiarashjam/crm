@@ -14,6 +14,9 @@ public interface IMemberMailRules
     /// fit to show the sender, or null when they agreed and have not withdrawn it.
     /// </summary>
     Task<MailRefusal?> MarketingRefusalAsync(Guid organizationId, Guid memberId, string channel, CancellationToken ct = default);
+
+    /// <summary>The language staff set for the member (en, de, fr), or null when none is set.</summary>
+    Task<string?> PreferredLanguageAsync(Guid organizationId, Guid memberId, CancellationToken ct = default);
 }
 
 /// <param name="Code">Consent.Missing or Consent.Withdrawn.</param>

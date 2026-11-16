@@ -50,10 +50,11 @@ import { WriteOnly } from '@/app/components/WriteOnly';
 import { PERMISSION } from '@/app/api/organizations';
 import { PayOnlineDialog } from '@/app/components/payments/PayOnlineDialog';
 import { servesDemoData } from '@/app/api/apiClient';
+import { currentDateLocale } from '@/app/i18n/current';
 
 function formatDate(iso: string): string {
   try {
-    return new Date(iso).toLocaleDateString(undefined, {
+    return new Date(iso).toLocaleDateString(currentDateLocale(), {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
@@ -64,7 +65,7 @@ function formatDate(iso: string): string {
 }
 
 function monthLabel(d: Date): string {
-  return d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  return d.toLocaleDateString(currentDateLocale(), { month: 'long', year: 'numeric' });
 }
 
 function startOfMonth(d: Date): number {

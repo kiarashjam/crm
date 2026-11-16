@@ -156,6 +156,11 @@ export interface SignatureGate {
   ok: boolean;
   /** Why not, for showing under the field rather than in a toast. */
   problem: string | null;
+  /**
+   * Which gate stopped it, so a page in another language can say it in its own words:
+   * the contract is closed, not at that step yet, the name is missing, or the box unticked.
+   */
+  reason?: 'closed' | 'notReady' | 'name' | 'consent';
 }
 
 /**
@@ -172,18 +177,20 @@ export function checkSignature(args: {
   agreed: boolean;
 }): SignatureGate {
   if (!can(args.status, args.action)) {
+    const closed = isTerminal(args.status);
     return {
       ok: false,
-      problem: isTerminal(args.status)
+      problem: closed
         ? `This contract is ${STATUS_LABELS[args.status].toLowerCase()} and can no longer be signed.`
         : 'This contract is not ready for that signature yet.',
+      reason: closed ? 'closed' : 'notReady',
     };
   }
   if (!isSignatureNameValid(args.name)) {
-    return { ok: false, problem: 'Type your full name as your signature.' };
+    return { ok: false, problem: 'Type your full name as your signature.', reason: 'name' };
   }
   if (!args.agreed) {
-    return { ok: false, problem: 'Tick the box to confirm you agree to be bound by this contract.' };
+    return { ok: false, problem: 'Tick the box to confirm you agree to be bound by this contract.', reason: 'consent' };
   }
   return { ok: true, problem: null };
 }

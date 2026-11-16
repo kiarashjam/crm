@@ -66,8 +66,10 @@ import {
 } from '@/app/components/views';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
 import { WriteOnly } from '@/app/components/WriteOnly';
-import { orgCan, PERMISSION, type Permission } from '@/app/api/organizations';
-import { useOrgOptional } from '@/app/contexts/OrgContext';
+import { PERMISSION } from '@/app/api/organizations';
+import { useMay } from '@/app/hooks/useMay';
+import { NO_SPONSORS, SponsorChips, SponsorFields, SponsorsDialog, type Sponsors } from '@/app/components/retention/SponsorFields';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const STATUS_BADGE: Record<ApplicationStatus, string> = {
   Submitted: 'bg-blue-50 text-blue-700 ring-1 ring-blue-200',
@@ -94,18 +96,19 @@ interface FormState {
   email: string;
   phone: string;
   requestedTier: MemberTier;
-  referredByName: string;
+  /** The member who referred them, the proposer and the seconder: members of the club. */
+  sponsors: Sponsors;
   occupation: string;
   reasonForJoining: string;
 }
 
 function newForm(tier: MemberTier): FormState {
-  return { firstName: '', lastName: '', email: '', phone: '', requestedTier: tier, referredByName: '', occupation: '', reasonForJoining: '' };
+  return { firstName: '', lastName: '', email: '', phone: '', requestedTier: tier, sponsors: NO_SPONSORS, occupation: '', reasonForJoining: '' };
 }
 
 function formatDate(iso: string): string {
   try {
-    return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    return new Date(iso).toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric', year: 'numeric' });
   } catch {
     return iso;
   }
@@ -113,12 +116,6 @@ function formatDate(iso: string): string {
 
 function errorText(err: unknown, fallback: string): string {
   return err instanceof Error && err.message ? err.message : fallback;
-}
-
-/** Whether the signed-in member may do this, as WriteOnly decides it. */
-function useMay(): (permission: Permission) => boolean {
-  const org = useOrgOptional();
-  return (permission) => !org || (!org.isReadOnly && orgCan(org.currentOrg ?? null, permission));
 }
 
 type Review = { app: Application; action: 'waitlist' | 'reject' };
@@ -155,6 +152,7 @@ export default function Applications() {
   const [review, setReview] = useState<Review | null>(null);
   const [reviewerNotes, setReviewerNotes] = useState('');
   const [approving, setApproving] = useState<ApproveState | null>(null);
+  const [sponsorsFor, setSponsorsFor] = useState<Application | null>(null);
 
   const stats = useMemo(() => computeApplicationStats(applications), [applications]);
 
@@ -163,7 +161,8 @@ export default function Applications() {
     return applications.filter((a) => {
       if (statusFilter !== 'All' && a.status !== statusFilter) return false;
       if (!q) return true;
-      return `${a.firstName} ${a.lastName} ${a.email} ${a.occupation ?? ''} ${a.referredByName ?? ''}`.toLowerCase().includes(q);
+      return `${a.firstName} ${a.lastName} ${a.email} ${a.occupation ?? ''} ${a.referredByName ?? ''} ${a.referredByMemberName ?? ''} ${a.proposerName ?? ''} ${a.seconderName ?? ''}`
+        .toLowerCase().includes(q);
     });
   }, [applications, search, statusFilter]);
 
@@ -185,7 +184,9 @@ export default function Applications() {
         email: form.email.trim(),
         phone: form.phone.trim() || undefined,
         requestedTier: form.requestedTier,
-        referredByName: form.referredByName.trim() || undefined,
+        referredByMemberId: form.sponsors.referredByMemberId || undefined,
+        proposerMemberId: form.sponsors.proposerMemberId || undefined,
+        seconderMemberId: form.sponsors.seconderMemberId || undefined,
         occupation: form.occupation.trim() || undefined,
         reasonForJoining: form.reasonForJoining.trim() || undefined,
       });
@@ -318,6 +319,7 @@ export default function Applications() {
       {a.moneyPending && (
         <span className="rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-700 ring-1 ring-amber-200">Dues and fee not set up yet</span>
       )}
+      <SponsorChips app={a} />
     </span>
   );
 
@@ -365,6 +367,19 @@ export default function Applications() {
               <X className="w-3.5 h-3.5" />
             </Button>
           </div>
+        </WriteOnly>
+      )}
+      {isOpen(a.status) && (
+        <WriteOnly permission={PERMISSION.ClubMembers}>
+          <button
+            type="button"
+            onClick={() => setSponsorsFor(a)}
+            disabled={busyId === a.id}
+            className="text-xs text-violet-700 hover:underline disabled:opacity-50"
+            aria-label={`Referrer and sponsors for ${a.firstName} ${a.lastName}`}
+          >
+            Referrer &amp; sponsors
+          </button>
         </WriteOnly>
       )}
       {a.status === 'Submitted' && (
@@ -432,7 +447,11 @@ export default function Applications() {
     { id: 'links', label: 'Lead and member', byDefault: false, cell: (a) => links(a) },
     { id: 'phone', label: 'Phone', byDefault: false, cell: (a) => a.phone || '—' },
     { id: 'occupation', label: 'Occupation', byDefault: false, cell: (a) => a.occupation || '—' },
-    { id: 'referredBy', label: 'Referred by', byDefault: false, cell: (a) => a.referredByName || '—' },
+    { id: 'referredBy', label: 'Referred by', byDefault: false, cell: (a) => a.referredByMemberName || a.referredByName || '—' },
+    {
+      id: 'sponsors', label: 'Proposer and seconder', byDefault: false,
+      cell: (a) => [a.proposerName, a.seconderName].filter(Boolean).join(' and ') || '—',
+    },
   ];
 
   const tierChoices = tierOptions.length > 0 ? tierOptions : MEMBER_TIERS.map((name) => ({ name, price: undefined, cadence: undefined }));
@@ -571,8 +590,8 @@ export default function Applications() {
                                 <span className="inline-flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> Submitted {formatDate(a.submittedAtUtc)}</span>
                               </div>
                               <div className="mt-2">{links(a)}</div>
-                              {a.referredByName && (
-                                <p className="mt-2 text-xs text-slate-500">Referred by <span className="font-medium text-slate-700">{a.referredByName}</span></p>
+                              {a.referredByName && !a.referredByMemberId && (
+                                <p className="mt-2 text-xs text-slate-500">Referred by <span className="font-medium text-slate-700">{a.referredByName}</span> (as written on the application)</p>
                               )}
                               {a.reasonForJoining && <p className="mt-2 text-sm text-slate-600 line-clamp-2 italic">"{a.reasonForJoining}"</p>}
                               {a.reviewerNotes && (
@@ -631,9 +650,8 @@ export default function Applications() {
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label>Referred by</Label>
-              <Input aria-label="Referred by" value={form.referredByName} onChange={(e) => setForm({ ...form, referredByName: e.target.value })} placeholder="Existing member name" />
+            <div className="md:col-span-2">
+              <SponsorFields value={form.sponsors} onChange={(sponsors) => setForm({ ...form, sponsors })} />
             </div>
             <div className="md:col-span-2">
               <Label>Occupation</Label>
@@ -652,6 +670,9 @@ export default function Applications() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Referrer, proposer and seconder of an application still to be decided */}
+      <SponsorsDialog app={sponsorsFor} onClose={() => setSponsorsFor(null)} onSaved={() => { void reads.reload(); }} />
 
       {/* Waitlist or reject */}
       <Dialog open={review !== null} onOpenChange={(o) => !o && setReview(null)}>

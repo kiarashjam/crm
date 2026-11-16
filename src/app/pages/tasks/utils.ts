@@ -1,5 +1,6 @@
 import type { TaskItem } from '@/app/api/types';
 import type { TaskGroup } from './types';
+import { currentDateLocale } from '@/app/i18n/current';
 
 /**
  * Determines which group a task belongs to based on its status and due date
@@ -44,7 +45,7 @@ export function formatDue(iso: string | undefined): string | null {
     const days = Math.floor((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
     return `${days}d overdue`;
   }
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return d.toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric' });
 }
 
 /**

@@ -14,6 +14,23 @@ function notifySessionChanged(): void {
 }
 
 /**
+ * Fired when a workspace refused a request because it requires single sign-on and this
+ * session began another way (errorCode Sso.Required), with the workspace's id as
+ * `detail.organizationId`. Its owner may have turned the requirement on while the
+ * workspace was open: OrgProvider reads the workspaces again, and the workspace then
+ * says why and offers the way in instead of failing every request.
+ */
+export const SSO_SIGN_IN_NEEDED = 'aci-sso-sign-in-needed';
+
+export function announceSsoSignInNeeded(organizationId: string): void {
+  try {
+    window.dispatchEvent(new CustomEvent(SSO_SIGN_IN_NEEDED, { detail: { organizationId } }));
+  } catch {
+    // ignore (non-browser)
+  }
+}
+
+/**
  * `emailVerified` is false while the account has not confirmed its address, and
  * absent for a session saved before the server reported it.
  */

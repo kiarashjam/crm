@@ -70,6 +70,33 @@ public class Contract
     public string CounterpartyName { get; set; } = string.Empty;
     public string CounterpartyEmail { get; set; } = string.Empty;
 
+    /// <summary>
+    /// The club tier this contract admits its counterparty at, when it is a membership
+    /// contract; null for any other contract (a private dining agreement, say).
+    /// </summary>
+    /// <remarks>
+    /// Nothing else told a membership contract from the rest: countersigning any contract
+    /// admitted whoever had an open application, and one with no application admitted nobody,
+    /// so a deal won on a signed membership never made a member. With a tier, countersigning
+    /// admits the counterparty through the club's approval at that tier, starting their
+    /// application from the lead or the deal's contact when there is none. Frozen with the
+    /// body: it can only change while the contract is a draft.
+    /// </remarks>
+    public string? MembershipTier { get; set; }
+
+    /// <summary>
+    /// The deposit the counterparty pays on signing, in <see cref="DepositCurrency"/> (the
+    /// club's currency); null when the contract asks for none. Only a membership contract
+    /// asks for one, because the deposit goes on the member's account once they are admitted.
+    /// </summary>
+    /// <remarks>
+    /// Frozen at send, like the body: the signer is asked to pay exactly what they were shown.
+    /// What was actually paid, and where it went, is kept on the deposit's own row
+    /// (ContractDeposit), so a payment arriving never touches this row or its row version.
+    /// </remarks>
+    public decimal? DepositAmount { get; set; }
+    public string? DepositCurrency { get; set; }
+
     public Guid CreatedByUserId { get; set; }
     public DateTime CreatedAtUtc { get; set; }
     public DateTime UpdatedAtUtc { get; set; }

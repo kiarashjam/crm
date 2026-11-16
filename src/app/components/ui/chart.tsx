@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import * as RechartsPrimitive from "recharts";
+import { currentNumberLocale } from "@/app/i18n/current";
 
 import { cn } from "./utils";
 
@@ -234,7 +235,7 @@ function ChartTooltipContent({
                     </div>
                     {item.value && (
                       <span className="text-foreground font-mono font-medium tabular-nums">
-                        {item.value.toLocaleString()}
+                        {item.value.toLocaleString(currentNumberLocale())}
                       </span>
                     )}
                   </div>

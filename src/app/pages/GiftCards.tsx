@@ -18,6 +18,7 @@ import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import EmptyState from '@/app/components/EmptyState';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
+import { DateInput } from '@/app/components/DateInput';
 import { Label } from '@/app/components/ui/label';
 import { Textarea } from '@/app/components/ui/textarea';
 import {
@@ -66,10 +67,11 @@ import {
 } from '@/app/components/views';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
 import { WriteOnly } from '@/app/components/WriteOnly';
+import { currentDateLocale } from '@/app/i18n/current';
 
 function formatDate(iso: string): string {
   try {
-    return new Date(iso).toLocaleDateString(undefined, {
+    return new Date(iso).toLocaleDateString(currentDateLocale(), {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
@@ -241,7 +243,7 @@ export default function GiftCards() {
     }
     setVoidingId(c.id);
     try {
-      const ok = await voidGiftCard(c.id, reason.trim());
+      const ok = await voidGiftCard(c.id, reason.trim(), c.version);
       if (ok) {
         toast.success('Gift card voided');
         await load();
@@ -424,6 +426,7 @@ export default function GiftCards() {
                   }
                   actionLabel={cards.length === 0 ? 'Issue gift card' : undefined}
                   onAction={cards.length === 0 ? openIssueDialog : undefined}
+                  actionPermission={PERMISSION.ManageMoney}
                   variant="orange"
                 />
               ) : (
@@ -682,10 +685,9 @@ export default function GiftCards() {
               </div>
               <div>
                 <Label>Expires</Label>
-                <Input aria-label="Expires"
-                  type="date"
+                <DateInput aria-label="Expires"
                   value={issueForm.expiresAtUtc}
-                  onChange={(e) => setIssueForm({ ...issueForm, expiresAtUtc: e.target.value })}
+                  onChange={(day) => setIssueForm({ ...issueForm, expiresAtUtc: day })}
                 />
               </div>
             </div>

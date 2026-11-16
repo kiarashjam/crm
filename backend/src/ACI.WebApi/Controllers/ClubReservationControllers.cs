@@ -31,6 +31,7 @@ file static class Bookings
 [WorkspaceRequired]
 [Produces("application/json")]
 [Requires(MemberPermissions.ClubMembers, WritesOnly = true)]
+[InModule(WorkspaceModules.Club)]
 public class ResourcesController : ControllerBase
 {
     private readonly IClubReservations _bookings;
@@ -72,6 +73,7 @@ public class ResourcesController : ControllerBase
 [WorkspaceRequired]
 [Produces("application/json")]
 [Requires(MemberPermissions.FrontDesk, WritesOnly = true)]
+[InModule(WorkspaceModules.Club)]
 public class ReservationsController : ControllerBase
 {
     private readonly IClubReservations _bookings;

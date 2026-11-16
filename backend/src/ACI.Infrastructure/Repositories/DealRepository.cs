@@ -92,11 +92,14 @@ public sealed class DealRepository : IDealRepository
                 .ToListAsync(ct);
         }
         var q = query.Trim().ToLowerInvariant();
+        // Their custom fields' text and their tags' names are searched too.
+        var flexHits = FlexQueryable.SearchHits(_db, q);
         var matches = IncludeRelated(FilterByUserAndOrg(_db.Deals.AsNoTracking(), userId, organizationId)
             .Where(d => d.Name.ToLower().Contains(q) || d.Value.ToLower().Contains(q)
                 || (d.Company != null && d.Company.Name.ToLower().Contains(q))
                 || (d.Contact != null && d.Contact.Name.ToLower().Contains(q))
-                || (d.Stage != null && d.Stage.ToLower().Contains(q))))
+                || (d.Stage != null && d.Stage.ToLower().Contains(q))
+                || flexHits.Contains(d.Id)))
             .OrderBy(d => d.Name);
         if (take is > 0)
             return await matches.Take(take.Value).ToListAsync(ct);
@@ -179,6 +182,11 @@ public sealed class DealRepository : IDealRepository
                 message.DealId = keepId;
             foreach (var contract in await _db.Contracts.Where(c => c.DealId == dropId).ToListAsync(ct))
                 contract.DealId = keepId;
+            // The members the deal brought in, and its welcome handoff: their pages link to the deal kept.
+            foreach (var member in await _db.ClubMembers.Where(m => m.DealId == dropId).ToListAsync(ct))
+                member.DealId = keepId;
+            foreach (var handoff in await _db.DealOnboardings.Where(o => o.DealId == dropId).ToListAsync(ct))
+                handoff.DealId = keepId;
             foreach (var lead in await _db.Leads.Where(l => l.ConvertedToDealId == dropId).ToListAsync(ct))
                 lead.ConvertedToDealId = keepId;
 

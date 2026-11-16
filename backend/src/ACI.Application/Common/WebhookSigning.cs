@@ -42,6 +42,19 @@ public static class WebhookSigning
         return CryptographicOperations.FixedTimeEquals(expected, given);
     }
 
+    /// <summary>
+    /// Whether <paramref name="presented"/> is the <c>sha256=…</c> signature of
+    /// <paramref name="body"/> at <paramref name="timestamp"/> with the secret, compared in
+    /// constant time: what the club's own portal signs a request back to Cadence with.
+    /// </summary>
+    public static bool IsSignature(string secret, long timestamp, string body, string? presented)
+    {
+        if (string.IsNullOrEmpty(presented)) return false;
+        var expected = Encoding.UTF8.GetBytes(Sign(secret, timestamp, body));
+        var given = Encoding.UTF8.GetBytes(presented.Trim().ToLowerInvariant());
+        return CryptographicOperations.FixedTimeEquals(expected, given);
+    }
+
     /// <summary>A new secret: 32 random bytes, as 64 hex characters.</summary>
     public static string NewSecret() => Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
 

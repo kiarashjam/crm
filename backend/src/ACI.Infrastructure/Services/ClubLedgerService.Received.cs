@@ -41,7 +41,9 @@ public sealed partial class ClubLedgerService
         for (var attempt = 0; ; attempt++)
         {
             if (await PaymentByKeyAsync(organizationId, key, ct) is { } earlier) return await PaymentDtoAsync(organizationId, earlier, ct);
-            var member = await MemberAsync(organizationId, request.MemberId, ct);
+            // A member's account, or a company's or a client's (a bank transfer quoting a company
+            // statement's reference pays the company's account).
+            var member = await HolderAsync(organizationId, request.MemberId, ct);
             if (member == null) return DomainErrors.Club.MemberNotFound;
             var account = await AccountAsync(organizationId, member.Id, ct);
             var currency = (request.Currency ?? "").Trim().ToUpperInvariant();
@@ -61,7 +63,7 @@ public sealed partial class ClubLedgerService
                 Id = Guid.NewGuid(),
                 OrganizationId = organizationId,
                 MemberId = member.Id,
-                MemberName = NameOf(member),
+                MemberName = member.Name,
                 EntryType = ClubEntryTypes.Payment,
                 Method = request.Method,
                 Amount = amount,

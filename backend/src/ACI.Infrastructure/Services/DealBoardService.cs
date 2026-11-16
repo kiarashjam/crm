@@ -130,7 +130,8 @@ public sealed class DealBoardService : IDealBoardService
         var take = Math.Clamp(query.Take, 1, DealBoardQuery.MaxTake);
 
         var onBoard = _db.Deals.AsNoTracking().VisibleTo(_db, userId, organizationId).Where(layout.InBoard);
-        var shown = Narrowed(onBoard, query, userId, organizationId, layout, now);
+        var plan = await FlexQueryable.PlanAsync(_db, RecordTypes.Deal, query.Flex(), ct);
+        var shown = Narrowed(onBoard, query, userId, organizationId, layout, now, plan);
 
         var groups = await GroupsAsync(shown, layout.Currency, today, ct);
         var stale = await StaleAsync(shown, layout, userId, organizationId, now, ct);
@@ -180,7 +181,8 @@ public sealed class DealBoardService : IDealBoardService
         var take = Math.Clamp(query.Take, 1, DealBoardQuery.MaxTake);
         if (query.StaleOnly && wanted.Closes) return new DealBoardColumnPageDto(wanted.Key, Array.Empty<DealDto>(), false);
         var onBoard = _db.Deals.AsNoTracking().VisibleTo(_db, userId, organizationId).Where(layout.InBoard);
-        var shown = Narrowed(onBoard, query, userId, organizationId, layout, now);
+        var plan = await FlexQueryable.PlanAsync(_db, RecordTypes.Deal, query.Flex(), ct);
+        var shown = Narrowed(onBoard, query, userId, organizationId, layout, now, plan);
         var (cards, hasMore) = await PageAsync(shown, layout, wanted, query.Sort, Math.Max(0, skip), take, userId, organizationId, now, ct);
         return new DealBoardColumnPageDto(wanted.Key, cards, hasMore);
     }
@@ -266,15 +268,19 @@ public sealed class DealBoardService : IDealBoardService
         return d => d.Stage != null && names.Contains(d.Stage.Trim().ToUpper());
     }
 
-    private IQueryable<Deal> Narrowed(IQueryable<Deal> deals, DealBoardQuery query, Guid userId, Guid? organizationId, Layout layout, DateTime now)
+    private IQueryable<Deal> Narrowed(IQueryable<Deal> deals, DealBoardQuery query, Guid userId, Guid? organizationId, Layout layout, DateTime now, FlexPlan plan)
     {
+        // The deals' tags and custom fields.
+        deals = FlexQueryable.Filter(deals, _db, plan);
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
             var words = query.Search.Trim().ToLower();
+            var flexHits = FlexQueryable.SearchHits(_db, words);
             deals = deals.Where(d => d.Name.ToLower().Contains(words) || d.Value.ToLower().Contains(words)
                 || (d.Company != null && d.Company.Name.ToLower().Contains(words))
                 || (d.Contact != null && d.Contact.Name.ToLower().Contains(words))
-                || (d.Assignee != null && d.Assignee.Name.ToLower().Contains(words)));
+                || (d.Assignee != null && d.Assignee.Name.ToLower().Contains(words))
+                || flexHits.Contains(d.Id));
         }
         if (query.Mine) deals = deals.Where(d => d.AssigneeId == userId || (d.AssigneeId == null && d.UserId == userId));
         if (query.Unassigned) deals = deals.Where(d => d.AssigneeId == null);

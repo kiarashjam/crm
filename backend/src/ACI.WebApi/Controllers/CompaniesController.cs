@@ -1,6 +1,7 @@
 using ACI.Application.Common;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
+using ACI.Application.Services;
 using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -25,11 +26,14 @@ public class CompaniesController : ControllerBase
     /// <summary>
     /// Initializes a new instance of the CompaniesController.
     /// </summary>
-    public CompaniesController(ICompanyService companyService, ICurrentUserService currentUser)
+    public CompaniesController(ICompanyService companyService, ICurrentUserService currentUser, IWorkspaceCsv csv)
     {
         _companyService = companyService;
         _currentUser = currentUser;
+        _csv = csv;
     }
+
+    private readonly IWorkspaceCsv _csv;
 
     /// <summary>
     /// Retrieves companies with pagination, filters and sorting, all applied to the whole
@@ -41,8 +45,9 @@ public class CompaniesController : ControllerBase
     /// <param name="industry">Only companies in this industry, ignoring case.</param>
     /// <param name="hasIndustry">False: only companies with no industry. True: only those with one.</param>
     /// <param name="size">Only companies of this size, as stored ("11-50").</param>
-    /// <param name="sortBy">name (the default), createdAt, contacts or deals.</param>
+    /// <param name="sortBy">name (the default), createdAt, contacts or deals; or cf:&lt;key&gt; to sort by a custom field.</param>
     /// <param name="sortDir">asc (the default) or desc.</param>
+    /// <param name="flex">Tag and custom field conditions: tag, tagMatch, notTag and field (see the README).</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A paginated list of companies.</returns>
     /// <response code="200">Returns the paginated list of companies.</response>
@@ -59,6 +64,7 @@ public class CompaniesController : ControllerBase
         [FromQuery] string? size = null,
         [FromQuery] string? sortBy = null,
         [FromQuery] string? sortDir = null,
+        [FromQuery] FlexQueryParams? flex = null,
         CancellationToken ct = default)
     {
         var userId = _currentUser.UserId;
@@ -72,7 +78,7 @@ public class CompaniesController : ControllerBase
             _currentUser.CurrentOrganizationId,
             page,
             pageSize,
-            Options(search, industry, hasIndustry, size, sortBy, sortDir),
+            Options(search, industry, hasIndustry, size, sortBy, sortDir, flex),
             ct);
 
         return Ok(result);
@@ -111,19 +117,24 @@ public class CompaniesController : ControllerBase
         [FromQuery] string? size = null,
         [FromQuery] string? sortBy = null,
         [FromQuery] string? sortDir = null,
+        [FromQuery] FlexQueryParams? flex = null,
         CancellationToken ct = default)
     {
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
         var file = await _companyService.ExportAsync(
-            userId.Value, _currentUser.CurrentOrganizationId, Options(search, industry, hasIndustry, size, sortBy, sortDir), ct);
+            userId.Value, _currentUser.CurrentOrganizationId, Options(search, industry, hasIndustry, size, sortBy, sortDir, flex),
+            await _csv.SeparatorAsync(_currentUser.CurrentOrganizationId, ct), ct);
         Response.Headers["X-Total-Count"] = file.Total.ToString(System.Globalization.CultureInfo.InvariantCulture);
         Response.Headers["X-Exported-Count"] = file.Exported.ToString(System.Globalization.CultureInfo.InvariantCulture);
         return File(file.Content, "text/csv; charset=utf-8", file.FileName);
     }
 
-    private static CompanyQueryOptions Options(string? search, string? industry, bool? hasIndustry, string? size, string? sortBy, string? sortDir) => new()
+    private static CompanyQueryOptions Options(
+        string? search, string? industry, bool? hasIndustry, string? size, string? sortBy, string? sortDir, FlexQueryParams? flex) => new()
     {
+        // Tags and custom fields, and a sort by a field ("cf:key").
+        Flex = (flex ?? new FlexQueryParams()).ToFilter(sortBy, sortDir),
         Search = search,
         Industry = industry,
         HasIndustry = hasIndustry,

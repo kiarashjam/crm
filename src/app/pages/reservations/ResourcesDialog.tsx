@@ -14,12 +14,14 @@ import {
 } from '@/app/components/ui/dialog';
 import {
   BOOKING_MODES,
+  MEMBER_BOOKING_MODES,
   RESOURCE_KINDS,
   addUsualResources,
   createResource,
   deleteResource,
   updateResource,
   type BookingMode,
+  type MemberBooking,
   type Resource,
   type ResourceKind,
 } from '@/app/api/reservations';
@@ -35,7 +37,15 @@ interface ResourceForm {
   noShowFee: string;
   description: string;
   active: boolean;
+  memberBooking: MemberBooking;
 }
+
+/** How members book a resource in the member portal, in a few words. */
+const MEMBER_BOOKING_WORDS: Record<MemberBooking, string> = {
+  off: 'No, staff book it',
+  request: 'Yes, and the club confirms each booking',
+  instant: 'Yes, booked at once when it is free',
+};
 
 /** What a kind of space is usually booked as, as the server assumes when it is left out. */
 function usualMode(kind: ResourceKind): BookingMode {
@@ -43,7 +53,7 @@ function usualMode(kind: ResourceKind): BookingMode {
 }
 
 function blank(): ResourceForm {
-  return { name: '', kind: 'Meeting', capacity: '8', bookingMode: 'Exclusive', depositAmount: '0', noShowFee: '0', description: '', active: true };
+  return { name: '', kind: 'Meeting', capacity: '8', bookingMode: 'Exclusive', depositAmount: '0', noShowFee: '0', description: '', active: true, memberBooking: 'off' };
 }
 
 function formOf(r: Resource): ResourceForm {
@@ -56,6 +66,7 @@ function formOf(r: Resource): ResourceForm {
     noShowFee: String(r.noShowFee ?? 0),
     description: r.description ?? '',
     active: r.active !== false,
+    memberBooking: r.memberBooking ?? 'off',
   };
 }
 
@@ -122,6 +133,7 @@ export default function ResourcesDialog({
       // Sent empty, a description is cleared.
       description: form.description.trim(),
       active: form.active,
+      memberBooking: form.memberBooking,
     };
     setBusy(true);
     try {
@@ -248,6 +260,23 @@ export default function ResourcesDialog({
               <Label htmlFor="res-description">Description</Label>
               <Input id="res-description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
             </div>
+            <div className="md:col-span-2">
+              <Label htmlFor="res-member-booking">Members can book it in the member portal</Label>
+              <select
+                id="res-member-booking"
+                value={form.memberBooking}
+                onChange={(e) => setForm({ ...form, memberBooking: e.target.value as MemberBooking })}
+                className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+              >
+                {MEMBER_BOOKING_MODES.map((m) => (
+                  <option key={m} value={m}>{MEMBER_BOOKING_WORDS[m]}</option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-slate-500">
+                Only while the member portal is on (Settings, Welcome &amp; portal), and only for active members. The same
+                rules hold as for a booking made here: no double booking, and its deposit.
+              </p>
+            </div>
           </div>
         ) : resources.length === 0 ? (
           <div className="py-6 text-center text-sm text-slate-600">
@@ -270,6 +299,8 @@ export default function ResourcesDialog({
                     {r.kind} · {r.bookingMode === 'Shared' ? `shared, up to ${r.capacity}` : `one booking at a time, holds ${r.capacity}`}
                     {(r.depositAmount ?? 0) > 0 && ` · deposit ${money(r.depositAmount ?? 0)}`}
                     {(r.noShowFee ?? 0) > 0 && ` · no-show fee ${money(r.noShowFee ?? 0)}`}
+                    {r.memberBooking === 'instant' && ' · members book it in the portal'}
+                    {r.memberBooking === 'request' && ' · members ask for it in the portal'}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">

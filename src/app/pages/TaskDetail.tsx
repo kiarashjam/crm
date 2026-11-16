@@ -63,6 +63,7 @@ import { StaggerItem } from '@/app/components/motion/Stagger';
 import { fromLocalInputValue, toLocalInputValue } from '@/app/lib/dateInputs';
 import { MentionTextarea, useWorkspacePeople } from '@/app/components/MentionTextarea';
 import { PERMISSION } from '@/app/api/organizations';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const STATUS_OPTIONS: { value: TaskStatusType; label: string; icon: typeof Circle; color: string }[] = [
   { value: 'todo', label: 'To Do', icon: Circle, color: 'text-slate-500' },
@@ -86,7 +87,7 @@ function timeAgo(iso: string): string {
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
   if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  return d.toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 export default function TaskDetail() {
@@ -260,7 +261,7 @@ export default function TaskDetail() {
   const StatusIcon = statusInfo.icon;
   const due = task.dueDateUtc ? new Date(task.dueDateUtc) : null;
   const overdue = !!due && due < new Date() && task.status !== 'completed';
-  const dueLabel = due ? due.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : null;
+  const dueLabel = due ? due.toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric', year: 'numeric' }) : null;
   const daysLeft = due ? Math.ceil((due.getTime() - Date.now()) / 86400000) : null;
   const dueHint = daysLeft === null || task.status === 'completed'
     ? undefined
@@ -457,20 +458,20 @@ export default function TaskDetail() {
                 <dl className="space-y-3 text-sm">
                   <div className="flex justify-between">
                     <dt className="text-slate-500">Created</dt>
-                    <dd className="text-slate-900">{task.createdAtUtc ? new Date(task.createdAtUtc).toLocaleDateString() : '—'}</dd>
+                    <dd className="text-slate-900">{task.createdAtUtc ? new Date(task.createdAtUtc).toLocaleDateString(currentDateLocale()) : '—'}</dd>
                   </div>
                   {task.dueDateUtc && (
                     <div className="flex justify-between">
                       <dt className="text-slate-500">Due Date</dt>
                       <dd className={cn('font-medium', overdue ? 'text-red-600' : 'text-slate-900')}>
-                        {new Date(task.dueDateUtc).toLocaleDateString()}
+                        {new Date(task.dueDateUtc).toLocaleDateString(currentDateLocale())}
                       </dd>
                     </div>
                   )}
                   {task.completedAtUtc && (
                     <div className="flex justify-between">
                       <dt className="text-slate-500">Completed</dt>
-                      <dd className="text-emerald-700">{new Date(task.completedAtUtc).toLocaleDateString()}</dd>
+                      <dd className="text-emerald-700">{new Date(task.completedAtUtc).toLocaleDateString(currentDateLocale())}</dd>
                     </div>
                   )}
                   {task.updatedAtUtc && (

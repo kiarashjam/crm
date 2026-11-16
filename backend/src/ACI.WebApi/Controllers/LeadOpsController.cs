@@ -31,6 +31,7 @@ namespace ACI.WebApi.Controllers;
 [ApiController]
 [Authorize]
 [Route("api/lead-ops")]
+[InModule(WorkspaceModules.Sales)]
 public class LeadOpsController : ControllerBase
 {
     private readonly ILeadOpsService _ops;

@@ -27,6 +27,14 @@ public interface IImportRepository
     /// <summary>The workspace's companies, with the fields an import reads and writes.</summary>
     Task<IReadOnlyList<Company>> CompaniesAsync(Guid userId, Guid? organizationId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Of <paramref name="addresses"/>, the ones that belong to someone erased at their request,
+    /// with when: an import skips them, so an old list does not bring the person back without
+    /// anyone noticing. Empty in a personal workspace, which has no suppression list.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, DateTime>> ErasedAddressesAsync(Guid? organizationId, IReadOnlyCollection<string> addresses, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyDictionary<string, DateTime>>(new Dictionary<string, DateTime>());
+
     /// <summary>The custom field values of every record of one kind, as stored JSON by record id.</summary>
     Task<IReadOnlyDictionary<Guid, string>> CustomValuesAsync(string entityType, Guid userId, Guid? organizationId, CancellationToken ct = default);
 

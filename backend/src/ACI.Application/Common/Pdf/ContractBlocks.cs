@@ -15,6 +15,11 @@ public enum ContractBlockKind
     Rule,
     /// <summary>Running prose, to be re-wrapped to the measure.</summary>
     Paragraph,
+    /// <summary>
+    /// Rows of cells separated by "|", set in aligned columns: a deal's fee table, or any
+    /// table the author typed the same way.
+    /// </summary>
+    Table,
 }
 
 /// <summary>
@@ -23,7 +28,14 @@ public enum ContractBlockKind
 /// <param name="Kind">How to set it.</param>
 /// <param name="Text">The words. For a definition row, the value.</param>
 /// <param name="Label">A definition row's label, without its colon.</param>
-public readonly record struct ContractBlock(ContractBlockKind Kind, string Text, string? Label = null);
+/// <param name="Rows">A table's rows, each its cells in order, without the "|" between them.</param>
+/// <param name="RulesBefore">
+/// The rows of a table the author drew a ruling line above ("----+----"): the line under its
+/// header, and the one above its totals.
+/// </param>
+public readonly record struct ContractBlock(
+    ContractBlockKind Kind, string Text, string? Label = null,
+    IReadOnlyList<IReadOnlyList<string>>? Rows = null, IReadOnlySet<int>? RulesBefore = null);
 
 /// <summary>
 /// Reads the structure a contract's plain text already has.
@@ -65,6 +77,9 @@ public static class ContractBlocks
 
     /// <summary>The shortest run of ruling characters that counts as an underline.</summary>
     private const int MinRuleLength = 3;
+
+    /// <summary>A table's ruling line: dashes broken by "+" where the columns meet ("-----+---+-----").</summary>
+    private static readonly Regex TableRuleLine = new(@"^\s*\|?-+(\+-+)+\|?\s*$", RegexOptions.Compiled);
 
     /// <summary>Splits a contract body into blocks.</summary>
     public static IReadOnlyList<ContractBlock> Parse(string? body)
@@ -113,6 +128,17 @@ public static class ContractBlocks
                 continue;
             }
 
+            // A run of "a | b | c" rows. Before the definition rows, because a product's name
+            // may hold a colon; and only a run of two rows or more, so a sentence that happens
+            // to contain " | " stays prose.
+            if (TableAt(lines, i) is { } table)
+            {
+                FlushParagraph();
+                blocks.Add(table.Block);
+                i = table.LastLine;
+                continue;
+            }
+
             var definition = DefinitionRow.Match(line);
             if (definition.Success)
             {
@@ -133,6 +159,47 @@ public static class ContractBlocks
 
     private static bool IsRuleLine(string trimmed)
         => trimmed.Length >= MinRuleLength && RuleLine.IsMatch(trimmed);
+
+    private static bool IsTableRow(string line) =>
+        line.Contains(" | ", StringComparison.Ordinal) || line.TrimEnd().EndsWith(" |", StringComparison.Ordinal);
+
+    /// <summary>The table starting at line <paramref name="start"/>, and the last line it takes; null when there is none.</summary>
+    private static (ContractBlock Block, int LastLine)? TableAt(string[] lines, int start)
+    {
+        if (!IsTableRow(lines[start])) return null;
+        var rows = new List<IReadOnlyList<string>>();
+        var rules = new HashSet<int>();
+        var last = start;
+        for (var i = start; i < lines.Length; i++)
+        {
+            var line = lines[i];
+            if (line.Trim().Length == 0) break;
+            if (TableRuleLine.IsMatch(line))
+            {
+                rules.Add(rows.Count);
+                last = i;
+                continue;
+            }
+            if (!IsTableRow(line)) break;
+            rows.Add(Cells(line));
+            last = i;
+        }
+        if (rows.Count < 2) return null;
+        // A rule after the last row draws nothing, and one above the first only repeats the edge.
+        rules.Remove(rows.Count);
+        rules.Remove(0);
+        return (new ContractBlock(ContractBlockKind.Table, "", Rows: rows, RulesBefore: rules), last);
+    }
+
+    /// <summary>A row's cells, trimmed; the empty cell before a leading "|" and after a trailing one is not a cell.</summary>
+    private static IReadOnlyList<string> Cells(string line)
+    {
+        var trimmed = line.Trim();
+        var cells = trimmed.Split('|').Select(c => c.Trim()).ToList();
+        if (trimmed.StartsWith('|') && cells.Count > 1 && cells[0].Length == 0) cells.RemoveAt(0);
+        if (trimmed.EndsWith('|') && cells.Count > 1 && cells[^1].Length == 0) cells.RemoveAt(cells.Count - 1);
+        return cells;
+    }
 
     /// <summary>
     /// Splits a clause heading into its number and its words, or null if it has no number.

@@ -209,6 +209,13 @@ public static class ContractPdf
                 flow.Space(12);
                 break;
 
+            case ContractBlockKind.Table when block.Rows is { Count: > 0 } rows:
+                flow.Space(4);
+                flow.Table(rows.Select(r => (IReadOnlyList<string>)r.Select(safe).ToList()).ToList(),
+                    block.RulesBefore ?? new HashSet<int>());
+                flow.Space(10);
+                break;
+
             default:
                 flow.Paragraph(safe(block.Text));
                 flow.Space(9.5);
@@ -563,6 +570,70 @@ public static class ContractPdf
                 Page.Text(MarginX + labelWidth, Y, PdfFont.TimesRoman, BodySize, lines[i], Ink);
                 Advance(BodyLeading);
                 if (i < lines.Count - 1) EnsureRoom(BodyLeading);
+            }
+        }
+
+        /// <summary>
+        /// A table the text typed with "|" between its cells (a deal's fee table): columns
+        /// aligned, the first set left and wrapped when long, the rest (quantities, rates,
+        /// amounts) set right. The row above the author's first ruling line is the header, and
+        /// the rows below their last one, when there are two, are the totals.
+        /// </summary>
+        /// <remarks>
+        /// Every cell is drawn as it was typed; only the bars and dashes between them, which the
+        /// columns replace, are left out. A table set as prose ran every cell and bar together
+        /// into one justified paragraph.
+        /// </remarks>
+        public void Table(IReadOnlyList<IReadOnlyList<string>> rows, IReadOnlySet<int> rulesBefore)
+        {
+            const double size = 8.8;
+            const double leading = 12.6;
+            const double gap = 12;
+            var columns = rows.Max(r => r.Count);
+            var header = rulesBefore.Contains(1) ? 0 : -1;
+            var lastRule = rulesBefore.Count == 0 ? int.MaxValue : rulesBefore.Max();
+            var totalsFrom = lastRule != int.MaxValue && (lastRule > 1 || header < 0) ? lastRule : int.MaxValue;
+            PdfFont FontOf(int row) => row == header || row >= totalsFrom ? PdfFont.HelveticaBold : PdfFont.Helvetica;
+
+            var widths = new double[columns];
+            for (var r = 0; r < rows.Count; r++)
+            {
+                for (var c = 0; c < rows[r].Count; c++)
+                    widths[c] = Math.Max(widths[c], PdfFonts.Measure(FontOf(r), rows[r][c], size));
+            }
+            // The first column (what is sold) takes what the figures leave, and wraps in it.
+            var figures = widths.Skip(1).Sum() + gap * (columns - 1);
+            widths[0] = Math.Max(Math.Min(widths[0], Measure - figures), Math.Min(widths[0], 90));
+            var right = new double[columns];
+            var x = MarginX;
+            for (var c = 0; c < columns; c++)
+            {
+                right[c] = x + widths[c];
+                x = right[c] + gap;
+            }
+            var tableRight = Math.Min(right[^1], MarginX + Measure);
+
+            for (var r = 0; r < rows.Count; r++)
+            {
+                var font = FontOf(r);
+                var color = r == header ? Muted : Ink;
+                var first = Wrap(rows[r].Count > 0 ? rows[r][0] : "", font, size, widths[0]);
+                if (first.Count == 0) first.Add("");
+                if (rulesBefore.Contains(r))
+                {
+                    EnsureRoom(leading * (first.Count + 1));
+                    Advance(5);
+                    Page.Rule(MarginX, Y - size - 2.5, tableRight, 0.6, r >= totalsFrom ? PdfColor.Grey(0.62) : Hairline);
+                }
+                EnsureRoom(leading * first.Count);
+                for (var line = 0; line < first.Count; line++)
+                    Page.Text(MarginX, Y + line * leading, font, size, first[line], color);
+                for (var c = 1; c < rows[r].Count; c++)
+                {
+                    Page.Text(right[c], Y, font, size, FitTo(rows[r][c], font, size, widths[c] + gap / 2), color,
+                        align: PdfAlign.Right);
+                }
+                Advance(leading * first.Count);
             }
         }
 

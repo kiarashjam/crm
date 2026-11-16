@@ -35,10 +35,12 @@ public sealed class ClubBankFileService : IClubBankFiles
     private readonly ICurrentUserService _user;
     private readonly ILedgerReadObserver _reads;
     private readonly ILogger<ClubBankFileService> _logger;
+    private readonly IContractDeposits? _deposits;
 
     public ClubBankFileService(AppDbContext db, IClubLedger ledger, IClubBilling billing, ClubQrBillService qrBills, ICurrentUserService user,
-        ILedgerReadObserver reads, ILogger<ClubBankFileService> logger)
+        ILedgerReadObserver reads, ILogger<ClubBankFileService> logger, IContractDeposits? deposits = null)
     {
+        _deposits = deposits;
         _db = db;
         _ledger = ledger;
         _billing = billing;
@@ -226,11 +228,36 @@ public sealed class ClubBankFileService : IClubBankFiles
             row.Note = "The reference is not one this club printed on a QR-bill.";
             return;
         }
+        if (reference.Purpose == ClubQrBillService.DepositPurpose && reference.ContractId is { } contractId)
+        {
+            // A contract's deposit, printed before the signer was anyone's member: the deposit
+            // takes it, and puts it on the member's account once the club has admitted them.
+            if (_deposits == null)
+            {
+                row.Note = "The reference is a contract's deposit.";
+                return;
+            }
+            var taken = await _deposits.RecordBankTransferAsync(organizationId, contractId,
+                new DepositTransfer(row.BankReference, row.Amount, row.Currency, row.ValueDateUtc ?? row.BookedAtUtc, row.DebtorName, fileName), ct);
+            row.Note = Clip(taken.Note, 500);
+            if (!taken.Taken) return;
+            row.Status = BankTransactionStatuses.Matched;
+            row.PaymentReferenceId = reference.Id;
+            row.MemberId = taken.MemberId;
+            row.MemberName = Clip(taken.MemberName, 200);
+            row.LedgerPaymentId = taken.LedgerPaymentId;
+            return;
+        }
+        if (reference.MemberId is not { } memberId)
+        {
+            row.Note = "The reference names no member.";
+            return;
+        }
         var payFirst = reference.ChargeId is { } charge ? new[] { charge } : Array.Empty<Guid>();
-        var paid = await RecordAsync(organizationId, row, reference.MemberId, payFirst, $"Bank file {fileName}", ct);
+        var paid = await RecordAsync(organizationId, row, memberId, payFirst, $"Bank file {fileName}", ct);
         if (!paid.IsSuccess)
         {
-            row.MemberId = reference.MemberId;
+            row.MemberId = memberId;
             row.Note = Clip(paid.Error.Code == DomainErrors.Club.MemberNotFound.Code
                 ? "The reference names a member who is no longer on the club's list."
                 : paid.Error.Description, 500);

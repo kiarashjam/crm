@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
+import { useModules } from '@/app/hooks/useModules';
 import { PageTransition } from '@/app/components/PageTransition';
 import { ContentSkeleton } from '@/app/components/PageSkeleton';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
@@ -19,6 +20,7 @@ import {
 import { LoadFailed } from '@/app/components/LoadFailed';
 import type { Activity, Contact, Deal, Lead, PagedResult } from '@/app/api/types';
 import { downloadCsv } from '@/app/lib/exportCsv';
+import { useCsvSeparator } from '@/app/hooks/useCsvSeparator';
 import { activityCsvColumns, printActivitiesPdf, activityTypeLabel } from '@/app/lib/exportActivities';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -102,6 +104,7 @@ const NO_LEADS: Lead[] = [];
 
 export default function Activities() {
   const money = useMoney();
+  const csvSeparator = useCsvSeparator();
   const navigate = useNavigate();
   const [filter, setFilter] = useState<ActivityFilter>('all');
   const [filterContactId, setFilterContactId] = useState('');
@@ -173,9 +176,11 @@ export default function Activities() {
   };
 
   // The pickers in the log dialog. Each fails on its own and leaves its picker empty.
+  // Leads and deals are the Sales module's: with it turned off there are none to offer.
+  const salesOn = useModules().sales;
   const contacts: Contact[] = useAllContacts().data ?? NO_CONTACTS;
-  const deals: Deal[] = useAllDeals().data ?? NO_DEALS;
-  const leads: Lead[] = useAllLeads().data ?? NO_LEADS;
+  const deals: Deal[] = useAllDeals(salesOn).data ?? NO_DEALS;
+  const leads: Lead[] = useAllLeads(salesOn).data ?? NO_LEADS;
 
   // Calculate activity statistics
   const activityStats = useMemo(() => {
@@ -366,7 +371,7 @@ export default function Activities() {
       if (rows.length === 0) { toast.error('No activities to export'); return; }
 
       if (format === 'csv') {
-        downloadCsv('activity-history', rows, activityCsvColumns);
+        downloadCsv('activity-history', rows, activityCsvColumns, csvSeparator);
         toast.success(`Exported ${rows.length} ${rows.length === 1 ? 'activity' : 'activities'}`);
       } else {
         const subtitle = filterType !== 'all' ? `Type: ${activityTypeLabel(filterType)}` : 'All activity types';

@@ -150,6 +150,12 @@ public class ImportUndoTests
             TotalRows = 2000, StartedAtUtc = started, LastSavedAtUtc = lastSaved,
         };
         db.ImportBatches.Add(batch);
+        var field = new CustomFieldDefinition
+        {
+            Id = Guid.NewGuid(), OrganizationId = orgId, OwnerUserId = userId, EntityType = "lead", Key = "tier", Label = "Tier",
+            Type = CustomFieldTypes.Text, CreatedAtUtc = started,
+        };
+        db.CustomFieldDefinitions.Add(field);
         var leads = new List<Guid>();
         for (var i = 0; i < customValuesAfter.Length; i++)
         {
@@ -161,10 +167,10 @@ public class ImportUndoTests
             };
             db.Leads.Add(lead);
             if (customValuesAfter[i] is { } after)
-                db.CustomFieldValues.Add(new CustomFieldValueSet
+                db.CustomFieldEntries.Add(new CustomFieldEntry
                 {
                     Id = Guid.NewGuid(), OrganizationId = orgId, OwnerUserId = userId, EntityType = "lead", RecordId = lead.Id,
-                    ValuesJson = "{}", UpdatedAtUtc = created + after,
+                    FieldId = field.Id, TextValue = "Gold", TextKey = "Gold", UpdatedAtUtc = created + after,
                 });
             leads.Add(lead.Id);
         }

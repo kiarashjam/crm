@@ -13,7 +13,15 @@ vi.mock('@/app/api/tasks', () => ({ getTasksByDeal: async () => [] }));
 vi.mock('@/app/components/AppHeader', () => ({ default: () => null }));
 vi.mock('@/app/components/DealLineItemsCard', () => ({ default: () => null }));
 vi.mock('@/app/components/CustomFieldsCard', () => ({ default: () => null }));
+vi.mock('@/app/components/flex/RecordTagsEditor', () => ({ default: () => null }));
 vi.mock('@/app/components/AttachmentsCard', () => ({ default: () => null }));
+// The deal's contract and the member it brought in have their own tests; here, that the page shows them for this deal.
+vi.mock('./contracts/ContractPanel', () => ({
+  ContractPanel: ({ dealId }: { dealId?: string }) => <p data-testid="contract-panel">{dealId}</p>,
+}));
+vi.mock('@/app/components/MembershipLinks', () => ({
+  PersonMembershipCard: ({ kind, id }: { kind: string; id: string }) => <p data-testid="membership-card">{kind}:{id}</p>,
+}));
 const org = vi.hoisted(() => ({ id: 'org-1', name: 'Pavillon 46', ownerUserId: 'u', isOwner: true, role: 0, currency: 'CHF', locale: 'de-CH', timeZone: 'Europe/Zurich' }));
 vi.mock('@/app/contexts/OrgContext', () => ({
   useOrg: () => ({ isReadOnly: false, currentOrg: org }),
@@ -75,5 +83,12 @@ describe('how a deal is moving, on its page', () => {
 
     expect(screen.getByText(/not recorded/)).toBeInTheDocument();
     expect(screen.queryByText(/^Stale/)).toBeNull();
+  });
+
+  it('shows the deal’s contracts and the club membership it brought in', async () => {
+    await show();
+
+    expect(screen.getByTestId('contract-panel')).toHaveTextContent('d-1');
+    expect(screen.getByTestId('membership-card')).toHaveTextContent('deal:d-1');
   });
 });

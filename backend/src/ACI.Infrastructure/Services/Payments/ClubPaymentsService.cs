@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using ACI.Application.Common;
+using ACI.Application.Common.I18n;
 using ACI.Application.Configuration;
 using ACI.Application.Interfaces;
 using ACI.Application.Services;
@@ -58,11 +59,16 @@ public sealed partial class ClubPaymentsService : IClubPayments
     private readonly ICurrentUserService _user;
     private readonly EmailSettings _email;
     private readonly ILogger<ClubPaymentsService> _logger;
+    private readonly IAutomationEngine? _automations;
+    private readonly IContractDeposits? _deposits;
 
     public ClubPaymentsService(AppDbContext db, IClubLedger ledger, IClubBilling billing, ClubPaymentSettingsService settings,
         IEnumerable<IPaymentProvider> providers, PayLinkSigner links, IOutbox outbox, ITenantContext tenant, ICurrentUserService user,
-        IOptions<EmailSettings> email, ILogger<ClubPaymentsService> logger)
+        IOptions<EmailSettings> email, ILogger<ClubPaymentsService> logger, IAutomationEngine? automations = null,
+        IContractDeposits? deposits = null)
     {
+        _deposits = deposits;
+        _automations = automations;
         _db = db;
         _ledger = ledger;
         _billing = billing;
@@ -99,25 +105,29 @@ public sealed partial class ClubPaymentsService : IClubPayments
         var money = $"{link.Currency} {link.Amount.ToString("N2", culture)}";
         var firstName = string.IsNullOrWhiteSpace(member.FirstName) ? NameOf(member) : member.FirstName.Trim();
         var setup = link.Purpose == Setup;
-        var subject = setup ? $"Save a card with {config.ClubName}" : $"Pay your account with {config.ClubName}";
+        // In the member's language (English when none is set).
+        var language = AppLanguages.ForMember(member.PreferredLanguage);
+        string L(string key, params (string, object?)[] args) => MemberTexts.T(language, key, args);
+        var subject = setup ? L("payLink.subjectSetup", ("club", config.ClubName)) : L("payLink.subjectPay", ("club", config.ClubName));
         var body = new StringBuilder();
-        body.Append("Dear ").Append(firstName).Append(",\n\n");
+        body.Append(L("greeting", ("name", firstName))).Append("\n\n");
         if (setup)
         {
-            body.Append(request.AutoPay
-                ? "You can save a card for your membership dues, which are then charged to it when they are billed. "
-                : "You can save a card with the club for paying your account. ");
-            body.Append("The card is entered on Stripe's secure page; the club never sees its number.\n\n");
+            body.Append(request.AutoPay ? L("payLink.setupAutoPay") : L("payLink.setupPlain")).Append(' ');
+            body.Append(L("payLink.setupSecure")).Append("\n\n");
         }
         else
         {
-            body.Append("You can pay ").Append(money).Append(" online, by card")
-                .Append(config.MethodsFor(link.Currency).Contains("twint") ? " or TWINT" : "")
-                .Append(config.MethodsFor(link.Currency).Contains("sepa_debit") ? " or SEPA direct debit" : "")
-                .Append(", on Stripe's secure page.\n\n");
+            var methods = new List<string> { L("method.card") };
+            if (config.MethodsFor(link.Currency).Contains("twint")) methods.Add(L("method.twint"));
+            if (config.MethodsFor(link.Currency).Contains("sepa_debit")) methods.Add(L("method.sepa"));
+            body.Append(L("payLink.payOnline", ("amount", money), ("methods", MemberTexts.JoinOr(language, methods)))).Append("\n\n");
         }
         body.Append(link.Url).Append("\n\n");
-        body.Append("The link works until ").Append(link.ExpiresAtUtc.ToString("d MMMM yyyy", CultureInfo.InvariantCulture)).Append(".\n\n");
+        var until = language == AppLanguages.English
+            ? link.ExpiresAtUtc.ToString("d MMMM yyyy", CultureInfo.InvariantCulture)
+            : link.ExpiresAtUtc.ToString("d MMMM yyyy", MemberTexts.Culture(language, config.Locale));
+        body.Append(L("payLink.validUntil", ("date", until))).Append("\n\n");
         body.Append(config.ClubName);
 
         var log = new MemberMessage
@@ -172,19 +182,22 @@ public sealed partial class ClubPaymentsService : IClubPayments
         var config = await _settings.ConfigAsync(claim.OrganizationId, ct);
         var currency = await AccountCurrencyAsync(claim.OrganizationId, member.Id, config, ct);
         var firstName = string.IsNullOrWhiteSpace(member.FirstName) ? NameOf(member) : member.FirstName.Trim();
+        // The page reads in the member's language (English when none is set; the page offers the others).
+        var language = AppLanguages.ForMember(member.PreferredLanguage);
+        string L(string key) => MemberTexts.T(language, key);
 
         if (claim.Purpose == Setup)
             return new PublicPayPageDto(config.ClubName, firstName, Setup,
-                claim.AutoPay ? "Save a card for your membership dues" : "Save a card for paying your account",
+                claim.AutoPay ? L("pay.setupAutoPay") : L("pay.setupPlain"),
                 0, currency, config.OnlinePayments ? config.SaveableFor(currency) : [], config.OnlinePayments,
-                config.OnlinePayments ? null : "The club cannot take cards online just now. Please ask the club.", claim.AutoPay);
+                config.OnlinePayments ? null : L("pay.noCardsOnline"), claim.AutoPay, language, config.Locale);
 
-        var (amount, description) = await WhatIsOwedAsync(claim.OrganizationId, member.Id, claim, config, ct);
-        var reason = !config.OnlinePayments ? "The club cannot take payments online just now. Please ask the club."
-            : amount <= 0 ? "There is nothing to pay: everything this link was for is paid."
-            : currency is not { Length: 3 } ? "The account's currency cannot be paid online." : null;
+        var (amount, description) = await WhatIsOwedAsync(claim.OrganizationId, member.Id, claim, config, ct, language);
+        var reason = !config.OnlinePayments ? L("pay.noPaymentsOnline")
+            : amount <= 0 ? L("pay.nothingToPay")
+            : currency is not { Length: 3 } ? L("pay.currencyNotPayable") : null;
         return new PublicPayPageDto(config.ClubName, firstName, claim.Purpose, description, amount, currency,
-            config.OnlinePayments ? config.MethodsFor(currency) : [], reason == null, reason, false);
+            config.OnlinePayments ? config.MethodsFor(currency) : [], reason == null, reason, false, language, config.Locale);
     }
 
     public async Task<Result<CheckoutStartedDto>> StartCheckoutAsync(string token, CancellationToken ct = default)
@@ -427,6 +440,10 @@ public sealed partial class ClubPaymentsService : IClubPayments
         {
             ct.ThrowIfCancellationRequested();
             if (tried >= MaxAutoPayPerRun) break;
+            // A workspace that has turned its club off takes no money on its own: with the club's
+            // pages and endpoints gone, nobody could see a payment taken, or follow up the decline
+            // they are meant to. Its dues stay open and are charged once the club is on again.
+            if (await _db.Organizations.AsNoTracking().AnyAsync(o => o.Id == organizationId && o.ClubModuleOff, ct)) continue;
             using var acting = _db.ActFor(organizationId, null);
             var config = await _settings.ConfigAsync(organizationId, ct);
             if (!config.OnlinePayments) continue;
@@ -497,6 +514,8 @@ public sealed partial class ClubPaymentsService : IClubPayments
                 : failure.Message, 500);
             attempt.UpdatedAtUtc = DateTime.UtcNow;
             await SaveAttemptAsync(attempt, ct);
+            // Refused is a failure; unanswered is not known yet, and Stripe's webhook settles it.
+            if (!failure.Unreachable) await AnnounceFailureAsync(config.OrganizationId, attempt, ct);
             return;
         }
         await ApplyIntentAsync(config.OrganizationId, attempt, answer.Value!, ct);
@@ -535,7 +554,12 @@ public sealed partial class ClubPaymentsService : IClubPayments
     }
 
     /// <summary>What a pay link asks for now: the account's balance owed, or what the named charges still owe.</summary>
-    private async Task<(decimal Amount, string Description)> WhatIsOwedAsync(Guid organizationId, Guid memberId, PayLinkClaim claim, PaymentConfig config, CancellationToken ct)
+    /// <remarks>
+    /// The description is in <paramref name="language"/> for the member's pay page; Stripe's own
+    /// description of a checkout stays in English, for the club's records there.
+    /// </remarks>
+    private async Task<(decimal Amount, string Description)> WhatIsOwedAsync(Guid organizationId, Guid memberId, PayLinkClaim claim, PaymentConfig config,
+        CancellationToken ct, string language = AppLanguages.English)
     {
         if (claim.Purpose == Charges)
         {
@@ -543,13 +567,13 @@ public sealed partial class ClubPaymentsService : IClubPayments
             var owed = open.Sum(c => c.Amount - c.PaidAmount);
             var words = open.Count switch
             {
-                0 => "Charges already paid",
+                0 => MemberTexts.T(language, "pay.chargesPaid"),
                 1 => open[0].Description,
-                _ => $"{open[0].Description} and {open.Count - 1} more",
+                _ => MemberTexts.T(language, "pay.chargeAndMore", ("first", open[0].Description), ("count", open.Count - 1)),
             };
             return (owed, $"{config.ClubName}: {words}");
         }
-        return (await OwedAsync(organizationId, memberId, ct), $"{config.ClubName}: what the account owes");
+        return (await OwedAsync(organizationId, memberId, ct), $"{config.ClubName}: {MemberTexts.T(language, "pay.accountOwes")}");
     }
 
     /// <summary>What the member's account owes now, after any credit they hold; nothing when it is in credit.</summary>
@@ -657,6 +681,29 @@ public sealed partial class ClubPaymentsService : IClubPayments
         {
             _db.Entry(attempt).State = EntityState.Detached;
             return false;
+        }
+    }
+
+    /// <summary>
+    /// The workspace's rules for a payment that failed for good: a card declined, or a direct
+    /// debit that did not go through. Once for each attempt, however often Stripe reports it.
+    /// Stripe or the payment job set it off, so the rules act as the workspace's owner, as a
+    /// lead from the website does. A rule that fails does not touch the payment's record.
+    /// </summary>
+    private async Task AnnounceFailureAsync(Guid organizationId, ClubOnlinePayment attempt, CancellationToken ct)
+    {
+        if (_automations == null || attempt.Status != OnlinePaymentStatuses.Failed) return;
+        try
+        {
+            var owner = await _db.Organizations.AsNoTracking().Where(o => o.Id == organizationId).Select(o => (Guid?)o.OwnerUserId).FirstOrDefaultAsync(ct);
+            if (owner is not Guid actor) return;
+            await _automations.DispatchAsync(AutomationCatalog.PaymentFailed, new AutomationEvent(
+                organizationId, actor, $"{attempt.Id}:failed", $"{attempt.MemberName}: {attempt.Description}",
+                MemberId: attempt.MemberId, RecordId: attempt.Id), ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "The automations for failed payment {AttemptId} could not run", attempt.Id);
         }
     }
 

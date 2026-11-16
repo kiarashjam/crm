@@ -52,3 +52,25 @@ describe('toCsv', () => {
     expect(csv).toBe('Name,Score\n"\'=HYPERLINK(""https://evil.example"",""x"")",-3');
   });
 });
+
+describe('a semicolon file, as Excel in Switzerland reads it', () => {
+  const columns = [
+    { header: 'Name', value: (r: { name: string; value: string }) => r.name },
+    { header: 'Deal value', value: (r: { name: string; value: string }) => r.value },
+  ];
+
+  it('splits columns by semicolons and quotes a cell that holds one, but not one with a comma', () => {
+    const csv = toCsv([{ name: 'Hotel Bellevue, Zermatt', value: 'CHF 40000; EUR 25000' }], columns, ';');
+    expect(csv).toBe('Name;Deal value\nHotel Bellevue, Zermatt;"CHF 40000; EUR 25000"');
+  });
+
+  it('still turns formulas into text', () => {
+    expect(csvCell('=1+1', ';')).toBe("'=1+1");
+    expect(csvCell('=A1;B1', ';')).toBe('"\'=A1;B1"');
+  });
+
+  it('leaves the comma file as it always was', () => {
+    const csv = toCsv([{ name: 'Hotel Bellevue, Zermatt', value: 'CHF 40000; EUR 25000' }], columns);
+    expect(csv).toBe('Name,Deal value\n"Hotel Bellevue, Zermatt",CHF 40000; EUR 25000');
+  });
+});

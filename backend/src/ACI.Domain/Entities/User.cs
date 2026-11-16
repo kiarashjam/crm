@@ -47,6 +47,18 @@ public class User : Common.BaseEntity
     /// </summary>
     public string? SecurityStamp { get; set; }
 
+    /// <summary>
+    /// The language the person chose for the app: "en", "de" or "fr". Null until they choose,
+    /// and the app then follows their workspace's locale, then their browser. Kept on the
+    /// account so it follows them to every browser they sign in from.
+    /// </summary>
+    /// <remarks>
+    /// Not <see cref="UserSettings.Language"/>: that column was written "en" for everyone by
+    /// default and never read, so it cannot tell someone who chose English from someone who
+    /// never chose. The German and French it holds were real choices and were copied here.
+    /// </remarks>
+    public string? Language { get; set; }
+
     public UserSettings? Settings { get; set; }
     public ICollection<OrganizationMember> OrganizationMemberships { get; set; } = new List<OrganizationMember>();
     public ICollection<Company> Companies { get; set; } = new List<Company>();

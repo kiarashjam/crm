@@ -47,6 +47,8 @@ public record PublicCaptureRequest(
     [System.ComponentModel.DataAnnotations.StringLength(80)] string? Country,
     [System.ComponentModel.DataAnnotations.StringLength(200)] string? Company,
     [System.ComponentModel.DataAnnotations.StringLength(200)] string? Website = null,
+    bool? MarketingConsent = null,
+    [System.ComponentModel.DataAnnotations.StringLength(10)] string? Language = null,
     [System.ComponentModel.DataAnnotations.StringLength(20)] string? Kind = null,
     [System.ComponentModel.DataAnnotations.StringLength(200)] string? EstablishmentName = null,
     [System.ComponentModel.DataAnnotations.StringLength(40)] string? EstablishmentType = null,
@@ -58,8 +60,16 @@ public record PublicCaptureRequest(
 /// <summary>The whole of what the public capture endpoint says back: no record, no ids.</summary>
 public record PublicCaptureReceipt(string Message);
 
+/// <summary>
+/// What a public capture form shows: its name, whether and how it asks for marketing consent,
+/// and what the workspace's leads are.
+/// </summary>
+/// <param name="MarketingConsent">off, optional or required (the workspace's privacy settings).</param>
+/// <param name="MarketingConsentText">The words beside the checkbox.</param>
+/// <param name="Language">The workspace's language (from its locale), for a visitor whose browser speaks none of the app's.</param>
 /// <param name="LeadKinds">What the workspace's leads are ("person", "establishment" or "both"), so the form asks the right questions.</param>
-public record PublicCaptureFormDto(string Name, string? SuccessMessage, string LeadKinds = "person");
+public record PublicCaptureFormDto(string Name, string? SuccessMessage, string MarketingConsent = "optional", string? MarketingConsentText = null,
+    string? Language = null, string LeadKinds = "person");
 
 public record BulkLeadUpdateRequest(
     IReadOnlyList<Guid> Ids,

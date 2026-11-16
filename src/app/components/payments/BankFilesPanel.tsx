@@ -24,6 +24,7 @@ import { useBankImports, useBankTransactions, useClubMembers, useHouseholds } fr
 import { useRegional } from '@/app/hooks/useMoney';
 import { formatClubMoney } from '@/app/lib/clubMoney';
 import { BANK_STATUS_BADGE, BANK_STATUS_LABEL, importSummary } from './paymentLabels';
+import { currentDateLocale } from '@/app/i18n/current';
 
 /** The server takes a file of up to 20 MB. */
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
@@ -32,7 +33,7 @@ const message = (err: unknown, fallback: string) => (err instanceof Error && err
 
 function formatDay(iso: string): string {
   try {
-    return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+    return new Date(iso).toLocaleDateString(currentDateLocale(), { day: 'numeric', month: 'short', year: 'numeric' });
   } catch {
     return iso;
   }
@@ -40,7 +41,7 @@ function formatDay(iso: string): string {
 
 function formatDateTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return new Date(iso).toLocaleString(currentDateLocale(), { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   } catch {
     return iso;
   }

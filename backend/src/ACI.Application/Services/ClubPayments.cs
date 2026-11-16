@@ -33,8 +33,10 @@ public interface IClubQrBills
     /// <paramref name="amountDue"/>, with a reference that names the member and the statement
     /// (the same one every time the statement is printed). Null when the club has no bank
     /// details, nothing is due, or the currency is not CHF or EUR: no slip is printed then.
+    /// Its message ("Statement October 2026") is in <paramref name="language"/>, the statement's.
     /// </summary>
-    Task<QrBill?> ForStatementAsync(Guid organizationId, Guid memberId, DateTime fromUtc, DateTime toUtc, decimal amountDue, string currency, CancellationToken ct = default);
+    Task<QrBill?> ForStatementAsync(Guid organizationId, Guid memberId, DateTime fromUtc, DateTime toUtc, decimal amountDue, string currency,
+        string? language = null, CancellationToken ct = default);
 
     /// <summary>
     /// The QR-bill for an invoice of one charge that asks for <paramref name="amountDue"/>, with
@@ -252,9 +254,11 @@ public sealed record PaymentStatusDto(
     bool OnlinePayments, string? Mode, IReadOnlyList<string> Methods, bool WebhookConfigured,
     bool QrBills, string? QrReferenceType, string Currency);
 
+/// <param name="MemberId">The member it is for; none for a contract's deposit (<paramref name="ContractId"/>), printed before anyone was a member.</param>
 public sealed record PaymentReferenceDto(
-    Guid Id, string Reference, string Type, Guid MemberId, string? MemberName, string Purpose,
-    DateTime? PeriodStartUtc, DateTime? PeriodEndUtc, Guid? ChargeId, decimal AmountDue, string Currency, DateTime CreatedAtUtc);
+    Guid Id, string Reference, string Type, Guid? MemberId, string? MemberName, string Purpose,
+    DateTime? PeriodStartUtc, DateTime? PeriodEndUtc, Guid? ChargeId, decimal AmountDue, string Currency, DateTime CreatedAtUtc,
+    Guid? ContractId = null);
 
 public sealed record BankImportDto(
     Guid Id, string FileName, string Format, string? MessageId, string? AccountIban, int Transactions, int Matched,
@@ -291,11 +295,15 @@ public sealed record PayLinkDto(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? EmailReason = null);
 
 /// <summary>What the public pay page shows: the club, whom it is for, what and how much. No account details.</summary>
+/// <param name="Language">The member's language (en, de, fr), which the page reads in unless the visitor picks another.</param>
+/// <param name="Locale">The workspace's number format ("de-CH"), so the page writes the amount as the club's statements do.</param>
 public sealed record PublicPayPageDto(
     string ClubName, string MemberFirstName, string Purpose, string Description, decimal Amount, string Currency,
     IReadOnlyList<string> Methods, bool Available,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Reason,
-    bool AutoPay);
+    bool AutoPay,
+    string Language = "en",
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Locale = null);
 
 public sealed record CheckoutStartedDto(string Url);
 

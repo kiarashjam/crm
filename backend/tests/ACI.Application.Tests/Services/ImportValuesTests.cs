@@ -116,6 +116,45 @@ public class ImportValuesTests
     }
 
     [Fact]
+    public void SeveralOptionsAreSplitOnCommasOrSemicolonsAndStoredAsTheWorkspaceWritesThem()
+    {
+        var sports = Field(CustomFieldTypes.MultiSelect, "Golf", "Tennis", "Padel");
+
+        var (value, error) = ImportValues.Custom(sports, "golf; Tennis, golf");
+        error.Should().BeNull();
+        value!.Value.EnumerateArray().Select(v => v.GetString()).Should().Equal("Golf", "Tennis");
+        ImportValues.Custom(sports, "Golf, Squash").Error.Should().Be("Field: \"Squash\" is not one of Golf, Tennis, Padel");
+    }
+
+    [Theory]
+    [InlineData("CHF 1'200.50", 1200.50, "CHF")]
+    [InlineData("1200 EUR", 1200, "EUR")]
+    [InlineData("1 200,50", 1200.50, "CHF")]
+    public void AnAmountTakesItsCurrencyFromTheCellOrElseTheField(string written, decimal amount, string currency)
+    {
+        var spend = Field(CustomFieldTypes.Money);
+        spend.Currency = "CHF";
+
+        var (value, error) = ImportValues.Custom(spend, written);
+
+        error.Should().BeNull();
+        value!.Value.GetProperty("amount").GetDecimal().Should().Be(amount);
+        value.Value.GetProperty("currency").GetString().Should().Be(currency);
+        ImportValues.Custom(spend, "about 5 francs").Error.Should().StartWith("Field must be an amount");
+    }
+
+    [Fact]
+    public void ALinkIsTheIdOfTheRecordItPointsAt()
+    {
+        var referrer = Field(CustomFieldTypes.Link);
+        referrer.LinkEntityType = RecordTypes.Contact;
+        var id = Guid.NewGuid();
+
+        ImportValues.Custom(referrer, id.ToString()).Value!.Value.GetProperty("id").GetGuid().Should().Be(id);
+        ImportValues.Custom(referrer, "Anna Keller").Error.Should().Be("Field must point at a record");
+    }
+
+    [Fact]
     public void ATickIsAYesOrANo()
     {
         ImportValues.Custom(Field(CustomFieldTypes.Checkbox), "ja").Value!.Value.GetBoolean().Should().BeTrue();

@@ -1,3 +1,4 @@
+using ACI.Application.Common.I18n;
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
 using Microsoft.Extensions.Logging;
@@ -9,7 +10,12 @@ namespace ACI.Application.Services;
 /// "all": every email the workspace sends to the address (the link in sales outreach).
 /// "marketing": a club member's news and offers; their statements and booking confirmations still come.
 /// </param>
-public sealed record UnsubscribeDto(string WorkspaceName, string Email, string Scope = UnsubscribeScopes.All);
+/// <param name="Language">
+/// For a club member's link, the language the club writes to them in (en, de, fr), which the
+/// page reads in unless the visitor picks another. Null otherwise (no member, or none set on
+/// them): the page then follows the visitor's browser.
+/// </param>
+public sealed record UnsubscribeDto(string WorkspaceName, string Email, string Scope = UnsubscribeScopes.All, string? Language = null);
 
 public static class UnsubscribeScopes
 {
@@ -56,7 +62,8 @@ public sealed class UnsubscribeService : IUnsubscribeService
         ISequenceRepository sequences,
         ILogger<UnsubscribeService> logger,
         ITenantContext? tenant = null,
-        IConsentService? consent = null)
+        IConsentService? consent = null,
+        IMemberMailRules? members = null)
     {
         _links = links;
         _organizations = organizations;
@@ -65,14 +72,27 @@ public sealed class UnsubscribeService : IUnsubscribeService
         _logger = logger;
         _tenant = tenant;
         _consent = consent;
+        _members = members;
     }
+
+    private readonly IMemberMailRules? _members;
+
+    /// <summary>
+    /// The member's own language, for the page to open in; null when none is set, and the page then
+    /// follows the visitor's browser.
+    /// </summary>
+    private async Task<string?> MemberLanguageAsync(Guid organizationId, Guid memberId, CancellationToken ct) =>
+        AppLanguages.Normalise(_members == null ? null : await _members.PreferredLanguageAsync(organizationId, memberId, ct));
 
     public async Task<UnsubscribeDto?> PreviewAsync(string token, CancellationToken ct = default)
     {
-        if (_links.TryReadMember(token, out var memberOrganizationId, out _, out var memberEmail))
+        if (_links.TryReadMember(token, out var memberOrganizationId, out var previewMemberId, out var memberEmail))
         {
             var club = await _organizations.GetByIdAsync(memberOrganizationId, ct);
-            return club == null ? null : new UnsubscribeDto(club.Name, memberEmail, UnsubscribeScopes.Marketing);
+            if (club == null) return null;
+            using var reading = _tenant?.ActFor(memberOrganizationId, club.OwnerUserId);
+            return new UnsubscribeDto(club.Name, memberEmail, UnsubscribeScopes.Marketing,
+                await MemberLanguageAsync(memberOrganizationId, previewMemberId, ct));
         }
         if (!_links.TryRead(token, out var organizationId, out var email)) return null;
         var workspace = await _organizations.GetByIdAsync(organizationId, ct);
@@ -118,6 +138,6 @@ public sealed class UnsubscribeService : IUnsubscribeService
             "Unsubscribed with the link in a marketing email", ct);
         _logger.LogInformation("A member unsubscribed from organization {OrganizationId}'s marketing email ({Members} member(s) changed)",
             organizationId, changed);
-        return new UnsubscribeDto(club.Name, email, UnsubscribeScopes.Marketing);
+        return new UnsubscribeDto(club.Name, email, UnsubscribeScopes.Marketing, await MemberLanguageAsync(organizationId, memberId, ct));
     }
 }

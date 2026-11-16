@@ -2,6 +2,7 @@ import { AlertCircle, Calendar } from 'lucide-react';
 import type { Deal, Pipeline } from '@/app/api/types';
 import { FALLBACK_STAGES } from './config';
 import { dateOnlyKey, daysBetween, formatDay, todayKeyIn } from '@/app/lib/zonedTime';
+import { currentDateLocale } from '@/app/i18n/current';
 
 /**
  * Resolve stage list: from pipeline's dealStages (sorted by displayOrder) or fallback to FALLBACK_STAGES.
@@ -81,7 +82,7 @@ export function formatLastActivity(iso: string | undefined): string {
   if (!iso) return '';
   try {
     const d = new Date(iso);
-    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    return d.toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric', year: 'numeric' });
   } catch {
     return '';
   }

@@ -1,3 +1,5 @@
+using ACI.Application.Common;
+using ACI.Application.Common.I18n;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
@@ -83,6 +85,9 @@ public class SettingsService : ISettingsService
         if (request.InAppSoundEnabled.HasValue) settings.InAppSoundEnabled = request.InAppSoundEnabled.Value;
         if (request.BrowserNotificationsEnabled.HasValue) settings.BrowserNotificationsEnabled = request.BrowserNotificationsEnabled.Value;
         if (request.WeeklyDigestEnabled.HasValue) settings.WeeklyDigestEnabled = request.WeeklyDigestEnabled.Value;
+        // Stored as "off", so everyone who never chose gets the brief: a new column defaults to false.
+        if (request.MorningBriefEnabled.HasValue) settings.MorningBriefOff = !request.MorningBriefEnabled.Value;
+        if (request.MorningBriefEmail.HasValue) settings.MorningBriefEmail = request.MorningBriefEmail.Value;
 
         // Defaults
         if (request.DefaultPipelineId != null) settings.DefaultPipelineId = request.DefaultPipelineId;
@@ -143,6 +148,29 @@ public class SettingsService : ISettingsService
         return MapToDto(settings);
     }
 
+    private static readonly Error UserNotFound = new("User.NotFound", "Your account was not found.");
+
+    /// <inheritdoc />
+    public async Task<Result<LanguageChoiceDto>> LanguageAsync(Guid userId, CancellationToken ct = default)
+    {
+        var user = await _userRepository.GetByIdAsync(userId, ct);
+        if (user == null) return UserNotFound;
+        return new LanguageChoiceDto(AppLanguages.Normalise(user.Language));
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<LanguageChoiceDto>> SetLanguageAsync(Guid userId, string? language, CancellationToken ct = default)
+    {
+        if (!AppLanguages.IsValidChoice(language))
+            return new Error("Settings.LanguageInvalid", "Choose English (en), German (de) or French (fr), or nothing to follow the workspace.");
+        var user = await _userRepository.GetByIdAsync(userId, ct);
+        if (user == null) return UserNotFound;
+        user.Language = AppLanguages.Normalise(language);
+        await _userRepository.UpdateAsync(user, ct);
+        _logger.LogInformation("Language of user {UserId} set to {Language}", userId, user.Language ?? "(follow the workspace)");
+        return new LanguageChoiceDto(user.Language);
+    }
+
     private static UserSettingsDto MapToDto(UserSettings s) => new()
     {
         // Profile
@@ -175,6 +203,8 @@ public class SettingsService : ISettingsService
         InAppSoundEnabled = s.InAppSoundEnabled,
         BrowserNotificationsEnabled = s.BrowserNotificationsEnabled,
         WeeklyDigestEnabled = s.WeeklyDigestEnabled,
+        MorningBriefEnabled = !s.MorningBriefOff,
+        MorningBriefEmail = s.MorningBriefEmail,
 
         // Defaults
         DefaultPipelineId = s.DefaultPipelineId,

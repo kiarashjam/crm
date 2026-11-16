@@ -1,7 +1,7 @@
 import { Users, TriangleAlert } from 'lucide-react';
 import { useMoney } from '@/app/hooks/useMoney';
 import type { PipelineValueByAssignee } from '@/app/api/reporting';
-import { RetryButton } from '@/app/components/LoadFailed';
+import { LoadFailed, RetryButton } from '@/app/components/LoadFailed';
 
 interface TeamPerformanceProps {
   members: PipelineValueByAssignee[];
@@ -11,9 +11,14 @@ interface TeamPerformanceProps {
   onRetry?: () => void;
   /** A retry is on its way. */
   retrying?: boolean;
+  /**
+   * The figures on screen are the last ones read: a refresh failed since. Said in a
+   * slim strip above them, as they may be out of date.
+   */
+  stale?: boolean;
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
+function Shell({ children, notice }: { children: React.ReactNode; notice?: React.ReactNode }) {
   return (
     <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
       <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
@@ -25,14 +30,17 @@ function Shell({ children }: { children: React.ReactNode }) {
           <p className="text-xs text-slate-500">Open pipeline value by team member</p>
         </div>
       </div>
-      <div className="p-6">{children}</div>
+      <div className="p-6">{notice}{children}</div>
     </section>
   );
 }
 
-export function TeamPerformance({ members, loaded, failed, onRetry, retrying }: TeamPerformanceProps) {
+export function TeamPerformance({ members, loaded, failed, onRetry, retrying, stale = false }: TeamPerformanceProps) {
   // In the workspace's number format, like every other amount in the app.
   const money = useMoney();
+  const staleNote = stale && onRetry
+    ? <LoadFailed stale what="The team's figures" onRetry={onRetry} retrying={retrying} className="mb-4" />
+    : null;
   // Until the scope fix in ReportingService this panel could only ever show the
   // signed-in user's own deals, because the query filtered on UserId even inside
   // an organisation. It is now genuinely the team.
@@ -72,7 +80,7 @@ export function TeamPerformance({ members, loaded, failed, onRetry, retrying }: 
 
   if (members.length === 0) {
     return (
-      <Shell>
+      <Shell notice={staleNote}>
         <p className="py-4 text-center text-sm text-slate-500">
           No open deals assigned yet.
         </p>
@@ -81,7 +89,7 @@ export function TeamPerformance({ members, loaded, failed, onRetry, retrying }: 
   }
 
   return (
-    <Shell>
+    <Shell notice={staleNote}>
       <div className="space-y-3">
         {members.map((member) => (
           <div

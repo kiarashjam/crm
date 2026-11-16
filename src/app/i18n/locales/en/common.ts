@@ -1,0 +1,47 @@
+// Words used all over the app, and the language picker.
+import type { Message } from '../../format';
+
+export const common = {
+  'common.loading': 'Loading…',
+  'common.tryAgain': 'Try again',
+  'common.checkConnection': 'Please check your connection.',
+  'common.sending': 'Sending…',
+  'common.saving': 'Saving…',
+  'common.save': 'Save',
+  'common.cancel': 'Cancel',
+  'common.close': 'Close',
+  'common.edit': 'Edit',
+  'common.delete': 'Delete',
+  'common.add': 'Add',
+  'common.yes': 'Yes',
+  'common.no': 'No',
+  'common.none': 'None',
+  'common.or': 'or',
+  'common.search': 'Search',
+  'common.export': 'Export',
+  'common.nothingToExport': 'Nothing to export',
+  'common.exportedRows': { one: 'Exported {count} row', other: 'Exported {count} rows' },
+  'common.couldNotLoad': 'This could not be loaded.',
+  'common.notSaved': 'That was not saved.',
+
+  'language.label': 'Language',
+  'language.automatic': 'Automatic',
+  'language.automaticHint': 'Follows your workspace’s language, then your browser’s.',
+  'language.pickerLabel': 'Choose a language',
+  'language.saved': 'Language saved.',
+  'language.notice': 'Cadence now follows your workspace’s language. Choose the one you want to read it in:',
+  'language.noticeDismiss': 'Close',
+
+  'date.dd': 'dd',
+  'date.mm': 'mm',
+  'date.yyyy': 'yyyy',
+  'date.pick': 'Pick a date',
+  'date.invalid': 'Not a date. Write it as {pattern}.',
+
+  'load.failed': '{what} could not be loaded.',
+  'load.stale': '{what} could not be refreshed, so this is the last copy read.',
+  'load.noAnswer': 'The server could not be reached, or did not answer.',
+  'load.retrying': 'Trying again…',
+  'readOnly.banner': 'View-only access to <b>{org}</b> — you can see everything here, but not make changes.',
+  'readOnly.thisOrg': 'this organization',
+} satisfies Record<string, Message>;

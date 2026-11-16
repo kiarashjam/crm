@@ -1,10 +1,10 @@
 // The dashboard when a figure cannot be read: that panel says so and offers to try
 // again, and the others show what they read.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { withQueries } from '@/test/queryWrapper';
+import { testQueryClient, withQueries } from '@/test/queryWrapper';
 
 const api = {
   getDashboardStats: vi.fn(), getPipelineValueByStage: vi.fn(), getPipelineValueByAssignee: vi.fn(),
@@ -60,5 +60,38 @@ describe('the dashboard', () => {
     await userEvent.click(within(note).getByRole('button', { name: 'Try again' }));
 
     expect(await screen.findByText('Rep One')).toBeInTheDocument();
+  });
+});
+
+describe('the dashboard when a refresh fails', () => {
+  it('keeps the figures it read and says, on each panel, that they are the last copy', async () => {
+    const client = testQueryClient();
+    render(withQueries(<MemoryRouter><Dashboard /></MemoryRouter>, client));
+    expect(await screen.findByText('Rep One')).toBeInTheDocument();
+    await screen.findByText('No open deals yet. Stages appear here once a deal has a value.');
+
+    // The next read of every figure fails, as when the server goes away in the background.
+    api.getDashboardStats.mockRejectedValue(new Error('Server error'));
+    api.getPipelineValueByStage.mockRejectedValue(new Error('Server error'));
+    api.getPipelineValueByAssignee.mockRejectedValue(new Error('Server error'));
+    api.getActivitiesPaged.mockRejectedValue(new Error('Server error'));
+    api.getCopyHistoryStats.mockRejectedValue(new Error('Server error'));
+    await act(() => client.refetchQueries());
+
+    expect(await screen.findByText(/These figures could not be refreshed, so this is the last copy read/)).toBeInTheDocument();
+    expect(screen.getByText(/The pipeline breakdown could not be refreshed/)).toBeInTheDocument();
+    expect(screen.getByText(/The team's figures could not be refreshed/)).toBeInTheDocument();
+    expect(screen.getByText(/Recent activity could not be refreshed/)).toBeInTheDocument();
+    expect(screen.getByText('These could not be refreshed, so they are the last copy read.')).toBeInTheDocument();
+    // What was read is still there, rather than replaced by "could not be loaded".
+    expect(screen.getByText('Rep One')).toBeInTheDocument();
+    expect(screen.queryByText('Could not load team figures.')).toBeNull();
+  });
+
+  it('shows writer figures it could not read as dashes, not zeros', async () => {
+    api.getCopyHistoryStats.mockRejectedValue(new Error('Server error'));
+    show();
+
+    expect(await screen.findByText('These could not be read: the dashes are missing figures, not zeros.')).toBeInTheDocument();
   });
 });

@@ -1,5 +1,6 @@
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
+using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -178,6 +179,36 @@ public class SettingsController : ControllerBase
             new("SAR", "Saudi Riyal", "﷼"),
         };
         return Ok(currencies);
+    }
+
+    /// <summary>
+    /// The language the signed-in person chose for the app: "en", "de" or "fr", or null when
+    /// they have not chosen and the app follows their workspace's locale, then their browser.
+    /// </summary>
+    [HttpGet("language")]
+    [ProducesResponseType(typeof(LanguageChoiceDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<LanguageChoiceDto>> GetLanguage(CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        return (await _settingsService.LanguageAsync(userId.Value, ct)).ToActionResult();
+    }
+
+    /// <summary>
+    /// Keeps the person's language on their account, so it follows them to every browser they
+    /// sign in from. Null or empty goes back to following the workspace and the browser.
+    /// </summary>
+    /// <response code="400">Not one of en, de or fr.</response>
+    [HttpPut("language")]
+    [ProducesResponseType(typeof(LanguageChoiceDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<LanguageChoiceDto>> SetLanguage([FromBody] SetLanguageRequest request, CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        return (await _settingsService.SetLanguageAsync(userId.Value, request.Language, ct)).ToActionResult();
     }
 
     /// <summary>

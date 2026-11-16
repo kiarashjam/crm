@@ -27,6 +27,9 @@ public partial class AppDbContext : DbContext
 
     public DbSet<User> Users => Set<User>();
     public DbSet<UserSettings> UserSettings => Set<UserSettings>();
+    public DbSet<UserExternalLogin> UserExternalLogins => Set<UserExternalLogin>();
+    public DbSet<UserPasskey> UserPasskeys => Set<UserPasskey>();
+    public DbSet<AuthChallenge> AuthChallenges => Set<AuthChallenge>();
     public DbSet<Organization> Organizations => Set<Organization>();
     public DbSet<OrganizationMember> OrganizationMembers => Set<OrganizationMember>();
     public DbSet<OrgSettings> OrgSettings => Set<OrgSettings>();
@@ -58,12 +61,18 @@ public partial class AppDbContext : DbContext
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<Contract> Contracts => Set<Contract>();
     public DbSet<ContractEvent> ContractEvents => Set<ContractEvent>();
+    public DbSet<ContractDeposit> ContractDeposits => Set<ContractDeposit>();
     public DbSet<Template> Templates => Set<Template>();
     public DbSet<CopyHistoryItem> CopyHistoryItems => Set<CopyHistoryItem>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
     public DbSet<Attachment> Attachments => Set<Attachment>();
     public DbSet<CustomFieldDefinition> CustomFieldDefinitions => Set<CustomFieldDefinition>();
     public DbSet<CustomFieldValueSet> CustomFieldValues => Set<CustomFieldValueSet>();
+    public DbSet<CustomFieldEntry> CustomFieldEntries => Set<CustomFieldEntry>();
+    public DbSet<Tag> Tags => Set<Tag>();
+    public DbSet<RecordTag> RecordTags => Set<RecordTag>();
+    public DbSet<SavedView> SavedViews => Set<SavedView>();
+    public DbSet<SavedViewDefault> SavedViewDefaults => Set<SavedViewDefault>();
     public DbSet<DealLineItem> DealLineItems => Set<DealLineItem>();
     public DbSet<Product> Products => Set<Product>();
     public DbSet<ForecastSnapshot> ForecastSnapshots => Set<ForecastSnapshot>();
@@ -74,10 +83,17 @@ public partial class AppDbContext : DbContext
     public DbSet<InboundEmail> InboundEmails => Set<InboundEmail>();
     public DbSet<AutomationRule> AutomationRules => Set<AutomationRule>();
     public DbSet<AutomationFire> AutomationFires => Set<AutomationFire>();
+    public DbSet<AutomationRun> AutomationRuns => Set<AutomationRun>();
+    public DbSet<AutomationRunStep> AutomationRunSteps => Set<AutomationRunStep>();
     public DbSet<ClubMember> ClubMembers => Set<ClubMember>();
     public DbSet<OnboardingSettings> OnboardingSettings => Set<OnboardingSettings>();
     public DbSet<DealOnboarding> DealOnboardings => Set<DealOnboarding>();
     public DbSet<EmailImage> EmailImages => Set<EmailImage>();
+    // The member portal: its settings, each member's use of it, their sessions and sign-in links.
+    public DbSet<MemberPortalSettings> MemberPortalSettings => Set<MemberPortalSettings>();
+    public DbSet<MemberPortalAccount> MemberPortalAccounts => Set<MemberPortalAccount>();
+    public DbSet<MemberPortalSession> MemberPortalSessions => Set<MemberPortalSession>();
+    public DbSet<MemberPortalLink> MemberPortalLinks => Set<MemberPortalLink>();
     public DbSet<ClubVisit> ClubVisits => Set<ClubVisit>();
     public DbSet<LoyaltyLedgerEntry> LoyaltyLedger => Set<LoyaltyLedgerEntry>();
     public DbSet<ClubDocument> ClubDocuments => Set<ClubDocument>();
@@ -115,6 +131,14 @@ public partial class AppDbContext : DbContext
     public DbSet<ClubPaymentReference> ClubPaymentReferences => Set<ClubPaymentReference>();
     public DbSet<ClubBankImport> ClubBankImports => Set<ClubBankImport>();
     public DbSet<ClubBankTransaction> ClubBankTransactions => Set<ClubBankTransaction>();
+    // What members buy at the bars, restaurants and shop: sales posted through the ledger, the
+    // POS's closed tickets with where each stands, the POS connection, and the codes that name
+    // a member at the POS.
+    public DbSet<ClubSale> ClubSales => Set<ClubSale>();
+    public DbSet<ClubSaleLine> ClubSaleLines => Set<ClubSaleLine>();
+    public DbSet<ClubMemberCode> ClubMemberCodes => Set<ClubMemberCode>();
+    public DbSet<ClubPosSettings> ClubPosSettings => Set<ClubPosSettings>();
+    public DbSet<ClubPosTicket> ClubPosTickets => Set<ClubPosTicket>();
     public DbSet<SalesTeam> SalesTeams => Set<SalesTeam>();
     public DbSet<SalesTeamMember> SalesTeamMembers => Set<SalesTeamMember>();
     public DbSet<ImportBatch> ImportBatches => Set<ImportBatch>();
@@ -124,6 +148,33 @@ public partial class AppDbContext : DbContext
     public DbSet<ConsentRecord> ConsentRecords => Set<ConsentRecord>();
     public DbSet<Campaign> Campaigns => Set<Campaign>();
     public DbSet<MemberMessage> MemberMessages => Set<MemberMessage>();
+    // A workspace's privacy settings, its log of erasures, and what its retention runs removed.
+    public DbSet<PrivacySettings> PrivacySettings => Set<PrivacySettings>();
+    public DbSet<PersonErasure> PersonErasures => Set<PersonErasure>();
+    public DbSet<RetentionRun> RetentionRuns => Set<RetentionRun>();
+    // The assistant: what each workspace's calls to the language model came to, its settings,
+    // and when each person's morning brief went out.
+    public DbSet<AiUsage> AiUsage => Set<AiUsage>();
+    public DbSet<AssistantSettings> AssistantSettings => Set<AssistantSettings>();
+    public DbSet<AssistantBrief> AssistantBriefs => Set<AssistantBrief>();
+    // Keeping members and growing through them: the rules, each member's at-risk score, the
+    // renewals board's records, referral bonuses, concerns recorded about members, and the
+    // daily scoring runs.
+    public DbSet<ClubRetentionSettings> ClubRetentionSettings => Set<ClubRetentionSettings>();
+    public DbSet<ClubMemberRisk> ClubMemberRisks => Set<ClubMemberRisk>();
+    public DbSet<ClubRenewal> ClubRenewals => Set<ClubRenewal>();
+    public DbSet<ClubReferralBonus> ClubReferralBonuses => Set<ClubReferralBonus>();
+    public DbSet<ClubMemberConcern> ClubMemberConcerns => Set<ClubMemberConcern>();
+    public DbSet<ClubScoringRun> ClubScoringRuns => Set<ClubScoringRun>();
+
+    // The club's clients who are not members: memberships held by companies, with their nominees.
+    public DbSet<ClubCorporateMembership> ClubCorporateMemberships => Set<ClubCorporateMembership>();
+    public DbSet<ClubCorporateNominee> ClubCorporateNominees => Set<ClubCorporateNominee>();
+
+    // Private events: the club's spaces hired by a client, their menu and services, and their guests.
+    public DbSet<ClubPrivateEvent> ClubPrivateEvents => Set<ClubPrivateEvent>();
+    public DbSet<ClubPrivateEventLine> ClubPrivateEventLines => Set<ClubPrivateEventLine>();
+    public DbSet<ClubPrivateEventGuest> ClubPrivateEventGuests => Set<ClubPrivateEventGuest>();
 
     /// <summary>
     /// Whether saving writes audit lines. Off only while an organization is copied: its
@@ -131,6 +182,12 @@ public partial class AppDbContext : DbContext
     /// "created" line of its own.
     /// </summary>
     public bool RecordsAuditTrail { get; set; } = true;
+
+    /// <summary>
+    /// Whether a record created by a save starts with its fields' defaults (FieldDefaults). Off
+    /// only while an organization is copied: the copied records bring their own values.
+    /// </summary>
+    public bool AppliesFieldDefaults { get; set; } = true;
 
     /// <summary>
     /// The import running in this request, if one is. Every lead, contact and company
@@ -170,6 +227,7 @@ public partial class AppDbContext : DbContext
         StampContactKeys();
         StampActivityTimes();
         await RecordDependents.RemoveAsync(this, cancellationToken);
+        await FieldDefaults.ApplyAsync(this, cancellationToken);
         var events = RecordsAuditTrail ? await AuditTrail.CaptureAsync(this, _currentUser, cancellationToken) : Array.Empty<AuditEvent>();
         AuditEvents.AddRange(events);
         try
@@ -192,6 +250,7 @@ public partial class AppDbContext : DbContext
         StampContactKeys();
         StampActivityTimes();
         RecordDependents.Remove(this);
+        FieldDefaults.Apply(this);
         var events = RecordsAuditTrail ? AuditTrail.Capture(this, _currentUser) : Array.Empty<AuditEvent>();
         AuditEvents.AddRange(events);
         try

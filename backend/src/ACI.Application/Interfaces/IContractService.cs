@@ -30,6 +30,13 @@ public interface IContractService
     Task<IReadOnlyList<ContractDto>> ListForLeadAsync(
         Guid leadId, Guid organizationId, CancellationToken ct = default);
 
+    /// <summary>
+    /// The contracts of a deal the person may see: those drafted on it and those of the lead
+    /// it came from. A deal they may not open answers not found.
+    /// </summary>
+    Task<Result<IReadOnlyList<ContractDto>>> ListForDealAsync(
+        Guid dealId, Guid userId, Guid organizationId, CancellationToken ct = default);
+
     Task<Result<ContractDto>> UpdateDraftAsync(
         Guid contractId, Guid userId, Guid organizationId, UpdateContractRequest request, CancellationToken ct = default);
 
@@ -90,6 +97,15 @@ public interface IContractService
 
     Task<Result<bool>> ResendExecutedCopyAsync(
         Guid contractId, Guid userId, Guid organizationId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Starts Stripe's page for the deposit of the contract behind a signing link, once it is
+    /// signed. Authorised by the token alone, like the rest of the signer's surface.
+    /// </summary>
+    Task<Result<Services.CheckoutStartedDto>> StartDepositCheckoutAsync(string rawToken, CancellationToken ct = default);
+
+    /// <summary>The deposit's invoice with its Swiss QR-bill, for the person holding the signing link, once signed.</summary>
+    Task<Result<ContractDocument>> GetDepositQrBillByTokenAsync(string rawToken, string? language, CancellationToken ct = default);
 
     Task<Result<ContractDto>> VoidAsync(
         Guid contractId, Guid userId, Guid organizationId, string? reason, CancellationToken ct = default);

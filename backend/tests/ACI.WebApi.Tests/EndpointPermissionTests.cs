@@ -22,6 +22,8 @@ public class EndpointPermissionTests
     private static readonly Dictionary<string, string> NoPermissionNeeded = new()
     {
         ["AuthController.*"] = "the caller's own sign-in, password and two-step codes",
+        ["SsoController.*"] = "the caller's own sign-in with Google or Microsoft",
+        ["PasskeysController.*"] = "the caller's own passkeys, and signing in with one",
         ["SettingsController.*"] = "the caller's own preferences",
         ["NotificationsController.*"] = "the caller's own bell",
         ["OrganizationsController.Create"] = "a new organization of their own",
@@ -30,6 +32,8 @@ public class EndpointPermissionTests
         // The organization is the route's, which need not be the header's, so the service
         // checks the caller's permissions in it (OrganizationService and friends).
         ["OrganizationsController.UpdateSettings"] = "OrganizationService: settings.manage",
+        ["OrganizationsController.UpdateModules"] = "WorkspaceModuleService: settings.manage",
+        ["OrganizationsController.UpdateSso"] = "OrganizationSsoService: the owner alone",
         ["OrganizationsController.UpdateEmailSending"] = "EmailSendingService: settings.manage",
         ["OrganizationsController.LiftEmailSuppression"] = "EmailSendingService: settings.manage",
         ["OrganizationsController.AddMember"] = "OrganizationService: members.manage, and no more than the caller holds",
@@ -46,6 +50,15 @@ public class EndpointPermissionTests
         ["WebhookController.UpdateWebhookPassword"] = "OrganizationService: settings.manage",
         ["WebhookController.UpdateOutbound"] = "OrganizationService: settings.manage",
         ["OnboardingController.Preview"] = "reads only: the welcome email filled as it would go, nothing kept or sent",
+        ["AgentController.Chat"] = "reads only, as the caller sees the records: a change it proposes is made only by the caller's confirm, through the endpoint that makes it and that endpoint's permission",
+        // A list reads the custom values and tags of its page of records in one POST (the ids
+        // would not fit a query string); nothing is changed and only records the caller sees come back.
+        ["CustomFieldsController.GetValuesBatch"] = "reads only: the custom values of the records the caller can see",
+        ["TagsController.RecordTagsBatch"] = "reads only: the tags of the records the caller can see",
+        ["SavedViewsController.*"] = "the caller's own saved views and defaults; sharing one takes a permission that changes records (SavedViewService.MayShareAsync)",
+        // A member signed in to the member portal: no member of the team, so no permission of the
+        // team's; the member's token reaches only their own records (MemberPortalService).
+        ["MemberPortalController.*"] = "a member's own club account in the member portal, by their own session",
     };
 
     private sealed record Endpoint(Type Controller, MethodInfo Action, string Verb)
@@ -120,6 +133,7 @@ public class EndpointPermissionTests
         { "CampaignsController", "Delete" }, { "EventsController", "Delete" },
         { "CommunicationsController", "Delete" }, { "ApplicationsController", "Delete" }, { "ReservationsController", "Delete" },
         { "HouseholdsController", "Delete" }, { "SubscriptionsController", "Delete" },
+        { "MemberRetentionController", "DeleteConcern" },
     };
 
     [Theory]
@@ -161,6 +175,15 @@ public class EndpointPermissionTests
         { "TabsController", "Close", MemberPermissions.FrontDesk },
         { "LeadsController", "Create", MemberPermissions.EditRecords },
         { "DealsController", "Update", MemberPermissions.EditRecords },
+        // The rules that score members and set off emails to them are the club's settings.
+        { "RetentionController", "SaveSettings", MemberPermissions.ManageSettings },
+        { "RetentionController", "Run", MemberPermissions.ManageSettings },
+        { "MemberRetentionController", "Recompute", MemberPermissions.ClubMembers },
+        { "MemberRetentionController", "AddConcern", MemberPermissions.ClubMembers },
+        { "MemberRetentionController", "SetReferrer", MemberPermissions.ClubMembers },
+        // A credit bonus also takes money.manage, which the service checks (Permission.Required).
+        { "MemberRetentionController", "AwardBonus", MemberPermissions.ClubMembers },
+        { "RenewalsController", "SetStage", MemberPermissions.ClubMembers },
     };
 
     [Theory]
@@ -175,6 +198,7 @@ public class EndpointPermissionTests
     [Theory]
     [InlineData("ContactsController")]
     [InlineData("CompaniesController")]
+    [InlineData("ReferralsController")]
     public void ExportingAListTakesTheExportPermission(string controller)
     {
         var export = typeof(Program).Assembly.GetTypes().Single(t => t.Name == controller).GetMethod("Export")!;

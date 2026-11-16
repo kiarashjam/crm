@@ -17,6 +17,7 @@ namespace ACI.WebApi.Controllers;
 [Authorize]
 [WorkspaceRequired]
 [Produces("application/json")]
+[InModule(WorkspaceModules.Club)]
 public class BillingController : ControllerBase
 {
     private readonly IClubBilling _billing;

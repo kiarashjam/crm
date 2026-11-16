@@ -23,6 +23,7 @@ namespace ACI.WebApi.Controllers;
 [Authorize]
 [Produces("application/json")]
 [Requires(MemberPermissions.ManageSettings, WritesOnly = true)]
+[InModule(WorkspaceModules.Sales)]
 public class LeadSourcesController : ControllerBase
 {
     private readonly ILeadSourceService _leadSourceService;

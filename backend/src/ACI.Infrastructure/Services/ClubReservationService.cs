@@ -56,13 +56,15 @@ public sealed class ClubReservationService : IClubReservations
     private readonly ICurrentUserService _user;
     private readonly IClubLedger _ledger;
     private readonly ILedgerReadObserver _reads;
+    private readonly IAutomationEngine? _automations;
 
-    public ClubReservationService(AppDbContext db, ICurrentUserService user, IClubLedger ledger, ILedgerReadObserver reads)
+    public ClubReservationService(AppDbContext db, ICurrentUserService user, IClubLedger ledger, ILedgerReadObserver reads, IAutomationEngine? automations = null)
     {
         _db = db;
         _user = user;
         _ledger = ledger;
         _reads = reads;
+        _automations = automations;
     }
 
     // ── resources ────────────────────────────────────────────────────────────
@@ -231,6 +233,13 @@ public sealed class ClubReservationService : IClubReservations
             resource.NoShowFee = fee;
         }
         if (request.Active is { } active) resource.Active = active;
+        if (request.MemberBooking != null)
+        {
+            // Whether members book it themselves in the member portal, and whether staff confirm it.
+            var booking = request.MemberBooking.Trim().ToLowerInvariant();
+            if (!MemberBookingModes.All.Contains(booking)) return DomainErrors.Reservation.MemberBookingInvalid;
+            resource.MemberBooking = booking;
+        }
         if (request.SortOrder is { } sort) resource.SortOrder = Math.Clamp(sort, 0, 10_000);
         return null;
     }
@@ -251,6 +260,21 @@ public sealed class ClubReservationService : IClubReservations
     }
 
     public async Task<Result<ReservationDto>> CreateAsync(Guid? organizationId, ReservationWriteRequest request, bool mayHandleMoney, CancellationToken ct = default)
+    {
+        var made = await MakeAsync(organizationId, request, mayHandleMoney, ct);
+        // The workspace's rules for a new booking, once it is committed: outside the booking's
+        // own attempts, so nothing a rule does can make the booking be tried again.
+        if (made.IsSuccess && _automations != null && organizationId is Guid org && _user.UserId is Guid actor)
+        {
+            var booking = made.Value;
+            await _automations.DispatchAsync(AutomationCatalog.ReservationCreated, new AutomationEvent(
+                org, actor, booking.Id.ToString(), $"{booking.MemberName}: {booking.ResourceName}",
+                Email: booking.MemberEmail, MemberId: booking.MemberId, RecordId: booking.Id), ct);
+        }
+        return made;
+    }
+
+    private async Task<Result<ReservationDto>> MakeAsync(Guid? organizationId, ReservationWriteRequest request, bool mayHandleMoney, CancellationToken ct)
     {
         if (request.ResourceId is not Guid resourceId) return DomainErrors.Reservation.ResourceNotFound;
         var person = await PersonAsync(organizationId, request.MemberId, request.MemberName, request.MemberEmail, ct);
@@ -404,6 +428,9 @@ public sealed class ClubReservationService : IClubReservations
             {
                 var before = await _db.ClubReservations.AsNoTracking().FirstOrDefaultAsync(r => r.Id == reservationId && r.OrganizationId == organizationId, ct);
                 if (before == null) return DomainErrors.Reservation.NotFound;
+                // A private event's hold follows the event: moved, released and kept there, so the
+                // event and its spaces never disagree.
+                if (before.PrivateEventId != null) return DomainErrors.PrivateEvent.HoldIsTheEvents;
                 if (expectedVersion != null && before.Version != expectedVersion) return DomainErrors.Reservation.Changed;
 
                 var resourceId = request.ResourceId ?? before.ResourceId;
@@ -527,9 +554,144 @@ public sealed class ClubReservationService : IClubReservations
     {
         var booking = await _db.ClubReservations.FirstOrDefaultAsync(r => r.Id == reservationId && r.OrganizationId == organizationId, ct);
         if (booking == null) return DomainErrors.Reservation.NotFound;
+        if (booking.PrivateEventId != null) return DomainErrors.PrivateEvent.HoldIsTheEvents;
         // A deposit or a fee on the member's account names this booking: it stays, cancelled.
         if (booking.DepositChargeId != null || booking.NoShowChargeId != null) return DomainErrors.Reservation.HasMoney;
         _db.ClubReservations.Remove(booking);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            Forget();
+            return DomainErrors.Reservation.Changed;
+        }
+        return Result.Success();
+    }
+
+    // ── private events ───────────────────────────────────────────────────────
+
+    /// <remarks>
+    /// Each resource's row is taken first, as for any booking, so a member booking the room at the
+    /// same moment is decided one after the other with the hold. A hold takes the resource's whole
+    /// capacity: a private party has the room to itself, whether the room is booked by the table or
+    /// by the head.
+    /// </remarks>
+    public async Task<Result<IReadOnlyList<ReservationDto>>> HoldForPrivateEventAsync(Guid? organizationId, Guid privateEventId, string label,
+        IReadOnlyList<Guid> resourceIds, DateTime startUtc, DateTime endUtc, string status, CancellationToken ct = default)
+    {
+        if (Times(startUtc, endUtc) == null) return DomainErrors.Reservation.TimesInvalid;
+        if (status is not (ReservationStatuses.Pending or ReservationStatuses.Confirmed)) return DomainErrors.Reservation.StatusInvalid;
+        var wanted = resourceIds.Distinct().ToList();
+        var zone = await ZoneAsync(organizationId, ct);
+        var name = Clip(label, MaxName);
+
+        for (var attempt = 1; ; attempt++)
+        {
+            var transaction = await BeginAsync(ct);
+            try
+            {
+                var holds = await _db.ClubReservations
+                    .Where(r => r.OrganizationId == organizationId && r.PrivateEventId == privateEventId && ReservationStatuses.Holding.Contains(r.Status))
+                    .ToListAsync(ct);
+                var resources = await _db.ClubResources
+                    .Where(r => r.OrganizationId == organizationId && (wanted.Contains(r.Id) || holds.Select(h => h.ResourceId).Contains(r.Id)))
+                    .ToListAsync(ct);
+                foreach (var resourceId in wanted)
+                {
+                    var resource = resources.FirstOrDefault(r => r.Id == resourceId);
+                    if (resource == null) return Refuse(DomainErrors.Reservation.ResourceNotFound);
+                    var held = holds.FirstOrDefault(h => h.ResourceId == resourceId);
+                    if (!resource.Active && held == null) return Refuse(DomainErrors.Reservation.ResourceInactive);
+                    // The resource's row first: a member's booking of the same slot is decided after this.
+                    resource.BookingsChangedAtUtc = DateTime.UtcNow;
+                    if (await ClashAsync(organizationId, resource, held?.Id, startUtc, endUtc, resource.Capacity, zone, ct) is { } clash) return Refuse(clash);
+                }
+                await _reads.ReadAsync("reservations", ct);
+                await _db.SaveChangesAsync(ct);
+
+                var now = DateTime.UtcNow;
+                foreach (var hold in holds.Where(h => !wanted.Contains(h.ResourceId)))
+                {
+                    hold.Status = ReservationStatuses.Cancelled;
+                    hold.CancelledAtUtc = now;
+                    hold.CancelledByName = Who();
+                    hold.UpdatedAtUtc = now;
+                }
+                foreach (var resourceId in wanted)
+                {
+                    var resource = resources.First(r => r.Id == resourceId);
+                    var held = holds.FirstOrDefault(h => h.ResourceId == resourceId);
+                    if (held == null)
+                    {
+                        _db.ClubReservations.Add(new ClubReservation
+                        {
+                            Id = Guid.NewGuid(),
+                            OrganizationId = organizationId,
+                            ResourceId = resource.Id,
+                            ResourceName = resource.Name,
+                            MemberName = name,
+                            PartySize = resource.Capacity,
+                            StartAtUtc = startUtc,
+                            EndAtUtc = endUtc,
+                            Status = status,
+                            Currency = resource.Currency,
+                            PrivateEventId = privateEventId,
+                            CreatedAtUtc = now,
+                            CreatedByUserId = _user.UserId,
+                            CreatedByName = Who(),
+                            UpdatedAtUtc = now,
+                        });
+                        continue;
+                    }
+                    held.StartAtUtc = startUtc;
+                    held.EndAtUtc = endUtc;
+                    held.PartySize = resource.Capacity;
+                    held.MemberName = name;
+                    held.Status = status;
+                    held.UpdatedAtUtc = now;
+                }
+                await _db.SaveChangesAsync(ct);
+                if (transaction != null) await transaction.CommitAsync(ct);
+                break;
+            }
+            catch (Exception ex) when (ClubEventService.LostRace(ex))
+            {
+                _db.ChangeTracker.Clear();
+                if (attempt >= Attempts) return DomainErrors.Reservation.ResourceChanged;
+            }
+            finally
+            {
+                if (transaction != null) await transaction.DisposeAsync();
+            }
+        }
+        _db.ChangeTracker.Clear();
+        var rows = await _db.ClubReservations.AsNoTracking()
+            .Where(r => r.OrganizationId == organizationId && r.PrivateEventId == privateEventId && ReservationStatuses.Holding.Contains(r.Status))
+            .OrderBy(r => r.ResourceName).ToListAsync(ct);
+        var paid = new Dictionary<Guid, decimal>();
+        return rows.Select(r => ToDto(r, paid)).ToList();
+    }
+
+    public async Task<Result> ReleasePrivateEventAsync(Guid? organizationId, Guid privateEventId, string status, CancellationToken ct = default)
+    {
+        if (status is not (ReservationStatuses.Cancelled or ReservationStatuses.Completed)) return DomainErrors.Reservation.StatusInvalid;
+        var holds = await _db.ClubReservations
+            .Where(r => r.OrganizationId == organizationId && r.PrivateEventId == privateEventId && ReservationStatuses.Holding.Contains(r.Status))
+            .ToListAsync(ct);
+        if (holds.Count == 0) return Result.Success();
+        var now = DateTime.UtcNow;
+        foreach (var hold in holds)
+        {
+            hold.Status = status;
+            hold.UpdatedAtUtc = now;
+            if (status == ReservationStatuses.Cancelled)
+            {
+                hold.CancelledAtUtc = now;
+                hold.CancelledByName = Who();
+            }
+        }
         try
         {
             await _db.SaveChangesAsync(ct);
@@ -571,6 +733,11 @@ public sealed class ClubReservationService : IClubReservations
             .OrderBy(r => r.StartAtUtc).ThenBy(r => r.CreatedAtUtc)
             .ToListAsync(ct);
         if (holding.Count == 0) return null;
+        // A private event has the space to itself. Its hold is the room's capacity when it was
+        // made, so in a shared room a capacity raised since would have let bookings in beside the
+        // party; the hold is in the way whatever the numbers say.
+        if (holding.FirstOrDefault(r => r.PrivateEventId != null) is { } hire)
+            return DomainErrors.Reservation.Overlaps(resource.Name, Span(hire.StartAtUtc, hire.EndAtUtc, zone), hire.MemberName, StatusWords(hire.Status));
         if (resource.BookingMode != BookingModes.Shared)
         {
             var first = holding[0];
@@ -633,6 +800,7 @@ public sealed class ClubReservationService : IClubReservations
         NoShowFee = r.NoShowFee,
         Currency = r.Currency,
         Active = r.Active,
+        MemberBooking = r.MemberBooking,
         SortOrder = r.SortOrder,
         Version = r.EditVersion,
     };
@@ -666,6 +834,7 @@ public sealed class ClubReservationService : IClubReservations
             NoShowFee = r.NoShowFee,
             NoShowChargeId = r.NoShowChargeId,
             NoShowFeeState = r.NoShowChargeId == null ? null : r.NoShowFeeReversedAtUtc != null ? "reversed" : "charged",
+            PrivateEventId = r.PrivateEventId,
             CreatedByName = r.CreatedByName,
             CreatedAtUtc = r.CreatedAtUtc,
             UpdatedAtUtc = r.UpdatedAtUtc,

@@ -140,7 +140,9 @@ public class AuthService : IAuthService
         ClearPasswordResetFieldsIfPresent(user);
         user.LastLoginAtUtc = DateTime.UtcNow;
         await _userRepository.UpdateAsync(user, ct);
-        var token = _tokenService.GenerateToken(user);
+        // The session goes on as the sign-in began: after single sign-on it is a single
+        // sign-on session, which a workspace that requires it accepts.
+        var token = SessionToken(user, _tokenService.TwoFactorSignInMethod(request.TwoFactorToken));
         
         _logger.LogInformation("User {UserId} completed 2FA login successfully", user.Id);
         return new LoginResponse(token, ToInfo(user));
@@ -296,15 +298,20 @@ public class AuthService : IAuthService
         return new TwoFactorStatusResponse(user.TwoFactorEnabled);
     }
 
-    public async Task<Result<string>> EnableTwoFactorAsync(Guid userId, TwoFactorEnableRequest request, CancellationToken ct = default)
+    public async Task<Result<string>> EnableTwoFactorAsync(Guid userId, TwoFactorEnableRequest request, string? signInMethod = null, CancellationToken ct = default)
     {
         _logger.LogInformation("Enabling 2FA for user {UserId}", userId);
-        
+
         var user = await _userRepository.GetByIdAsync(userId, ct);
-        if (user == null || user.PasswordHash == null)
+        if (user == null)
         {
             _logger.LogWarning("Enable 2FA failed: user {UserId} not found", userId);
             return DomainErrors.Auth.EmailNotFound;
+        }
+        if (user.PasswordHash == null)
+        {
+            _logger.LogInformation("Enable 2FA refused: user {UserId} has no password to confirm it with", userId);
+            return DomainErrors.Auth.NoPassword;
         }
 
         // The password as well as a code. Turning 2FA on signs out every other session,
@@ -352,18 +359,23 @@ public class AuthService : IAuthService
         _stamps?.Forget(user.Id);
 
         _logger.LogInformation("2FA enabled successfully for user {UserId}", userId);
-        return _tokenService.GenerateToken(user);
+        return SessionToken(user, signInMethod);
     }
 
-    public async Task<Result<string>> DisableTwoFactorAsync(Guid userId, TwoFactorDisableRequest request, CancellationToken ct = default)
+    public async Task<Result<string>> DisableTwoFactorAsync(Guid userId, TwoFactorDisableRequest request, string? signInMethod = null, CancellationToken ct = default)
     {
         _logger.LogInformation("Disabling 2FA for user {UserId}", userId);
-        
+
         var user = await _userRepository.GetByIdAsync(userId, ct);
-        if (user == null || user.PasswordHash == null)
+        if (user == null)
         {
             _logger.LogWarning("Disable 2FA failed: user {UserId} not found", userId);
             return DomainErrors.Auth.EmailNotFound;
+        }
+        if (user.PasswordHash == null)
+        {
+            _logger.LogInformation("Disable 2FA refused: user {UserId} has no password to confirm it with", userId);
+            return DomainErrors.Auth.NoPassword;
         }
 
         // The same password and code that sign in, so guesses here count against the
@@ -410,7 +422,7 @@ public class AuthService : IAuthService
         _stamps?.Forget(user.Id);
 
         _logger.LogInformation("2FA disabled successfully for user {UserId}", userId);
-        return _tokenService.GenerateToken(user);
+        return SessionToken(user, signInMethod);
     }
 
     public async Task<Result> RequestPasswordResetAsync(ForgotPasswordRequest request, CancellationToken ct = default)
@@ -418,8 +430,11 @@ public class AuthService : IAuthService
         var email = request.Email.Trim();
         _logger.LogInformation("Password reset requested for email {Email}", email);
 
+        // An account without a password (made by single sign-on, or whose unconfirmed password
+        // went when the address's owner signed on) gets the link too: it goes to the address,
+        // so following it proves the inbox, and it is how such an account sets a password.
         var user = await _userRepository.GetByEmailAsync(email, ct);
-        if (user == null || string.IsNullOrEmpty(user.PasswordHash))
+        if (user == null)
         {
             // Same outcome as success to avoid account enumeration.
             return Result.Success();
@@ -490,12 +505,27 @@ public class AuthService : IAuthService
         // The reset link went to this address, so following it proves the inbox as
         // well as a confirmation link would. It is also how the real owner takes back
         // an address someone else registered first.
+        var takesBackTheAddress = user.EmailVerifiedAtUtc == null;
         user.EmailVerifiedAtUtc ??= DateTime.UtcNow;
+        if (takesBackTheAddress)
+        {
+            // Whoever registered it first chose more than the password: they could have
+            // turned 2FA on with their own authenticator, or added passkeys of their own,
+            // and a passkey signs in with no password at all. Those go with the password,
+            // as when the owner signs on with Google or Microsoft (SingleSignOnService).
+            user.TwoFactorEnabled = false;
+            user.TwoFactorSecretProtected = null;
+            user.TwoFactorEnabledAtUtc = null;
+        }
         // A reset is what someone does when they think another person has their
         // password: every session signed in before it ends now.
         RotateSecurityStamp(user);
+        if (takesBackTheAddress)
+            await _userRepository.RemovePasskeysAsync(user.Id, ct);
         await _userRepository.UpdateAsync(user, ct);
         _stamps?.Forget(user.Id);
+        if (takesBackTheAddress)
+            _logger.LogWarning("Password reset proved the address of unconfirmed account {UserId}; its 2FA and passkeys were removed", user.Id);
 
         _logger.LogInformation("Password reset completed for user {UserId}", user.Id);
         return Result.Success();
@@ -511,6 +541,15 @@ public class AuthService : IAuthService
         if (!password.Any(char.IsLetter)) return false;
         return password.Any(char.IsDigit) || password.Length >= 15;
     }
+
+    /// <summary>
+    /// A session token that carries on the way the session began (see <see cref="SignInMethods"/>):
+    /// one replaced because 2FA was turned on or off, or one finished with the code.
+    /// </summary>
+    private string SessionToken(User user, string? signInMethod) =>
+        signInMethod is null or SignInMethods.Password || !SignInMethods.IsKnown(signInMethod)
+            ? _tokenService.GenerateToken(user)
+            : _tokenService.GenerateToken(user, signInMethod);
 
     /// <summary>Ends every session issued before now (see <see cref="User.SecurityStamp"/>).</summary>
     private static void RotateSecurityStamp(User user) => user.SecurityStamp = Guid.NewGuid().ToString("N");

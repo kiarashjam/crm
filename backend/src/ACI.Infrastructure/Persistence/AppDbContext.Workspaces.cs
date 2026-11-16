@@ -34,7 +34,8 @@ namespace ACI.Infrastructure.Persistence;
 /// to or are asked into, and so are read across them; and records that belong to another
 /// record rather than to a workspace (a pipeline's stages, a deal's line items and stage
 /// changes, a task's comments, a contract's events, a sequence's steps, a team's members,
-/// an automation's runs), which are only ever reached through that record, filtered itself.
+/// the marks that stop an automation firing twice), which are only ever reached through that
+/// record, filtered itself.
 /// WorkspaceFilterTests fails when a new table with an OrganizationId has no filter.
 /// </para>
 /// </remarks>
@@ -87,6 +88,13 @@ public partial class AppDbContext
         Scope<AuditEvent>(model, e => e.OrganizationId, e => e.OwnerUserId);
         Scope<CustomFieldDefinition>(model, e => e.OrganizationId, e => e.OwnerUserId);
         Scope<CustomFieldValueSet>(model, e => e.OrganizationId, e => e.OwnerUserId);
+        // Custom field values, tags and saved views go with the records and lists they are on,
+        // which a person keeps in a personal workspace as well as in an organization.
+        Scope<CustomFieldEntry>(model, e => e.OrganizationId, e => e.OwnerUserId);
+        Scope<Tag>(model, e => e.OrganizationId, e => e.OwnerUserId);
+        Scope<RecordTag>(model, e => e.OrganizationId, e => e.OwnerUserId);
+        Scope<SavedView>(model, e => e.OrganizationId, e => e.OwnerUserId);
+        Scope<SavedViewDefault>(model, e => e.OrganizationId, e => e.UserId);
         Scope<Product>(model, e => e.OrganizationId, e => e.OwnerUserId);
         Scope<AutomationRule>(model, e => e.OrganizationId, e => e.OwnerUserId);
         Scope<ClubMember>(model, e => e.OrganizationId, e => e.OwnerUserId);
@@ -157,11 +165,64 @@ public partial class AppDbContext
         Scope<ClubOnlinePayment>(model, e => e.OrganizationId);
         Scope<ClubProviderEvent>(model, e => e.OrganizationId);
         Scope<ClubPaymentReference>(model, e => e.OrganizationId);
+        // A contract's deposit: the signing link's request acts for the contract's workspace
+        // before it reads one, and Stripe's webhook for the workspace its address names.
+        Scope<ContractDeposit>(model, e => e.OrganizationId);
         Scope<ClubBankImport>(model, e => e.OrganizationId);
         Scope<ClubBankTransaction>(model, e => e.OrganizationId);
+        // Sales, the POS's tickets and connection, and members' codes: club money and club records,
+        // an organization's alone. The POS import finds the workspaces it runs for across
+        // workspaces first (IgnoreQueryFilters, said where), then acts for each.
+        Scope<ClubSale>(model, e => e.OrganizationId);
+        Scope<ClubSaleLine>(model, e => e.OrganizationId);
+        Scope<ClubMemberCode>(model, e => e.OrganizationId);
+        Scope<ClubPosSettings>(model, e => e.OrganizationId);
+        Scope<ClubPosTicket>(model, e => e.OrganizationId);
+        // Privacy: the settings, the log of erasures and the retention runs. An organization's alone;
+        // the retention job finds the workspaces it runs for across workspaces first
+        // (IgnoreQueryFilters, said where), then acts for each.
+        Scope<PrivacySettings>(model, e => e.OrganizationId);
+        Scope<PersonErasure>(model, e => e.OrganizationId);
+        Scope<RetentionRun>(model, e => e.OrganizationId);
         Scope<OnboardingSettings>(model, e => e.OrganizationId);
         Scope<DealOnboarding>(model, e => e.OrganizationId);
         Scope<EmailImage>(model, e => e.OrganizationId);
+        // An automation's runs and the log of their steps: an organization's alone, as its
+        // rules are. The runner finds what is due across workspaces first (IgnoreQueryFilters,
+        // said where), then acts for each run's own.
+        Scope<AutomationRun>(model, e => e.OrganizationId);
+        Scope<AutomationRunStep>(model, e => e.OrganizationId);
+        // The member portal: an organization's alone. A member signing in names no workspace
+        // until their link or session is found, which is looked up across workspaces by its
+        // secret's hash or its id (IgnoreQueryFilters, said where); a signed-in member reads as
+        // the organization their session names (TenantContext).
+        Scope<MemberPortalSettings>(model, e => e.OrganizationId);
+        Scope<MemberPortalAccount>(model, e => e.OrganizationId);
+        Scope<MemberPortalSession>(model, e => e.OrganizationId);
+        Scope<MemberPortalLink>(model, e => e.OrganizationId);
+        // The assistant. A workspace's usage of the language model is its own; outside any
+        // organization, a person's use of the AI writer is counted on a row of their own. The
+        // morning brief job finds who is due across workspaces first (IgnoreQueryFilters, said
+        // where), then acts for each workspace.
+        Scope<AiUsage>(model, e => e.OrganizationId, e => e.UserId);
+        Scope<AssistantSettings>(model, e => e.OrganizationId);
+        Scope<AssistantBrief>(model, e => e.OrganizationId);
+        // Retention and referrals: an organization's alone. The daily scoring run finds the
+        // workspaces it scores across workspaces first (IgnoreQueryFilters, said where), then
+        // acts for each.
+        Scope<ClubRetentionSettings>(model, e => e.OrganizationId);
+        Scope<ClubMemberRisk>(model, e => e.OrganizationId);
+        Scope<ClubRenewal>(model, e => e.OrganizationId);
+        Scope<ClubReferralBonus>(model, e => e.OrganizationId);
+        Scope<ClubMemberConcern>(model, e => e.OrganizationId);
+        Scope<ClubScoringRun>(model, e => e.OrganizationId);
+        // Corporate memberships and their nominees: an organization's alone.
+        Scope<ClubCorporateMembership>(model, e => e.OrganizationId);
+        Scope<ClubCorporateNominee>(model, e => e.OrganizationId);
+        // Private events, their lines and their guests: an organization's alone.
+        Scope<ClubPrivateEvent>(model, e => e.OrganizationId);
+        Scope<ClubPrivateEventLine>(model, e => e.OrganizationId);
+        Scope<ClubPrivateEventGuest>(model, e => e.OrganizationId);
 
         // Copy templates follow a person rather than a workspace (TemplateRepository): the
         // system's templates are everyone's, a person's own go with them, and a team's

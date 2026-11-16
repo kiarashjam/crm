@@ -26,6 +26,11 @@ export interface DealLineItem {
   name: string;
   quantity: number;
   unitPrice: number;
+  /**
+   * The VAT rate in percent the unit price includes (8.1, 2.6, 3.8, 0), or null when none
+   * was given. A contract drafted on the deal prints it in its fee table.
+   */
+  vatRate?: number | null;
 }
 
 const productStore = createMockStore<Product>({
@@ -82,6 +87,8 @@ export interface LineItemInput {
   name: string;
   quantity: number;
   unitPrice: number;
+  /** Null in a change takes the rate off (the server reads the change as a merge patch). */
+  vatRate?: number | null;
 }
 
 export async function addDealLineItem(dealId: string, input: LineItemInput): Promise<DealLineItem | null> {

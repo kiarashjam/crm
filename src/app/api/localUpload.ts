@@ -219,7 +219,7 @@ export async function uploadLocalData(
       try {
         const created = await createFieldDefinition({
           entityType: field.entityType, label: field.label, type: field.type,
-          options: field.options, required: field.required,
+          options: field.options ?? undefined, required: field.required,
         });
         if (created) {
           serverKey.set(ref, created.key);

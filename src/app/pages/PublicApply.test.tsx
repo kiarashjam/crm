@@ -93,4 +93,22 @@ describe('the public application form', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Please try again in a minute.');
     expect(screen.getByLabelText(/First name/)).toHaveValue('Lena');
   });
+
+  it('leaves the news box out when the workspace has it off', async () => {
+    server.use(http.get(`${BASE}/api/public/apply/tok`, () => HttpResponse.json({
+      clubName: 'Pavillon 46', consentText: 'Yes, send me the club’s news by email.', tiers: [], marketingConsent: 'off',
+    })));
+    show('tok');
+    expect(await screen.findByRole('heading', { name: 'Apply to Pavillon 46' })).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    expect(screen.getByRole('link', { name: 'privacy notice' })).toHaveAttribute('href', '/privacy?form=tok');
+  });
+
+  it('makes the news box a condition of applying when the workspace requires it', async () => {
+    server.use(http.get(`${BASE}/api/public/apply/tok`, () => HttpResponse.json({
+      clubName: 'Pavillon 46', consentText: 'Yes, send me the club’s news by email.', tiers: [], marketingConsent: 'required',
+    })));
+    show('tok');
+    expect(await screen.findByRole('checkbox', { name: /send me the club’s news/ })).toBeRequired();
+  });
 });

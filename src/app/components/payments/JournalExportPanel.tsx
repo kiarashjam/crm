@@ -7,7 +7,7 @@ import { Link } from 'react-router-dom';
 import { Download, Eye, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/app/components/ui/button';
-import { Input } from '@/app/components/ui/input';
+import { DateInput } from '@/app/components/DateInput';
 import { Label } from '@/app/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select';
 import { downloadJournalCsv, getJournal, type Journal, type JournalLayout } from '@/app/api/payments';
@@ -74,11 +74,11 @@ export function JournalExportPanel({ canTake }: { canTake: boolean }) {
         <div className="grid gap-4 sm:grid-cols-3">
           <div>
             <Label htmlFor="journal-from" className="text-xs">From</Label>
-            <Input id="journal-from" type="date" value={period.from} onChange={(e) => { setPeriod({ ...period, from: e.target.value }); setJournal(null); }} />
+            <DateInput id="journal-from" value={period.from} onChange={(day) => { setPeriod({ ...period, from: day }); setJournal(null); }} />
           </div>
           <div>
             <Label htmlFor="journal-to" className="text-xs">To (the whole day)</Label>
-            <Input id="journal-to" type="date" value={period.to} onChange={(e) => { setPeriod({ ...period, to: e.target.value }); setJournal(null); }} />
+            <DateInput id="journal-to" value={period.to} onChange={(day) => { setPeriod({ ...period, to: day }); setJournal(null); }} />
           </div>
           <div>
             <Label className="text-xs">VAT</Label>

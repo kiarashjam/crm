@@ -24,6 +24,7 @@ namespace ACI.WebApi.Controllers;
 [Authorize]
 [Produces("application/json")]
 [Requires(MemberPermissions.ManageSettings, WritesOnly = true)]
+[InModule(WorkspaceModules.Sales)]
 public class DealStagesController : ControllerBase
 {
     private readonly IDealStageService _dealStageService;

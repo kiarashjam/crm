@@ -4,7 +4,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const state = vi.hoisted(() => ({
-  org: null as null | { id: string; name: string; isOwner: boolean; role: number; permissions?: string[]; leadKinds?: string },
+  org: null as null | {
+    id: string; name: string; isOwner: boolean; role: number; permissions?: string[]; leadKinds?: string; salesEnabled?: boolean;
+  },
   demo: false,
 }));
 const refreshOrgs = vi.hoisted(() => vi.fn(async () => {}));
@@ -64,6 +66,12 @@ describe('the "Your leads are" setting', () => {
 
   it('is not offered in a demo workspace, which has no server to keep it', () => {
     state.demo = true;
+    const { container } = render(<LeadKindsCard />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('is not offered while the workspace has the Sales module, where leads live, turned off', () => {
+    state.org = { ...state.org!, salesEnabled: false };
     const { container } = render(<LeadKindsCard />);
     expect(container).toBeEmptyDOMElement();
   });

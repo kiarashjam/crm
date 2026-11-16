@@ -66,8 +66,15 @@ public sealed class OrganizationCloner
     {
         [typeof(User)] = "People are shared between the two organizations, not copied.",
         [typeof(UserSettings)] = "A person's own preferences, the same in every organization.",
+        [typeof(UserExternalLogin)] = "A person's own single sign-on, the same in every organization.",
+        [typeof(UserPasskey)] = "A person's own passkeys, the same in every organization.",
+        [typeof(AuthChallenge)] = "Sign-in steps in progress, which belong to no organization.",
         [typeof(Organization)] = "The copy is a new organization, made rather than copied row for row.",
         [typeof(JoinRequest)] = "Requests to join the original. Everyone in it is a member of the copy already.",
+        [typeof(MemberPortalSession)] = "Members signed in to the original's member portal. Their sessions name the original; the copy's portal starts with nobody signed in.",
+        [typeof(MemberPortalLink)] = "Sign-in links emailed for the original's member portal, which sign in to the original only.",
+        [typeof(MemberPortalAccount)] = "Who was invited to and used the original's member portal; nobody has used the copy's yet.",
+        [typeof(AiUsage)] = "The original's calls to the language model, held against its monthly limit; the copy has made none.",
     };
 
     private static readonly Regex GuidText = new(
@@ -254,7 +261,10 @@ public sealed class OrganizationCloner
         var adjustments = new Dictionary<string, int>();
         var deferred = new List<(object Copy, IProperty Property, object Value)>();
         var previous = _db.RecordsAuditTrail;
+        var defaults = _db.AppliesFieldDefaults;
         _db.RecordsAuditTrail = false;
+        // The copied records bring their own field values, the defaults' included.
+        _db.AppliesFieldDefaults = false;
         try
         {
             _db.Organizations.Add(org);
@@ -290,6 +300,7 @@ public sealed class OrganizationCloner
         finally
         {
             _db.RecordsAuditTrail = previous;
+            _db.AppliesFieldDefaults = defaults;
             _db.ChangeTracker.Clear();
         }
 
@@ -507,6 +518,15 @@ public sealed class OrganizationCloner
                     m.MessageIdHeader = $"<{m.Id:N}{header[(header.IndexOf('@') is var at and >= 0 ? at : header.Length - 1)..]}";
                 m.ReplyToken = null;
                 return "Outbox messages still queued are sent from the original only, and copies get their own Message-ID";
+            case AutomationRun run when AutomationRunStatuses.Active.Contains(run.Status):
+                // A rule's run still waiting (or about to retry) is carried on by the original
+                // alone: carried on in the copy too, its email would reach the same person twice.
+                run.Status = AutomationRunStatuses.Cancelled;
+                run.NextAttemptAtUtc = null;
+                run.ClaimedUntilUtc = null;
+                run.FinishedAtUtc = DateTime.UtcNow;
+                run.LastError = "Copied with its organization while under way; the original carries it on.";
+                return "Automation runs still under way are carried on by the original only";
             case Campaign c when c.Status is CampaignStatuses.Scheduled or CampaignStatuses.Sending:
                 // The members are the same people in both organizations: a campaign waiting
                 // for its time, or still being sent, goes out once, from the original. The copy
@@ -533,14 +553,48 @@ public sealed class OrganizationCloner
                 settings.StripeCheckedAtUtc = null;
                 settings.WebhookKey = Guid.NewGuid();
                 return "Payment settings keep the Stripe key and webhook with the original";
+            case ClubPosSettings pos:
+                // The POS account stays with the original: the copy holds the same members, and
+                // importing the same location's tickets would post every bill to them twice.
+                pos.RefreshTokenProtected = null;
+                pos.AccessTokenProtected = null;
+                pos.AccessTokenExpiresAtUtc = null;
+                pos.ConnectedAtUtc = null;
+                pos.ConnectedByName = null;
+                pos.Enabled = false;
+                pos.ClaimedUntilUtc = null;
+                return "The POS connection stays with the original, so no ticket is imported twice";
             case ClubPaymentProfile profile when profile.AutoPayDues:
                 profile.AutoPayDues = false;
                 return "Saved cards are not charged for dues from the copy";
+            case ContractDeposit deposit when deposit.Status is ContractDepositStatuses.Awaiting or ContractDepositStatuses.Processing:
+                // The signing link stays with the original (see Contract above), and so does
+                // Stripe's page and its word on the payment: the copy keeps the deposit as history.
+                deposit.Status = ContractDepositStatuses.Cancelled;
+                deposit.CheckoutSessionId = null;
+                deposit.CheckoutUrl = null;
+                deposit.CheckoutExpiresAtUtc = null;
+                deposit.FailureMessage = "Copied with its organization before it was paid; the original takes the payment.";
+                return "Deposits not paid yet are paid to the original only";
             case ClubOnlinePayment payment when payment.Status is OnlinePaymentStatuses.Open or OnlinePaymentStatuses.Processing:
                 // Stripe tells the original how it ends; the copy keeps the attempt as history.
                 payment.Status = OnlinePaymentStatuses.Canceled;
                 payment.FailureMessage = "Copied with its organization while still with Stripe; the original records how it ends.";
                 return "Online payments still with Stripe are recorded by the original only";
+            case MemberPortalSettings portal:
+                // The members are the same people in both organizations: the copy does not open a
+                // second portal to them, or invite them from it, until someone turns it on there.
+                // Its address is its own (one organization per address).
+                portal.Enabled = false;
+                portal.PortalKey = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16))
+                    .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+                return "The member portal starts off in the copy, at an address of its own";
+            case ClubRetentionSettings retention when retention.SaveEmail:
+                // The members are the same people in both organizations: one found at risk in the
+                // copy would be emailed from it as well as from the original. The rest of the
+                // club's rules (the weights, the task, the referral bonus) come along.
+                retention.SaveEmail = false;
+                return "Members found at risk in the copy are not emailed from it";
             case OnboardingSettings s when s.WebhookUrl != null || s.WebhookSecret != null:
                 // Like its events address: a customer won in the copy is never handed to the
                 // original's portal, signed as the original. The template and choices stay.

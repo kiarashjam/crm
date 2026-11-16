@@ -43,6 +43,7 @@ file static class ClubDocs
 [Route("api/hospitality")]
 [Authorize]
 [WorkspaceRequired]
+[InModule(WorkspaceModules.Club)]
 public class HospitalityController : ControllerBase
 {
     private readonly IClubDocumentService _docs;

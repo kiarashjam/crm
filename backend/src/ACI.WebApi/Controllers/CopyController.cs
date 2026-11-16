@@ -1,5 +1,7 @@
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
+using ACI.Application.Services;
+using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -28,15 +30,34 @@ public class CopyController : ControllerBase
     private readonly ICopyGeneratorApplicationService _generatorService;
     private readonly ISendToCrmService _sendToCrmService;
     private readonly ICurrentUserService _currentUser;
+    private readonly ICopyGenerator _generator;
+    private readonly IAiBudget _budget;
 
     public CopyController(
         ICopyGeneratorApplicationService generatorService,
         ISendToCrmService sendToCrmService,
-        ICurrentUserService currentUser)
+        ICurrentUserService currentUser,
+        ICopyGenerator generator,
+        IAiBudget budget)
     {
         _generatorService = generatorService;
         _sendToCrmService = sendToCrmService;
         _currentUser = currentUser;
+        _generator = generator;
+        _budget = budget;
+    }
+
+    /// <summary>
+    /// Takes the draft from the workspace's monthly AI allowance when it is a call to the paid
+    /// model, which every draft was, without limit, for anyone who signed up. The per-person
+    /// "ai-copy" rate limit still applies first; drafts from templates cost nothing and are not
+    /// counted. Null when the draft may go ahead, else the refusal (429).
+    /// </summary>
+    private async Task<ActionResult?> RefusedByBudgetAsync(Guid userId, CancellationToken ct)
+    {
+        if (!_generator.CallsModel) return null;
+        var taken = await _budget.TakeAsync(_currentUser.CurrentOrganizationId, userId, personWaiting: true, ct);
+        return taken.IsSuccess ? null : taken.Error.ToProblemResult();
     }
 
     /// <summary>
@@ -55,6 +76,7 @@ public class CopyController : ControllerBase
     {
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
+        if (await RefusedByBudgetAsync(userId.Value, ct) is { } refused) return refused;
         var copy = await _generatorService.GenerateAsync(userId.Value, request, ct);
         return Ok(new { copy });
     }
@@ -81,7 +103,8 @@ public class CopyController : ControllerBase
     {
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
-        
+        if (await RefusedByBudgetAsync(userId.Value, ct) is { } refused) return refused;
+
         var result = await _generatorService.GenerateWithRecipientAsync(userId.Value, request, ct);
         return Ok(result);
     }
@@ -111,7 +134,8 @@ public class CopyController : ControllerBase
     {
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
-        
+        if (await RefusedByBudgetAsync(userId.Value, ct) is { } refused) return refused;
+
         var copy = await _generatorService.RewriteAsync(userId.Value, request, ct);
         return Ok(new RewriteCopyResponse(copy));
     }
@@ -138,7 +162,8 @@ public class CopyController : ControllerBase
     {
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
-        
+        if (await RefusedByBudgetAsync(userId.Value, ct) is { } refused) return refused;
+
         var result = await _generatorService.GenerateInLanguageAsync(userId.Value, request, ct);
         return Ok(result);
     }

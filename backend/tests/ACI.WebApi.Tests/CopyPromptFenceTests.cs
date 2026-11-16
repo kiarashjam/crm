@@ -45,6 +45,25 @@ public class CopyPromptFenceTests
         second.Should().NotBe(fence);
     }
 
+    [Fact]
+    public async Task TheRecipientsEmailAddressIsNotSentToOpenAI()
+    {
+        // Every field of the prompt goes to a processor in the United States. The address
+        // was sent although no copy needs it; the name and company make it personal.
+        var handler = new CapturingHandler();
+        var generator = new OpenAICopyGenerator(
+            new HttpClient(handler),
+            Options.Create(new OpenAISettings { ApiKey = "test-key" }),
+            NullLogger<OpenAICopyGenerator>.Instance);
+        var recipient = new RecipientContext("Anna Keller", "anna.keller@example.ch", "Keller AG", "Partner", "lead", "Called on Monday", "Proposal", "CHF 3,588");
+
+        await generator.GenerateWithRecipientAsync("sales-email", "Book a call", "Met at the fair.", "short", null, null, recipient);
+
+        handler.Prompts.Should().ContainSingle();
+        handler.Prompts[0].Should().Contain("Anna Keller").And.Contain("Keller AG");
+        handler.Prompts[0].Should().NotContain("anna.keller@example.ch").And.NotContain("Email:");
+    }
+
     private sealed class CapturingHandler : HttpMessageHandler
     {
         public List<string> Prompts { get; } = [];

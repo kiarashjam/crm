@@ -64,6 +64,12 @@ public sealed partial class ClubEventService
             return Task.FromResult<Error?>(null);
         }, ct);
         if (!changed.IsSuccess) return changed.Error;
+        // The workspace's rules for someone put on the list (a seat, the waitlist or the door),
+        // once the change is committed and outside its attempts.
+        if (_automations != null && organizationId is Guid org && _user.UserId is Guid actor)
+            await _automations.DispatchAsync(AutomationCatalog.EventRegistered, new AutomationEvent(
+                org, actor, added!.Id.ToString(), $"{added.Name}: {changed.Value.Event.Name}",
+                Email: added.Email, MemberId: added.MemberId, RecordId: added.Id), ct);
         return ToDto(changed.Value.Event, added!, changed.Value.Registrations);
     }
 

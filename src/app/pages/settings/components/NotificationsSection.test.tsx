@@ -25,3 +25,25 @@ describe('the weekly report digest switch', () => {
     expect(updateSettings).toHaveBeenCalledWith({ weeklyDigestEnabled: true });
   });
 });
+
+describe('the morning brief switches', () => {
+  it('the brief starts on and the email off, both live, and the email switch goes with the brief', () => {
+    const updateSettings = vi.fn();
+    const { rerender } = render(<NotificationsSection settings={SETTINGS} updateSettings={updateSettings} />);
+
+    const brief = screen.getByText('Morning brief', { selector: 'p' }).closest('label')!;
+    expect(within(brief).getByRole('switch')).toHaveAttribute('aria-checked', 'true');
+    expect(within(brief).queryByText('Coming soon')).toBeNull();
+    const email = screen.getByText('Also by email').closest('label')!;
+    expect(within(email).getByRole('switch')).toHaveAttribute('aria-checked', 'false');
+    expect(within(email).queryByText('Coming soon')).toBeNull();
+
+    fireEvent.click(within(email).getByRole('switch'));
+    expect(updateSettings).toHaveBeenCalledWith({ morningBriefEmail: true });
+    fireEvent.click(within(brief).getByRole('switch'));
+    expect(updateSettings).toHaveBeenCalledWith({ morningBriefEnabled: false });
+
+    rerender(<NotificationsSection settings={{ ...SETTINGS, morningBriefEnabled: false }} updateSettings={updateSettings} />);
+    expect(screen.queryByText('Also by email')).toBeNull();
+  });
+});

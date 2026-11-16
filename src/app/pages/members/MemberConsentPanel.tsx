@@ -19,6 +19,7 @@ import {
 } from '@/app/api/consent';
 import { clubKeys, useMemberConsent } from '@/app/hooks/queries/club';
 import { useWorkspaceScope } from '@/app/hooks/queries/useWorkspaceScope';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const STATE_LABEL: Record<ConsentStateRow['state'], string> = { granted: 'Agreed', withdrawn: 'Said no', unknown: 'Not asked' };
 const STATE_BADGE: Record<ConsentStateRow['state'], string> = {
@@ -30,7 +31,7 @@ const STATE_BADGE: Record<ConsentStateRow['state'], string> = {
 function formatDate(iso?: string | null): string {
   if (!iso) return '';
   try {
-    return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+    return new Date(iso).toLocaleDateString(currentDateLocale(), { day: 'numeric', month: 'short', year: 'numeric' });
   } catch {
     return iso;
   }

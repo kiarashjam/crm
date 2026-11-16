@@ -68,6 +68,43 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllEnvs());
 
+describe('on a member’s page, joined through a deal', () => {
+  it('links the deal, and lists the contract with its deposit on their account', async () => {
+    server.use(http.get(`${BASE}/api/members/m-lena/links`, () => HttpResponse.json({
+      memberId: 'm-lena', leadId: 'l-lena', leadName: 'Lena Weber', contactId: 'c-lena', contactName: 'Lena Weber',
+      dealId: 'd-lena', dealName: 'Gold membership Lena',
+      applications: [],
+      contracts: [{
+        id: 'k1', title: 'Membership Agreement — Lena Weber', status: 'countersigned', membershipTier: 'Gold', dealId: 'd-lena',
+        deposit: { amount: 500, currency: 'CHF', status: 'paid', amountPaid: 500, amountRefunded: 0, provider: 'stripe', methodType: 'card', memberId: 'm-lena', ledgerPaymentId: 'p1' },
+      }],
+      household: null,
+    })));
+    render(withQueries(<MemoryRouter><MemberLinksCard memberId="m-lena" /></MemoryRouter>));
+
+    expect((await screen.findByRole('link', { name: /Gold membership Lena/ })).getAttribute('href')).toBe('/deals/d-lena');
+    expect(screen.getByRole('link', { name: /Membership Agreement — Lena Weber/ }).getAttribute('href')).toBe('/deals/d-lena');
+    expect(screen.getByText(/Fully executed · Gold/)).toBeInTheDocument();
+    expect(screen.getByTestId('deposit-line')).toHaveTextContent(/Paid/);
+    expect(screen.getByTestId('deposit-line')).toHaveTextContent(/On the account of/);
+  });
+});
+
+describe('on a deal’s page', () => {
+  it('names the member the deal brought in', async () => {
+    server.use(http.get(`${BASE}/api/deals/d-lena/membership`, () => HttpResponse.json({
+      contactId: 'c-lena',
+      members: [{ id: 'm-lena', name: 'Lena Weber', email: 'lena@example.ch', tier: 'Gold', status: 'Active', joinedAtUtc: '2026-11-02T10:00:00Z' }],
+      applications: [], household: null,
+    })));
+    render(withQueries(<MemoryRouter><PersonMembershipCard kind="deal" id="d-lena" personName="Lena Weber" contactId="c-lena" /></MemoryRouter>));
+
+    expect((await screen.findByRole('link', { name: /Lena Weber/ })).getAttribute('href')).toBe('/members/m-lena');
+    expect(screen.getByText(/Gold member · Active/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /start a membership application/i })).toBeNull();
+  });
+});
+
 describe('on a member’s page', () => {
   it('names their lead and contact, how they joined, and that their bills go to the primary', async () => {
     render(withQueries(<MemoryRouter><MemberLinksCard memberId="m-anna" /></MemoryRouter>));

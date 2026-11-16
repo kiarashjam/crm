@@ -19,6 +19,7 @@ namespace ACI.WebApi.Controllers;
 [Authorize]
 [WorkspaceRequired]
 [Produces("application/json")]
+[InModule(WorkspaceModules.Club)]
 public class PaymentSettingsController : ControllerBase
 {
     private readonly IClubPaymentSettings _settings;
@@ -66,6 +67,7 @@ public class PaymentSettingsController : ControllerBase
 [Authorize]
 [WorkspaceRequired]
 [Produces("application/json")]
+[InModule(WorkspaceModules.Club)]
 public class PaymentReferencesController : ControllerBase
 {
     private readonly IClubQrBills _qrBills;
@@ -102,6 +104,7 @@ public sealed class BankFileRequest
 [WorkspaceRequired]
 [Produces("application/json")]
 [Requires(MemberPermissions.ManageMoney, What = "work with the bank's files")]
+[InModule(WorkspaceModules.Club)]
 public class BankFilesController : ControllerBase
 {
     /// <summary>Larger than a busy club's month of camt files.</summary>
@@ -170,6 +173,7 @@ public class BankFilesController : ControllerBase
 [Authorize]
 [WorkspaceRequired]
 [Produces("application/json")]
+[InModule(WorkspaceModules.Club)]
 public class MemberPaymentsController : ControllerBase
 {
     private readonly IClubPayments _payments;
@@ -251,6 +255,7 @@ public class MemberPaymentsController : ControllerBase
 [Authorize]
 [WorkspaceRequired]
 [Produces("application/json")]
+[InModule(WorkspaceModules.Club)]
 public class OnlinePaymentsController : ControllerBase
 {
     private readonly IClubPayments _payments;
@@ -273,6 +278,7 @@ public class OnlinePaymentsController : ControllerBase
 [Authorize]
 [WorkspaceRequired]
 [Produces("application/json", "text/csv")]
+[InModule(WorkspaceModules.Club)]
 public class AccountingController : ControllerBase
 {
     private readonly IClubAccounting _accounting;

@@ -1,3 +1,4 @@
+using ACI.Application.Common;
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
 using ACI.Infrastructure.Persistence;
@@ -168,7 +169,9 @@ public sealed class OutboxRepository : IOutboxRepository
 
     public async Task<EmailSuppression?> FindSuppressionAsync(Guid organizationId, IReadOnlyCollection<string> addresses, CancellationToken ct = default)
     {
-        var wanted = addresses.Select(DoNotContactRules.Normalize).Where(a => a.Length > 0).Distinct().ToList();
+        // Each address as itself, and as the fingerprint an erasure leaves for it: an erased
+        // person's address is never kept in clear (ErasedAddresses).
+        var wanted = ErasedAddresses.LookupValues(addresses);
         if (wanted.Count == 0) return null;
         return await _db.EmailSuppressions.AsNoTracking()
             .Where(s => s.OrganizationId == organizationId && wanted.Contains(s.Email))

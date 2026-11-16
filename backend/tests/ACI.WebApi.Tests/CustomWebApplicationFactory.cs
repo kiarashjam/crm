@@ -53,6 +53,15 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
             // (ICampaignService.RunDueAsync), not whenever a loop wakes mid-test.
             foreach (var scheduler in services.Where(d => d.ImplementationType == typeof(ACI.WebApi.Services.CampaignSchedulerBackgroundService)).ToList())
                 services.Remove(scheduler);
+            // And the automation runner: a test carries due runs on when it chooses (AutomationRunner).
+            foreach (var runner in services.Where(d => d.ImplementationType == typeof(ACI.WebApi.Services.AutomationRunnerBackgroundService)).ToList())
+                services.Remove(runner);
+            // And the morning briefs: a test sends what is due at the time it names (IMorningBrief.SendDueAsync).
+            foreach (var briefs in services.Where(d => d.ImplementationType == typeof(ACI.WebApi.Services.MorningBriefBackgroundService)).ToList())
+                services.Remove(briefs);
+            // And the daily at-risk scoring: a test scores when it chooses (IClubRetention.RunScheduledAsync).
+            foreach (var scoring in services.Where(d => d.ImplementationType == typeof(ACI.WebApi.Services.ClubScoringBackgroundService)).ToList())
+                services.Remove(scoring);
 
             // Remove existing DbContext registration
             var descriptor = services.SingleOrDefault(

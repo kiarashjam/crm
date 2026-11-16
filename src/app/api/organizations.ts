@@ -20,11 +20,58 @@ export interface Organization {
   timeZone?: string;
   /** Days without activity after which an open deal is stale, unless its pipeline says otherwise; 0 never. Older servers send none. */
   staleDealDays?: number;
+  /** Whether the Sales module is on (leads, deals, outreach, sales reports). Older servers send none: on. */
+  salesEnabled?: boolean;
+  /** Whether the Club module is on (members, house accounts, events, campaigns…). Older servers send none: on. */
+  clubEnabled?: boolean;
+  /** Whether CSV exports split columns by a semicolon (Excel set up for Switzerland) rather than a comma. */
+  csvSemicolon?: boolean;
+  /** Whether the owner requires the team to sign in with Google or Microsoft here. */
+  ssoRequired?: boolean;
+  /** Whether this workspace refuses the current session (it began with a password or a passkey): sign in with SSO to open it. */
+  ssoSignInNeeded?: boolean;
   /**
    * What the workspace's leads are: "person" (people only, the default), "establishment"
    * (businesses such as restaurants) or "both". Older servers send none: people.
    */
   leadKinds?: 'person' | 'establishment' | 'both';
+}
+
+/**
+ * The two halves of Cadence a workspace can turn off (the server's WorkspaceModules).
+ * Contacts, companies, tasks, activities, the calendar, the team and settings belong to
+ * both and are always there.
+ */
+export type WorkspaceModule = 'sales' | 'club';
+
+export const MODULE_LABELS: Readonly<Record<WorkspaceModule, string>> = { sales: 'Sales', club: 'Club' };
+
+/**
+ * Whether the workspace has this module on. On unless it says otherwise: a personal
+ * workspace, a demo one and an older server have both.
+ */
+export function moduleOn(org: Pick<Organization, 'salesEnabled' | 'clubEnabled'> | null | undefined, module: WorkspaceModule): boolean {
+  if (!org) return true;
+  return (module === 'sales' ? org.salesEnabled : org.clubEnabled) !== false;
+}
+
+/** The server's answer when a request reaches a module the workspace has turned off. */
+export const MODULE_OFF_CODE = 'Module.Off';
+
+/**
+ * Turn the workspace's Sales or Club module on or off (whoever manages its settings).
+ * Fields left out keep their value. Throws with the server's reason when it refuses: one
+ * module always stays on, and a module whose own work still runs (the club's automatic
+ * billing, a scheduled campaign, leads in sequences) is not turned off until that stops.
+ */
+export async function updateWorkspaceModules(
+  id: string,
+  modules: { sales?: boolean; club?: boolean },
+): Promise<{ sales: boolean; club: boolean }> {
+  return authFetchJson<{ sales: boolean; club: boolean }>(`/api/organizations/${id}/modules`, {
+    method: 'PUT',
+    body: JSON.stringify(modules),
+  });
 }
 
 /** Role ids as persisted by the backend (OrgMemberRole). */
@@ -42,6 +89,8 @@ export const PERMISSION = {
   SeeAllDeals: 'deals.all',
   ManageSettings: 'settings.manage',
   ManageMembers: 'members.manage',
+  /** Export everything held about a person, erase a person, and set how long personal data is kept. */
+  ManagePrivacy: 'privacy.manage',
   ManageMoney: 'money.manage',
   VoidMoney: 'money.void',
   ClubMembers: 'club.members',
@@ -213,7 +262,14 @@ export async function createOrganization(name: string): Promise<Organization | n
  */
 export async function updateOrganizationSettings(
   id: string,
-  settings: { currency?: string; locale?: string; timeZone?: string; staleDealDays?: number; leadKinds?: 'person' | 'establishment' | 'both' },
+  settings: {
+    currency?: string;
+    locale?: string;
+    timeZone?: string;
+    staleDealDays?: number;
+    csvSemicolon?: boolean;
+    leadKinds?: 'person' | 'establishment' | 'both';
+  },
 ): Promise<Organization | null> {
   const org = await authFetchJson<Organization>(`/api/organizations/${id}/settings`, {
     method: 'PUT',

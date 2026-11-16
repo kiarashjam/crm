@@ -375,6 +375,10 @@ export interface PublicPayPage {
   available: boolean;
   reason?: string;
   autoPay: boolean;
+  /** The member's language (en, de, fr), which the page opens in. */
+  language?: string | null;
+  /** The club's number format ("de-CH"), for the amount. */
+  locale?: string | null;
 }
 
 async function publicCall<T>(path: string, method: 'GET' | 'POST', token: string): Promise<T> {

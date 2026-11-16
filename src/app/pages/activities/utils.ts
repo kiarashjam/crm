@@ -1,9 +1,10 @@
 import { daysBetween, dayKeyIn, formatDay, todayKeyIn, weekdayOf } from '@/app/lib/zonedTime';
+import { currentDateLocale } from '@/app/i18n/current';
 
 /** When an activity happened, on the workspace's clock (`timeZone`), like the day it is listed under. */
 export function formatDate(iso: string, timeZone?: string): string {
   const d = new Date(iso);
-  return d.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short', timeZone });
+  return d.toLocaleString(currentDateLocale(), { dateStyle: 'short', timeStyle: 'short', timeZone });
 }
 
 /** "5m ago", "3d ago", or after a week the day it happened, on the workspace's calendar. */
@@ -18,7 +19,7 @@ export function formatRelativeDate(iso: string, timeZone?: string, now: Date = n
   if (diffMins < 60) return `${diffMins}m ago`;
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffDays < 7) return `${diffDays}d ago`;
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone });
+  return d.toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric', timeZone });
 }
 
 /**
