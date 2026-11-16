@@ -5,7 +5,7 @@ import {
   Tag, UserPlus, Info, CircleDot, Upload, RefreshCw, Users, Handshake,
   ArrowRight, CheckCircle2, SlidersHorizontal, ArrowUpDown, ArrowUp,
   ArrowDown, X, Target, Clock, Zap, UserCircle,
-  AlertTriangle, Store, UserRound,
+  AlertTriangle, Store, UserRound, MessageSquareHeart,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ApiError } from '@/app/api/apiClient';
@@ -79,7 +79,7 @@ import {
 
 // Import extracted components from leads folder
 import { AddLeadDialog } from './leads/AddLeadDialog';
-import { WelcomeConfirmDialog, WelcomeFields, WelcomeProgressDialog, draftFrom, toPreviewRequest, toStartRequest, type WelcomeDraft } from '@/app/components/onboarding';
+import { ConvertWelcomeChoice, WelcomeConfirmDialog, WelcomeProgressDialog, draftFrom, toPreviewRequest, toStartRequest, type WelcomeDraft } from '@/app/components/onboarding';
 import { getOnboardingSettings, type OnboardingSettings, type StartOnboardingRequest } from '@/app/api/onboarding';
 import { StatusFilterMultiSelect } from './leads/components/StatusFilterMultiSelect';
 import { BulkActionsBar } from './leads/components/BulkActionsBar';
@@ -108,6 +108,7 @@ import { LeadReferralMigrationDialog } from './leads/components/LeadReferralMigr
 import { FALLBACK_STATUSES, FALLBACK_SOURCES, EMPTY_LEAD_FORM, STATUS_BADGE_COLORS } from './leads/config';
 import { leadEditForm, useFreshLeadOnOpen } from './leads/useFreshLeadOnOpen';
 import { leadFormProblem, leadProfilePayload, quickInputToForm } from './leads/leadFormPayload';
+import { useModules } from '@/app/hooks/useModules';
 import { convertRecipient, establishmentSummary, establishmentTypeLabel, leadKindOf, useLeadKinds } from '@/app/lib/leadKinds';
 import { QUALIFIED_OR_BEYOND, statusIn } from './leads/leadStatusSync';
 import { findStatusFixes } from './leads/bulkStatusReconcile';
@@ -234,6 +235,7 @@ export default function Leads() {
   const [convertOptionsLoading, setConvertOptionsLoading] = useState(false);
   const [converting, setConverting] = useState(false);
   // The welcome that can go with a conversion into a deal (see Welcome & portal).
+  const modules = useModules();
   const [onboardingSettings, setOnboardingSettings] = useState<OnboardingSettings | null>(null);
   const [welcome, setWelcome] = useState<WelcomeDraft>(() => draftFrom(null));
   const [welcomeConfirm, setWelcomeConfirm] = useState(false);
@@ -1005,10 +1007,33 @@ export default function Leads() {
   const convertStageList = (convertPipeline?.dealStages ?? []).slice().sort((a, b) => a.displayOrder - b.displayOrder);
   const defaultConvertStageId = convertStageList[0]?.id ?? 'Qualification';
 
-  // A welcome goes when the portal is connected, the person left it on, and there is a deal.
-  const welcomeGoes = Boolean(
-    onboardingSettings?.configured && welcome.send && (convertForm.createDeal || convertForm.existingDealId),
-  );
+  // A welcome goes with a deal (their membership) to the deal's contact: it goes when the
+  // portal is connected, the person left it on, and both are there.
+  const convertHasDeal = Boolean(convertForm.createDeal || convertForm.existingDealId);
+  const welcomeExistingContact = convertForm.existingContactId
+    ? convertOptions.contacts.find((c) => c.id === convertForm.existingContactId)
+    : undefined;
+  const welcomeNoEmail = convertPlace
+    ? 'The establishment has no contact person with an email'
+    : `${convertDialogLead?.name ?? 'This lead'} has no email address`;
+  const welcomeBlocked = convertForm.existingContactId
+    ? (welcomeExistingContact && !welcomeExistingContact.email?.trim() ? `${welcomeExistingContact.name} has no email address to send it to.` : null)
+    : convertForm.createContact
+      ? (convertPersonEmail ? null : `${welcomeNoEmail}: add one to the lead, or pick an existing contact above.`)
+      : convertPersonEmail
+        ? 'Needs a contact to send it to: choose "Create new contact" above.'
+        : `${welcomeNoEmail}: pick an existing contact above to send it to.`;
+  const welcomeGoes = Boolean(onboardingSettings?.configured && welcome.send && convertHasDeal && !welcomeBlocked);
+  const welcomeDealName = convertForm.createDeal
+    ? convertForm.dealName?.trim() || convertDialogLead?.name
+    : convertOptions.deals.find((d) => d.id === convertForm.existingDealId)?.name;
+  // Shown where a welcome can be sent or set up: a club, a connected portal, or a deal picked.
+  const showWelcomeChoice = Boolean(onboardingSettings?.configured || modules.club || convertHasDeal);
+  // Choosing the welcome adds the deal it goes with when none is picked.
+  const turnWelcomeOn = () => {
+    setWelcome((w) => ({ ...w, send: true }));
+    if (!convertHasDeal) setConvertForm((f) => ({ ...f, createDeal: true }));
+  };
   const welcomePreview = useMemo(
     () => (welcomeConfirm && convertDialogLead
       ? toPreviewRequest(welcome, {
@@ -2371,7 +2396,7 @@ export default function Leads() {
               </div>
               
               {/* Conversion flow visualization */}
-              <div className="mt-5 flex items-center justify-center gap-2 bg-white/10 backdrop-blur-sm rounded-xl px-4 py-3 border border-white/20">
+              <div className="mt-5 flex flex-wrap items-center justify-center gap-x-2 gap-y-2 bg-white/10 backdrop-blur-sm rounded-xl px-4 py-3 border border-white/20">
                 <div className="flex items-center gap-1.5 text-white/90">
                   <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
                     {convertPlace ? <Store className="w-4 h-4" /> : <User className="w-4 h-4" />}
@@ -2416,6 +2441,17 @@ export default function Leads() {
                         <Handshake className="w-4 h-4" />
                       </div>
                       <span className="text-sm font-medium">Deal</span>
+                    </div>
+                  </>
+                )}
+                {welcomeGoes && (
+                  <>
+                    <span className="text-white/40 text-sm">+</span>
+                    <div className="flex items-center gap-1.5 text-white">
+                      <div className="w-8 h-8 rounded-lg bg-white/30 flex items-center justify-center">
+                        <MessageSquareHeart className="w-4 h-4" />
+                      </div>
+                      <span className="text-sm font-medium">Welcome</span>
                     </div>
                   </>
                 )}
@@ -2812,8 +2848,16 @@ export default function Leads() {
                 )}
               </div>
 
-              {(convertForm.createDeal || convertForm.existingDealId) && (
-                <WelcomeFields draft={welcome} onChange={setWelcome} settings={onboardingSettings} idPrefix="convert-welcome" />
+              {showWelcomeChoice && (
+                <ConvertWelcomeChoice
+                  draft={welcome}
+                  onChange={setWelcome}
+                  settings={onboardingSettings}
+                  on={welcomeGoes}
+                  blocked={welcomeBlocked}
+                  dealName={welcomeDealName}
+                  onTurnOn={turnWelcomeOn}
+                />
               )}
 
               </div>
