@@ -80,6 +80,41 @@ jobs:
             --output none
           echo "Applied Email__SmtpPassword and Email__FrontendBaseUrl=$SPA_ORIGIN to $APP_NAME ($RESOURCE_GROUP)."
 
+      # The API's own public address (Email__ApiBaseUrl) builds the links to email images
+      # and the address a member portal reports a welcome's progress to, which must be
+      # https: Pavillon 46 refuses a handoff that names any other. It defaults to
+      # localhost, so it is set here from the address the frontend is built to call
+      # (VITE_API_URL), or API_BASE_URL when that is set. Only when the Web App has no
+      # public address yet: one set by hand in Azure is kept.
+      - name: Configure the API's public address
+        env:
+          APP_NAME: ${{ secrets.AZURE_WEBAPP_NAME }}
+          API_ORIGIN: ${{ vars.API_BASE_URL || vars.VITE_API_URL }}
+        run: |
+          set -euo pipefail
+          API_ORIGIN="${API_ORIGIN%/}"
+          case "$API_ORIGIN" in
+            https://*) ;;
+            *) echo "Neither API_BASE_URL nor VITE_API_URL is an https address; leaving Email__ApiBaseUrl unchanged."; exit 0 ;;
+          esac
+          RESOURCE_GROUP=$(az webapp list --query "[?name=='$APP_NAME'].resourceGroup | [0]" -o tsv)
+          if [ -z "$RESOURCE_GROUP" ]; then
+            echo "::warning::Could not find a Web App named '$APP_NAME'; leaving Email__ApiBaseUrl unchanged."
+            exit 0
+          fi
+          CURRENT=$(az webapp config appsettings list --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" \
+            --query "[?name=='Email__ApiBaseUrl'].value | [0]" -o tsv)
+          case "$CURRENT" in
+            https://*localhost*|http://*|"") ;;
+            https://*) echo "Email__ApiBaseUrl is already $CURRENT; keeping it."; exit 0 ;;
+          esac
+          az webapp config appsettings set \
+            --name "$APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --settings "Email__ApiBaseUrl=$API_ORIGIN" \
+            --output none
+          echo "Set Email__ApiBaseUrl=$API_ORIGIN on $APP_NAME (it was '${CURRENT:-not set}')."
+
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v2
         with:

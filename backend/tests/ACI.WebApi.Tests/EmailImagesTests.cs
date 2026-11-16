@@ -62,6 +62,46 @@ public class EmailImagesTests
     }
 
     [Fact]
+    public async Task AnImagesAddressIsTheServersPublicOne_EvenWhenItWasNeverSet()
+    {
+        // Email:ApiBaseUrl left at its localhost default, as a deployment that never set it:
+        // every image got a localhost address, uploaded fine, and showed nowhere.
+        await using var app = new CustomWebApplicationFactory();
+        var (owner, ownerId) = await SignInAsync(app, "owner@example.ch");
+        var org = await CreateAsync(app, ownerId, "Pavillon 46");
+        owner.In(org);
+        owner.DefaultRequestHeaders.Host = "api.cadencee.ai";
+
+        var image = await JsonAsync(await owner.PostAsync("/api/email-images", Form(Png, "logo.png", "image/png")));
+        image.GetProperty("url").GetString().Should().StartWith("https://api.cadencee.ai/api/public/email-images/",
+            "the address the browser reached, over https, is the one mail apps can fetch");
+        (await JsonAsync(await owner.GetAsync("/api/email-images"))).EnumerateArray().Single().GetProperty("url").GetString()
+            .Should().StartWith("https://api.cadencee.ai/", "the library gives the same address");
+    }
+
+    [Fact]
+    public async Task ASetPublicAddressIsUsedAsItIs()
+    {
+        await using var app = new PublicApp("https://crm-api.example.ch/");
+        var (owner, ownerId) = await SignInAsync(app, "owner@example.ch");
+        var org = await CreateAsync(app, ownerId, "Pavillon 46");
+        owner.In(org);
+        owner.DefaultRequestHeaders.Host = "internal-host.example.net";
+
+        var image = await JsonAsync(await owner.PostAsync("/api/email-images", Form(Png, "logo.png", "image/png")));
+        image.GetProperty("url").GetString().Should().StartWith("https://crm-api.example.ch/api/public/email-images/");
+    }
+
+    private sealed class PublicApp(string apiBaseUrl) : CustomWebApplicationFactory
+    {
+        protected override void ConfigureWebHost(Microsoft.AspNetCore.Hosting.IWebHostBuilder builder)
+        {
+            base.ConfigureWebHost(builder);
+            builder.UseSetting("Email:ApiBaseUrl", apiBaseUrl);
+        }
+    }
+
+    [Fact]
     public async Task OnlyRealImagesAreKept_WhateverTheyAreCalled()
     {
         await using var app = new CustomWebApplicationFactory();

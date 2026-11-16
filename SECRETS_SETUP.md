@@ -253,7 +253,11 @@ kept out of the request log.
 **Club campaigns and member email.** They use the same relay and outbox; nothing new is
 needed to send them. Three settings make them complete:
 
-- `Email__ApiBaseUrl`: the API's public https origin, e.g. `https://<your-api>.azurewebsites.net`.
+- `Email__ApiBaseUrl`: the API's public https origin, e.g. `https://api.cadencee.ai`. The backend
+  deploy sets it from the `API_BASE_URL` repository variable, else from `VITE_API_URL`, when the
+  Web App has no https address set yet. It also builds the links to welcome-email images and the
+  address a member portal reports a welcome's progress to (Pavillon 46 refuses one that is not
+  https). Left unset, the API uses the address each request came in on, over https.
   A member's marketing email then carries a one-click unsubscribe (`List-Unsubscribe` with
   `List-Unsubscribe-Post`, which Gmail and Yahoo expect from bulk senders). Left at its
   localhost default, the header names the unsubscribe page instead, which still works but

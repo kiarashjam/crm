@@ -7,7 +7,6 @@ using ACI.Application.Interfaces;
 using ACI.Domain.Common;
 using ACI.Domain.Entities;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace ACI.Application.Services;
 
@@ -67,8 +66,8 @@ public sealed class OnboardingService : IOnboardingService
     private readonly IWebhookTransport _transport;
     private readonly IActivityService _activities;
     private readonly ITenantContext _tenant;
+    private readonly IPublicAddress _address;
     private readonly IWorkspaceModules _modules;
-    private readonly EmailSettings _settings;
     private readonly ILogger<OnboardingService> _logger;
 
     public OnboardingService(
@@ -83,10 +82,11 @@ public sealed class OnboardingService : IOnboardingService
         IWebhookTransport transport,
         IActivityService activities,
         ITenantContext tenant,
+        IPublicAddress address,
         IWorkspaceModules modules,
-        IOptions<EmailSettings> settings,
         ILogger<OnboardingService> logger)
     {
+        _address = address;
         _onboarding = onboarding;
         _organizations = organizations;
         _deals = deals;
@@ -99,7 +99,6 @@ public sealed class OnboardingService : IOnboardingService
         _activities = activities;
         _tenant = tenant;
         _modules = modules;
-        _settings = settings.Value;
         _logger = logger;
     }
 
@@ -138,7 +137,7 @@ public sealed class OnboardingService : IOnboardingService
         settings.WebhookUrl = url.Length == 0 ? null : url;
         if (request.Enabled is bool enabled) settings.Enabled = enabled;
         settings.EmailSubject = Blank(request.EmailSubject);
-        settings.EmailHtml = string.IsNullOrWhiteSpace(request.EmailHtml) ? null : request.EmailHtml;
+        settings.EmailHtml = string.IsNullOrWhiteSpace(request.EmailHtml) ? null : OnboardingTemplate.RebaseOwnImages(request.EmailHtml, _address.ApiBaseUrl);
         if (request.DefaultLanguage != null) settings.DefaultLanguage = Language(request.DefaultLanguage)!;
         if (request.AddToClubMembers is bool add) settings.AddToClubMembers = add;
         settings.SenderName = Blank(request.SenderName);
@@ -207,7 +206,23 @@ public sealed class OnboardingService : IOnboardingService
         {
             // Not JSON, or not this: the portal took the ping, which is what was asked.
         }
-        return new OnboardingPingDto(true, answer.StatusCode, null, fromName, fromEmail);
+        return new OnboardingPingDto(true, answer.StatusCode, null, fromName, fromEmail, CallbackProblem());
+    }
+
+    /// <summary>Where the portal reports a handoff's progress.</summary>
+    private string CallbackUrl(Guid onboardingId) => $"{_address.ApiBaseUrl}/api/public/onboarding/{onboardingId:D}/events";
+
+    /// <summary>
+    /// Why the portal could not report back, or null: it posts only to an https address
+    /// on the internet, and refuses a handoff that names another.
+    /// </summary>
+    private string? CallbackProblem()
+    {
+        var origin = _address.ApiBaseUrl;
+        return origin.StartsWith("https://", StringComparison.OrdinalIgnoreCase) && PublicAddresses.IsPublic(origin)
+            ? null
+            : $"The portal reports back only to an https address on the internet, and this CRM's address is {origin}. "
+              + "Set Email__ApiBaseUrl on the server to its public https address, or the portal will refuse each handoff.";
     }
 
     // ── Preview ───────────────────────────────────────────────────────────────
@@ -239,7 +254,7 @@ public sealed class OnboardingService : IOnboardingService
             return new OnboardingPreviewDto(subject, StandIn(values, language), UsesReceiverDesign: true, unknownInSubject,
                 sender.Name, sender.Email, sender.ReplyTo);
         }
-        var html = OnboardingTemplate.Fill(htmlTemplate, values, html: true, out var unknownInHtml);
+        var html = OnboardingTemplate.Fill(OnboardingTemplate.RebaseOwnImages(htmlTemplate, _address.ApiBaseUrl), values, html: true, out var unknownInHtml);
         return new OnboardingPreviewDto(
             OnboardingTemplate.WithSampleReceiverValues(subject, values.Email, html: false),
             OnboardingTemplate.WithSampleReceiverValues(html, values.Email, html: true),
@@ -287,7 +302,7 @@ public sealed class OnboardingService : IOnboardingService
         }
         if (!string.IsNullOrWhiteSpace(htmlTemplate))
         {
-            html = OnboardingTemplate.Fill(htmlTemplate, values, html: true, out var u);
+            html = OnboardingTemplate.Fill(OnboardingTemplate.RebaseOwnImages(htmlTemplate, _address.ApiBaseUrl), values, html: true, out var u);
             unknown.AddRange(u);
         }
         if (unknown.Count > 0) return Unknown(unknown.Distinct(StringComparer.OrdinalIgnoreCase).ToList());
@@ -550,7 +565,7 @@ public sealed class OnboardingService : IOnboardingService
                 : new { subject = onboarding.EmailSubject, html = onboarding.EmailHtml },
             callback = new
             {
-                url = $"{_settings.ApiBaseUrl.TrimEnd('/')}/api/public/onboarding/{onboarding.Id:D}/events",
+                url = CallbackUrl(onboarding.Id),
                 token = WebhookSigning.CallbackToken(settings.WebhookSecret!, onboarding.Id),
             },
             sentBy = new { name = values.SenderName },

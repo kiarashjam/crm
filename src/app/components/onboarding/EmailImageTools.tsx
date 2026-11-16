@@ -10,6 +10,7 @@ import {
   type EmailImage,
 } from '@/app/api/emailImages';
 import { insertAt } from './WelcomeFields';
+import { bytesLabel, shrinkForEmail } from './shrinkImage';
 
 /** Wider than this, an image overflows most mail apps' reading pane. */
 const EMAIL_WIDTH = 600;
@@ -43,22 +44,10 @@ export function imageSources(html: string): ImageSource[] {
   return [...seen.values()];
 }
 
-/** The image's own size, when the browser can read it. */
-async function pixels(file: Blob): Promise<{ width?: number; height?: number }> {
-  try {
-    if (typeof createImageBitmap !== 'function') return {};
-    const bitmap = await createImageBitmap(file);
-    const size = { width: bitmap.width, height: bitmap.height };
-    bitmap.close?.();
-    return size;
-  } catch {
-    return {};
-  }
-}
-
+/** Why a file, as it will be uploaded, cannot be, or null. */
 function problem(file: File): string | null {
-  if (!EMAIL_IMAGE_TYPES.includes(file.type)) return `${file.name}: use a PNG, JPEG, GIF or WebP image.`;
-  if (file.size > EMAIL_IMAGE_MAX_BYTES) return `${file.name} is over 3 MB. Make it smaller (1200 px wide is plenty).`;
+  if (!EMAIL_IMAGE_TYPES.includes(file.type)) return `${file.name}: use a PNG, JPEG, GIF or WebP image. Mail apps do not show others, such as SVG or HEIC.`;
+  if (file.size > EMAIL_IMAGE_MAX_BYTES) return `${file.name} is over 3 MB even made smaller. Save it as a JPEG about 1200 px wide, then add it again.`;
   return null;
 }
 
@@ -118,18 +107,36 @@ export function EmailImageTools({
   }, []);
 
   const upload = useCallback(async (files: File[]): Promise<EmailImage[]> => {
-    const ok = files.filter((f) => {
-      const why = problem(f);
-      if (why) toast.error(why);
-      return !why;
+    // Anything that may be a picture is tried: a file the system gave no type is often one.
+    const pictures = files.filter((f) => {
+      const maybe = !f.type || f.type.startsWith('image/');
+      if (!maybe) toast.error(`${f.name}: use a PNG, JPEG, GIF or WebP image.`);
+      return maybe;
     });
-    if (ok.length === 0) return [];
+    if (pictures.length === 0) return [];
     return track(async () => {
       const made: EmailImage[] = [];
-      try {
-        for (const file of ok) made.push(await uploadEmailImage(file, await pixels(file)));
-      } catch (e) {
-        toast.error(e instanceof Error && e.message ? e.message : 'The image could not be uploaded.');
+      // One file at a time, each on its own: one that fails does not stop the others.
+      for (const original of pictures) {
+        try {
+          // Made fit for an email first: a 5 MB export becomes a light JPEG 1200 px wide.
+          const ready = await shrinkForEmail(original);
+          const why = problem(ready.file);
+          if (why) {
+            toast.error(why);
+            continue;
+          }
+          made.push(await uploadEmailImage(ready.file, { width: ready.width, height: ready.height }));
+          if (ready.from) {
+            toast.success(`${original.name} made lighter for email`, {
+              description: `${ready.from.width} × ${ready.from.height}, ${bytesLabel(ready.from.bytes)} → ${ready.width} × ${ready.height}, ${bytesLabel(ready.file.size)}`,
+            });
+          }
+        } catch (e) {
+          toast.error(`${original.name} could not be uploaded`, {
+            description: e instanceof Error && e.message ? e.message : 'Try again in a moment.',
+          });
+        }
       }
       setLibrary((current) => [...made, ...(current ?? [])]);
       return made;
@@ -231,7 +238,7 @@ export function EmailImageTools({
       <input
         ref={picker}
         type="file"
-        accept={EMAIL_IMAGE_TYPES.join(',')}
+        accept="image/*"
         multiple
         className="hidden"
         aria-label="Choose images"
@@ -287,6 +294,7 @@ export function EmailImageTools({
                   variant="outline"
                   className="h-7 border-rose-200 bg-white"
                   disabled={busy}
+                  aria-label={`Upload the file for ${src}`}
                   onClick={() => { replacing.current = src; picker.current?.click(); }}
                 >
                   <UploadCloud className="h-3.5 w-3.5" /> Upload it

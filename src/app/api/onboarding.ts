@@ -133,7 +133,7 @@ const NOT_SET_UP: OnboardingSettings = {
   addToClubMembers: true,
   configured: false,
   cadenceFields: ['firstName', 'lastName', 'name', 'email', 'company', 'dealName', 'welcomeMessage', 'startDate', 'senderName', 'workspace'],
-  receiverFields: ['setPasswordUrl', 'portalUrl', 'loginEmail'],
+  receiverFields: ['setPasswordUrl', 'portalUrl', 'loginEmail', 'referralCode'],
 };
 
 const DEMO_MESSAGE = 'Welcome & portal hands people to your own portal, so it works with the server, not in demo mode.';
@@ -156,6 +156,8 @@ export async function newOnboardingSecret(): Promise<string> {
 
 export async function testOnboardingPortal(): Promise<{
   ok: boolean; statusCode?: number | null; error?: string | null; fromName?: string | null; fromEmail?: string | null;
+  /** Why the portal could not report a handoff's progress back to this CRM, or null. */
+  callbackProblem?: string | null;
 }> {
   if (servesDemoData()) throw new Error(DEMO_MESSAGE);
   return authFetchJson('/api/onboarding/settings/test', { method: 'POST' });

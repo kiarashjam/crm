@@ -23,7 +23,7 @@ public static partial class OnboardingTemplate
     };
 
     /// <summary>Left for the receiving system, which alone knows them.</summary>
-    public static readonly IReadOnlyList<string> ReceiverFields = new[] { "setPasswordUrl", "portalUrl", "loginEmail" };
+    public static readonly IReadOnlyList<string> ReceiverFields = new[] { "setPasswordUrl", "portalUrl", "loginEmail", "referralCode" };
 
     [GeneratedRegex(@"\{\{\s*(?<key>[A-Za-z][A-Za-z0-9_]*)\s*(?:\|(?<fallback>[^{}]*))?\}\}")]
     private static partial Regex Placeholder();
@@ -101,10 +101,26 @@ public static partial class OnboardingTemplate
                 "setpasswordurl" => "#set-password",
                 "portalurl" => "#portal",
                 "loginemail" => email,
+                "referralcode" => "PAV-7K2M9Q",
                 _ => null,
             };
             return sample == null ? match.Value : html ? Html(sample) : sample;
         });
+    }
+
+    [GeneratedRegex(@"https?://(?:localhost|127(?:\.\d{1,3}){3}|\[::1\])(?::\d+)?(?=/api/public/email-images/)", RegexOptions.IgnoreCase)]
+    private static partial Regex LoopbackImageOrigin();
+
+    /// <summary>
+    /// The HTML with Cadence's own email images that point at this machine (an upload made
+    /// while the server's public address was not set) pointing at <paramref name="origin"/>
+    /// instead, so they show in the preview and in the email. Other images are left alone.
+    /// </summary>
+    public static string RebaseOwnImages(string? html, string origin)
+    {
+        if (string.IsNullOrEmpty(html)) return html ?? "";
+        var target = origin.Trim().TrimEnd('/');
+        return target.Length == 0 ? html : LoopbackImageOrigin().Replace(html, target);
     }
 
     /// <summary>
