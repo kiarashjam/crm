@@ -1,4 +1,5 @@
 export { WelcomeFields, PlaceholderChips, insertAt } from './WelcomeFields';
+export { ConvertWelcomeChoice } from './ConvertWelcomeChoice';
 export { WelcomeConfirmDialog } from './WelcomeConfirmDialog';
 export { WelcomeProgressDialog } from './WelcomeProgressDialog';
 export { DealWelcomeCard } from './DealWelcomeCard';
