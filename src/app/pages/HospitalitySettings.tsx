@@ -46,13 +46,16 @@ import { setClubCurrency, useClubMoney } from '@/app/hooks/useClubMoney';
 import { useRegional } from '@/app/hooks/useMoney';
 import { CLUB_CURRENCIES, formatClubMoney, normaliseCurrency } from '@/app/lib/clubMoney';
 import { WriteOnly } from '@/app/components/WriteOnly';
+import { useMay } from '@/app/hooks/useMay';
 import { PERMISSION, orgCan } from '@/app/api/organizations';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
 import { servesDemoData } from '@/app/api/apiClient';
 import { PaymentSettingsPanel } from '@/app/components/payments/PaymentSettingsPanel';
+import { RetentionSettingsPanel } from '@/app/components/retention/RetentionSettingsPanel';
 import {
   NONE, useBillingPreview, useBillingRuns, useClubCatalog, useClubReads, useHospitalitySettings, useWorkspaceScope,
 } from '@/app/hooks/queries';
+import { currentDateLocale } from '@/app/i18n/current';
 
 /** Who may change the catalogue: the settings' managers, and the money's. */
 const CATALOG_EDITORS = [PERMISSION.ManageSettings, PERMISSION.ManageMoney] as const;
@@ -60,7 +63,7 @@ const CATALOG_EDITORS = [PERMISSION.ManageSettings, PERMISSION.ManageMoney] as c
 const OTHER_KINDS: CatalogKind[] = ['Dues', 'Fee', 'Product', 'Ticket', 'MenuItem'];
 
 /** The page's tabs; `?tab=payments` opens one (the server's messages send people to Payments). */
-const TABS = ['tiers', 'catalog', 'points', 'billing', 'payments'] as const;
+const TABS = ['tiers', 'catalog', 'points', 'billing', 'payments', 'retention'] as const;
 type Tab = (typeof TABS)[number];
 
 const message = (err: unknown, fallback: string) => (err instanceof Error && err.message ? err.message : fallback);
@@ -72,7 +75,7 @@ const numberOr = (text: string, fallback: number) => {
 
 function formatDateTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return new Date(iso).toLocaleString(currentDateLocale(), { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   } catch {
     return iso;
   }
@@ -80,7 +83,7 @@ function formatDateTime(iso: string): string {
 
 function formatDay(iso: string): string {
   try {
-    return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+    return new Date(iso).toLocaleDateString(currentDateLocale(), { day: 'numeric', month: 'short', year: 'numeric' });
   } catch {
     return iso;
   }
@@ -90,6 +93,9 @@ export default function HospitalitySettings() {
   const org = useOrgOptional()?.currentOrg ?? null;
   const demo = servesDemoData();
   const canSeeBilling = demo || orgCan(org, PERMISSION.ManageMoney) || orgCan(org, PERMISSION.ManageSettings);
+  // The fields "Save changes" sends are read-only to whoever may not save them: typing
+  // into them went nowhere, as the button is not theirs.
+  const canChangeSettings = useMay()(PERMISSION.ManageSettings);
 
   const [search, setSearch] = useSearchParams();
   const asked = search.get('tab');
@@ -209,7 +215,7 @@ export default function HospitalitySettings() {
                     Every amount on the club pages and on printed statements is shown in this currency. Changing it
                     relabels amounts already entered; it does not convert them.
                   </p>
-                  <Select value={currency} onValueChange={(v) => setDraft({ ...draft, currency: v })}>
+                  <Select value={currency} onValueChange={(v) => setDraft({ ...draft, currency: v })} disabled={!canChangeSettings}>
                     <SelectTrigger aria-label="Club currency" className="max-w-xs">
                       <SelectValue />
                     </SelectTrigger>
@@ -231,6 +237,7 @@ export default function HospitalitySettings() {
                     <TabsTrigger value="points">Points</TabsTrigger>
                     <TabsTrigger value="billing">Billing</TabsTrigger>
                     <TabsTrigger value="payments">Payments</TabsTrigger>
+                    <TabsTrigger value="retention">Retention &amp; referrals</TabsTrigger>
                   </TabsList>
 
                   <TabsContent value="tiers">
@@ -255,13 +262,14 @@ export default function HospitalitySettings() {
                   </TabsContent>
 
                   <TabsContent value="points">
-                    <PointsPanel draft={draft} onChange={setDraft} currency={currency} />
+                    <PointsPanel draft={draft} onChange={setDraft} currency={currency} readOnly={!canChangeSettings} />
                   </TabsContent>
 
                   <TabsContent value="billing">
                     <BillingPanel
                       billing={draft.billing}
                       onChange={(billing) => setDraft({ ...draft, billing })}
+                      readOnly={!canChangeSettings}
                       canSee={canSeeBilling}
                       runs={runsQuery.data ?? NONE}
                       runsFailed={runsQuery.isError && !runsQuery.data}
@@ -278,6 +286,10 @@ export default function HospitalitySettings() {
                   <TabsContent value="payments">
                     <PaymentSettingsPanel />
                   </TabsContent>
+
+                  <TabsContent value="retention">
+                    <RetentionSettingsPanel />
+                  </TabsContent>
                 </Tabs>
               </>
             )}
@@ -293,6 +305,7 @@ export default function HospitalitySettings() {
 /** One tier, edited in place and saved on its own, against the version it was read at. */
 function TierCard({ tier, onSaved }: { tier: CatalogItem; onSaved: () => void }) {
   const { format } = useClubMoney();
+  const canEdit = useMay()(CATALOG_EDITORS);
   const [name, setName] = useState(tier.name);
   const [price, setPrice] = useState(String(tier.price));
   const [cadence, setCadence] = useState<CatalogCadence>(tier.cadence ?? 'Monthly');
@@ -330,6 +343,8 @@ function TierCard({ tier, onSaved }: { tier: CatalogItem; onSaved: () => void })
             {tier.isActive ? 'On sale' : 'Off sale'}
           </span>
         </div>
+        {/* Read-only to whoever may not change the catalogue: "Save tier" is not theirs. */}
+        <fieldset disabled={!canEdit} className="min-w-0">
         <div className="mb-4 grid grid-cols-2 gap-3">
           <div className="col-span-2">
             <Label className="text-xs">Name</Label>
@@ -392,6 +407,7 @@ function TierCard({ tier, onSaved }: { tier: CatalogItem; onSaved: () => void })
             <Plus className="h-4 w-4" />
           </Button>
         </div>
+        </fieldset>
         <p className="mb-3 text-xs text-slate-500">
           {format(numberOr(price, tier.price))} a {CADENCE_LABEL[cadence]}
           {numberOr(fee, 0) > 0 ? `, ${format(numberOr(fee, 0))} to join` : ''}.
@@ -645,11 +661,17 @@ function CatalogTable({ items, currency, onSaved }: { items: readonly CatalogIte
 
 // ── points ────────────────────────────────────────────────────────────────────
 
-function PointsPanel({ draft, onChange, currency }: { draft: Settings_; onChange: (s: Settings_) => void; currency: string }) {
+function PointsPanel({ draft, onChange, currency, readOnly = false }: {
+  draft: Settings_;
+  onChange: (s: Settings_) => void;
+  currency: string;
+  /** Shown, not changed: whoever may not save the settings. */
+  readOnly?: boolean;
+}) {
   const setVenue = (venue: VisitVenue, value: number) =>
     onChange({ ...draft, visitPointsByVenue: { ...draft.visitPointsByVenue, [venue]: value } });
   return (
-    <div className="grid max-w-4xl grid-cols-1 gap-4 md:grid-cols-2">
+    <fieldset disabled={readOnly} className="grid min-w-0 max-w-4xl grid-cols-1 gap-4 md:grid-cols-2">
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h3 className="mb-1 inline-flex items-center gap-2 font-semibold text-slate-900">
           <Sparkles className="h-4 w-4 text-amber-500" /> Spending
@@ -692,7 +714,7 @@ function PointsPanel({ draft, onChange, currency }: { draft: Settings_; onChange
         <Input aria-label="Event attendance points" type="number" min="0" value={draft.eventCheckInPoints}
           onChange={(e) => onChange({ ...draft, eventCheckInPoints: Math.max(0, Math.floor(numberOr(e.target.value, 0))) })} />
       </div>
-    </div>
+    </fieldset>
   );
 }
 
@@ -717,10 +739,12 @@ const STATUS_LABEL: Record<BillingRun['status'], string> = {
 };
 
 function BillingPanel({
-  billing, onChange, canSee, runs, runsFailed, onRetryRuns, preview, previewFailed, onRetryPreview, onBilled,
+  billing, onChange, readOnly = false, canSee, runs, runsFailed, onRetryRuns, preview, previewFailed, onRetryPreview, onBilled,
 }: {
   billing: BillingSettings;
   onChange: (b: BillingSettings) => void;
+  /** The switches and days shown, not changed: whoever may not save the settings. */
+  readOnly?: boolean;
   canSee: boolean;
   runs: readonly BillingRun[];
   runsFailed: boolean;
@@ -773,7 +797,7 @@ function BillingPanel({
           Once a day, after 03:00, for what is switched on here. Everything starts off: turn on what the club is ready for,
           and save.
         </p>
-        <div className="divide-y divide-slate-100">
+        <fieldset disabled={readOnly} className="min-w-0 divide-y divide-slate-100">
           {toggle('Bill subscriptions automatically', 'Every period a running subscription has started is billed once, including any it is behind on.',
             b.automaticBilling, (v) => onChange({ ...b, automaticBilling: v }))}
           <div className="py-2">
@@ -807,7 +831,7 @@ function BillingPanel({
             <Input aria-label="Statement day" type="number" min="1" max="28" className="mt-1 max-w-32" value={b.statementDay}
               onChange={(e) => onChange({ ...b, statementDay: Math.floor(numberOr(e.target.value, 1)) })} />
           </div>
-        </div>
+        </fieldset>
       </div>
 
       <div className="space-y-4">

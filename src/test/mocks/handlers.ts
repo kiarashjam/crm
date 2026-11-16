@@ -88,4 +88,10 @@ export const handlers = [
       emailDigest: 'daily',
     });
   }),
+
+  // The sign-in page asks which other ways in the server offers; by default, none, as on
+  // a server nobody has set up single sign-on or passkeys for. Any API address.
+  http.get('*/api/auth/sign-in-options', () => {
+    return HttpResponse.json({ sso: [], passkeys: false });
+  }),
 ];

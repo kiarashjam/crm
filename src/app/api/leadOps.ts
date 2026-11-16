@@ -229,12 +229,28 @@ async function publicFetch(path: string, init?: RequestInit): Promise<Response> 
   }
 }
 
-export async function getPublicCaptureForm(token: string) {
-  const res = await publicFetch(`/api/public/capture/${encodeURIComponent(token)}`);
+/** Whether a public form asks for marketing consent: not at all, optionally, or as a condition of sending it. */
+export type MarketingConsentMode = 'off' | 'optional' | 'required';
+
+export async function getPublicCaptureForm(token: string, language?: string) {
+  // The language the page is read in: the standard checkbox sentence (when the workspace
+  // wrote none) comes back in it.
+  const query = language ? `?lang=${encodeURIComponent(language)}` : '';
+  const res = await publicFetch(`/api/public/capture/${encodeURIComponent(token)}${query}`);
   if (!res.ok) throw new PublicCaptureError('Form not available', res.status);
-  // leadKinds: what the workspace's leads are, so an establishment's form asks for the place.
-  // Missing (an older server) means people.
-  return res.json() as Promise<{ name: string; successMessage?: string | null; leadKinds?: 'person' | 'establishment' | 'both' | null }>;
+  return res.json() as Promise<{
+    name: string;
+    successMessage?: string | null;
+    marketingConsent?: MarketingConsentMode;
+    marketingConsentText?: string | null;
+    /** The workspace's language (from its locale), for a visitor whose browser speaks none of the app's. */
+    language?: string | null;
+    /**
+     * What the workspace's leads are, so an establishment's form asks for the place.
+     * Missing (an older server) means people.
+     */
+    leadKinds?: 'person' | 'establishment' | 'both' | null;
+  }>;
 }
 
 /** Submits the form. Resolves to the thank-you message the workspace configured. */
@@ -247,6 +263,10 @@ export async function submitPublicCapture(token: string, body: {
   company?: string;
   /** The honeypot. Always empty when a person fills the form in. */
   website?: string;
+  /** Whether they ticked the box to hear about news and offers; recorded either way when the form asks. */
+  marketingConsent?: boolean;
+  /** The language the form was filled in (en, de, fr): the thank-you and the consent record are in it. */
+  language?: string;
   /**
    * An establishment: name, email, phone and jobTitle above are then the person filling
    * the form in, who becomes its contact person, and establishmentName is the lead's name.

@@ -6,6 +6,7 @@ import { getLeadsReferredBy } from '@/app/api/leads';
 import type { Lead } from '@/app/api/types';
 import { useMotionPreference } from '@/app/hooks/useMotionPreference';
 import { cn } from '@/app/components/ui/utils';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 
@@ -81,7 +82,7 @@ export default function ReferredLeadsCard({
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium text-slate-800 group-hover:text-violet-700 dark:text-slate-200">{lead.name}</span>
                   <span className="block truncate text-xs text-slate-500">
-                    {[lead.status, lead.companyName, lead.createdAtUtc ? `added ${new Date(lead.createdAtUtc).toLocaleDateString()}` : null].filter(Boolean).join(' · ')}
+                    {[lead.status, lead.companyName, lead.createdAtUtc ? `added ${new Date(lead.createdAtUtc).toLocaleDateString(currentDateLocale())}` : null].filter(Boolean).join(' · ')}
                   </span>
                 </span>
                 {lead.isConverted && (

@@ -35,7 +35,7 @@ public class Attachment : Common.BaseEntity
 }
 
 /// <summary>
-/// The records that can carry attachments and custom fields. They match the
+/// The records that can carry attachments, custom fields and tags. They match the
 /// client's <c>AttachmentEntity</c> and <c>CustomFieldEntity</c> types.
 /// </summary>
 public static class RecordTypes
@@ -44,9 +44,18 @@ public static class RecordTypes
     public const string Contact = "contact";
     public const string Company = "company";
     public const string Deal = "deal";
+    /// <summary>A club member: has custom fields and tags, but no attachments.</summary>
+    public const string Member = "member";
 
+    /// <summary>The records that carry attachments.</summary>
     public static readonly IReadOnlySet<string> All = new HashSet<string>(StringComparer.Ordinal)
     {
         Lead, Contact, Company, Deal,
+    };
+
+    /// <summary>The records that carry custom fields and tags: the four above, and club members.</summary>
+    public static readonly IReadOnlySet<string> WithFields = new HashSet<string>(StringComparer.Ordinal)
+    {
+        Lead, Contact, Company, Deal, Member,
     };
 }

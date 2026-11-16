@@ -473,6 +473,26 @@ public class ClubApplicationsTests
     }
 
     [Fact]
+    public async Task CountersigningWhileTheClubIsTurnedOff_ExecutesTheContractButAdmitsNobody()
+    {
+        // With the club turned off a deal's handoff adds nobody to its members, but a
+        // countersignature admitted the applicant all the same, and posted their initiation fee
+        // and dues to a club whose pages and endpoints were gone.
+        using var factory = new CustomWebApplicationFactory();
+        var (owner, _, org) = await ClubAsync(factory);
+        var (_, contractId) = await SignedMembershipContractAsync(factory, owner);
+        await Json(await owner.PutAsync($"/api/organizations/{org}/modules", Body(new { club = false })), "turn the club off");
+
+        var executed = await Json(await owner.PostAsync($"/api/contracts/{contractId}/countersign", Body(new { signatureName = "Club Secretary", agreed = true })), "countersign");
+
+        executed.GetProperty("status").GetString().Should().Be("countersigned", "the contract is executed with the club off too");
+        (await Read(factory, db => db.ClubMembers.Count())).Should().Be(0, "nobody is admitted to a club that is turned off");
+        (await Read(factory, db => db.ClubCharges.Count())).Should().Be(0, "nor charged an initiation fee there");
+        (await Read(factory, db => db.ClubSubscriptions.Count())).Should().Be(0, "nor started on dues there");
+        (await Read(factory, db => db.ClubApplications.Single().Status)).Should().NotBe("Approved", "the application waits for a reviewer once the club is on again");
+    }
+
+    [Fact]
     public async Task AContractWithNoApplicationBehindIt_AdmitsNobody()
     {
         using var factory = new CustomWebApplicationFactory();

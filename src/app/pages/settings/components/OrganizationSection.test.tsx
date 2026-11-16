@@ -13,6 +13,7 @@ vi.mock('@/app/api/apiClient', async (importOriginal) => ({
 }));
 vi.mock('./RegionalSettingsCard', () => ({ RegionalSettingsCard: () => null }));
 vi.mock('./EmailSendingCard', () => ({ EmailSendingCard: () => null }));
+vi.mock('./SingleSignOnCard', () => ({ SingleSignOnCard: () => null }));
 
 const { OrganizationSection } = await import('./OrganizationSection');
 

@@ -33,6 +33,10 @@ export type LeadForm = {
   leadScore: string;
   description: string;
   lifecycleStage: string;
+  /** The version of the copy of the lead these fields came from ('' for a new lead): the save is checked against it. */
+  version: string;
+  /** That copy's referrer, so a save sends the referrer only when it was changed here. */
+  referredByContactIdAsRead: string;
 };
 
 // Extended activity type with user info

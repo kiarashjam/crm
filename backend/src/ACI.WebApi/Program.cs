@@ -156,11 +156,39 @@ try
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
             }));
+        // The privacy notice: anyone may read it, and a club's forms link to it with their token,
+        // which is looked up each time. Per token, like the forms themselves, and generous: every
+        // visitor of a club's page shares its token. Without one the notice reads only the
+        // server's settings, so nothing is limited. A value longer than any token is never looked
+        // up, and all such share one limit rather than each holding a partition of its own.
+        options.AddPolicy("public-privacy", context =>
+        {
+            var form = context.Request.Query["form"].ToString().Trim();
+            if (form.Length == 0) return System.Threading.RateLimiting.RateLimitPartition.GetNoLimiter("privacy");
+            return System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+                form.Length <= 64 ? "privacy:" + form : "privacy:overlong",
+                _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 60,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                });
+        });
         // A pay link: a member opens it and presses Pay once or twice. Per token, like the
         // unsubscribe link (the pay page sends it in a header); a forged token fails its
         // check before any database work.
         options.AddPolicy("public-pay", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
             "pay:" + context.Request.Headers[ACI.WebApi.Controllers.PublicPaymentsController.TokenHeader].ToString(),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
+        // A contract's deposit: the signer presses Pay, or opens the QR-bill, once or twice. Per
+        // signing link, which is in the address; a forged one fails its lookup by hash.
+        options.AddPolicy("public-contract-deposit", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            "deposit:" + (context.Request.RouteValues["token"]?.ToString() ?? ""),
             _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
             {
                 PermitLimit = 10,
@@ -202,6 +230,24 @@ try
                 AutoReplenishment = true,
                 QueueLimit = 0,
             }));
+        // A question to the assistant may take several calls to the model, each billed on the
+        // server's key: per person, a bucket (Assistant:UserBurst, default 20) that refills a few a
+        // minute (Assistant:UserPerMinute, default 3). The workspace's own throttle and its monthly
+        // allowance are checked after the membership check, in IAiBudget.
+        options.AddPolicy("assistant", context =>
+        {
+            var assistant = context.RequestServices.GetRequiredService<Microsoft.Extensions.Options.IOptions<ACI.Application.Configuration.AssistantOptions>>().Value;
+            return System.Threading.RateLimiting.RateLimitPartition.GetTokenBucketLimiter(
+                "assistant:" + (context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "anonymous"),
+                _ => new System.Threading.RateLimiting.TokenBucketRateLimiterOptions
+                {
+                    TokenLimit = Math.Max(1, assistant.UserBurst),
+                    TokensPerPeriod = Math.Max(1, assistant.UserPerMinute),
+                    ReplenishmentPeriod = TimeSpan.FromMinutes(1),
+                    AutoReplenishment = true,
+                    QueueLimit = 0,
+                });
+        });
         // Sign-up is anonymous, so there is no account to count against: this one goes
         // by the connection's address. If Azure's front end hides the caller's address
         // behind its own, the limit becomes one shared by everyone signing up, which
@@ -213,6 +259,66 @@ try
             {
                 PermitLimit = 10,
                 Window = TimeSpan.FromMinutes(10),
+                QueueLimit = 0,
+            }));
+        // Single sign-on and passkey sign-in are anonymous too, so they also go by the address,
+        // each with its own allowance. A sign-on is three requests (start, the provider's
+        // callback, the hand-back) and a passkey sign-in two. 150 per ten minutes is fifty
+        // sign-ons: a whole office behind one address signing in at nine still fits (at 60, the
+        // twenty-first person was turned away), while a script filling the table of sign-ons in
+        // progress stops; the state and the hand-back code are 256-bit secrets, not guessable.
+        // Failed passkeys also count against the account they name (AuthAttemptLimiter).
+        options.AddPolicy("sso", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            "sso:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 150,
+                Window = TimeSpan.FromMinutes(10),
+                QueueLimit = 0,
+            }));
+        options.AddPolicy("passkey", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            "passkey:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 30,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
+        // The member portal's sign-in is anonymous too, so it goes by the address as well. Asking
+        // for a link is also limited per club and address in the service (three in a quarter of
+        // an hour), which is what keeps one inbox from being flooded; this stops one machine
+        // asking for links to address after address. Using a link, and the club's portal asking
+        // for one, each more freely: a link is a 256-bit secret, so trying them gets nowhere
+        // either way. Both are sized, like single sign-on's, for many people behind one address:
+        // members signing up on the club's own Wi-Fi at an event, where each sign-in takes three
+        // to five of these requests (the sign-in page, which is read again on coming back from
+        // the mail app, then the link's page and using it). At 60, somewhere between the
+        // thirteenth and the twenty-first member in ten minutes was turned away; at 20 links,
+        // the twenty-first.
+        options.AddPolicy("portal-link", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            "portal-link:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 50,
+                Window = TimeSpan.FromMinutes(10),
+                QueueLimit = 0,
+            }));
+        options.AddPolicy("portal-sign-in", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            "portal-sign-in:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 150,
+                Window = TimeSpan.FromMinutes(10),
+                QueueLimit = 0,
+            }));
+        // A signed-in member, per session's member: plenty for a person using the portal, and a
+        // script looping on it stops.
+        options.AddPolicy("portal-member", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            "portal-member:" + (ACI.Application.Common.MemberPortalClaims.Of(context.User)?.MemberId.ToString() ?? "anonymous"),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 240,
+                Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
             }));
     });
@@ -296,6 +402,7 @@ try
     builder.Services.AddSingleton<ISecurityStampCache>(sp => sp.GetRequiredService<ACI.WebApi.Services.SecurityStampCache>());
     builder.Services.AddScoped<IAuthService, AuthService>();
     builder.Services.AddScoped<IContactService, ContactService>();
+    builder.Services.AddScoped<IWorkspaceCsv, WorkspaceCsv>();
     builder.Services.AddScoped<IContactRelationshipService, ContactRelationshipService>();
     builder.Services.AddScoped<IDealService, DealService>();
     builder.Services.AddScoped<ILeadService, LeadService>();
@@ -321,6 +428,10 @@ try
     builder.Services.AddScoped<IProductService, ProductService>();
     builder.Services.AddScoped<IAutomationService, AutomationService>();
     builder.Services.AddScoped<IAutomationEngine, AutomationEngine>();
+    // Carries automation runs on after a wait, a send window or a failed step (AutomationRunner).
+    builder.Services.AddSingleton<ACI.WebApi.Services.AutomationSignal>();
+    builder.Services.AddSingleton<IAutomationSignal>(sp => sp.GetRequiredService<ACI.WebApi.Services.AutomationSignal>());
+    builder.Services.AddSingleton<ACI.WebApi.Services.AutomationRunner>();
     builder.Services.AddScoped<IClubService, ClubService>();
     builder.Services.AddScoped<IOnboardingService, OnboardingService>();
     builder.Services.AddScoped<IEmailImageService, EmailImageService>();
@@ -331,8 +442,11 @@ try
     builder.Services.AddScoped<ConsentService>();
     builder.Services.AddScoped<IConsentService>(sp => sp.GetRequiredService<ConsentService>());
     builder.Services.AddScoped<IMemberMailRules>(sp => sp.GetRequiredService<ConsentService>());
-    // Campaigns and the communications log, delivered through the outbox.
+    // Campaigns and the communications log, delivered through the outbox. Send hands a
+    // campaign to the scheduler and wakes it on this instance.
     builder.Services.AddScoped<ICampaignService, CampaignService>();
+    builder.Services.AddSingleton<ACI.WebApi.Services.CampaignSignal>();
+    builder.Services.AddSingleton<ICampaignSignal>(sp => sp.GetRequiredService<ACI.WebApi.Services.CampaignSignal>());
     builder.Services.AddScoped<IMemberMessageService, MemberMessageService>();
     builder.Services.AddScoped<ITaskService, TaskService>();
     builder.Services.AddScoped<IActivityService, ActivityService>();
@@ -361,6 +475,10 @@ try
     builder.Services.AddScoped<IGlobalSearchService, GlobalSearchService>();
     builder.Services.AddScoped<IImportService, ImportService>();
     builder.Services.AddScoped<ACI.WebApi.Mcp.CrmMcpTools>();
+    // The in-app assistant: the model's tools as the signed-in person, and the chat that
+    // runs them a few turns at a time against the workspace's monthly AI allowance.
+    builder.Services.AddScoped<ACI.WebApi.Assistant.AssistantTools>();
+    builder.Services.AddScoped<ACI.WebApi.Assistant.AssistantChat>();
 
     // Background services
     builder.Services.AddHostedService<ACI.WebApi.Services.TaskReminderBackgroundService>();
@@ -373,11 +491,19 @@ try
     builder.Services.AddHostedService<ACI.WebApi.Services.OutboxDispatcherBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.LeadFollowUpBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.WeeklyDigestBackgroundService>();
+    // Each person's morning brief, from 07:00 on their workspace's calendar.
+    builder.Services.AddHostedService<ACI.WebApi.Services.MorningBriefBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.PersonContactBackfillBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.GiftCardExpiryBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.CampaignSchedulerBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.ClubBillingBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.ClubPaymentsBackgroundService>();
+    builder.Services.AddHostedService<ACI.WebApi.Services.ClubPosBackgroundService>();
+    // Each workspace's retention settings, once a day; nothing runs for one that set no period.
+    builder.Services.AddHostedService<ACI.WebApi.Services.RetentionBackgroundService>();
+    builder.Services.AddHostedService<ACI.WebApi.Services.AutomationRunnerBackgroundService>();
+    // Each club's members' at-risk scores, once a day after its billing run, and the save actions.
+    builder.Services.AddHostedService<ACI.WebApi.Services.ClubScoringBackgroundService>();
 
     // HTTP Context accessor for current user service
     builder.Services.AddHttpContextAccessor();
@@ -414,6 +540,11 @@ try
                 ValidateLifetime = true,
                 ClockSkew = TimeSpan.Zero,
             };
+            // The member portal's endpoints are signed into by members, never staff: on them the
+            // member scheme below answers instead, so a staff token is refused there, and a
+            // member's is refused everywhere else (it fails this scheme's key and audience).
+            options.ForwardDefaultSelector = context =>
+                context.Request.Path.StartsWithSegments("/api/portal") ? ACI.Application.Common.MemberPortalClaims.Scheme : null;
             options.Events = new JwtBearerEvents
             {
                 // Claude sends the organization API key as Authorization: Bearer aci_….
@@ -454,6 +585,36 @@ try
                         .AcceptsAsync(userId, carried, services.GetRequiredService<IUserRepository>(), context.HttpContext.RequestAborted);
                     if (!live)
                         context.Fail("This session was signed out.");
+                },
+            };
+        })
+        // A member signed in to the member portal: a token of the portal's own (its own key and
+        // audience, MemberPortalTokens) naming the club, the member and a session, which must
+        // still stand (not signed out, not ended by staff, not run out, member not erased).
+        .AddJwtBearer(ACI.Application.Common.MemberPortalClaims.Scheme, options =>
+        {
+            options.MapInboundClaims = false;
+            options.TokenValidationParameters = ACI.Infrastructure.Services.Portal.MemberPortalTokens.Validation(jwtIssuer, jwtSecret);
+            options.Events = new JwtBearerEvents
+            {
+                OnTokenValidated = async context =>
+                {
+                    if (ACI.Application.Common.MemberPortalClaims.Of(context.Principal) is not { } member)
+                    {
+                        context.Fail("The token names no member.");
+                        return;
+                    }
+                    var check = await context.HttpContext.RequestServices.GetRequiredService<ACI.Application.Services.IMemberPortalSignIn>()
+                        .CheckSessionAsync(member, context.HttpContext.RequestAborted);
+                    if (check == null)
+                    {
+                        context.Fail("This session was signed out.");
+                        return;
+                    }
+                    // What staff read beside what the member does (who registered, booked, changed
+                    // their phone): their name, and that it was them, in the portal.
+                    if (context.Principal?.Identity is System.Security.Claims.ClaimsIdentity identity)
+                        identity.AddClaim(new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Name, $"{check.MemberName} (member portal)"));
                 },
             };
         });
@@ -507,6 +668,9 @@ try
     app.UseRateLimiter();
     app.UseAuthorization();
     app.UseMiddleware<ACI.WebApi.Middleware.OrganizationAccessMiddleware>();
+    // After the header is checked: a workspace that requires single sign-on refuses sessions
+    // that began another way, for the members it applies to.
+    app.UseMiddleware<ACI.WebApi.Middleware.SsoRequirementMiddleware>();
     // Must follow OrganizationAccessMiddleware: the organization header is validated
     // (and stripped when forged) before the read-only role is resolved from it.
     app.UseMiddleware<ACI.WebApi.Middleware.ReadOnlyMemberMiddleware>();

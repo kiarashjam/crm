@@ -9,6 +9,7 @@ import { useMotionPreference } from '@/app/hooks/useMotionPreference';
 import { useRegional } from '@/app/hooks/useMoney';
 import { daysBetween, dayKeyIn, formatDay, todayKeyIn } from '@/app/lib/zonedTime';
 import { activityFactsLine, activityTime } from '@/app/lib/activityFacts';
+import { currentDateLocale } from '@/app/i18n/current';
 
 interface TypeStyle {
   icon: typeof Phone;
@@ -65,7 +66,7 @@ export function relativeDayLabel(dayKey: string, timeZone: string, now: Date = n
 
 /** The time of day, on the same clock as the day it is filed under. */
 function timeLabel(d: Date, timeZone: string): string {
-  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', timeZone });
+  return d.toLocaleTimeString(currentDateLocale(), { hour: 'numeric', minute: '2-digit', timeZone });
 }
 
 interface ActivityTimelineProps {

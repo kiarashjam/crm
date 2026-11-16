@@ -5,7 +5,7 @@ import {
   User, Palette, Bell, Shield,
   ChevronRight,
   Settings2, Sparkles,
-  Link2, Bot, MessageSquareHeart,
+  Link2, Bot, MessageSquareHeart, MessagesSquare,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -14,10 +14,10 @@ import LoadingSpinner from '@/app/components/LoadingSpinner';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import {
   getUserSettings, saveUserSettings, resetUserSettings,
-  getTimezones, getLanguages,
+  getTimezones,
   twoFactorSetup, twoFactorStatus, twoFactorEnable, twoFactorDisable,
 } from '@/app/api';
-import type { UserSettings, UpdateUserSettingsRequest, TimezoneOption, LanguageOption } from '@/app/api/types';
+import type { UserSettings, UpdateUserSettingsRequest, TimezoneOption } from '@/app/api/types';
 import { messages } from '@/app/api/messages';
 import { ProfileSection } from '@/app/pages/settings/components/ProfileSection';
 import { NotificationsSection } from '@/app/pages/settings/components/NotificationsSection';
@@ -29,6 +29,7 @@ import { OrganizationSection } from '@/app/pages/settings/components/Organizatio
 import { SecuritySection } from '@/app/pages/settings/components/SecuritySection';
 import { useOrg } from '@/app/contexts/OrgContext';
 import { useTheme } from '@/app/contexts/ThemeContext';
+import { useModules } from '@/app/hooks/useModules';
 import {
   createInvite,
   listPendingInvitesForOrg,
@@ -61,23 +62,29 @@ import type { Pipeline, DealStage } from '@/app/api/types';
 import { BrandSection } from './settings/components/BrandSection';
 import { IntegrationsSection } from './settings/components/IntegrationsSection';
 import { WelcomePortalSection } from './settings/components/WelcomePortalSection';
+import { MemberPortalSettingsCard } from './settings/components/MemberPortalSettingsCard';
 import { ClaudeSection } from './McpSetup';
+import { AssistantSection } from './settings/components/AssistantSection';
 import PageHero from '@/app/components/PageHero';
 
-type SettingsTab = 'profile' | 'brand' | 'appearance' | 'notifications' | 'integrations' | 'welcome' | 'claude' | 'organization' | 'pipelines' | 'customFields' | 'security' | 'account';
+type SettingsTab = 'profile' | 'brand' | 'appearance' | 'notifications' | 'assistant' | 'integrations' | 'welcome' | 'claude' | 'organization' | 'pipelines' | 'customFields' | 'security' | 'account';
+
+/** The tabs of the Sales module, left out while the workspace has it turned off. */
+const SALES_TABS: readonly SettingsTab[] = ['pipelines'];
 
 const TAB_CONFIG: { id: SettingsTab; label: string; icon: React.ElementType; description: string }[] = [
   { id: 'profile', label: 'Profile', icon: User, description: 'Personal information and preferences' },
   { id: 'brand', label: 'Brand & AI', icon: Sparkles, description: 'Brand voice and AI copy settings' },
   { id: 'appearance', label: 'Appearance', icon: Palette, description: 'Theme, layout, and display options' },
   { id: 'notifications', label: 'Notifications', icon: Bell, description: 'Email and in-app notifications' },
+  { id: 'assistant', label: 'Assistant', icon: MessagesSquare, description: 'The chat, morning briefs and the monthly AI limit' },
   { id: 'integrations', label: 'Integrations', icon: Link2, description: 'Inbound webhooks and URLs' },
-  { id: 'welcome', label: 'Welcome & portal', icon: MessageSquareHeart, description: 'Hand new customers to your member portal' },
+  { id: 'welcome', label: 'Welcome & portal', icon: MessageSquareHeart, description: 'Your member portal, and handing new customers to one' },
   { id: 'claude', label: 'Claude', icon: Bot, description: 'Read this organization in Claude' },
   { id: 'organization', label: 'Team', icon: Users, description: 'Organization and team members' },
   { id: 'pipelines', label: 'Pipelines', icon: Kanban, description: 'Sales pipeline stages' },
-  { id: 'customFields', label: 'Custom Fields', icon: SlidersHorizontal, description: 'Add your own fields to records' },
-  { id: 'security', label: 'Security', icon: Shield, description: 'Two-factor authentication' },
+  { id: 'customFields', label: 'Fields & Tags', icon: SlidersHorizontal, description: 'Your own fields and tags on records' },
+  { id: 'security', label: 'Security', icon: Shield, description: 'Two-factor sign-in, passkeys and single sign-on' },
   { id: 'account', label: 'Account', icon: Settings2, description: 'Account management and data' },
 ];
 
@@ -85,6 +92,11 @@ export default function Settings() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { organizations, currentOrg, setCurrentOrg, refreshOrgs: _refreshOrgs } = useOrg();
   const themeContext = useTheme();
+  const { sales: salesOn, club: clubOn } = useModules();
+  // Pipelines belong to Sales. Welcome & portal holds the club's member portal (Club) and the
+  // welcome a deal's contact is handed over with (Sales): it shows while either is on.
+  const tabsShown = TAB_CONFIG.filter((tab) =>
+    tab.id === 'welcome' ? salesOn || clubOn : salesOn || !SALES_TABS.includes(tab.id));
 
   // Tab state
   const tabFromUrl = searchParams.get('tab') as SettingsTab | null;
@@ -105,7 +117,6 @@ export default function Settings() {
 
   // Options data
   const [timezones, setTimezones] = useState<TimezoneOption[]>([]);
-  const [languages, setLanguages] = useState<LanguageOption[]>([]);
 
   // 2FA state
   const [twoFaEnabled, setTwoFaEnabled] = useState<boolean | null>(null);
@@ -172,7 +183,6 @@ export default function Settings() {
       }));
 
     getTimezones().then(setTimezones).catch(() => {});
-    getLanguages().then(setLanguages).catch(() => {});
 
     // Only whether 2FA is on. Opening Settings used to ask for "setup", which sent the
     // live secret to the browser on every visit; setup is asked for when starting it.
@@ -206,12 +216,13 @@ export default function Settings() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- orgCan only reads isOwner, role and permissions (access)
   }, [currentOrg?.id, access]);
 
-  // Load pipelines: changing them takes managing the workspace's settings.
+  // Load pipelines: changing them takes managing the workspace's settings, and they are the
+  // Sales module's, which the server refuses while it is turned off.
   useEffect(() => {
-    if (servesDemoData() || !currentOrg?.id || !orgCan(currentOrg, PERMISSION.ManageSettings)) return;
+    if (servesDemoData() || !currentOrg?.id || !orgCan(currentOrg, PERMISSION.ManageSettings) || !salesOn) return;
     getPipelines().then(setPipelines).catch(() => setPipelines([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- orgCan only reads isOwner, role and permissions (access)
-  }, [currentOrg?.id, access]);
+  }, [currentOrg?.id, access, salesOn]);
 
   // Load pipeline stages when expanded
   useEffect(() => {
@@ -561,17 +572,34 @@ export default function Settings() {
   const renderTabContent = () => {
     switch (activeTab) {
       case 'profile':
-        return <ProfileSection settings={settings} updateSettings={updateSettings} timezones={timezones} languages={languages} />;
+        return <ProfileSection settings={settings} updateSettings={updateSettings} timezones={timezones} />;
       case 'brand':
         return <BrandSection settings={settings} updateSettings={updateSettings} />;
       case 'appearance':
         return <AppearanceSection settings={settings} updateSettings={updateSettings} />;
       case 'notifications':
         return <NotificationsSection settings={settings} updateSettings={updateSettings} />;
+      case 'assistant':
+        return <AssistantSection />;
       case 'integrations':
         return <IntegrationsSection currentOrg={currentOrg} />;
       case 'welcome':
-        return <WelcomePortalSection currentOrg={currentOrg} />;
+        return (
+          <>
+            {clubOn && (
+              <div className="px-6 pt-6">
+                <MemberPortalSettingsCard />
+              </div>
+            )}
+            {salesOn ? (
+              <WelcomePortalSection currentOrg={currentOrg} />
+            ) : (
+              <div className="p-6 text-sm text-slate-600">
+                Handing a deal&apos;s contact to your own portal belongs to the Sales module, which this workspace has turned off. Turning it on again (Team) brings those settings back as they were.
+              </div>
+            )}
+          </>
+        );
       case 'claude':
         return <ClaudeSection />;
       case 'organization':
@@ -599,6 +627,13 @@ export default function Settings() {
           />
         );
       case 'pipelines':
+        if (!salesOn) {
+          return (
+            <div className="p-6 text-sm text-slate-600">
+              Pipelines belong to the Sales module, which this workspace has turned off. Turning it on again (Team) brings them back as they were.
+            </div>
+          );
+        }
         return (
           <PipelinesSection
             pipelines={pipelines}
@@ -691,7 +726,7 @@ export default function Settings() {
             <nav className="lg:w-64 shrink-0">
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <div className="p-2">
-                  {TAB_CONFIG.map((tab) => {
+                  {tabsShown.map((tab) => {
                     const Icon = tab.icon;
                     const isActive = activeTab === tab.id;
                     return (

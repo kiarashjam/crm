@@ -38,6 +38,9 @@ public sealed class ContactQueryOptions
     /// <summary>asc or desc.</summary>
     public string SortDir { get; init; } = "asc";
 
+    /// <summary>The contacts' tags and custom fields the list filters and sorts by.</summary>
+    public FlexFilter Flex { get; init; } = FlexFilter.None;
+
     /// <summary>The status as one of the three known values; anything else reads as active.</summary>
     public string NormalizedStatus => Status?.Trim().ToLowerInvariant() switch
     {

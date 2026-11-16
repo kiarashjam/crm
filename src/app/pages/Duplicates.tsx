@@ -10,6 +10,7 @@ import { Button } from '@/app/components/ui/button';
 import { cn } from '@/app/components/ui/utils';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { useModules } from '@/app/hooks/useModules';
 import {
   COMPANY_DUPLICATES, CONTACT_DUPLICATES, DEAL_DUPLICATES, HOUSEHOLD_DUPLICATES, LEAD_DUPLICATES, MEMBER_DUPLICATES,
   MergeDuplicatesDialog, useDuplicateGroups, type DuplicateKind,
@@ -29,22 +30,25 @@ const TILE: Record<string, string> = {
 
 /** Every kind of record that can be entered twice, in one place. */
 export default function Duplicates() {
-  // Read straight away: on this page the duplicates are the content.
+  // Read straight away: on this page the duplicates are the content. Leads and deals are
+  // the Sales module's, members and households the Club's: a module the workspace has
+  // turned off is neither read nor listed.
+  const modules = useModules();
   const contacts = useDuplicateGroups(CONTACT_DUPLICATES, { delayMs: 0 });
   const companies = useDuplicateGroups(COMPANY_DUPLICATES, { delayMs: 0 });
-  const leads = useDuplicateGroups(LEAD_DUPLICATES, { delayMs: 0 });
-  const deals = useDuplicateGroups(DEAL_DUPLICATES, { delayMs: 0 });
-  const members = useDuplicateGroups(MEMBER_DUPLICATES, { delayMs: 0 });
-  const households = useDuplicateGroups(HOUSEHOLD_DUPLICATES, { delayMs: 0 });
+  const leads = useDuplicateGroups(LEAD_DUPLICATES, { delayMs: 0, enabled: modules.sales });
+  const deals = useDuplicateGroups(DEAL_DUPLICATES, { delayMs: 0, enabled: modules.sales });
+  const members = useDuplicateGroups(MEMBER_DUPLICATES, { delayMs: 0, enabled: modules.club });
+  const households = useDuplicateGroups(HOUSEHOLD_DUPLICATES, { delayMs: 0, enabled: modules.club });
 
   const kinds = [
-    { spec: CONTACT_DUPLICATES, found: contacts },
-    { spec: LEAD_DUPLICATES, found: leads },
-    { spec: COMPANY_DUPLICATES, found: companies },
-    { spec: DEAL_DUPLICATES, found: deals },
-    { spec: MEMBER_DUPLICATES, found: members },
-    { spec: HOUSEHOLD_DUPLICATES, found: households },
-  ] as const;
+    { spec: CONTACT_DUPLICATES, found: contacts, on: true },
+    { spec: LEAD_DUPLICATES, found: leads, on: modules.sales },
+    { spec: COMPANY_DUPLICATES, found: companies, on: true },
+    { spec: DEAL_DUPLICATES, found: deals, on: modules.sales },
+    { spec: MEMBER_DUPLICATES, found: members, on: modules.club },
+    { spec: HOUSEHOLD_DUPLICATES, found: households, on: modules.club },
+  ].filter((k) => k.on);
 
   const loaded = kinds.every((k) => k.found.loaded);
   const [scanning, setScanning] = useState(false);

@@ -15,6 +15,7 @@ import { apiWithFallback, authFetch, authFetchJson, ensureOk, getApiBaseUrl, typ
 import { createMockStore, mockId } from './mockStore';
 import { createMember, type MemberTier } from './members';
 import type { Household } from './households';
+import type { ContractDeposit, ContractStatus } from './contracts';
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -29,7 +30,15 @@ export interface Application {
   email: string;
   phone?: string;
   requestedTier: MemberTier;
+  /** The name typed in before the referrer was a member of the club; kept as it was written. */
   referredByName?: string;
+  /** The member who referred them, the proposer and the seconder: members of the club. */
+  referredByMemberId?: string | null;
+  referredByMemberName?: string | null;
+  proposerMemberId?: string | null;
+  proposerName?: string | null;
+  seconderMemberId?: string | null;
+  seconderName?: string | null;
   occupation?: string;
   reasonForJoining?: string;
   status: ApplicationStatus;
@@ -187,6 +196,13 @@ export interface ApplicationInput {
   phone?: string;
   requestedTier: MemberTier;
   referredByName?: string;
+  /**
+   * The member who referred them, the proposer and the seconder. Left out, each stays as it
+   * is; an empty string takes it off (the server reads an empty id as "none").
+   */
+  referredByMemberId?: string;
+  proposerMemberId?: string;
+  seconderMemberId?: string;
   occupation?: string;
   reasonForJoining?: string;
   leadId?: string;
@@ -195,9 +211,21 @@ export interface ApplicationInput {
   householdRole?: string;
 }
 
+/** The empty id the server reads as "take it off". */
+export const NO_MEMBER = '00000000-0000-0000-0000-000000000000';
+
+/** An input as the server reads it: an empty member id is sent as the empty Guid, which takes the link off. */
+function sponsorsForServer<T extends Partial<ApplicationInput>>(input: T): T {
+  const out: T = { ...input };
+  for (const key of ['referredByMemberId', 'proposerMemberId', 'seconderMemberId'] as const) {
+    if (out[key] === '') (out as Partial<ApplicationInput>)[key] = NO_MEMBER;
+  }
+  return out;
+}
+
 export async function createApplication(input: ApplicationInput): Promise<Application> {
   return apiWithFallback(
-    () => authFetchJson<Application>('/api/applications', { method: 'POST', body: JSON.stringify(input) }),
+    () => authFetchJson<Application>('/api/applications', { method: 'POST', body: JSON.stringify(sponsorsForServer(input)) }),
     async () => {
       await delay(160);
       return applicationStore.add({ id: mockId('app'), submittedAtUtc: new Date().toISOString(), status: 'Submitted', source: 'staff', ...input });
@@ -208,7 +236,7 @@ export async function createApplication(input: ApplicationInput): Promise<Applic
 /** Changes an application's details (not its status: see setApplicationStatus and approveApplication). */
 export async function updateApplication(id: string, patch: Partial<ApplicationInput> & { reviewerNotes?: string; version?: string }): Promise<Application> {
   return apiWithFallback(
-    () => authFetchJson<Application>(`/api/applications/${id}`, { method: 'PUT', body: JSON.stringify(patch) }),
+    () => authFetchJson<Application>(`/api/applications/${id}`, { method: 'PUT', body: JSON.stringify(sponsorsForServer(patch)) }),
     async () => {
       await delay(120);
       demoFind(id);
@@ -454,6 +482,10 @@ export interface PublicApplicationForm {
   intro?: string | null;
   consentText: string;
   tiers: PublicTier[];
+  /** Whether the form shows the marketing checkbox, and whether it must be ticked (the workspace's privacy settings). */
+  marketingConsent?: 'off' | 'optional' | 'required';
+  /** The club's language (from its locale: en, de, fr), for a visitor whose browser speaks none of the app's. */
+  language?: string | null;
 }
 
 export interface PublicApplication {
@@ -468,6 +500,8 @@ export interface PublicApplication {
   marketingConsent: boolean;
   /** The honeypot: always empty when a person fills the form in. */
   website?: string;
+  /** The language the form was filled in (en, de, fr): the thank-you, and the member's language once approved. */
+  language?: string;
 }
 
 /** A public form request that failed, with its status (404: no such form; 429: too many). */
@@ -490,9 +524,14 @@ async function publicFetch(path: string, init?: RequestInit): Promise<Response> 
   }
 }
 
-/** The form a stranger sees: no sign-in, the link is the whole of it. */
-export async function getPublicApplicationForm(token: string): Promise<PublicApplicationForm> {
-  const res = await publicFetch(`/api/public/apply/${encodeURIComponent(token)}`);
+/**
+ * The form a stranger sees: no sign-in, the link is the whole of it. `language` is the one
+ * the page is read in, so the standard words the server adds (the news checkbox, when the
+ * club wrote none) are in it too.
+ */
+export async function getPublicApplicationForm(token: string, language?: string): Promise<PublicApplicationForm> {
+  const query = language ? `?lang=${encodeURIComponent(language)}` : '';
+  const res = await publicFetch(`/api/public/apply/${encodeURIComponent(token)}${query}`);
   if (!res.ok) throw new PublicApplicationError('Form not available', res.status);
   return res.json() as Promise<PublicApplicationForm>;
 }
@@ -531,6 +570,20 @@ export interface PersonMembership {
   household?: Household | null;
 }
 
+/** A contract of a member's, as their page lists it. */
+export interface MemberContract {
+  id: string;
+  title: string;
+  status: ContractStatus;
+  membershipTier?: string;
+  sentAtUtc?: string;
+  counterSignedAtUtc?: string;
+  leadId?: string;
+  dealId?: string;
+  /** The deposit it asked for on signing, and where it went. */
+  deposit?: ContractDeposit;
+}
+
 /** What a member's page links to on the sales side. */
 export interface MemberLinks {
   memberId: string;
@@ -540,7 +593,12 @@ export interface MemberLinks {
   contactId?: string;
   contactName?: string;
   contactEmail?: string;
+  /** The deal they joined through; absent when the reader may not open it. */
+  dealId?: string;
+  dealName?: string;
   applications: Application[];
+  /** Their contracts once sent, newest first. */
+  contracts?: MemberContract[];
   household?: Household | null;
 }
 
@@ -555,6 +613,14 @@ export async function getContactMembership(contactId: string, options: RequestOp
   return apiWithFallback(
     () => authFetchJson<PersonMembership>(`/api/contacts/${contactId}/membership`, { signal: options.signal }),
     async () => ({ contactId, members: [], applications: applicationStore.list().filter((a) => a.contactId === contactId), household: null }),
+  );
+}
+
+/** What a deal's page shows of the club: the members it brought in and the applications behind it. */
+export async function getDealMembership(dealId: string, options: RequestOptions = {}): Promise<PersonMembership> {
+  return apiWithFallback(
+    () => authFetchJson<PersonMembership>(`/api/deals/${dealId}/membership`, { signal: options.signal }),
+    async () => ({ members: [], applications: [], household: null }),
   );
 }
 

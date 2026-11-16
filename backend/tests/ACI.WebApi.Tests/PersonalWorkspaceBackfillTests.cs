@@ -49,14 +49,28 @@ public class PersonalWorkspaceBackfillTests
             Id = Guid.NewGuid(), OwnerUserId = me, EntityType = "deal", RecordId = deal.Id, FileName = "terms.pdf",
             ContentType = "application/pdf", Size = 4, Content = "%PDF"u8.ToArray(), UploadedByName = "Pierre", UploadedAtUtc = DateTime.UtcNow,
         });
-        db.CustomFieldDefinitions.Add(new CustomFieldDefinition
+        var boardSeat = new CustomFieldDefinition
         {
             Id = Guid.NewGuid(), OwnerUserId = me, EntityType = "deal", Key = "board_seat", Label = "Board seat", Type = "checkbox", CreatedAtUtc = DateTime.UtcNow,
-        });
+        };
+        db.CustomFieldDefinitions.Add(boardSeat);
         db.CustomFieldValues.Add(new CustomFieldValueSet
         {
             Id = Guid.NewGuid(), OwnerUserId = me, EntityType = "deal", RecordId = deal.Id, ValuesJson = "{\"board_seat\":true}", UpdatedAtUtc = DateTime.UtcNow,
         });
+        db.CustomFieldEntries.Add(new CustomFieldEntry
+        {
+            Id = Guid.NewGuid(), OwnerUserId = me, EntityType = "deal", RecordId = deal.Id, FieldId = boardSeat.Id, BoolValue = true, UpdatedAtUtc = DateTime.UtcNow,
+        });
+        var vip = new Tag { Id = Guid.NewGuid(), OwnerUserId = me, Name = "VIP", CreatedAtUtc = DateTime.UtcNow, UpdatedAtUtc = DateTime.UtcNow };
+        db.Tags.Add(vip);
+        db.RecordTags.Add(new RecordTag { Id = Guid.NewGuid(), OwnerUserId = me, TagId = vip.Id, EntityType = "deal", RecordId = deal.Id, CreatedAtUtc = DateTime.UtcNow });
+        var view = new SavedView
+        {
+            Id = Guid.NewGuid(), OwnerUserId = me, List = "deals", Name = "Founders", QueryJson = "{}", CreatedAtUtc = DateTime.UtcNow, UpdatedAtUtc = DateTime.UtcNow,
+        };
+        db.SavedViews.Add(view);
+        db.SavedViewDefaults.Add(new SavedViewDefault { Id = Guid.NewGuid(), UserId = me, List = "deals", SavedViewId = view.Id, UpdatedAtUtc = DateTime.UtcNow });
         db.DealLineItems.Add(new DealLineItem { Id = Guid.NewGuid(), DealId = deal.Id, Name = "Membership", Quantity = 1, UnitPrice = 12000, CreatedAtUtc = DateTime.UtcNow });
         db.Products.Add(new Product { Id = Guid.NewGuid(), OwnerUserId = me, Name = "Membership", UnitPrice = 12000, CreatedAtUtc = DateTime.UtcNow });
         db.ForecastSnapshots.Add(new ForecastSnapshot { Id = Guid.NewGuid(), SavedByUserId = me, MonthUtc = new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc), SavedAtUtc = DateTime.UtcNow });
@@ -76,6 +90,11 @@ public class PersonalWorkspaceBackfillTests
         (await check.Attachments.SingleAsync()).OrganizationId.Should().Be(org);
         (await check.CustomFieldDefinitions.SingleAsync()).OrganizationId.Should().Be(org);
         (await check.CustomFieldValues.SingleAsync()).OrganizationId.Should().Be(org);
+        (await check.CustomFieldEntries.SingleAsync()).OrganizationId.Should().Be(org);
+        (await check.Tags.SingleAsync()).OrganizationId.Should().Be(org);
+        (await check.RecordTags.SingleAsync()).OrganizationId.Should().Be(org);
+        (await check.SavedViews.SingleAsync()).OrganizationId.Should().Be(org);
+        (await check.SavedViewDefaults.SingleAsync()).OrganizationId.Should().Be(org);
         (await check.Products.SingleAsync(p => p.OwnerUserId == me)).OrganizationId.Should().Be(org);
         (await check.ForecastSnapshots.SingleAsync()).OrganizationId.Should().Be(org);
         (await check.ClubMembers.SingleAsync()).OrganizationId.Should().Be(org);

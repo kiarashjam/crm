@@ -1,4 +1,4 @@
-import { BarChart3, Bell, Mail } from 'lucide-react';
+import { BarChart3, Bell, Mail, Sun } from 'lucide-react';
 import type { UserSettings, UpdateUserSettingsRequest } from '@/app/api/types';
 
 type ToggleSwitchProps = {
@@ -57,7 +57,7 @@ export function NotificationsSection({
         <p className="text-slate-600 text-sm mt-1">Manage how you receive notifications</p>
         <div className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-amber-50 border border-amber-200 px-3 py-1.5 text-xs font-medium text-amber-700">
           <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-          Switches marked coming soon are saved, but nothing is sent for them yet. The weekly report digest is live.
+          Switches marked coming soon are saved, but nothing is sent for them yet. The morning brief and the weekly report digest are live.
         </div>
       </div>
 
@@ -99,6 +99,34 @@ export function NotificationsSection({
                 onChange={(val) => updateSettings({ emailOnTeamMention: val })}
                 label="Team Mentions"
                 description="When someone mentions you"
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* The morning brief: sent for real, as a notification and, when asked for, by email. */}
+      <div className="pt-6 border-t border-slate-200">
+        <div className="flex items-center gap-2 mb-4">
+          <Sun className="w-5 h-5 text-slate-500" />
+          <h3 className="font-semibold text-slate-900">Morning brief</h3>
+        </div>
+        <div className="space-y-3">
+          <ToggleSwitch
+            comingSoon={false}
+            checked={settings.morningBriefEnabled !== false}
+            onChange={(val) => updateSettings({ morningBriefEnabled: val })}
+            label="Morning brief"
+            description="From 7:00 on your workspace's calendar, a notification with your tasks due, your deals gone quiet and, as your role allows, members past due, today's bookings and events, and renewals coming up. Nothing to say, nothing sent."
+          />
+          {settings.morningBriefEnabled !== false && (
+            <div className="pl-4 border-l-2 border-orange-200">
+              <ToggleSwitch
+                comingSoon={false}
+                checked={settings.morningBriefEmail === true}
+                onChange={(val) => updateSettings({ morningBriefEmail: val })}
+                label="Also by email"
+                description="The same brief to your own address."
               />
             </div>
           )}

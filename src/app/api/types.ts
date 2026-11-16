@@ -291,6 +291,13 @@ export interface DealBoardQuery {
   closeTo?: string;
   staleOnly?: boolean;
   sort?: 'close' | 'value' | 'created' | 'name';
+  /** Tag ids: deals with any of them (all of them with tagMatch "all"). */
+  tag?: string[];
+  tagMatch?: 'any' | 'all';
+  /** Tag ids: deals with none of them. */
+  notTag?: string[];
+  /** Conditions on custom fields, each "key:op[:value]", all of which must hold. */
+  field?: string[];
 }
 
 export type TaskStatusType = 'todo' | 'in_progress' | 'completed' | 'cancelled';
@@ -489,6 +496,10 @@ export interface UserSettings {
   browserNotificationsEnabled: boolean;
   /** A weekly email of the figures for each workspace this person owns or manages. Off by default. */
   weeklyDigestEnabled?: boolean;
+  /** A morning brief of the day in each workspace, as a notification. On unless turned off. */
+  morningBriefEnabled?: boolean;
+  /** The morning brief by email as well (through the outbox). Off unless turned on. */
+  morningBriefEmail?: boolean;
 
   // Defaults
   defaultPipelineId?: string;
@@ -542,6 +553,8 @@ export interface UpdateUserSettingsRequest {
   inAppSoundEnabled?: boolean;
   browserNotificationsEnabled?: boolean;
   weeklyDigestEnabled?: boolean;
+  morningBriefEnabled?: boolean;
+  morningBriefEmail?: boolean;
 
   // Defaults
   defaultPipelineId?: string;

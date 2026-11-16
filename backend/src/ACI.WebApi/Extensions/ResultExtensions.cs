@@ -97,6 +97,20 @@ public static class ResultExtensions
 
         // A member's role does not let them (DomainErrors.Permission)
         var code when code.StartsWith("Permission.") => StatusCodes.Status403Forbidden,
+
+        // The workspace has turned that module off (DomainErrors.Modules.Off)
+        DomainErrors.Modules.OffCode => StatusCodes.Status403Forbidden,
+
+        // The member portal: closed by the club, something a member may not do themselves,
+        // and too many sign-in links asked for one address (DomainErrors.Portal).
+        DomainErrors.Portal.OffCode => StatusCodes.Status403Forbidden,
+        var code when code.StartsWith(DomainErrors.Portal.NotAllowedCode, StringComparison.Ordinal) => StatusCodes.Status403Forbidden,
+        DomainErrors.Portal.TooManyLinksCode => StatusCodes.Status429TooManyRequests,
+
+        // What calls to the language model may cost: the month's allowance used up, or a
+        // workspace asking too much at once (DomainErrors.Ai).
+        DomainErrors.Ai.MonthlyLimitCode => StatusCodes.Status429TooManyRequests,
+        DomainErrors.Ai.BusyCode => StatusCodes.Status429TooManyRequests,
         
         // Unauthorized/Authentication errors
         "Auth.InvalidCredentials" => StatusCodes.Status401Unauthorized,
@@ -106,6 +120,11 @@ public static class ResultExtensions
         "Auth.TooManyVerificationEmails" => StatusCodes.Status429TooManyRequests,
         "Auth.EmailNotVerified" => StatusCodes.Status403Forbidden,
         "Auth.InvalidResetToken" => StatusCodes.Status400BadRequest,
+        // A passkey sign-in refused, like a wrong password (only anonymous endpoints answer these).
+        "Passkeys.NotRecognised" => StatusCodes.Status401Unauthorized,
+        "Passkeys.CounterWentBack" => StatusCodes.Status401Unauthorized,
+        // A workspace that requires single sign-on, refusing a session that began another way.
+        DomainErrors.Sso.RequiredCode => StatusCodes.Status403Forbidden,
         "General.Unauthorized" => StatusCodes.Status401Unauthorized,
         
         // Forbidden errors
@@ -134,6 +153,7 @@ public static class ResultExtensions
         // A dependency that is missing or did not answer — not the caller's fault
         var code when code.EndsWith(".NotConfigured") => StatusCodes.Status503ServiceUnavailable,
         var code when code.EndsWith(".SendFailed") => StatusCodes.Status502BadGateway,
+        var code when code.EndsWith(".ModelFailed") => StatusCodes.Status502BadGateway,
 
         // Bad Request errors (default for validation/business rule violations)
         _ => StatusCodes.Status400BadRequest
@@ -146,6 +166,7 @@ public static class ResultExtensions
         403 => "Forbidden",
         404 => "Not Found",
         409 => "Conflict",
+        429 => "Too Many Requests",
         500 => "Server Error",
         502 => "Bad Gateway",
         503 => "Service Unavailable",

@@ -23,6 +23,7 @@ internal sealed class ClubApplicationConfiguration : IEntityTypeConfiguration<Cl
         builder.Property(e => e.ReferredByName).HasMaxLength(200);
         builder.Property(e => e.Occupation).HasMaxLength(200);
         builder.Property(e => e.ReasonForJoining).HasMaxLength(2000);
+        builder.Property(e => e.Language).HasMaxLength(5);
         builder.Property(e => e.Status).HasMaxLength(20).IsRequired();
         builder.Property(e => e.Source).HasMaxLength(20).IsRequired();
         builder.Property(e => e.ReviewerNotes).HasMaxLength(2000);
@@ -33,6 +34,10 @@ internal sealed class ClubApplicationConfiguration : IEntityTypeConfiguration<Cl
         builder.HasIndex(e => new { e.OrganizationId, e.MemberId }).HasFilter("[MemberId] IS NOT NULL");
         builder.HasIndex(e => new { e.OrganizationId, e.LeadId }).HasFilter("[LeadId] IS NOT NULL");
         builder.HasIndex(e => new { e.OrganizationId, e.ContactId }).HasFilter("[ContactId] IS NOT NULL");
+        // A member's page lists the applications they referred, proposed and seconded.
+        builder.HasIndex(e => new { e.OrganizationId, e.ReferredByMemberId }).HasFilter("[ReferredByMemberId] IS NOT NULL");
+        builder.HasIndex(e => new { e.OrganizationId, e.ProposerMemberId }).HasFilter("[ProposerMemberId] IS NOT NULL");
+        builder.HasIndex(e => new { e.OrganizationId, e.SeconderMemberId }).HasFilter("[SeconderMemberId] IS NOT NULL");
     }
 }
 

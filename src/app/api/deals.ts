@@ -291,7 +291,9 @@ function boardParams(query: DealBoardQuery, extra: Record<string, string | numbe
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries({ ...query, ...extra })) {
     if (value === undefined || value === null || value === '' || value === false) continue;
-    params.set(key, String(value));
+    // The tag and field conditions repeat their name, once per value, as the server reads them.
+    if (Array.isArray(value)) value.forEach((v) => params.append(key, String(v)));
+    else params.set(key, String(value));
   }
   return params.toString();
 }

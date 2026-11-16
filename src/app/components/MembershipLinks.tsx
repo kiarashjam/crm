@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowUpRight, ClipboardList, Crown, HomeIcon, Loader2 } from 'lucide-react';
+import { ArrowUpRight, ClipboardList, Crown, FileText, HomeIcon, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/app/components/ui/button';
 import { WriteOnly } from '@/app/components/WriteOnly';
@@ -12,7 +12,11 @@ import {
   type Application,
 } from '@/app/api/applications';
 import type { Household } from '@/app/api/households';
+import type { MemberContract } from '@/app/api/applications';
+import { STATUS_LABELS } from '@/app/pages/contracts/contractLifecycle';
+import { DepositLine } from '@/app/pages/contracts/ContractDeposit';
 import { useMemberLinks, usePersonMembership } from '@/app/hooks/queries';
+import { useModules } from '@/app/hooks/useModules';
 import { cn } from '@/app/components/ui/utils';
 
 const STATUS_LABEL: Record<Application['status'], string> = {
@@ -74,6 +78,36 @@ function ApplicationsList({ applications }: { applications: Application[] }) {
   );
 }
 
+/** A member's contracts once sent, each with the deposit it asked for and where that went. */
+function ContractsList({ contracts, linkTo }: { contracts: MemberContract[]; linkTo: boolean }) {
+  if (contracts.length === 0) return null;
+  return (
+    <div>
+      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Contracts</p>
+      <ul className="space-y-2">
+        {contracts.map((c) => {
+          // A contract opens on the page of the lead or deal it was drafted on.
+          const to = c.leadId ? `/leads/${c.leadId}` : c.dealId ? `/deals/${c.dealId}` : null;
+          return (
+            <li key={c.id}>
+              <span className="inline-flex items-center gap-1.5 text-slate-700">
+                <FileText className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                {linkTo && to
+                  ? <Link to={to} className="font-medium hover:text-indigo-700">{c.title}</Link>
+                  : <span className="font-medium">{c.title}</span>}
+                <span className="text-xs text-slate-500">
+                  {STATUS_LABELS[c.status] ?? c.status}{c.membershipTier ? ` · ${c.membershipTier}` : ''}
+                </span>
+              </span>
+              {c.deposit && <DepositLine deposit={c.deposit} withdrawn={c.status === 'voided' || c.status === 'declined'} className="mt-1.5" />}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 function HouseholdLine({ household, memberId }: { household: Household; memberId?: string }) {
   const me = memberId ? household.people.find((p) => p.memberId === memberId) : undefined;
   return (
@@ -96,14 +130,30 @@ function HouseholdLine({ household, memberId }: { household: Household; memberId
 }
 
 /**
- * What a lead's or a contact's page shows of the club: the member this person became, their
- * applications and their household, and a way to start an application for them.
+ * What a lead's, a contact's or a deal's page shows of the club: the member this person became
+ * (for a deal, the members it brought in), their applications and their household, and a way
+ * to start an application for them (for a deal, for its contact).
  */
-export function PersonMembershipCard({ kind, id, personName, readOnly = false }: {
-  kind: 'lead' | 'contact';
+export function PersonMembershipCard(props: {
+  kind: 'lead' | 'contact' | 'deal';
   id: string;
   personName: string;
   readOnly?: boolean;
+  /** For a deal: its contact, whom an application is started for. */
+  contactId?: string;
+}) {
+  // The club is a module the workspace can turn off; then a lead or a contact has no
+  // membership to show, and the server refuses to read one.
+  const clubOn = useModules().club;
+  return clubOn ? <PersonMembershipBody {...props} /> : null;
+}
+
+function PersonMembershipBody({ kind, id, personName, readOnly = false, contactId }: {
+  kind: 'lead' | 'contact' | 'deal';
+  id: string;
+  personName: string;
+  readOnly?: boolean;
+  contactId?: string;
 }) {
   const query = usePersonMembership(kind, id);
   const [starting, setStarting] = useState(false);
@@ -114,7 +164,7 @@ export function PersonMembershipCard({ kind, id, personName, readOnly = false }:
   const start = async () => {
     setStarting(true);
     try {
-      await (kind === 'lead' ? startApplicationFromLead(id) : startApplicationFromContact(id));
+      await (kind === 'lead' ? startApplicationFromLead(id) : startApplicationFromContact(kind === 'deal' ? contactId! : id));
       toast.success(`An application for ${first} is open on the Applications page.`);
       await query.refetch();
     } catch (err) {
@@ -149,7 +199,7 @@ export function PersonMembershipCard({ kind, id, personName, readOnly = false }:
           )}
           <ApplicationsList applications={data!.applications} />
           {data!.household && <HouseholdLine household={data!.household} />}
-          {data!.members.length === 0 && !hasOpen && !readOnly && (
+          {data!.members.length === 0 && !hasOpen && !readOnly && (kind !== 'deal' || !!contactId) && (
             <WriteOnly permission={PERMISSION.ClubMembers}>
               <Button type="button" size="sm" variant="outline" onClick={() => void start()} disabled={starting}
                 className="w-full gap-1.5 border-dashed border-indigo-300 text-indigo-700 hover:bg-indigo-50">
@@ -164,12 +214,14 @@ export function PersonMembershipCard({ kind, id, personName, readOnly = false }:
   );
 }
 
-/** What a member's page shows of the sales side: their lead and contact, applications and household. */
+/** What a member's page shows of the sales side: their lead, contact and deal, applications, contracts with their deposits, and household. */
 export function MemberLinksCard({ memberId, className }: { memberId: string; className?: string }) {
   const query = useMemberLinks(memberId);
   const data = query.data;
+  // With the Sales module off the lead's page says so, so the lead is named, not linked.
+  const salesOn = useModules().sales;
   return (
-    <Shell id={`member-links-${memberId}`} title="Lead, contact and household" className={className}>
+    <Shell id={`member-links-${memberId}`} title="Lead, deal, contracts and household" className={className}>
       {query.isPending ? (
         <p className="flex items-center gap-2 text-slate-500" role="status"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Loading…</p>
       ) : query.isError ? (
@@ -181,9 +233,13 @@ export function MemberLinksCard({ memberId, className }: { memberId: string; cla
               {data!.leadId && (
                 <li>
                   <span className="text-xs text-slate-500">Lead </span>
-                  <Link to={`/leads/${data!.leadId}`} className="inline-flex items-center gap-1 font-medium text-slate-900 hover:text-indigo-700">
-                    {data!.leadName ?? 'Open the lead'} <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
-                  </Link>
+                  {salesOn ? (
+                    <Link to={`/leads/${data!.leadId}`} className="inline-flex items-center gap-1 font-medium text-slate-900 hover:text-indigo-700">
+                      {data!.leadName ?? 'Open the lead'} <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+                    </Link>
+                  ) : (
+                    <span className="font-medium text-slate-900">{data!.leadName ?? 'A lead'}</span>
+                  )}
                   {data!.leadStatus && <span className="ml-1.5 text-xs text-slate-500">{data!.leadStatus}</span>}
                 </li>
               )}
@@ -196,11 +252,24 @@ export function MemberLinksCard({ memberId, className }: { memberId: string; cla
                   {data!.contactEmail && <span className="ml-1.5 text-xs text-slate-500">{data!.contactEmail}</span>}
                 </li>
               )}
+              {data!.dealId && (
+                <li>
+                  <span className="text-xs text-slate-500">Deal </span>
+                  {salesOn ? (
+                    <Link to={`/deals/${data!.dealId}`} className="inline-flex items-center gap-1 font-medium text-slate-900 hover:text-indigo-700">
+                      {data!.dealName ?? 'Open the deal'} <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+                    </Link>
+                  ) : (
+                    <span className="font-medium text-slate-900">{data!.dealName ?? 'A deal'}</span>
+                  )}
+                </li>
+              )}
             </ul>
           ) : (
             <p className="text-slate-600">Not linked to a lead or a contact.</p>
           )}
           <ApplicationsList applications={data!.applications} />
+          <ContractsList contracts={data!.contracts ?? []} linkTo={salesOn} />
           {data!.household ? <HouseholdLine household={data!.household} memberId={memberId} /> : <p className="text-xs text-slate-500">In no household.</p>}
         </>
       )}

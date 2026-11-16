@@ -17,6 +17,7 @@ import { Textarea } from '@/app/components/ui/textarea';
 import { cn } from '@/app/components/ui/utils';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import { useOrgMembers } from '@/app/hooks/queries/records';
+import { useModules } from '@/app/hooks/useModules';
 import { EmailPreviewFrame, PlaceholderChips, insertAt } from '@/app/components/onboarding';
 import { EmailImageTools } from '@/app/components/onboarding/EmailImageTools';
 
@@ -48,6 +49,7 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
   const [loading, setLoading] = useState(!servesDemoData());
   usePageLoading(loading);
   const canEdit = Boolean(currentOrg) && orgCan(currentOrg, PERMISSION.ManageSettings);
+  const clubOn = useModules().club;
   // Who can change it, for someone who cannot: the fields alone, greyed out, said nothing.
   const members = useOrgMembers().data;
   const managers = useMemo(
@@ -365,10 +367,13 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
           <Switch checked={enabled} onCheckedChange={setEnabled} disabled={!canEdit} aria-label="Offer the welcome by default" />
           Offer the welcome on every conversion into a deal
         </label>
-        <label className="flex items-center gap-3 text-sm text-slate-700">
-          <Switch checked={addToMembers} onCheckedChange={setAddToMembers} disabled={!canEdit} aria-label="Add to club members" />
-          Also add them to the club's members here, with their start date
-        </label>
+        {/* With the club turned off there are no members to add them to (the server adds nobody). */}
+        {clubOn && (
+          <label className="flex items-center gap-3 text-sm text-slate-700">
+            <Switch checked={addToMembers} onCheckedChange={setAddToMembers} disabled={!canEdit} aria-label="Add to club members" />
+            Also add them to the club's members here, with their start date
+          </label>
+        )}
         <div className="flex items-center gap-3 text-sm text-slate-700">
           Language
           <div className="inline-flex rounded-lg border border-slate-200 p-0.5">

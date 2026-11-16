@@ -23,6 +23,7 @@ namespace ACI.WebApi.Controllers;
 [Authorize]
 [Route("api/sequences")]
 [Requires(MemberPermissions.EditRecords, WritesOnly = true)]
+[InModule(WorkspaceModules.Sales)]
 public class SequencesController : ControllerBase
 {
     private readonly ISequenceService _sequences;

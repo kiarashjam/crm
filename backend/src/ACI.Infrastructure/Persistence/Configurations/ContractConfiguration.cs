@@ -19,6 +19,10 @@ public class ContractConfiguration : IEntityTypeConfiguration<Contract>
 
         builder.Property(c => c.CounterpartyName).HasMaxLength(300);
         builder.Property(c => c.CounterpartyEmail).HasMaxLength(320);
+        // A tier's name, as the club's catalogue and applications hold it.
+        builder.Property(c => c.MembershipTier).HasMaxLength(32);
+        builder.Property(c => c.DepositAmount).HasPrecision(18, 2);
+        builder.Property(c => c.DepositCurrency).HasMaxLength(3);
 
         builder.Property(c => c.BodyHashAtSend).HasMaxLength(64);
         builder.Property(c => c.SigningTokenHash).HasMaxLength(64);

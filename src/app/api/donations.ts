@@ -35,6 +35,8 @@ export interface Donation {
   voidReason?: string;
   voidedAtUtc?: string;
   voidedByName?: string;
+  /** The server's version of the donation as it was read; acknowledging it is sent with this (If-Match). */
+  version?: string;
 }
 
 export const DONATION_CAUSES: DonationCause[] = [
@@ -150,9 +152,9 @@ export async function recordDonation(input: DonationInput): Promise<Donation | n
   );
 }
 
-export async function acknowledgeDonation(id: string): Promise<Donation | null> {
+export async function acknowledgeDonation(id: string, version?: string): Promise<Donation | null> {
   return apiWithFallback(
-    () => authFetchJson<Donation>(`/api/donations/${id}/acknowledge`, { method: 'POST' }),
+    () => authFetchJson<Donation>(`/api/donations/${id}/acknowledge`, { method: 'POST', headers: version ? { 'If-Match': `"${version}"` } : undefined }),
     async () => {
       await delay(100);
       return donationStore.update(id, { acknowledged: true });

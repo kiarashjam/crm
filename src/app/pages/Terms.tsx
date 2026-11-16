@@ -1,10 +1,20 @@
 import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Sparkles } from 'lucide-react';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import DemoBanner from '@/app/components/DemoBanner';
 import { BrandName } from '@/app/components/BrandName';
+import { getPrivacyNotice } from '@/app/api/privacy';
 
 export default function Terms() {
+  // Who runs the app, from the server's settings (the same facts as the privacy notice), in
+  // place of the placeholder company in San Francisco under California law.
+  const notice = useQuery({
+    queryKey: ['public', 'privacy-notice', ''],
+    queryFn: ({ signal }) => getPrivacyNotice(null, { signal }),
+    staleTime: 5 * 60_000,
+  });
+  const operator = notice.data?.operator;
   return (
     <div className="min-h-screen bg-gradient-calm">
       <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm" role="banner">
@@ -167,19 +177,33 @@ export default function Terms() {
               <section className="mb-8">
                 <h2 className="text-2xl font-bold text-slate-900 mb-4">Governing Law</h2>
                 <p className="text-slate-700 mb-4">
-                  These terms are governed by the laws of the State of California, USA, without regard to conflict of law principles.
+                  These terms are governed by the law of the country where the operator named below has its seat, unless
+                  the agreement between the operator and your club or company says otherwise.
                 </p>
               </section>
 
               <section>
                 <h2 className="text-2xl font-bold text-slate-900 mb-4">Contact Information</h2>
-                <p className="text-slate-700 mb-4">
-                  Questions about these Terms of Service? Contact us at:
-                </p>
-                <p className="text-slate-700">
-                  Email: legal@aci.com<br />
-                  Address: 123 Legal Street, San Francisco, CA 94102
-                </p>
+                {operator?.name ? (
+                  <>
+                    <p className="text-slate-700 mb-4">The app is run by:</p>
+                    <address className="not-italic text-slate-700">
+                      <strong>{operator.name}</strong>
+                      {operator.address && <span className="block whitespace-pre-line">{operator.address}</span>}
+                      {operator.email && (
+                        <span className="block">
+                          Email: <a href={`mailto:${operator.email}`} className="underline">{operator.email}</a>
+                        </span>
+                      )}
+                    </address>
+                  </>
+                ) : (
+                  <p className="text-slate-700">
+                    {notice.isPending
+                      ? 'Loading the operator\'s details…'
+                      : 'Questions about these terms go to the club or company that gave you access to the app.'}
+                  </p>
+                )}
               </section>
             </div>
           </div>

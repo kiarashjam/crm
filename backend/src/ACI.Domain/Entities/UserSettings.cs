@@ -45,6 +45,15 @@ public class UserSettings
     public bool WeeklyDigestEnabled { get; set; }
     /// <summary>When the weekly digest last went out to them, so a week is sent once.</summary>
     public DateTime? WeeklyDigestSentAtUtc { get; set; }
+    /// <summary>
+    /// Whether they turned off the assistant's morning brief: their tasks due, deals gone
+    /// quiet and, as their role allows, the club's day, in their notifications each workspace
+    /// day it has something to say. Kept as "off" so the column's plain default, false, leaves
+    /// it on for everyone, existing accounts included.
+    /// </summary>
+    public bool MorningBriefOff { get; set; }
+    /// <summary>A copy of the morning brief by email too. Off until they turn it on.</summary>
+    public bool MorningBriefEmail { get; set; }
 
     // =========== DEFAULTS ===========
     public string? DefaultPipelineId { get; set; }

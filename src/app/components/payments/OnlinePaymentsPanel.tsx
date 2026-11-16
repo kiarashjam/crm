@@ -12,6 +12,7 @@ import { useOnlinePayments } from '@/app/hooks/queries';
 import { useRegional } from '@/app/hooks/useMoney';
 import { formatClubMoney } from '@/app/lib/clubMoney';
 import { METHOD_LABEL, ONLINE_STATUS_BADGE, ONLINE_STATUS_LABEL, PURPOSE_LABEL } from './paymentLabels';
+import { currentDateLocale } from '@/app/i18n/current';
 
 const FILTERS: { value: OnlinePaymentStatus | ''; label: string }[] = [
   { value: '', label: 'All' },
@@ -23,7 +24,7 @@ const FILTERS: { value: OnlinePaymentStatus | ''; label: string }[] = [
 
 function formatDateTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return new Date(iso).toLocaleString(currentDateLocale(), { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   } catch {
     return iso;
   }

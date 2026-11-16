@@ -58,6 +58,10 @@ public static class RecordMerge
                 attachment.RecordId = keepId;
         }
 
+        await MoveFieldsAndTagsAsync(db, keepId, dropId, ct);
+
+        // The values kept the old way, read-only now, follow too, so an erasure of the kept
+        // record still finds them.
         var sets = await db.CustomFieldValues
             .Where(v => v.EntityType == entityType && (v.RecordId == keepId || v.RecordId == dropId))
             .ToListAsync(ct);
@@ -73,6 +77,41 @@ public static class RecordMerge
         keep.ValuesJson = FoldValues(keep.ValuesJson, drop.ValuesJson);
         keep.UpdatedAtUtc = DateTime.UtcNow;
         db.CustomFieldValues.Remove(drop);
+    }
+
+    /// <summary>
+    /// Folds the custom field values and tags of <paramref name="dropId"/> into <paramref name="keepId"/>'s:
+    /// a field the kept record has a value for keeps it, an empty one takes the other's; the
+    /// tags of both stay; and link fields that pointed at the record folded in point at the kept one.
+    /// </summary>
+    /// <remarks>Public for the club's member merge, which folds one member into another the same way.</remarks>
+    public static async Task MoveFieldsAndTagsAsync(AppDbContext db, Guid keepId, Guid dropId, CancellationToken ct)
+    {
+        var now = DateTime.UtcNow;
+        var entries = await db.CustomFieldEntries.Where(e => e.RecordId == keepId || e.RecordId == dropId).ToListAsync(ct);
+        var keptFields = entries.Where(e => e.RecordId == keepId).Select(e => e.FieldId).ToHashSet();
+        foreach (var entry in entries.Where(e => e.RecordId == dropId))
+        {
+            if (keptFields.Contains(entry.FieldId)) db.CustomFieldEntries.Remove(entry);
+            else
+            {
+                entry.RecordId = keepId;
+                entry.UpdatedAtUtc = now;
+            }
+        }
+        foreach (var link in await db.CustomFieldEntries.Where(e => e.LinkId == dropId).ToListAsync(ct))
+        {
+            link.LinkId = keepId;
+            link.UpdatedAtUtc = now;
+        }
+
+        var tags = await db.RecordTags.Where(t => t.RecordId == keepId || t.RecordId == dropId).ToListAsync(ct);
+        var keptTags = tags.Where(t => t.RecordId == keepId).Select(t => t.TagId).ToHashSet();
+        foreach (var tag in tags.Where(t => t.RecordId == dropId))
+        {
+            if (keptTags.Contains(tag.TagId)) db.RecordTags.Remove(tag);
+            else tag.RecordId = keepId;
+        }
     }
 
     /// <summary>

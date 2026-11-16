@@ -4,7 +4,7 @@
  * when present; 401 from the backend clears session.
  */
 
-import { clearSession, getAuthToken, getCurrentOrganizationId, isDemoMode } from '@/app/lib/auth';
+import { announceSsoSignInNeeded, clearSession, getAuthToken, getCurrentOrganizationId, isDemoMode } from '@/app/lib/auth';
 import { announceDataChanged, changesRecords, resourcesChangedBy } from './dataChanged';
 import { isNotOnServer } from './notOnServer';
 
@@ -71,6 +71,9 @@ export async function authFetch(path: string, options: AuthFetchOptions = {}): P
   if (res.status === 401 && !skipAuth) {
     clearSession();
   }
+  if (res.status === 403 && !skipAuth) {
+    noticeSsoRefusal(res);
+  }
   // Every write the app makes passes through here, so this is where "your copy
   // may be stale" is said once for all of them. Anonymous calls (signing a
   // contract, the public capture form) are not the signed-in user's records.
@@ -80,6 +83,25 @@ export async function authFetch(path: string, options: AuthFetchOptions = {}): P
     announceDataChanged({ resources: resourcesChangedBy(init.method, path, init.body) });
   }
   return res;
+}
+
+/**
+ * A workspace that requires single sign-on refuses every request from a session that
+ * began with a password or a passkey (403, errorCode Sso.Required). Say so once for all
+ * of them, so the workspace can show why instead of a page of failed requests. Read from
+ * a copy of the response: the caller reads the body itself.
+ */
+function noticeSsoRefusal(res: Response): void {
+  void res.clone().text().then((text) => {
+    try {
+      const problem = JSON.parse(text) as { errorCode?: unknown; organizationId?: unknown } | null;
+      if (problem?.errorCode === 'Sso.Required' && typeof problem.organizationId === 'string') {
+        announceSsoSignInNeeded(problem.organizationId);
+      }
+    } catch {
+      // Not a problem body: some other refusal.
+    }
+  }, () => undefined);
 }
 
 /**

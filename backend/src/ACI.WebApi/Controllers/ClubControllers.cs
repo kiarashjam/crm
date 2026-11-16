@@ -14,6 +14,7 @@ namespace ACI.WebApi.Controllers;
 [WorkspaceRequired]
 [Produces("application/json")]
 [Requires(MemberPermissions.ClubMembers, WritesOnly = true)]
+[InModule(WorkspaceModules.Club)]
 public class MembersController : ControllerBase
 {
     private readonly IClubService _club;
@@ -24,11 +25,12 @@ public class MembersController : ControllerBase
         _currentUser = currentUser;
     }
 
+    /// <summary>The club's members, narrowed by their tags and custom fields when the query string names any (tag, notTag, tagMatch, field).</summary>
     [HttpGet]
-    public async Task<ActionResult<IReadOnlyList<MemberDto>>> List(CancellationToken ct)
+    public async Task<ActionResult<IReadOnlyList<MemberDto>>> List([FromQuery] FlexQueryParams? flex, CancellationToken ct)
     {
         if (_currentUser.UserId is not { } userId) return Unauthorized();
-        return Ok(await _club.MembersAsync(userId, _currentUser.CurrentOrganizationId, ct));
+        return Ok(await _club.MembersAsync(userId, _currentUser.CurrentOrganizationId, ct, (flex ?? new FlexQueryParams()).ToFilter()));
     }
 
     [HttpPost]
@@ -70,6 +72,7 @@ public class MembersController : ControllerBase
 [WorkspaceRequired]
 [Produces("application/json")]
 [Requires(MemberPermissions.FrontDesk, WritesOnly = true)]
+[InModule(WorkspaceModules.Club)]
 public class VisitsController : ControllerBase
 {
     private readonly IClubService _club;
@@ -108,6 +111,7 @@ public class VisitsController : ControllerBase
 [Authorize]
 [WorkspaceRequired]
 [Produces("application/json")]
+[InModule(WorkspaceModules.Club)]
 public class LoyaltyController : ControllerBase
 {
     private readonly IClubService _club;

@@ -1,19 +1,24 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
+import { useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
+import { motion } from 'motion/react';
 import {
-  ArrowUpRight, Briefcase, Check, CheckCircle2, Copy, GitMerge, ListTodo, Loader2, MessageSquare,
-  PenLine, Pencil, Repeat2, Send, Sparkles, StickyNote, UserCheck, UserPlus, Workflow,
+  ArrowUpRight, Briefcase, CalendarPlus, Check, CheckCircle2, Copy, GitMerge, ListTodo, Loader2, Mail, MessageSquare,
+  MessagesSquare, MoveRight, PenLine, Pencil, Receipt, Repeat2, Send, Sparkles, StickyNote, UserCheck, UserPlus, Workflow, X,
 } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
+import type { AssistantProposal, ProposalKind } from '@/app/api/assistant';
 import type { AgentAction } from './brain/answer';
 
 export const EASE = [0.16, 1, 0.3, 1] as const;
 
 /**
  * The agent's face: a glowing orb with a slowly turning highlight. It breathes while the
- * agent is thinking. With less motion asked for, it is a still gradient.
+ * agent is waiting for an answer. With less motion asked for, it is a still gradient.
+ * `ai` says a language model answers: sparkles then, a plain speech mark for the built-in
+ * rules, which are no AI and should not look like one.
  */
-export function AiOrb({ size = 32, thinking = false, reduce = false, className }: { size?: number; thinking?: boolean; reduce?: boolean; className?: string }) {
+export function AiOrb({ size = 32, thinking = false, reduce = false, ai = false, className }: { size?: number; thinking?: boolean; reduce?: boolean; ai?: boolean; className?: string }) {
+  const Icon = ai ? Sparkles : MessagesSquare;
   return (
     <span
       aria-hidden="true"
@@ -35,21 +40,18 @@ export function AiOrb({ size = 32, thinking = false, reduce = false, className }
             transition={{ duration: thinking ? 1.4 : 5, repeat: Infinity, ease: 'linear' }}
           />
         )}
-        <Sparkles className="relative text-white" style={{ width: size * 0.48, height: size * 0.48 }} />
+        <Icon className="relative text-white" style={{ width: size * 0.48, height: size * 0.48 }} />
       </span>
     </span>
   );
 }
 
-const THINKING = ['Reading your records', 'Weighing the queue', 'Checking dates and amounts', 'Putting it together'];
-
-/** Three bouncing dots and a line that says what the agent is looking at. */
-export function ThinkingBubble({ reduce }: { reduce: boolean }) {
-  const [step, setStep] = useState(0);
-  useEffect(() => {
-    const handle = window.setInterval(() => setStep((current) => (current + 1) % THINKING.length), 900);
-    return () => window.clearInterval(handle);
-  }, []);
+/**
+ * Three bouncing dots while the language model is really working on an answer, with what is
+ * happening in plain words. Shown only for that wait: the built-in rules answer at once, and
+ * no pause is staged for them.
+ */
+export function ThinkingBubble({ reduce, label = 'Asking the assistant' }: { reduce: boolean; label?: string }) {
   return (
     <motion.div
       className="flex items-end gap-2.5"
@@ -58,9 +60,9 @@ export function ThinkingBubble({ reduce }: { reduce: boolean }) {
       exit={reduce ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, scale: 0.96, transition: { duration: 0.15 } }}
       transition={{ duration: 0.3, ease: EASE }}
       role="status"
-      aria-label="The agent is thinking"
+      aria-label="The assistant is answering"
     >
-      <AiOrb size={28} thinking reduce={reduce} />
+      <AiOrb size={28} thinking reduce={reduce} ai />
       <div className="rounded-2xl rounded-bl-md border border-fuchsia-100 bg-white/90 px-4 py-3 shadow-sm dark:border-fuchsia-900/50 dark:bg-slate-900">
         <div className="flex items-center gap-1.5">
           {[0, 1, 2].map((dot) => (
@@ -72,18 +74,7 @@ export function ThinkingBubble({ reduce }: { reduce: boolean }) {
             />
           ))}
         </div>
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.p
-            key={step}
-            className="mt-1.5 bg-gradient-to-r from-slate-500 via-fuchsia-500 to-slate-500 bg-[length:200%_100%] bg-clip-text text-xs font-medium text-transparent motion-safe:animate-[shimmer_2.2s_linear_infinite]"
-            initial={reduce ? false : { opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={reduce ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, y: -4, transition: { duration: 0.12 } }}
-            transition={{ duration: 0.2 }}
-          >
-            {THINKING[step]}…
-          </motion.p>
-        </AnimatePresence>
+        <p className="mt-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">{label}…</p>
       </div>
     </motion.div>
   );
@@ -226,11 +217,13 @@ export function UserBubble({ text, fresh, reduce }: { text: string; fresh: boole
  * line sharpening into place, so it reads as being worked out. The whole text is in the
  * page from the start, so a screen reader hears it at once.
  */
-export function AgentBubble({ text, saved, fresh, reduce, children }: {
+export function AgentBubble({ text, saved, fresh, reduce, ai = false, children }: {
   text: string;
   saved?: boolean;
   fresh: boolean;
   reduce: boolean;
+  /** Written by the language model, not the built-in rules. */
+  ai?: boolean;
   children?: ReactNode;
 }) {
   const [copied, setCopied] = useState(false);
@@ -260,7 +253,7 @@ export function AgentBubble({ text, saved, fresh, reduce, children }: {
           <CheckCircle2 className="h-4 w-4" />
         </motion.span>
       ) : (
-        <AiOrb size={28} reduce={reduce} className="mt-0.5" />
+        <AiOrb size={28} reduce={reduce} className="mt-0.5" ai={ai} />
       )}
       <div className="min-w-0 max-w-[92%] flex-1">
         <p className="sr-only">Agent:</p>
@@ -306,6 +299,98 @@ export function AgentBubble({ text, saved, fresh, reduce, children }: {
           </motion.div>
         )}
       </div>
+    </motion.div>
+  );
+}
+
+const PROPOSAL_ICON: Record<ProposalKind, typeof Send> = {
+  task: ListTodo,
+  activity: StickyNote,
+  'deal-stage': MoveRight,
+  'email-draft': Mail,
+  booking: CalendarPlus,
+  charge: Receipt,
+};
+
+/** Where a proposal stands: waiting for the person, being saved, done, or dismissed. */
+export type ProposalState = 'open' | 'saving' | 'done' | 'dismissed';
+
+/**
+ * A change the assistant proposes, as a card: what it would do, from the records, and two
+ * buttons. Nothing is written until Confirm, which sends it through the same endpoint the
+ * app's own form uses; an email only opens in the composer, where the person sends it.
+ */
+export function ProposalCard({ proposal, state, readOnly, busy, reduce, onConfirm, onDismiss }: {
+  proposal: AssistantProposal;
+  state: ProposalState;
+  readOnly: boolean;
+  busy: boolean;
+  reduce: boolean;
+  onConfirm: (proposal: AssistantProposal) => void;
+  onDismiss: (proposal: AssistantProposal) => void;
+}) {
+  const Icon = PROPOSAL_ICON[proposal.kind] ?? Sparkles;
+  const email = proposal.kind === 'email-draft';
+  const settled = state === 'done' || state === 'dismissed';
+  return (
+    <motion.div
+      role="group"
+      aria-label={`Proposed: ${proposal.title}`}
+      initial={reduce ? false : { opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, ease: EASE }}
+      className={cn(
+        'w-full rounded-xl border px-3 py-2.5 text-sm shadow-sm',
+        settled
+          ? 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-900/60'
+          : 'border-fuchsia-200 bg-white text-slate-800 dark:border-fuchsia-900/60 dark:bg-slate-950 dark:text-slate-100',
+      )}
+    >
+      <div className="flex items-center gap-2 font-semibold">
+        <Icon className="h-4 w-4 shrink-0 text-fuchsia-600 dark:text-fuchsia-300" aria-hidden="true" />
+        <span className="min-w-0 flex-1">{proposal.title}</span>
+        {proposal.link && (
+          <Link to={proposal.link} className="inline-flex items-center gap-0.5 text-xs font-medium text-slate-500 hover:text-fuchsia-700 dark:text-slate-400">
+            Open <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
+          </Link>
+        )}
+      </div>
+      {proposal.details.length > 0 && (
+        <ul className="mt-1.5 space-y-0.5 text-[13px] text-slate-600 dark:text-slate-300">
+          {proposal.details.map((line, index) => (
+            <li key={`${index}-${line}`} className="whitespace-pre-wrap break-words">{line}</li>
+          ))}
+        </ul>
+      )}
+      {state === 'done' ? (
+        <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+          <Check className="h-3.5 w-3.5" aria-hidden="true" /> {email ? 'Sent from the composer.' : 'Done.'}
+        </p>
+      ) : state === 'dismissed' ? (
+        <p className="mt-2 text-xs font-medium">Dismissed. Nothing was changed.</p>
+      ) : (
+        <div className="mt-2.5 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onConfirm(proposal)}
+            disabled={busy || readOnly || state === 'saving'}
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-gradient-to-r from-orange-500 to-fuchsia-500 px-3.5 py-1.5 text-sm font-semibold text-white shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400 focus-visible:ring-offset-2 disabled:opacity-50"
+          >
+            {state === 'saving' ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Check className="h-4 w-4" aria-hidden="true" />}
+            {email ? 'Open in the composer' : 'Confirm'}
+          </button>
+          <button
+            type="button"
+            onClick={() => onDismiss(proposal)}
+            disabled={state === 'saving'}
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-sm font-semibold text-slate-700 hover:border-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
+          >
+            <X className="h-4 w-4" aria-hidden="true" />
+            Dismiss
+          </button>
+          {readOnly && <span className="text-xs text-slate-500">Your role here does not let you make this change, so it cannot be confirmed.</span>}
+        </div>
+      )}
     </motion.div>
   );
 }

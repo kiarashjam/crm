@@ -15,16 +15,20 @@ function delay(ms: number): Promise<void> {
 export type AuditEntity =
   | 'lead' | 'contact' | 'company' | 'deal' | 'task' | 'sequence' | 'automation'
   // Club money, recorded by the server from the save that changed it.
-  | 'charge' | 'payment' | 'gift_card' | 'tab' | 'subscription' | 'donation' | 'member';
+  | 'charge' | 'payment' | 'gift_card' | 'tab' | 'subscription' | 'donation' | 'member'
+  // A person's data downloaded or erased, and the retention runs: lines that name nobody.
+  | 'privacy';
 export type AuditAction =
   | 'created' | 'updated' | 'deleted' | 'status_changed'
-  | 'assigned' | 'email_sent' | 'merged' | 'converted' | 'voided';
+  | 'assigned' | 'email_sent' | 'merged' | 'converted' | 'voided'
+  | 'exported' | 'erased' | 'purged';
 
 export interface AuditEvent {
   id: string;
   entityType: AuditEntity;
   entityId?: string;
-  entityLabel?: string;
+  /** The record's name when the line was written; none once the retention settings removed it, or for an erasure's line. */
+  entityLabel?: string | null;
   action: AuditAction;
   summary: string;
   actorName?: string;

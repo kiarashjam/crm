@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Trash2, X, Loader2 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 
@@ -9,6 +9,8 @@ interface BulkActionsBarProps {
   /** Left out for someone whose role does not let them delete: the button is not offered. */
   onBulkDelete?: () => Promise<void>;
   onBulkApply: (patch: { source?: string; assignedToUserId?: string }) => Promise<void>;
+  /** More actions for the selection, such as tagging it. */
+  extra?: ReactNode;
 }
 
 /**
@@ -27,6 +29,7 @@ export function BulkActionsBar({
   onClear,
   onBulkDelete,
   onBulkApply,
+  extra,
 }: BulkActionsBarProps) {
   const [busy, setBusy] = useState<null | 'delete' | 'apply'>(null);
   const [source, setSource] = useState('');
@@ -94,6 +97,7 @@ export function BulkActionsBar({
         >
           {busy === 'apply' ? <Loader2 className="w-4 h-4 animate-spin" aria-label="Applying" /> : 'Apply'}
         </Button>
+        {extra}
         {onBulkDelete && (
           <Button variant="outline" size="sm" disabled={busy !== null} onClick={runDelete} className="gap-1.5 text-red-600 border-red-200">
             {busy === 'delete' ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Trash2 className="w-4 h-4" aria-hidden="true" />}

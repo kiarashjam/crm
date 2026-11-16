@@ -133,7 +133,8 @@ public class CustomFieldsTests
         values.GetProperty("notes").GetString().Should().Be("Wants the lake view");
 
         await SaveAsync(owner, lead, new { notes = "" });
-        (await ValuesAsync(owner, lead)).GetProperty("notes").ValueKind.Should().Be(JsonValueKind.Null);
+        (await ValuesAsync(owner, lead)).TryGetProperty("notes", out _).Should().BeFalse("an emptied field has no value left to send");
+        (await ValuesAsync(owner, lead)).GetProperty("budget").GetDecimal().Should().Be(200);
     }
 
     [Fact]

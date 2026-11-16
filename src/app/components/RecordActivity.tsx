@@ -11,6 +11,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/app/components/ui/select';
 import { cn } from '@/app/components/ui/utils';
+import { currentDateLocale } from '@/app/i18n/current';
 
 /** Each kind of activity in its own colour and icon, the same as on the lead page. */
 const KINDS: Record<string, { icon: typeof Phone; tone: string }> = {
@@ -67,8 +68,8 @@ export function ActivityRow({ activity, index }: { activity: Activity; index: nu
         <p className="mt-0.5 text-xs text-slate-500">
           {kind}{facts && <> &middot; {facts}</>} &middot;{' '}
           <time dateTime={when.toISOString()}>
-            {when.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}{' '}
-            {when.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
+            {when.toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric', year: 'numeric' })}{' '}
+            {when.toLocaleTimeString(currentDateLocale(), { hour: 'numeric', minute: '2-digit' })}
           </time>
           {activity.createdByName && <> &middot; by {activity.createdByName}</>}
         </p>

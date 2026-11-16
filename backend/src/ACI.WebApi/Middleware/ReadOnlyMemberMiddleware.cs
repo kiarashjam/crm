@@ -1,6 +1,7 @@
 using ACI.Application.Common;
 using ACI.Application.Interfaces;
 using ACI.Domain.Common;
+using ACI.WebApi.Filters;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ACI.WebApi.Middleware;
@@ -33,6 +34,9 @@ public sealed class ReadOnlyMemberMiddleware
     {
         "/api/auth",
         "/api/settings",
+        // A person's own saved views of a list and the one they open it with. Sharing a view
+        // with everyone is refused to a read-only member by the service itself.
+        "/api/saved-views",
     };
 
     private readonly RequestDelegate _next;
@@ -47,7 +51,8 @@ public sealed class ReadOnlyMemberMiddleware
     public async Task InvokeAsync(
         HttpContext context,
         ICurrentUserService currentUser,
-        IPermissionService permissions)
+        IPermissionService permissions,
+        IWorkspaceModules modules)
     {
         if (!IsStateChanging(context.Request.Method) || IsSelfServiceWrite(context.Request))
         {
@@ -67,6 +72,15 @@ public sealed class ReadOnlyMemberMiddleware
 
         var held = await permissions.PermissionsAsync(userId, organizationId, context.RequestAborted);
         if (held.Any(MemberPermissions.Writes.Contains))
+        {
+            await _next(context);
+            return;
+        }
+
+        // An endpoint of a module the workspace has turned off answers with that module's
+        // refusal, the same for everyone (InModuleAttribute), rather than this one.
+        if (context.GetEndpoint()?.Metadata.GetMetadata<InModuleAttribute>() is { } inModule
+            && !await modules.IsOnAsync(organizationId, inModule.Module, context.RequestAborted))
         {
             await _next(context);
             return;
@@ -111,6 +125,16 @@ public sealed class ReadOnlyMemberMiddleware
         // Creating a brand-new organization of their own does not change the
         // organization they are merely a viewer of.
         if (string.Equals(path, "/api/organizations", Ignore)) return true;
+
+        // Asking the assistant changes nothing: it reads the records as the caller sees them,
+        // and a change it proposes is made only by the caller's confirm, a request of its own
+        // that this check still refuses. A POST because a question does not belong in a URL.
+        if (string.Equals(path, "/api/agent/chat", Ignore)) return true;
+
+        // Reading the custom field values and tags of a page of a list: POSTs only because the
+        // record ids do not fit in a URL. They change nothing.
+        if (string.Equals(path, "/api/custom-fields/values/batch", Ignore)) return true;
+        if (string.Equals(path, "/api/tags/records/batch", Ignore)) return true;
 
         // Accepting an invitation — /api/invites/accept or /api/invites/{id}/accept —
         // concerns only their own membership. Creating an invite

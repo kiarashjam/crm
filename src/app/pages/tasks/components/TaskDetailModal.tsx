@@ -43,6 +43,7 @@ import { statusConfig, priorityConfig } from '../config';
 import { getInitials, formatDue } from '../utils';
 import { getActivitiesByLead, getActivitiesByDeal } from '@/app/api/activities';
 import { fromLocalInputValue, toLocalInputValue } from '@/app/lib/dateInputs';
+import { currentDateLocale } from '@/app/i18n/current';
 
 export interface TaskDetailModalProps {
   task: TaskItem | null;
@@ -250,7 +251,7 @@ export function TaskDetailModal({
     if (diffMins < 60) return `${diffMins}m ago`;
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString();
+    return date.toLocaleDateString(currentDateLocale());
   };
 
   const StatusIcon = status.icon;

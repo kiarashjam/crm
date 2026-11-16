@@ -40,10 +40,19 @@ public sealed class OnboardingRepository : IOnboardingRepository
         return await _db.OutboundMessages.AsNoTracking().Where(m => ids.Contains(m.Id)).ToDictionaryAsync(m => m.Id, ct);
     }
 
-    public Task<ClubMember?> ClubMemberByEmailAsync(Guid organizationId, string email, CancellationToken ct = default)
+    public async Task<ClubMember?> ClubMemberForAsync(Guid organizationId, string email, Guid? contactId, Guid? leadId, CancellationToken ct = default)
     {
+        if (contactId != null || leadId != null)
+        {
+            var linked = await _db.ClubMembers
+                .Where(m => m.OrganizationId == organizationId && m.ErasedAtUtc == null
+                    && ((contactId != null && m.ContactId == contactId) || (leadId != null && m.LeadId == leadId)))
+                .OrderBy(m => m.JoinedAtUtc)
+                .FirstOrDefaultAsync(ct);
+            if (linked != null) return linked;
+        }
         var key = email.Trim().ToLower();
-        return _db.ClubMembers
+        return await _db.ClubMembers
             .Where(m => m.OrganizationId == organizationId && m.Email.ToLower() == key)
             .OrderBy(m => m.JoinedAtUtc)
             .FirstOrDefaultAsync(ct);

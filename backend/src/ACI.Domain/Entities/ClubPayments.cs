@@ -284,9 +284,16 @@ public class ClubPaymentReference : Common.BaseEntity
     /// <summary>The ISO 11649 creditor reference, "RF…".</summary>
     public string ScorReference { get; set; } = string.Empty;
 
-    public Guid MemberId { get; set; }
+    /// <summary>
+    /// The member it is for. None for a contract's deposit, printed before anyone is a member:
+    /// the deposit (<see cref="ContractId"/>) says whose account it goes on once there is one.
+    /// </summary>
+    public Guid? MemberId { get; set; }
 
-    /// <summary>statement or charge.</summary>
+    /// <summary>For a deposit: the contract that asks for it.</summary>
+    public Guid? ContractId { get; set; }
+
+    /// <summary>statement, charge or deposit.</summary>
     public string Purpose { get; set; } = "statement";
 
     public DateTime? PeriodStartUtc { get; set; }

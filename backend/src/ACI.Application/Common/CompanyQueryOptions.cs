@@ -22,4 +22,7 @@ public sealed class CompanyQueryOptions
 
     /// <summary>asc or desc.</summary>
     public string SortDir { get; init; } = "asc";
+
+    /// <summary>The companies' tags and custom fields the list filters and sorts by.</summary>
+    public FlexFilter Flex { get; init; } = FlexFilter.None;
 }

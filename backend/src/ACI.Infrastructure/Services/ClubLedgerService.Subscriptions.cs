@@ -47,7 +47,8 @@ public sealed partial class ClubLedgerService
             if (!found.IsSuccess) return found.Error;
             item = found.Value;
         }
-        var member = await MemberAsync(organizationId, request.MemberId, ct);
+        // A member's dues, or a company's (a corporate membership's dues on the company's account).
+        var member = await HolderAsync(organizationId, request.MemberId, ct);
         if (member == null) return DomainErrors.Club.MemberNotFound;
         var name = (request.Name ?? "").Trim();
         if (name.Length == 0 && item != null) name = item.Kind == CatalogKinds.Membership ? $"{item.Name} dues" : item.Name;
@@ -73,7 +74,7 @@ public sealed partial class ClubLedgerService
             Id = Guid.NewGuid(),
             OrganizationId = organizationId,
             MemberId = member.Id,
-            MemberName = NameOf(member),
+            MemberName = member.Name,
             Name = name,
             Amount = amount,
             Currency = currency,
@@ -159,7 +160,7 @@ public sealed partial class ClubLedgerService
         // This used to answer 200 with the subscription as it was, and the screen said
         // "Cycle charged" for a charge that was never posted.
         if (sub.Status is "Cancelled" or "Paused") return DomainErrors.Club.SubscriptionNotBillable(sub.Status);
-        var member = await MemberAsync(organizationId, sub.MemberId, ct);
+        var member = await HolderAsync(organizationId, sub.MemberId, ct);
         if (member == null) return DomainErrors.Club.MemberNotFound;
         var now = DateTime.UtcNow;
         var period = sub.NextChargeAtUtc ?? now;
@@ -193,7 +194,7 @@ public sealed partial class ClubLedgerService
             if (sub.Status is not ("Active" or "PastDue")) break;
             var period = sub.NextChargeAtUtc ?? asOfUtc;
             if (period > asOfUtc) break;
-            var member = await MemberAsync(organizationId, sub.MemberId, ct);
+            var member = await HolderAsync(organizationId, sub.MemberId, ct);
             if (member == null) return DomainErrors.Club.MemberNotFound;
             if (!vatRead)
             {
@@ -243,12 +244,14 @@ public sealed partial class ClubLedgerService
     /// subscription on to the next one. The subscription is saved first, against the copy this
     /// request read, then its charge, so two bills of one period at once post one charge.
     /// </summary>
-    private async Task<Result<ClubCharge>> BillPeriodAsync(Guid? organizationId, ClubSubscription sub, ClubMember subscriber, DateTime period,
+    private async Task<Result<ClubCharge>> BillPeriodAsync(Guid? organizationId, ClubSubscription sub, Holder subscriber, DateTime period,
         DateTime now, int paymentTermsDays, decimal? vatRate, CancellationToken ct)
     {
         // The subscription stays the member's; its dues go on the household primary's account
-        // when the member's bills roll up to them.
-        var (member, rolledUpFrom) = await BillToAsync(organizationId, subscriber, ct);
+        // when the member's bills roll up to them. A company's own dues go on its own account.
+        var (member, rolledUpFrom) = subscriber.Member is { } person
+            ? await BillToAsync(organizationId, person, forDues: true, ct)
+            : (subscriber, null);
         var account = await AccountAsync(organizationId, member.Id, ct);
         if (await _db.ClubCharges.AnyAsync(c => c.SubscriptionId == sub.Id && c.BillingPeriodStartUtc == period, ct))
             return DomainErrors.Club.PeriodBilled;

@@ -14,12 +14,15 @@ import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import EmailComposerDialog from '@/app/components/EmailComposerDialog';
 import CustomFieldsCard from '@/app/components/CustomFieldsCard';
+import RecordTagsEditor from '@/app/components/flex/RecordTagsEditor';
 import AttachmentsCard from '@/app/components/AttachmentsCard';
 import ReferredLeadsCard from '@/app/components/ReferredLeadsCard';
 import RelationshipsCard from '@/app/components/RelationshipsCard';
 import { PersonMembershipCard } from '@/app/components/MembershipLinks';
+import { ClientClubCard } from '@/app/components/corporate/ClientClubCard';
 import { useOrg } from '@/app/contexts/OrgContext';
 import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
+import { useModules } from '@/app/hooks/useModules';
 import { servesDemoData } from '@/app/api/apiClient';
 import { markNotSame } from '@/app/api/dedupe';
 import {
@@ -51,15 +54,18 @@ import { useMoney } from '@/app/hooks/useMoney';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroSecondary } from '@/app/components/PageHero';
+import { PrivacyRequestLink } from '@/app/components/privacy/PrivacyRequestLink';
 import { RecordAvatar, RecordCard } from '@/app/components/RecordCard';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import { ActivityLogForm, ActivityRow, withActivity, type ActivityDraft } from '@/app/components/RecordActivity';
 import { factsPayload } from '@/app/lib/activityFacts';
 import { showEditConflict } from '@/app/lib/editConflict';
 import { orgCan, PERMISSION } from '@/app/api/organizations';
+import { currentDateLocale } from '@/app/i18n/current';
 
 export default function ContactDetail() {
   const money = useMoney();
+  const salesOn = useModules().sales;
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [contact, setContact] = useState<Contact | null>(null);
@@ -137,9 +143,15 @@ export default function ContactDetail() {
       .finally(() => setTasksLoading(false));
   }, [id, recordRevision]);
 
-  // Load deals filtered by contactId (server-side)
+  // Load deals filtered by contactId (server-side). Deals are the Sales module's: with it
+  // turned off a contact has none to show, and the server refuses to read them.
   useEffect(() => {
     if (!id) return;
+    if (!salesOn) {
+      setDeals([]);
+      setDealsLoading(false);
+      return;
+    }
     setDealsLoading(true);
     getDealsPaged({ page: 1, pageSize: 100, contactId: id })
       .then((result) => {
@@ -147,7 +159,7 @@ export default function ContactDetail() {
       })
       .catch(() => setDeals([]))
       .finally(() => setDealsLoading(false));
-  }, [id, recordRevision]);
+  }, [id, recordRevision, salesOn]);
 
   const seedEditForm = (c: Contact) => setEditForm({
     name: c.name,
@@ -247,8 +259,8 @@ export default function ContactDetail() {
         toast.success('Contact deleted');
         navigate('/contacts');
       }
-    } catch {
-      toast.error(messages.errors.generic);
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : messages.errors.generic);
     } finally {
       setDeleting(false);
     }
@@ -301,11 +313,11 @@ export default function ContactDetail() {
 
   const openTaskCount = contactTasks.filter((t) => t.status !== 'completed').length;
   const createdLabel = contact.createdAtUtc
-    ? new Date(contact.createdAtUtc).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+    ? new Date(contact.createdAtUtc).toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric', year: 'numeric' })
     : null;
   const dealsHint = deals.length > 0 ? `${money.formatDeals(deals)} in all` : 'none yet';
   const lastActivityHint = activities[0]
-    ? `last ${new Date(activities[0].createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+    ? `last ${new Date(activities[0].createdAt).toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric' })}`
     : 'none yet';
 
   return (
@@ -363,6 +375,7 @@ export default function ContactDetail() {
                     <Pencil className="h-4 w-4" /> Edit
                   </Button>
                 </WriteOnly>
+                <PrivacyRequestLink kind="contact" id={contact.id} className={heroSecondary} />
                 <WriteOnly>
                   <Button variant="outline" onClick={handleArchiveToggle} className={heroSecondary}>
                     {contact.isArchived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
@@ -383,7 +396,7 @@ export default function ContactDetail() {
             }
             stats={[
               { label: 'Open tasks', value: openTaskCount, icon: CheckCircle2, tone: 'emerald', hint: `${contactTasks.length} in all` },
-              { label: 'Deals', value: deals.length, icon: Target, tone: 'violet', hint: dealsHint },
+              ...(salesOn ? [{ label: 'Deals', value: deals.length, icon: Target, tone: 'violet' as const, hint: dealsHint }] : []),
               { label: 'Activities', value: activities.length, icon: ActivityIcon, tone: 'sky', hint: lastActivityHint },
               { label: 'Contact since', value: createdLabel ?? '—', icon: Calendar, tone: 'amber', hint: contact.preferredContactMethod ? `prefers ${contact.preferredContactMethod}` : undefined },
             ]}
@@ -528,7 +541,7 @@ export default function ContactDetail() {
                           <div className="mt-0.5 flex items-center gap-2">
                             {t.dueDateUtc && (
                               <span className={cn('text-xs', new Date(t.dueDateUtc) < new Date() && t.status !== 'completed' ? 'text-red-700' : 'text-slate-500')}>
-                                Due {new Date(t.dueDateUtc).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                Due {new Date(t.dueDateUtc).toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric' })}
                               </span>
                             )}
                             {t.priority && t.priority !== 'none' && (
@@ -592,12 +605,12 @@ export default function ContactDetail() {
                   </div>
                 )}
                 <div className="mt-3 flex gap-4 text-xs text-slate-500">
-                  {contact.createdAtUtc && <span>Created {new Date(contact.createdAtUtc).toLocaleDateString()}</span>}
-                  {contact.updatedAtUtc && <span>Updated {new Date(contact.updatedAtUtc).toLocaleDateString()}</span>}
+                  {contact.createdAtUtc && <span>Created {new Date(contact.createdAtUtc).toLocaleDateString(currentDateLocale())}</span>}
+                  {contact.updatedAtUtc && <span>Updated {new Date(contact.updatedAtUtc).toLocaleDateString(currentDateLocale())}</span>}
                 </div>
               </RecordCard>
 
-              <RecordCard title="Deals" icon={<Target className="h-3.5 w-3.5" />} tone="violet" count={deals.length} index={3}>
+              {salesOn && <RecordCard title="Deals" icon={<Target className="h-3.5 w-3.5" />} tone="violet" count={deals.length} index={3}>
                 {dealsLoading ? (
                   <div className="py-6 text-center">
                     <Spinner size={22} className="mx-auto mb-2" />
@@ -628,7 +641,7 @@ export default function ContactDetail() {
                     ))}
                   </ul>
                 )}
-              </RecordCard>
+              </RecordCard>}
 
               {/* Spouse or partner (the couples package) and family, from either side */}
               <RelationshipsCard
@@ -640,9 +653,15 @@ export default function ContactDetail() {
 
               {/* The club: the member this person is, their applications and household. */}
               <PersonMembershipCard kind="contact" id={contact.id} personName={contact.name} readOnly={isReadOnly || !!contact.isArchived} />
+              <ClientClubCard kind="contact" id={contact.id} name={contact.name} readOnly={isReadOnly || !!contact.isArchived} />
 
-              {/* Leads this person referred, each a link to that lead */}
-              <ReferredLeadsCard contactId={contact.id} contactName={contact.name} revision={recordRevision} />
+              {/* Leads this person referred, each a link to that lead (the Sales module's) */}
+              {salesOn && <ReferredLeadsCard contactId={contact.id} contactName={contact.name} revision={recordRevision} />}
+
+              {/* Tags on the contact */}
+              <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+                <RecordTagsEditor entityType="contact" recordId={contact.id} />
+              </div>
 
               {/* Custom fields (renders only when fields are defined for contacts) */}
               <CustomFieldsCard

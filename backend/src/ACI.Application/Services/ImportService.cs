@@ -153,6 +153,34 @@ public sealed class ImportService : IImportService
             companies.Select(c => new ImportCompany(c.Id, c.Name, c.Domain)).ToList(),
             statuses, sources, request.DefaultStatus, request.DefaultSource, await LeadKindsAsync(kind, organizationId, ct));
         var plan = planner.Plan(file.Rows);
+        // Someone erased at their request is not brought back by an old list: their row is
+        // skipped and says so, in the dry run as in the import. Staff who are told the person
+        // wants to come back lift the address from the suppression list first. A row of
+        // establishments carries a person too, its contact person, whose address is checked
+        // as a person's own is.
+        if (kind is RecordTypes.Lead or RecordTypes.Contact)
+        {
+            static IEnumerable<(string Key, string Address)> PersonAddresses(ImportPlannedRow row) =>
+                new[] { "email", "contactPersonEmail" }
+                    .Select(key => (Key: key, Address: row.Values.GetValueOrDefault(key)))
+                    .Where(a => !string.IsNullOrWhiteSpace(a.Address))
+                    .Select(a => (a.Key, a.Address!));
+            var addresses = plan.Where(r => r.Action is ImportPlannedRow.Create or ImportPlannedRow.Update)
+                .SelectMany(PersonAddresses).Select(a => a.Address).ToList();
+            var erased = addresses.Count == 0
+                ? new Dictionary<string, DateTime>()
+                : await _imports.ErasedAddressesAsync(organizationId, addresses, ct);
+            foreach (var row in plan.Where(r => r.Action is ImportPlannedRow.Create or ImportPlannedRow.Update))
+                foreach (var (key, address) in PersonAddresses(row))
+                {
+                    if (!erased.TryGetValue(ErasedAddresses.Normalize(address), out var on)) continue;
+                    var whose = key == "email" ? "this address belongs" : "the contact person's address belongs";
+                    row.Action = ImportPlannedRow.Skip;
+                    row.Message = $"Not imported: {whose} to a person erased at their request on {on.ToString("d MMM yyyy", System.Globalization.CultureInfo.InvariantCulture)}. " +
+                        "If they asked to come back, lift it from the suppression list (Settings, Email) and import the row again.";
+                    break;
+                }
+        }
         // Checked as the API checks a form's request, in the dry run as in the import, so
         // the preview never promises a row the import would then refuse.
         foreach (var row in plan.Where(r => r.Action is ImportPlannedRow.Create or ImportPlannedRow.Update))

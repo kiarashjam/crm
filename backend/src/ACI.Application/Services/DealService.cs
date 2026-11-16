@@ -429,8 +429,10 @@ public class DealService : IDealService
                 id, oldStageName, existing.Stage);
             if (_automations != null)
             {
+                // The stage it left, which the deal no longer holds, for rules that ask where it came from.
                 await _automations.DispatchAsync("deal.stage_changed", new AutomationEvent(
-                    organizationId, userId, $"{id}:{existing.DealStageId?.ToString() ?? existing.Stage}", existing.Name, DealId: id, AssigneeId: existing.AssigneeId), ct);
+                    organizationId, userId, $"{id}:{existing.DealStageId?.ToString() ?? existing.Stage}", existing.Name, DealId: id, AssigneeId: existing.AssigneeId,
+                    Facts: new Dictionary<string, string[]> { ["fromStage"] = new[] { oldStageId?.ToString(), oldStageName }.OfType<string>().ToArray() }), ct);
             }
             if (_webhooks != null)
                 await _webhooks.QueueAsync(organizationId, "deal.stage_changed", new { id, existing.Name, stageId = existing.DealStageId, stage = existing.Stage }, ct);

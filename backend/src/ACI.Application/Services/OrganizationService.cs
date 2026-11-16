@@ -523,6 +523,7 @@ public sealed class OrganizationService : IOrganizationService
         if (locale != null) org.Locale = locale;
         if (zone != null) org.TimeZone = zone;
         if (request.StaleDealDays is int days) org.StaleDealDays = days;
+        if (request.CsvSemicolon is bool semicolon) org.CsvSemicolon = semicolon;
         // Leads already made keep their kind: this says what new ones may be.
         if (leadKinds != null) org.LeadKinds = leadKinds;
         await _organizationRepository.UpdateAsync(org, ct);
@@ -603,7 +604,9 @@ public sealed class OrganizationService : IOrganizationService
 
     private static OrganizationDto ToDto(Organization org, Guid userId, OrganizationMember member) =>
         new(org.Id, org.Name, org.OwnerUserId, org.OwnerUserId == userId, (int)member.Role, org.Currency, org.Locale, org.TimeZone, org.StaleDealDays,
-            MemberPermissions.PresetOf(member.Role, member.PermissionPreset).Key, Ordered(Permissions(member)), org.LeadKinds);
+            MemberPermissions.PresetOf(member.Role, member.PermissionPreset).Key, Ordered(Permissions(member)),
+            SalesEnabled: !org.SalesModuleOff, ClubEnabled: !org.ClubModuleOff, CsvSemicolon: org.CsvSemicolon,
+            SsoRequired: org.SsoRequired, LeadKinds: org.LeadKinds);
 
     private static IReadOnlySet<string> Permissions(OrganizationMember member) =>
         MemberPermissions.Effective(member.Role, member.PermissionPreset, member.Permissions);

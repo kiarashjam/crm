@@ -1,4 +1,5 @@
 using ACI.Application.Common;
+using ACI.Application.Common.I18n;
 using ACI.Application.Configuration;
 using ACI.Application.Interfaces;
 using Microsoft.Extensions.Logging;
@@ -49,7 +50,9 @@ public interface IOutreachMail
     /// the member's consent to marketing by email; a service message (a statement, a
     /// booking) carries none, since the member's choices do not stop it.
     /// </summary>
-    OutreachBody MemberBody(Guid organizationId, string? workspaceName, string text, Guid memberId, string address, bool marketing);
+    /// <remarks>The footer of a marketing email is in <paramref name="language"/>, the member's.</remarks>
+    OutreachBody MemberBody(Guid organizationId, string? workspaceName, string text, Guid memberId, string address, bool marketing,
+        string language = AppLanguages.English);
 
     /// <summary>The email-open image for a lead, or null when this API has no public address to give.</summary>
     string? TrackingUrl(Guid leadId);
@@ -156,7 +159,8 @@ public sealed class OutreachMail : IOutreachMail
             oneClick != null);
     }
 
-    public OutreachBody MemberBody(Guid organizationId, string? workspaceName, string text, Guid memberId, string address, bool marketing)
+    public OutreachBody MemberBody(Guid organizationId, string? workspaceName, string text, Guid memberId, string address, bool marketing,
+        string language = AppLanguages.English)
     {
         if (!marketing)
             return new OutreachBody(text, PlainTextEmail.ToHtml(text, null, workspaceName), null);
@@ -167,11 +171,11 @@ public sealed class OutreachMail : IOutreachMail
             links.Add(new UnsubscribeLink(address, $"{page}/unsubscribe/{Uri.EscapeDataString(token)}"));
         else
             _logger.LogWarning("No unsubscribe link in a marketing email for organization {OrganizationId}: Email:FrontendBaseUrl is not an absolute http(s) URL", organizationId);
-        var question = PlainTextEmail.MarketingQuestion(workspaceName);
+        var question = PlainTextEmail.MarketingQuestion(workspaceName, language);
         var oneClick = OneClickUrl(token);
         return new OutreachBody(
-            text + PlainTextEmail.TextFooter(workspaceName, links, question),
-            PlainTextEmail.ToHtml(text, null, workspaceName, links, question),
+            text + PlainTextEmail.TextFooter(workspaceName, links, question, language),
+            PlainTextEmail.ToHtml(text, null, workspaceName, links, question, language),
             oneClick ?? links.FirstOrDefault()?.Url,
             oneClick != null);
     }

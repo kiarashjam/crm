@@ -74,6 +74,85 @@ public class SchemaMigrationTests
         }
     }
 
+    /// <summary>
+    /// The migrations after the baseline that the release before this one had, which production
+    /// has run: main's, up to AddOnboardingSender, then AddLeadKinds (kiarashjam/crm#91).
+    /// </summary>
+    private static readonly string[] ReleaseBefore =
+    [
+        "AddMemberConsentRecords", "AddOutboundMessagePurpose", "AddClubMoneyLedger", "MoveCampaignsAndMessagesToTables",
+        "MoveEventsAndReservationsToTables", "AddClubCatalogAndBilling", "AddClubPaymentsAndAccounting",
+        "AddMembershipBridgeAndHouseholds", "RememberWhetherAnApplicantWasAMemberBefore",
+        "AddDealOnboarding", "AddEmailImages", "AddOnboardingSender", "AddLeadKinds",
+    ];
+
+    /// <summary>
+    /// The upgrade this release makes: a database with every migration of the release before
+    /// (main's, ending with AddLeadKinds) takes every one this release adds. Four of them
+    /// (AddWorkspaceModuleSwitches, AddClubSalesAndPosTickets, AddCampaignSendAttempts,
+    /// AddAutomationRunsAndConditions) are dated before migrations it already has, so there
+    /// they run after them, while a new database runs them before; the groups made them side by
+    /// side and they met only in a merge. The database must end up as a new one is.
+    /// </summary>
+    [SqlServerFact]
+    public async Task ADatabaseAtTheReleaseBeforeTakesThisReleasesMigrations_EvenThoseDatedBeforeOnesItHas()
+    {
+        await SqlServerApp.WaitForServerAsync();
+        var database = await SqlServerApp.NewDatabaseAsync();
+        var fresh = await SqlServerApp.NewDatabaseAsync();
+        try
+        {
+            string[] added;
+            await using (var db = SqlServerSchema.Context(database))
+            {
+                var ids = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
+                var after = ids.Where(id => string.CompareOrdinal(id, SchemaBaseline.MigrationId) > 0).ToList();
+                var shipped = after.Where(id => ReleaseBefore.Any(name => id.EndsWith("_" + name, StringComparison.Ordinal))).ToArray();
+                shipped.Should().HaveCount(ReleaseBefore.Length, "every migration the release before had is in this one too, unchanged");
+                added = after.Except(shipped).ToArray();
+                added.Where(id => string.CompareOrdinal(id, shipped[^1]) < 0).Should().HaveCount(4,
+                    "the release before had a migration dated after four of this release's");
+
+                // As the release before left it: the baseline, then every later migration it had, in order.
+                await db.GetService<IMigrator>().MigrateAsync(SchemaBaseline.MigrationId);
+                foreach (var id in shipped)
+                    await RunAloneAsync(db, id);
+            }
+            (await SqlServerSchema.HistoryAsync(database)).Should().NotContain(added);
+
+            // This release starts on it, and runs the ones it lacks.
+            using (var app = SqlServerApp.Start(database))
+                await ShouldWorkAsync(app);
+
+            (await SqlServerSchema.HistoryAsync(database)).Should().Equal(SqlServerSchema.AllMigrationIds());
+            await SqlServerSchema.MigrateAloneAsync(fresh);
+            (await SqlServerSchema.ListAsync(database)).Where(line => !line.Contains(" AppliedDataFixes.", StringComparison.Ordinal))
+                .Should().Equal(await SqlServerSchema.ListAsync(fresh), "the upgraded database is what a new one is, whatever order the migrations ran in");
+            await using var check = SqlServerSchema.Context(database);
+            var comparison = await SchemaBaseline.CompareAsync(check);
+            comparison.Missing.Should().BeEmpty();
+            comparison.Different.Should().BeEmpty();
+        }
+        finally
+        {
+            await SqlServerApp.DropDatabaseAsync(database);
+            await SqlServerApp.DropDatabaseAsync(fresh);
+        }
+    }
+
+    /// <summary>Runs one migration's Up on its own and records it, as a release that had it would have.</summary>
+    private static async Task RunAloneAsync(ACI.Infrastructure.Persistence.AppDbContext db, string id)
+    {
+        var assembly = db.GetService<IMigrationsAssembly>();
+        var migration = assembly.CreateMigration(assembly.Migrations[id], db.Database.ProviderName!);
+        var model = migration.TargetModel!;
+        if (model is Microsoft.EntityFrameworkCore.Metadata.IMutableModel mutable) model = mutable.FinalizeModel();
+        model = db.GetService<IModelRuntimeInitializer>().Initialize(model, designTime: true, validationLogger: null);
+        foreach (var command in db.GetService<IMigrationsSqlGenerator>().Generate(migration.UpOperations, model))
+            await db.Database.ExecuteSqlRawAsync(command.CommandText.Replace("{", "{{").Replace("}", "}}"));
+        await db.Database.ExecuteSqlRawAsync(db.GetService<IHistoryRepository>().GetInsertScript(new HistoryRow(id, ProductInfo.GetVersion())));
+    }
+
     [SqlServerFact]
     public async Task ANewDatabaseGetsItsSchemaFromTheMigrationsAlone()
     {

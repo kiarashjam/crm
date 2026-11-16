@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using ACI.Application.Common.I18n;
 using ACI.Application.Common.Payments;
 
 namespace ACI.Application.Common.Pdf;
@@ -12,9 +13,10 @@ namespace ACI.Application.Common.Pdf;
 /// "Separate before paying in" above them, as a slip printed from a PDF must have.
 /// </summary>
 /// <remarks>
-/// The labels are English, as the statement above it is; the guidelines allow English beside
-/// German, French and Italian. A bill that does not validate is never drawn (see
-/// <see cref="SwissQrBill.Validate"/>): the caller leaves the slip off instead.
+/// The headings are in the language the statement above it is in: English, German or French,
+/// in the guidelines' own words for each (<see cref="MemberTexts"/>, "qr."). A bill that does not
+/// validate is never drawn (see <see cref="SwissQrBill.Validate"/>): the caller leaves the slip
+/// off instead.
 /// </remarks>
 public static class QrBillPdf
 {
@@ -24,10 +26,11 @@ public static class QrBillPdf
     private static readonly double ReceiptWidth = Mm(62);
     private static readonly double Margin = Mm(5);
 
-    /// <summary>Draws the slip on <paramref name="page"/>, whose bottom 105 mm must be free.</summary>
+    /// <summary>Draws the slip on <paramref name="page"/>, whose bottom 105 mm must be free, its headings in <paramref name="language"/>.</summary>
     /// <exception cref="ArgumentException">The bill does not validate.</exception>
-    public static void Draw(PdfCanvas page, QrBill bill)
+    public static void Draw(PdfCanvas page, QrBill bill, string language = AppLanguages.English)
     {
+        string L(string key) => MemberTexts.T(language, "qr." + key);
         var problems = SwissQrBill.Validate(bill);
         if (problems.Count > 0) throw new ArgumentException(string.Join(" ", problems), nameof(bill));
 
@@ -37,45 +40,45 @@ public static class QrBillPdf
         // Where to cut: above the slip, and between the receipt and the payment part.
         page.Rule(0, top, page.Width, 0.5, PdfColor.Black);
         page.Line(ReceiptWidth, top, ReceiptWidth, page.Height, 0.5, PdfColor.Black);
-        page.Text(page.Width / 2, top - 4, PdfFont.Helvetica, 7, "Separate before paying in", PdfColor.Black, align: PdfAlign.Center);
+        page.Text(page.Width / 2, top - 4, PdfFont.Helvetica, 7, L("separate"), PdfColor.Black, align: PdfAlign.Center);
 
-        DrawReceipt(page, bill, top);
-        DrawPaymentPart(page, bill, qr, top);
+        DrawReceipt(page, bill, top, L);
+        DrawPaymentPart(page, bill, qr, top, L);
     }
 
-    private static void DrawReceipt(PdfCanvas page, QrBill bill, double top)
+    private static void DrawReceipt(PdfCanvas page, QrBill bill, double top, Func<string, string> L)
     {
         var x = Margin;
         var width = ReceiptWidth - 2 * Margin;
-        page.Text(x, top + Margin + 8, PdfFont.HelveticaBold, 11, "Receipt", PdfColor.Black);
+        page.Text(x, top + Margin + 8, PdfFont.HelveticaBold, 11, L("receipt"), PdfColor.Black);
 
         var y = top + Mm(12) + 6;
-        y = Section(page, x, y, width, "Account / Payable to", CreditorLines(bill), 6, 8, 9);
+        y = Section(page, x, y, width, L("accountPayableTo"), CreditorLines(bill), 6, 8, 9);
         if (bill.ReferenceType != SwissQrBill.Non)
-            y = Section(page, x, y, width, "Reference", [PaymentReferences.Format(bill.Reference)], 6, 8, 9);
+            y = Section(page, x, y, width, L("reference"), [PaymentReferences.Format(bill.Reference)], 6, 8, 9);
         if (bill.Debtor is { } debtor)
-            Section(page, x, y, width, "Payable by", AddressLines(debtor), 6, 8, 9);
+            Section(page, x, y, width, L("payableBy"), AddressLines(debtor), 6, 8, 9);
         else
         {
-            page.Text(x, y, PdfFont.HelveticaBold, 6, "Payable by (name/address)", PdfColor.Black);
+            page.Text(x, y, PdfFont.HelveticaBold, 6, L("payableByNameAddress"), PdfColor.Black);
             CornerMarks(page, x, y + 3, Mm(52), Mm(20));
         }
 
         var amountTop = top + Mm(68);
-        page.Text(x, amountTop + 6, PdfFont.HelveticaBold, 6, "Currency", PdfColor.Black);
+        page.Text(x, amountTop + 6, PdfFont.HelveticaBold, 6, L("currency"), PdfColor.Black);
         page.Text(x, amountTop + 6 + 11, PdfFont.Helvetica, 8, bill.Currency, PdfColor.Black);
         var amountX = x + Mm(12);
-        page.Text(amountX, amountTop + 6, PdfFont.HelveticaBold, 6, "Amount", PdfColor.Black);
+        page.Text(amountX, amountTop + 6, PdfFont.HelveticaBold, 6, L("amount"), PdfColor.Black);
         if (bill.Amount is { } amount) page.Text(amountX, amountTop + 6 + 11, PdfFont.Helvetica, 8, FormatAmount(amount), PdfColor.Black);
         else CornerMarks(page, amountX + Mm(8), amountTop + 2, Mm(30), Mm(10));
 
-        page.Text(ReceiptWidth - Margin, top + Mm(82) + 6, PdfFont.HelveticaBold, 6, "Acceptance point", PdfColor.Black, align: PdfAlign.Right);
+        page.Text(ReceiptWidth - Margin, top + Mm(82) + 6, PdfFont.HelveticaBold, 6, L("acceptancePoint"), PdfColor.Black, align: PdfAlign.Right);
     }
 
-    private static void DrawPaymentPart(PdfCanvas page, QrBill bill, QrCode qr, double top)
+    private static void DrawPaymentPart(PdfCanvas page, QrBill bill, QrCode qr, double top, Func<string, string> L)
     {
         var left = ReceiptWidth + Margin;
-        page.Text(left, top + Margin + 8, PdfFont.HelveticaBold, 11, "Payment part", PdfColor.Black);
+        page.Text(left, top + Margin + 8, PdfFont.HelveticaBold, 11, L("paymentPart"), PdfColor.Black);
 
         // The Swiss QR Code: 46 mm square, 5 mm below the title section.
         var qrTop = top + Mm(17);
@@ -100,10 +103,10 @@ public static class QrBillPdf
         SwissCross(page, left + codeSize / 2, qrTop + codeSize / 2);
 
         var amountTop = top + Mm(68);
-        page.Text(left, amountTop + 8, PdfFont.HelveticaBold, 8, "Currency", PdfColor.Black);
+        page.Text(left, amountTop + 8, PdfFont.HelveticaBold, 8, L("currency"), PdfColor.Black);
         page.Text(left, amountTop + 8 + 13, PdfFont.Helvetica, 10, bill.Currency, PdfColor.Black);
         var amountX = left + Mm(14);
-        page.Text(amountX, amountTop + 8, PdfFont.HelveticaBold, 8, "Amount", PdfColor.Black);
+        page.Text(amountX, amountTop + 8, PdfFont.HelveticaBold, 8, L("amount"), PdfColor.Black);
         if (bill.Amount is { } amount) page.Text(amountX, amountTop + 8 + 13, PdfFont.Helvetica, 10, FormatAmount(amount), PdfColor.Black);
         else CornerMarks(page, amountX, amountTop + 12, Mm(40), Mm(15));
 
@@ -111,17 +114,17 @@ public static class QrBillPdf
         var x = ReceiptWidth + Mm(56);
         var width = page.Width - x - Margin;
         var y = top + Margin + 8;
-        y = Section(page, x, y, width, "Account / Payable to", CreditorLines(bill), 8, 10, 11);
+        y = Section(page, x, y, width, L("accountPayableTo"), CreditorLines(bill), 8, 10, 11);
         if (bill.ReferenceType != SwissQrBill.Non)
-            y = Section(page, x, y, width, "Reference", [PaymentReferences.Format(bill.Reference)], 8, 10, 11);
+            y = Section(page, x, y, width, L("reference"), [PaymentReferences.Format(bill.Reference)], 8, 10, 11);
         var additional = new[] { SwissQrBill.Clean(bill.Message), SwissQrBill.Clean(bill.BillInformation) }.Where(t => t.Length > 0).ToList();
         if (additional.Count > 0)
-            y = Section(page, x, y, width, "Additional information", additional, 8, 10, 11);
+            y = Section(page, x, y, width, L("additionalInformation"), additional, 8, 10, 11);
         if (bill.Debtor is { } debtor)
-            Section(page, x, y, width, "Payable by", AddressLines(debtor), 8, 10, 11);
+            Section(page, x, y, width, L("payableBy"), AddressLines(debtor), 8, 10, 11);
         else
         {
-            page.Text(x, y, PdfFont.HelveticaBold, 8, "Payable by (name/address)", PdfColor.Black);
+            page.Text(x, y, PdfFont.HelveticaBold, 8, L("payableByNameAddress"), PdfColor.Black);
             CornerMarks(page, x, y + 4, Mm(65), Mm(25));
         }
     }

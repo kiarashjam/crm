@@ -3,7 +3,7 @@ import { BarChart3, ArrowRight, TriangleAlert } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
 import { useMoney } from '@/app/hooks/useMoney';
 import type { PipelineStage } from './types';
-import { RetryButton } from '@/app/components/LoadFailed';
+import { LoadFailed, RetryButton } from '@/app/components/LoadFailed';
 
 interface PipelineChartProps {
   stages: PipelineStage[];
@@ -15,6 +15,11 @@ interface PipelineChartProps {
   onRetry?: () => void;
   /** A retry is on its way. */
   retrying?: boolean;
+  /**
+   * The figures on screen are the last ones read: a refresh failed since. Said in a
+   * slim strip above them, as they may be out of date.
+   */
+  stale?: boolean;
 }
 
 const stageColors = [
@@ -25,7 +30,7 @@ const stageColors = [
   'from-rose-500 to-pink-500',
 ];
 
-function Shell({ children }: { children: React.ReactNode }) {
+function Shell({ children, notice }: { children: React.ReactNode; notice?: React.ReactNode }) {
   return (
     <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
       <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
@@ -42,14 +47,17 @@ function Shell({ children }: { children: React.ReactNode }) {
           View all <ArrowRight className="w-4 h-4" />
         </Link>
       </div>
-      <div className="p-6">{children}</div>
+      <div className="p-6">{notice}{children}</div>
     </section>
   );
 }
 
-export function PipelineChart({ stages, loaded, failed, onRetry, retrying }: PipelineChartProps) {
+export function PipelineChart({ stages, loaded, failed, onRetry, retrying, stale = false }: PipelineChartProps) {
   // In the workspace's number format, like every other amount in the app.
   const money = useMoney();
+  const staleNote = stale && onRetry
+    ? <LoadFailed stale what="The pipeline breakdown" onRetry={onRetry} retrying={retrying} className="mb-4" />
+    : null;
   // This used to `return null` whenever the list was empty, so a failed request
   // made the whole section vanish — indistinguishable from having no deals, and
   // leaving a hole in the layout with nothing to explain it.
@@ -86,7 +94,7 @@ export function PipelineChart({ stages, loaded, failed, onRetry, retrying }: Pip
 
   if (stages.length === 0) {
     return (
-      <Shell>
+      <Shell notice={staleNote}>
         <p className="py-6 text-center text-sm text-slate-500">
           No open deals yet. Stages appear here once a deal has a value.
         </p>
@@ -113,7 +121,7 @@ export function PipelineChart({ stages, loaded, failed, onRetry, retrying }: Pip
   const showCurrencyHeadings = blocks.length > 1;
 
   return (
-    <Shell>
+    <Shell notice={staleNote}>
       <div className="space-y-7">
         {blocks.map((block, blockIndex) => {
           const max = Math.max(...block.rows.map((r) => r.value), 1);

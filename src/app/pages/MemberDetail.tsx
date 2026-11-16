@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   Mail,
@@ -40,16 +40,21 @@ import type { Visit } from '@/app/api/visits';
 import type { Reservation } from '@/app/api/reservations';
 import type { EventAttendee } from '@/app/api/eventAttendees';
 import { type LoyaltyEntry, REASON_LABELS } from '@/app/api/loyalty';
-import { commStatusLabel, getCommunications, type Communication } from '@/app/api/communications';
+import { commStatusLabel, type Communication } from '@/app/api/communications';
 import type { GiftCard } from '@/app/api/giftCards';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import { ClubReadState } from '@/app/components/ClubReadState';
 import { MemberLinksCard } from '@/app/components/MembershipLinks';
+import { MemberCorporateSeat } from '@/app/components/corporate/MemberCorporateSeat';
+import CustomFieldsCard from '@/app/components/CustomFieldsCard';
+import RecordTagsEditor from '@/app/components/flex/RecordTagsEditor';
 import {
-  NONE, useClubCharges, useClubMembers, useClubPayments, useClubReads, useClubVisits, useGiftCards, useLoyaltyLedger,
+  NONE, useClubCharges, useClubMembers, useClubPayments, useClubReads, useClubVisits, useCommunications, useGiftCards, useLoyaltyLedger,
   useMemberRegistrations, useReservations,
 } from '@/app/hooks/queries';
+import { LoadFailed } from '@/app/components/LoadFailed';
 import PageHero, { heroSecondary } from '@/app/components/PageHero';
+import { PrivacyRequestLink } from '@/app/components/privacy/PrivacyRequestLink';
 import { RecordAvatar } from '@/app/components/RecordCard';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
 import { WriteOnly } from '@/app/components/WriteOnly';
@@ -57,6 +62,11 @@ import { PERMISSION } from '@/app/api/organizations';
 import MemberConsentPanel from '@/app/pages/members/MemberConsentPanel';
 import EmailMemberDialog from '@/app/pages/members/EmailMemberDialog';
 import { MemberPaymentsCard } from '@/app/components/payments/MemberPaymentsCard';
+import { MemberCodesCard } from '@/app/components/pos/MemberCodesCard';
+import { MemberPortalCard } from '@/app/components/portal/MemberPortalCard';
+import { MemberRetentionCard } from '@/app/components/retention/MemberRetentionCard';
+import { MemberReferralsCard } from '@/app/components/retention/MemberReferralsCard';
+import { currentDateLocale, currentNumberLocale } from '@/app/i18n/current';
 
 const TIER_BADGE: Record<MemberTier, string> = {
   Bronze: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
@@ -74,7 +84,7 @@ const STATUS_BADGE: Record<MemberStatus, string> = {
 
 function formatDate(iso: string): string {
   try {
-    return new Date(iso).toLocaleDateString(undefined, {
+    return new Date(iso).toLocaleDateString(currentDateLocale(), {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
@@ -86,7 +96,7 @@ function formatDate(iso: string): string {
 
 function formatDateTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleString(undefined, {
+    return new Date(iso).toLocaleString(currentDateLocale(), {
       month: 'short',
       day: 'numeric',
       hour: 'numeric',
@@ -126,30 +136,15 @@ export default function MemberDetail() {
   const giftCards: GiftCard[] = giftCardsQuery.data ?? NONE;
   const memberReservations: Reservation[] = reservationsQuery.data ?? NONE;
   const registrations: EventAttendee[] = registrationsQuery.data ?? NONE;
-  const [comms, setComms] = useState<Communication[]>([]);
-  const [sideLoading, setSideLoading] = useState(true);
-  const loading = reads.loading || sideLoading;
+  // This member's messages, through the same cache as the communications pages: a message
+  // sent, a campaign that reached them, or a delivery the mail service reports shows here
+  // too. A failed read says so in the tab, with a retry, rather than "no messages".
+  const commsQuery = useCommunications(id ?? null);
+  const comms: Communication[] = commsQuery.data ?? NONE;
+  const loading = reads.loading;
   usePageLoading(loading);
   const [deleting, setDeleting] = useState(false);
   const [emailing, setEmailing] = useState(false);
-
-  // Messages keep their own read, of this member's, asked of the server by member.
-  useEffect(() => {
-    let live = true;
-    getCommunications(id ? { memberId: id } : {})
-      .then((comm) => {
-        if (live) setComms(comm);
-      })
-      .catch(() => {
-        if (live) toast.error('Could not load this member\'s messages');
-      })
-      .finally(() => {
-        if (live) setSideLoading(false);
-      });
-    return () => {
-      live = false;
-    };
-  }, [id]);
 
   const memberCharges = useMemo(
     () => charges.filter((c) => c.memberId === id),
@@ -316,6 +311,7 @@ export default function MemberDetail() {
                     </Link>
                   </Button>
                 </WriteOnly>
+                <PrivacyRequestLink kind="member" id={member.id} className={heroSecondary} />
                 <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.DeleteRecords]} all>
                   <Button
                     variant="outline"
@@ -378,8 +374,31 @@ export default function MemberDetail() {
                   </dl>
                 </SectionCard>
 
+                {/* The club's tags on them, and the club's own fields (renders only when some are defined for members). */}
+                <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+                  <RecordTagsEditor entityType="member" recordId={member.id} />
+                </div>
+                <CustomFieldsCard
+                  entityType="member"
+                  recordId={member.id}
+                  className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800"
+                />
+
                 {/* Their lead and contact on the sales side, how they joined, and their household. */}
+                <MemberCorporateSeat memberId={member.id} />
                 <MemberLinksCard memberId={member.id} />
+
+                {/* What names them on a POS ticket: a member number, their card's code, a POS customer. */}
+                <MemberCodesCard memberId={member.id} />
+
+                {/* Whether they were invited to the member portal and have signed in, and a way to sign them out. */}
+                <MemberPortalCard memberId={member.id} />
+
+                {/* Who referred, proposed and seconded them, whom they brought in, and the referral bonus. */}
+                <MemberReferralsCard memberId={member.id} />
+
+                {/* Their at-risk score, each sign it is made of, and the complaints and concerns about them. */}
+                <MemberRetentionCard memberId={member.id} />
 
                 <SectionCard
                   title="Upcoming"
@@ -471,7 +490,7 @@ export default function MemberDetail() {
                             }`}
                           >
                             {e.points >= 0 ? '+' : ''}
-                            {e.points.toLocaleString()}
+                            {e.points.toLocaleString(currentNumberLocale())}
                           </span>
                         </li>
                       ))}
@@ -614,7 +633,7 @@ export default function MemberDetail() {
                         }`}
                       >
                         {e.points >= 0 ? '+' : ''}
-                        {e.points.toLocaleString()}
+                        {e.points.toLocaleString(currentNumberLocale())}
                       </span>
                     </div>
                   ))}
@@ -630,7 +649,19 @@ export default function MemberDetail() {
                   </Button>
                 </div>
               </WriteOnly>
-              {memberComms.length === 0 ? (
+              {commsQuery.isError && (
+                <LoadFailed
+                  stale={commsQuery.data !== undefined}
+                  what="This member's messages"
+                  error={commsQuery.error}
+                  onRetry={() => void commsQuery.refetch()}
+                  retrying={commsQuery.isFetching}
+                  className="mb-3"
+                />
+              )}
+              {commsQuery.isPending && commsQuery.fetchStatus !== 'idle' ? (
+                <div className="flex justify-center py-8 text-slate-500"><Loader2 className="h-5 w-5 animate-spin" /></div>
+              ) : commsQuery.data === undefined ? null : memberComms.length === 0 ? (
                 <EmptyMini
                   icon={<MessageSquareText className="w-6 h-6" />}
                   text="No messages to this member yet."
@@ -664,7 +695,8 @@ export default function MemberDetail() {
               <EmailMemberDialog
                 member={member}
                 onClose={() => setEmailing(false)}
-                onSent={(message) => setComms((prev) => [message, ...prev])}
+                // The send refreshes this member's messages (api/dataChanged: communications).
+                onSent={() => undefined}
               />
             )}
 

@@ -1,3 +1,4 @@
+using ACI.Application.Common;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using ACI.WebApi.Extensions;
@@ -29,14 +30,30 @@ public class ImportsController : ControllerBase
 
     private readonly IImportService _imports;
     private readonly ICurrentUserService _currentUser;
+    private readonly IWorkspaceModules _modules;
 
     /// <summary>
     /// Initializes a new instance of the ImportsController.
     /// </summary>
-    public ImportsController(IImportService imports, ICurrentUserService currentUser)
+    public ImportsController(IImportService imports, ICurrentUserService currentUser, IWorkspaceModules modules)
     {
         _imports = imports;
         _currentUser = currentUser;
+        _modules = modules;
+    }
+
+    /// <summary>
+    /// Leads are the Sales module's: with it turned off, a file of leads gets the module's
+    /// refusal, as everything else of it does. Contacts and companies belong to both modules.
+    /// </summary>
+    private async Task<ActionResult?> RefusedWithSalesOffAsync(string? kind, CancellationToken ct)
+    {
+        if (!string.Equals(kind?.Trim(), "lead", StringComparison.OrdinalIgnoreCase)) return null;
+        if (_currentUser.CurrentOrganizationId is not Guid organizationId) return null;
+        if (await _modules.IsOnAsync(organizationId, WorkspaceModules.Sales, ct)) return null;
+        var refusal = DomainErrors.Modules.Off(WorkspaceModules.Sales).ToProblemResult();
+        if (refusal.Value is ProblemDetails problem) problem.Extensions["module"] = WorkspaceModules.Sales;
+        return refusal;
     }
 
     /// <summary>Reads a file: its separator, its columns with a few values each, and the fields they can go into.</summary>
@@ -49,6 +66,7 @@ public class ImportsController : ControllerBase
     public async Task<ActionResult<ImportAnalysisDto>> Analyze([FromBody] ImportFileRequest request, CancellationToken ct)
     {
         if (_currentUser.UserId is not { } userId) return Unauthorized();
+        if (await RefusedWithSalesOffAsync(request.Kind, ct) is { } refused) return refused;
         return (await _imports.AnalyzeAsync(userId, _currentUser.CurrentOrganizationId, request, ct)).ToActionResult();
     }
 
@@ -62,6 +80,7 @@ public class ImportsController : ControllerBase
     public async Task<ActionResult<ImportResultDto>> Preview([FromBody] ImportRequest request, CancellationToken ct)
     {
         if (_currentUser.UserId is not { } userId) return Unauthorized();
+        if (await RefusedWithSalesOffAsync(request.Kind, ct) is { } refused) return refused;
         return (await _imports.RunAsync(userId, _currentUser.CurrentOrganizationId, request, dryRun: true, ct)).ToActionResult();
     }
 
@@ -75,6 +94,7 @@ public class ImportsController : ControllerBase
     public async Task<ActionResult<ImportResultDto>> Import([FromBody] ImportRequest request, CancellationToken ct)
     {
         if (_currentUser.UserId is not { } userId) return Unauthorized();
+        if (await RefusedWithSalesOffAsync(request.Kind, ct) is { } refused) return refused;
         return (await _imports.RunAsync(userId, _currentUser.CurrentOrganizationId, request, dryRun: false, ct)).ToActionResult();
     }
 

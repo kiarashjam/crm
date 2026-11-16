@@ -56,6 +56,10 @@ const SENT: Campaign = {
 };
 const LOGGED: Campaign = { ...DRAFT, id: 'cmp-4', name: 'Rooftop opening', status: 'Logged', sentAtUtc: '2026-09-02T09:00:00Z', recipientCount: 40 };
 const TEXTS: Campaign = { ...DRAFT, id: 'cmp-5', name: 'Text blast', channel: 'SMS' };
+const SENDING: Campaign = {
+  ...DRAFT, id: 'cmp-6', name: 'Wine evening', status: 'Sending', sendingStartedAtUtc: '2026-11-12T09:00:00Z', version: 'v6',
+  totals: { ...NO_TOTALS, recipients: 2, queued: 2 },
+};
 const AUDIENCE: CampaignAudience = { purpose: 'marketing', matching: 5, withAddress: 4, agreed: 2, willReceive: 2 };
 
 const campaignsApi = {
@@ -64,6 +68,7 @@ const campaignsApi = {
   recipients: vi.fn<(id: string) => Promise<Communication[]>>(),
   create: vi.fn<(input: unknown) => Promise<Campaign>>(),
   send: vi.fn<(id: string, version?: string) => Promise<Campaign>>(),
+  stop: vi.fn<(id: string, version?: string) => Promise<Campaign>>(),
   test: vi.fn<(id: string) => Promise<CampaignTestResult>>(),
 };
 vi.mock('@/app/api/campaigns', async (importOriginal) => ({
@@ -73,6 +78,7 @@ vi.mock('@/app/api/campaigns', async (importOriginal) => ({
   getCampaignRecipients: (id: string) => campaignsApi.recipients(id),
   createCampaign: (input: unknown) => campaignsApi.create(input),
   sendCampaign: (id: string, version?: string) => campaignsApi.send(id, version),
+  stopCampaign: (id: string, version?: string) => campaignsApi.stop(id, version),
   sendCampaignTest: (id: string) => campaignsApi.test(id),
 }));
 
@@ -130,8 +136,9 @@ beforeEach(() => {
     { ...REFUSED, id: 'com-5', memberId: 'm2', memberName: 'Ana Weber', email: 'ana@example.ch', campaignId: 'cmp-3' },
   ]);
   campaignsApi.create.mockReset().mockImplementation(async (input) => ({ ...DRAFT, ...(input as Partial<Campaign>), id: 'cmp-9' }));
-  // By the time the answer comes back the outbox has already handed one of the two to the mail server.
-  campaignsApi.send.mockReset().mockResolvedValue({ ...DRAFT, status: 'Sent', totals: { ...NO_TOTALS, recipients: 5, queued: 1, sent: 1, suppressed: 3 } });
+  // The server answers at once, with the campaign sending in the background.
+  campaignsApi.send.mockReset().mockResolvedValue({ ...DRAFT, status: 'Sending', version: 'v1b' });
+  campaignsApi.stop.mockReset().mockResolvedValue({ ...SENDING, status: 'Stopped', sentAtUtc: '2026-11-12T09:05:00Z', version: 'v6b' });
   campaignsApi.test.mockReset().mockResolvedValue({ messageId: 'msg-1', to: 'me@club.ch', status: 'sent' });
   commsApi.list.mockReset().mockResolvedValue([DELIVERED, REFUSED, LOGGED_TEXT]);
   commsApi.send.mockReset().mockResolvedValue({ ...DELIVERED, id: 'com-8', status: 'queued', sentAtUtc: null });
@@ -172,7 +179,54 @@ describe('campaigns', () => {
 
     await waitFor(() => expect(campaignsApi.send).toHaveBeenCalledWith('cmp-1', 'v1'));
     expect(campaignsApi.send).toHaveBeenCalledTimes(1);
-    expect(toast.success).toHaveBeenCalledWith('"Founders dinner" is on its way: 2 emails sent or queued.');
+    // Sent in the background: the page does not claim emails went that may not have yet.
+    expect(toast.success).toHaveBeenCalledWith('"Founders dinner" is sending. Its figures fill in as each member\'s email is queued.');
+  });
+
+  it('stops a campaign that is sending, after saying what stopping does and does not undo', async () => {
+    campaignsApi.list.mockResolvedValue([SENDING, SENT]);
+    const user = userEvent.setup();
+    show(<Campaigns />);
+
+    await screen.findByText('Wine evening');
+    expect(within(rowOf('Wine evening')).getByText(/Sending in the background · 2 members/)).toBeInTheDocument();
+    expect(within(rowOf('Members night')).queryByRole('button', { name: /Stop sending/ })).toBeNull();
+    await user.click(within(rowOf('Wine evening')).getByRole('button', { name: /Stop sending/ }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent(/not reached yet get nothing/);
+    expect(dialog).toHaveTextContent(/already taken cannot be called back/);
+    expect(campaignsApi.stop).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole('button', { name: 'Stop sending' }));
+
+    // Without the version on screen: the scheduler gives a sending campaign a new one each time
+    // it takes it up again, and a stop sent with the older one was refused as a conflict.
+    await waitFor(() => expect(campaignsApi.stop).toHaveBeenCalledWith('cmp-6', undefined));
+    expect(toast.success).toHaveBeenCalledWith('"Wine evening" is stopped. Members it had not reached get nothing.');
+  });
+
+  it('says how a stopped campaign stands, and offers only its recipients', async () => {
+    campaignsApi.list.mockResolvedValue([{ ...SENDING, status: 'Stopped', sentAtUtc: '2026-11-12T09:05:00Z', totals: { ...NO_TOTALS, recipients: 2, sent: 1, cancelled: 1 } }]);
+    show(<Campaigns />);
+
+    await screen.findByText('Wine evening');
+    const row = rowOf('Wine evening');
+    expect(within(row).getByText('Stopped')).toBeInTheDocument();
+    expect(within(row).getByText(/^Stopped .*2 members · 1 sent .*1 not sent/)).toBeInTheDocument();
+    expect(within(row).queryByRole('button', { name: /Send now|Stop sending/ })).toBeNull();
+    expect(within(row).getByRole('button', { name: /Recipients/ })).toBeInTheDocument();
+  });
+
+  it('says who the outbox would still refuse among those who may have it', async () => {
+    campaignsApi.audience.mockResolvedValue({ ...AUDIENCE, agreed: 4, willReceive: 2, suppressed: 1, doNotContact: 1 });
+    const user = userEvent.setup();
+    show(<Campaigns />);
+
+    await user.click(await screen.findByRole('button', { name: /New campaign/ }));
+    const dialog = await screen.findByRole('dialog');
+    await waitFor(() => expect(within(dialog).getByText(/It would go to/)).toHaveTextContent(
+      /Left out: 1 at an address on the suppression list \(bounced, complained or unsubscribed\), 1 marked do not contact\. It would go to 2 addresses/,
+    ));
   });
 
   it('sends a test to the person who asked for it, and to no member', async () => {

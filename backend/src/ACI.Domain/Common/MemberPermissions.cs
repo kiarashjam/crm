@@ -39,6 +39,14 @@ public static class MemberPermissions
     public const string SeeAllDeals = "deals.all";
     public const string ManageSettings = "settings.manage";
     public const string ManageMembers = "members.manage";
+    /// <summary>
+    /// Export everything held about a person, erase a person, and set how long personal data
+    /// is kept. Its own permission, held by the owner and managers only: an erasure cannot be
+    /// undone and reaches every module, the club's books included, and an export hands over
+    /// everything about someone at once. Kept apart from members.manage, which is about the
+    /// staff team, so a club can give it to whoever handles privacy requests without the team.
+    /// </summary>
+    public const string ManagePrivacy = "privacy.manage";
     public const string ManageMoney = "money.manage";
     public const string VoidMoney = "money.void";
     public const string ClubMembers = "club.members";
@@ -53,6 +61,7 @@ public static class MemberPermissions
         new(SeeAllDeals, "See all deals", "Every deal, private ones too, and the team's saved forecasts."),
         new(ManageSettings, "Manage settings", "Pipelines, statuses, lead routing, automations, custom fields, email sending, integrations and club settings."),
         new(ManageMembers, "Manage the team", "Invite, add and remove members, change their roles, and run sales teams."),
+        new(ManagePrivacy, "Handle privacy requests", "Export everything held about a person, erase a person, and set how long personal data is kept."),
         new(ManageMoney, "Take payments and charge accounts", "Charges, payments, subscriptions, gift cards and donations."),
         new(VoidMoney, "Void money", "Void charges, payments and gift cards, with a reason."),
         new(ClubMembers, "Manage club members", "Members, households, applications, events, campaigns, communications and loyalty points."),
@@ -62,7 +71,7 @@ public static class MemberPermissions
     /// <summary>The permissions that change something. A member with none of them can only read (and export).</summary>
     public static readonly IReadOnlySet<string> Writes = new HashSet<string>(StringComparer.Ordinal)
     {
-        EditRecords, DeleteRecords, ManageSettings, ManageMembers, ManageMoney, VoidMoney, ClubMembers, FrontDesk,
+        EditRecords, DeleteRecords, ManageSettings, ManageMembers, ManagePrivacy, ManageMoney, VoidMoney, ClubMembers, FrontDesk,
     };
 
     private static readonly string[] Everything = All.Select(p => p.Key).ToArray();
@@ -107,6 +116,7 @@ public static class MemberPermissions
         SeeAllDeals => "see the whole team's deals",
         ManageSettings => "change this workspace's settings",
         ManageMembers => "manage the team",
+        ManagePrivacy => "handle privacy requests",
         ManageMoney => "take payments or charge accounts",
         VoidMoney => "void money",
         ClubMembers => "manage club members",

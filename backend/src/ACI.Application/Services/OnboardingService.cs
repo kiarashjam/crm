@@ -1,5 +1,6 @@
 using System.Text.Json;
 using ACI.Application.Common;
+using ACI.Application.Common.I18n;
 using ACI.Application.Configuration;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
@@ -66,6 +67,7 @@ public sealed class OnboardingService : IOnboardingService
     private readonly IWebhookTransport _transport;
     private readonly IActivityService _activities;
     private readonly ITenantContext _tenant;
+    private readonly IWorkspaceModules _modules;
     private readonly EmailSettings _settings;
     private readonly ILogger<OnboardingService> _logger;
 
@@ -81,6 +83,7 @@ public sealed class OnboardingService : IOnboardingService
         IWebhookTransport transport,
         IActivityService activities,
         ITenantContext tenant,
+        IWorkspaceModules modules,
         IOptions<EmailSettings> settings,
         ILogger<OnboardingService> logger)
     {
@@ -95,6 +98,7 @@ public sealed class OnboardingService : IOnboardingService
         _transport = transport;
         _activities = activities;
         _tenant = tenant;
+        _modules = modules;
         _settings = settings.Value;
         _logger = logger;
     }
@@ -312,7 +316,9 @@ public sealed class OnboardingService : IOnboardingService
         };
         AddStep(onboarding, "queued", now, null);
 
-        if (request.AddToClubMembers ?? settings!.AddToClubMembers)
+        // A workspace that has turned its club off has no members list to show them on: they
+        // would be kept where nobody sees them. The handoff, which is what was asked for, goes on.
+        if ((request.AddToClubMembers ?? settings!.AddToClubMembers) && await _modules.IsOnAsync(organizationId, WorkspaceModules.Club, ct))
             onboarding.ClubMemberId = await JoinClubAsync(onboarding, person, userId, ct);
 
         _onboarding.Add(onboarding);
@@ -450,12 +456,13 @@ public sealed class OnboardingService : IOnboardingService
     }
 
     /// <summary>
-    /// The person among the club's members here: the one with their email if there is one,
-    /// with the start brought up to date, else a new pending member.
+    /// The person among the club's members here: the one linked to the deal's contact or lead
+    /// (a countersigned membership contract may have admitted them already), else the one with
+    /// their email, with the start brought up to date; else a new pending member.
     /// </summary>
     private async Task<Guid?> JoinClubAsync(DealOnboarding onboarding, Person person, Guid userId, CancellationToken ct)
     {
-        var member = await _onboarding.ClubMemberByEmailAsync(onboarding.OrganizationId, onboarding.Email, ct);
+        var member = await _onboarding.ClubMemberForAsync(onboarding.OrganizationId, onboarding.Email, onboarding.ContactId, onboarding.LeadId, ct);
         if (member == null)
         {
             // Made the way the club makes every member (ClubService): at its first tier on
@@ -481,6 +488,9 @@ public sealed class OnboardingService : IOnboardingService
                 LeadId = leadId,
                 StartsOnUtc = onboarding.StartsOnUtc,
                 StartUndetermined = onboarding.StartUndetermined,
+                // The language the portal welcomes them in ("fr" or "en"): the club's statements
+                // and reminders to them follow it.
+                PreferredLanguage = AppLanguages.Normalise(onboarding.Language),
             };
             var created = await _club.CreateMemberAsync(userId, onboarding.OrganizationId, Request(onboarding.LeadId), ct);
             // The lead came from the browser: one the club cannot link to is left off, not a reason to add nobody.
@@ -492,7 +502,7 @@ public sealed class OnboardingService : IOnboardingService
                 _logger.LogWarning("Handoff {OnboardingId}: the club member could not be added: {Error}", onboarding.Id, created.Error.Description);
                 return null;
             }
-            member = await _onboarding.ClubMemberByEmailAsync(onboarding.OrganizationId, onboarding.Email, ct);
+            member = await _onboarding.ClubMemberForAsync(onboarding.OrganizationId, onboarding.Email, onboarding.ContactId, onboarding.LeadId, ct);
             if (member == null) return created.Value.Id;
         }
         else
@@ -500,6 +510,8 @@ public sealed class OnboardingService : IOnboardingService
             member.StartsOnUtc = onboarding.StartsOnUtc;
             member.StartUndetermined = onboarding.StartUndetermined;
             member.ContactId ??= onboarding.ContactId;
+            // A member the club already had keeps the language staff set; one with none takes the handoff's.
+            member.PreferredLanguage ??= AppLanguages.Normalise(onboarding.Language);
         }
         member.DealId ??= onboarding.DealId;
         return member.Id;

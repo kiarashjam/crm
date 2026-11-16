@@ -10,6 +10,7 @@
 import { ApiError, apiWithFallback, authFetch, authFetchJson, ensureOk, servesDemoData, type RequestOptions } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import { createCharge } from './charges';
+import { currentDateLocale } from '@/app/i18n/current';
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -32,6 +33,8 @@ export interface Subscription {
   notes?: string;
   /** The tier or dues item of the price catalogue it was started from. */
   catalogItemId?: string;
+  /** The server's version of the subscription as it was read; a change is sent with this (If-Match). */
+  version?: string;
 }
 
 export const SUBSCRIPTION_CADENCES: SubscriptionCadence[] = [
@@ -205,9 +208,12 @@ export async function createSubscription(input: SubscriptionInput): Promise<Subs
 export async function updateSubscription(
   id: string,
   patch: Partial<Subscription>,
+  version?: string,
 ): Promise<Subscription | null> {
   return apiWithFallback(
-    () => authFetchJson<Subscription>(`/api/subscriptions/${id}`, { method: 'PUT', body: JSON.stringify(patch) }),
+    // Checked against the copy the change was made from: one paused or cancelled by someone
+    // else meanwhile is refused (409), not changed back.
+    () => authFetchJson<Subscription>(`/api/subscriptions/${id}`, { method: 'PUT', headers: version ? { 'If-Match': `"${version}"` } : undefined, body: JSON.stringify(patch) }),
     async () => {
       await delay(120);
       return subStore.update(id, patch);
@@ -254,7 +260,7 @@ export async function runBillingCycle(id: string, options: { early?: boolean } =
   if (!sub) return null;
   if (sub.status === 'Cancelled' || sub.status === 'Paused') return sub;
   if (!options.early && Date.parse(sub.nextChargeAtUtc) > Date.now()) {
-    const starts = new Date(sub.nextChargeAtUtc).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+    const starts = new Date(sub.nextChargeAtUtc).toLocaleDateString(currentDateLocale(), { day: 'numeric', month: 'short', year: 'numeric' });
     throw new ApiError(
       `This subscription's next period starts on ${starts}, so nothing was billed. Bill it early to charge that period now.`,
       409, `/api/subscriptions/${id}/bill`, true, NOT_DUE_CODE);

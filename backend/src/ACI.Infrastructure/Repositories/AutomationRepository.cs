@@ -31,9 +31,21 @@ public sealed class AutomationRepository : IAutomationRepository
             existing.Enabled = rule.Enabled;
             existing.Trigger = rule.Trigger;
             existing.TriggerConfigJson = rule.TriggerConfigJson;
+            existing.ConditionsJson = rule.ConditionsJson;
             existing.ActionsJson = rule.ActionsJson;
+            existing.SendWindowJson = rule.SendWindowJson;
+            existing.Version = rule.Version;
         }
-        await _db.SaveChangesAsync(ct);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Saved by someone else since this edit read it: their rule stands.
+            _db.Entry(existing ?? rule).State = EntityState.Detached;
+            throw new ACI.Application.Common.ConcurrencyConflictException();
+        }
     }
 
     public async Task<bool> DeleteAsync(Guid id, Guid? organizationId, CancellationToken ct = default)
@@ -42,6 +54,12 @@ public sealed class AutomationRepository : IAutomationRepository
         if (row == null) return false;
         var fires = await _db.AutomationFires.Where(f => f.RuleId == id).ToListAsync(ct);
         _db.AutomationFires.RemoveRange(fires);
+        // Its runs go with it, waiting ones included, and their logs. SQL Server would cascade
+        // them; the in-memory provider the tests run on does not.
+        var runs = await _db.AutomationRuns.Where(r => r.RuleId == id).ToListAsync(ct);
+        var runIds = runs.Select(r => r.Id).ToList();
+        _db.AutomationRunSteps.RemoveRange(await _db.AutomationRunSteps.Where(s => runIds.Contains(s.RunId)).ToListAsync(ct));
+        _db.AutomationRuns.RemoveRange(runs);
         _db.AutomationRules.Remove(row);
         await _db.SaveChangesAsync(ct);
         return true;
@@ -51,34 +69,4 @@ public sealed class AutomationRepository : IAutomationRepository
         await Scope(_db.AutomationRules.AsNoTracking(), organizationId)
             .Where(r => r.Enabled && r.Trigger == trigger)
             .ToListAsync(ct);
-
-    public async Task<bool> TryMarkFiredAsync(Guid ruleId, string sourceKey, CancellationToken ct = default)
-    {
-        var exists = await _db.AutomationFires.AnyAsync(f => f.RuleId == ruleId && f.SourceKey == sourceKey, ct);
-        if (exists) return false;
-        _db.AutomationFires.Add(new AutomationFire
-        {
-            Id = Guid.NewGuid(),
-            RuleId = ruleId,
-            SourceKey = sourceKey,
-            FiredAtUtc = DateTime.UtcNow,
-        });
-        try
-        {
-            await _db.SaveChangesAsync(ct);
-            return true;
-        }
-        catch (DbUpdateException)
-        {
-            return false;
-        }
-    }
-
-    public async Task IncrementRunCountAsync(Guid ruleId, CancellationToken ct = default)
-    {
-        var row = await _db.AutomationRules.FirstOrDefaultAsync(r => r.Id == ruleId, ct);
-        if (row == null) return;
-        row.RunCount += 1;
-        await _db.SaveChangesAsync(ct);
-    }
 }

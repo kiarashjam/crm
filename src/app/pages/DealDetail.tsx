@@ -25,9 +25,12 @@ import { Spinner } from '@/app/components/motion/CadenceLoader';
 import { RecordSkeleton } from '@/app/components/PageSkeleton';
 import DealLineItemsCard from '@/app/components/DealLineItemsCard';
 import CustomFieldsCard from '@/app/components/CustomFieldsCard';
+import RecordTagsEditor from '@/app/components/flex/RecordTagsEditor';
 import AttachmentsCard from '@/app/components/AttachmentsCard';
 import StageHistoryCard from '@/app/components/StageHistoryCard';
 import { DealWelcomeCard } from '@/app/components/onboarding';
+import { PersonMembershipCard } from '@/app/components/MembershipLinks';
+import { ContractPanel } from './contracts/ContractPanel';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import { getDealById, getDealStageHistory, updateDeal, deleteDeal, messages } from '@/app/api';
@@ -47,6 +50,7 @@ import { cn } from '@/app/components/ui/utils';
 import { UrgencyBadge, STAGE_COLORS } from './pipeline/DealCard';
 import { daysSince, formatCloseDate, formatDays, getDaysUntilClose } from './pipeline/utils';
 import { WriteOnly } from '@/app/components/WriteOnly';
+import { useMay } from '@/app/hooks/useMay';
 import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary, heroSecondary } from '@/app/components/PageHero';
@@ -57,9 +61,12 @@ import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import { currencyOf } from '@/app/lib/money';
 import { useMoney } from '@/app/hooks/useMoney';
 import { PERMISSION } from '@/app/api/organizations';
+import { currentDateLocale } from '@/app/i18n/current';
 
 export default function DealDetail() {
   const money = useMoney();
+  // Whether this member may draft and sign the deal's contract (records.edit), as WriteOnly decides.
+  const mayEdit = useMay()();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [deal, setDeal] = useState<Deal | null>(null);
@@ -101,6 +108,12 @@ export default function DealDetail() {
       .catch(() => toast.error('Failed to load deal'))
       .finally(() => setLoading(false));
   }, [id]);
+
+  // Countersigning the deal's contract wins the deal on the server: read it again to show so.
+  const refreshDeal = () => {
+    if (!id) return;
+    getDealById(id).then((d) => { if (d) setDeal(d); }).catch(() => {});
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -358,7 +371,7 @@ export default function DealDetail() {
               { label: 'Expected close', value: closeLabel ?? '—', icon: Calendar, tone: 'amber', hint: daysToClose === null ? undefined : daysToClose < 0 ? `${-daysToClose}d overdue` : `in ${daysToClose}d` },
               // From the stage history; a deal from before it was kept does not say.
               { label: 'In stage', value: daysInStage === null ? '—' : formatDays(daysInStage), icon: Hourglass, tone: 'violet', hint: daysInStage === null ? 'not recorded' : stageName },
-              { label: 'Activities', value: activities.length, icon: ActivityIcon, tone: 'sky', hint: activities[0] ? `last ${new Date(activityTime(activities[0])).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : 'none yet' },
+              { label: 'Activities', value: activities.length, icon: ActivityIcon, tone: 'sky', hint: activities[0] ? `last ${new Date(activityTime(activities[0])).toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric' })}` : 'none yet' },
               { label: 'Tasks', value: dealTasks.filter((t) => t.status !== 'completed').length, icon: CheckCircle2, tone: 'violet', hint: `${dealTasks.length} linked` },
             ]}
           />
@@ -394,6 +407,10 @@ export default function DealDetail() {
                 className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800"
                 onValueSynced={(t) => setDeal((prev) => (prev ? { ...prev, amount: t, value: String(t) } : prev))}
               />
+
+              {/* The deal's contract: drafted with its value and line items, sent, signed with
+                  its deposit, and countersigned, which wins the deal and admits the member. */}
+              <ContractPanel dealId={deal.id} leadName={deal.contactName || deal.name} readOnly={!mayEdit} onLeadChanged={refreshDeal} />
 
               <RecordCard title="Linked tasks" icon={<CheckCircle2 className="h-3.5 w-3.5" />} tone="violet" count={dealTasks.length} index={1}>
                 {tasksLoading ? (
@@ -433,7 +450,7 @@ export default function DealDetail() {
                               {task.dueDateUtc && (
                                 <>
                                   <span>&middot;</span>
-                                  <span>Due {new Date(task.dueDateUtc).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                                  <span>Due {new Date(task.dueDateUtc).toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric' })}</span>
                                 </>
                               )}
                               {task.priority && task.priority !== 'none' && (
@@ -463,7 +480,7 @@ export default function DealDetail() {
                 >
                   {deal.closedAtUtc && (
                     <p className="text-xs text-slate-500">
-                      {new Date(deal.closedAtUtc).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
+                      {new Date(deal.closedAtUtc).toLocaleDateString(currentDateLocale(), { month: 'long', day: 'numeric', year: 'numeric' })}
                     </p>
                   )}
                   {deal.closedReason ? <p className="mt-1 text-sm text-slate-600">{deal.closedReason}</p> : !deal.closedAtUtc && <p className="text-sm text-slate-500">Closed.</p>}
@@ -471,6 +488,9 @@ export default function DealDetail() {
               )}
 
               {deal.contactId && <DealWelcomeCard dealId={deal.id} contactName={deal.contactName} dealName={deal.name} index={3} />}
+
+              {/* The member the deal brought in, by its contract or its handoff, and the applications behind it. */}
+              <PersonMembershipCard kind="deal" id={deal.id} personName={deal.contactName || deal.name} contactId={deal.contactId} readOnly={!mayEdit} />
 
               <RecordCard title="Deal details" icon={<Target className="h-3.5 w-3.5" />} tone="violet" index={3}>
                 {!deal.contactName && !deal.companyName && !deal.assigneeName && !deal.pipelineName && !deal.expectedCloseDateUtc && !deal.createdAtUtc && !deal.description && (
@@ -519,7 +539,7 @@ export default function DealDetail() {
                     <div className="min-w-0">
                       <dt className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Created</dt>
                       <dd className="mt-0.5 text-slate-600 dark:text-slate-400">
-                        {new Date(deal.createdAtUtc).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                        {new Date(deal.createdAtUtc).toLocaleDateString(currentDateLocale(), { month: 'short', day: 'numeric', year: 'numeric' })}
                       </dd>
                     </div>
                   )}
@@ -531,6 +551,11 @@ export default function DealDetail() {
                   </div>
                 )}
               </RecordCard>
+
+              {/* Tags on the deal */}
+              <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+                <RecordTagsEditor entityType="deal" recordId={deal.id} />
+              </div>
 
               {/* Custom fields (renders only when defined for deals) */}
               <CustomFieldsCard
