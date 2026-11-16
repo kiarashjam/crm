@@ -91,6 +91,9 @@ export default function Settings() {
   const initialTab: SettingsTab =
     tabFromUrl && TAB_CONFIG.some((t) => t.id === tabFromUrl) ? tabFromUrl : 'profile';
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
+  // The shared Save keeps the personal settings these tabs edit. Every other tab saves its
+  // own, and showed a "No Changes" button there that saved nothing it said.
+  const usesSharedSave = (['profile', 'brand', 'appearance', 'notifications'] as SettingsTab[]).includes(activeTab);
 
   useEffect(() => {
     const raw = searchParams.get('tab') as SettingsTab | null;
@@ -719,6 +722,7 @@ export default function Settings() {
               </div>
 
               {/* Save button (sticky on desktop) */}
+              {usesSharedSave && (
               <div className="hidden lg:block mt-4 sticky top-4">
                 <button
                   type="button"
@@ -730,6 +734,7 @@ export default function Settings() {
                   {saving ? 'Saving...' : hasChanges ? 'Save Changes' : 'No Changes'}
                 </button>
               </div>
+              )}
             </nav>
 
             {/* Content area */}
@@ -739,6 +744,7 @@ export default function Settings() {
               </div>
 
               {/* Mobile save button */}
+              {usesSharedSave && (
               <div className="lg:hidden mt-4">
                 <button
                   type="button"
@@ -750,6 +756,7 @@ export default function Settings() {
                   {saving ? 'Saving...' : hasChanges ? 'Save Changes' : 'No Changes'}
                 </button>
               </div>
+              )}
             </div>
           </div>
       </main>

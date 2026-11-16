@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
-import { CheckCircle2, Copy, KeyRound, Loader2, Lock, MessageSquareHeart, PlugZap, Save, ShieldCheck, Wand2, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Copy, KeyRound, Loader2, Lock, MessageSquareHeart, Monitor, PlugZap, RotateCcw, Save, ShieldCheck, Smartphone, Wand2, XCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { servesDemoData } from '@/app/api/apiClient';
 import { orgCan, PERMISSION, type Organization } from '@/app/api/organizations';
@@ -71,7 +71,8 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
   const [secret, setSecret] = useState<string | null>(null);
   const [making, setMaking] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [test, setTest] = useState<{ ok: boolean; text: string } | null>(null);
+  const [test, setTest] = useState<{ ok: boolean; text: string; warning?: string | null } | null>(null);
+  const [device, setDevice] = useState<'desktop' | 'phone'>('desktop');
   const [preview, setPreview] = useState<OnboardingPreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const previewSeq = useRef(0);
@@ -122,6 +123,14 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
     || senderName !== (settings?.senderName ?? '') || senderEmail !== (settings?.senderEmail ?? '') || replyTo !== (settings?.replyTo ?? '')
   ), [settings, url, enabled, language, addToMembers, subject, html, senderName, senderEmail, replyTo]);
 
+  // Leaving with edits not saved: the browser asks first, rather than dropping them.
+  useEffect(() => {
+    if (!dirty) return;
+    const stay = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', stay);
+    return () => window.removeEventListener('beforeunload', stay);
+  }, [dirty]);
+
   // Who it is from, as typed: what the preview shows before anything is saved.
   const fromShown = senderLabel(senderName.trim() || settings?.defaultSenderName, senderEmail.trim() || null);
   const replyShown = replyTo.trim() || settings?.defaultReplyTo || '';
@@ -171,7 +180,7 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
       const mismatch = own && r.fromEmail && domain(own) !== domain(r.fromEmail)
         ? ` ${own} is not on its domain (${domain(r.fromEmail)}), so it will send from ${r.fromEmail} under your name, with replies to ${replyShown || own}.`
         : '';
-      setTest({ ok: true, text: `The portal answered ${r.statusCode}: it checked the signature and is ready.${sends}${mismatch}` });
+      setTest({ ok: true, text: `The portal answered ${r.statusCode}: it checked the signature and is ready.${sends}${mismatch}`, warning: r.callbackProblem });
     } catch (e) {
       setTest({ ok: false, text: e instanceof Error ? e.message : 'The test could not be sent.' });
     } finally {
@@ -298,11 +307,17 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
             </Button>
             {dirty && <span className="text-xs text-slate-500">Save first, then test.</span>}
             {test && (
-              <span className={cn('inline-flex items-center gap-1.5 text-sm', test.ok ? 'text-emerald-700' : 'text-rose-700')}>
-                {test.ok ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />} {test.text}
+              <span role="status" className={cn('inline-flex items-start gap-1.5 text-sm', test.ok ? 'text-emerald-700' : 'text-rose-700')}>
+                {test.ok ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> : <XCircle className="mt-0.5 h-4 w-4 shrink-0" />} {test.text}
               </span>
             )}
           </div>
+        )}
+        {test?.warning && (
+          <p role="alert" className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden />
+            <span><strong>The portal could not report back.</strong> {test.warning}</span>
+          </p>
         )}
       </section>
 
@@ -377,6 +392,7 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
                 key={l}
                 type="button"
                 disabled={!canEdit}
+                aria-pressed={language === l}
                 onClick={() => setLanguage(l)}
                 className={cn('rounded-md px-3 py-1 text-sm font-medium transition', language === l ? 'bg-slate-900 text-white' : 'text-slate-500 hover:text-slate-800')}
               >
@@ -401,6 +417,7 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
         </div>
         <div className="grid gap-4 xl:grid-cols-2">
           <div className="space-y-2">
+            <Label htmlFor="welcome-subject">Subject</Label>
             <Input
               id="welcome-subject"
               value={subject}
@@ -408,8 +425,8 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
               placeholder="Subject, e.g. Bienvenue au club, {{firstName}}"
               disabled={!canEdit}
               maxLength={300}
-              aria-label="Welcome email subject"
             />
+            <Label htmlFor="welcome-html" className="pt-1">HTML</Label>
             <Textarea
               id="welcome-html"
               value={html}
@@ -419,8 +436,16 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
               spellCheck={false}
               disabled={!canEdit}
               className="max-h-[28rem] overflow-y-auto bg-slate-950 font-mono text-xs text-emerald-200 placeholder:text-slate-500"
-              aria-label="Welcome email HTML"
             />
+            {/<style[\s>]/i.test(html.replace(/<!--[\s\S]*?-->/g, '')) && (
+              <p className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900">
+                <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0 text-amber-600" aria-hidden />
+                <span>
+                  This email has a <code className="rounded bg-amber-100 px-1">&lt;style&gt;</code> block. The portal removes it before sending,
+                  so anything it does (a phone layout, say) is lost: put the styles you need inline, on each element.
+                </span>
+              </p>
+            )}
             <EmailImageTools html={html} onChange={setHtml} textareaId="welcome-html" disabled={!canEdit} />
             {canEdit && settings && (
               <>
@@ -428,13 +453,28 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
                 <PlaceholderChips fields={settings.receiverFields} tone="violet" onPick={(t) => setHtml(insertAt('welcome-html', html, t))} />
                 <p className="text-[11px] text-slate-500">
                   <span className="text-orange-600">Orange</span>: filled by CadenceE, as text. <span className="text-violet-600">Violet</span>: filled by the portal when it sends. Give any a fallback: {'{{firstName|there}}'}.
-                  The portal removes scripts and anything else unsafe before sending.
+                  The portal keeps inline styles only: before sending it removes <code>&lt;style&gt;</code> blocks, scripts, anything else unsafe, and images that are not https.
                 </p>
               </>
             )}
           </div>
           <div className="space-y-2">
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Preview, for a sample member</p>
+            <div className="flex items-center gap-2">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Preview, for a sample member</p>
+              <div className="ml-auto inline-flex rounded-lg border border-slate-200 p-0.5" role="group" aria-label="Preview size">
+                {([['desktop', Monitor, 'Desktop'], ['phone', Smartphone, 'Phone']] as const).map(([d, Icon, label]) => (
+                  <button
+                    key={d}
+                    type="button"
+                    aria-pressed={device === d}
+                    onClick={() => setDevice(d)}
+                    className={cn('inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition', device === d ? 'bg-slate-900 text-white' : 'text-slate-500 hover:text-slate-800')}
+                  >
+                    <Icon className="h-3.5 w-3.5" aria-hidden /> {label}
+                  </button>
+                ))}
+              </div>
+            </div>
             {previewError ? (
               <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{previewError}</p>
             ) : preview ? (
@@ -442,7 +482,7 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
                 {preview.unknown.length > 0 && (
                   <p className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">Nothing fills {preview.unknown.join(', ')}.</p>
                 )}
-                <EmailPreviewFrame subject={preview.subject} html={preview.html} from={fromShown || undefined} to={SAMPLE.email} replyTo={replyShown || undefined} />
+                <EmailPreviewFrame subject={preview.subject} html={preview.html} from={fromShown || undefined} to={SAMPLE.email} replyTo={replyShown || undefined} device={device} />
               </>
             ) : (
               <div className="flex h-60 items-center justify-center rounded-xl border border-dashed border-slate-200 text-slate-400"><Loader2 className="h-5 w-5 animate-spin" /></div>
@@ -452,10 +492,25 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
       </section>
 
       {canEdit && (
-        <div className="sticky bottom-0 -mx-6 flex justify-end border-t border-slate-100 bg-white/90 px-6 py-3 backdrop-blur">
-          <Button type="button" onClick={() => void save()} disabled={saving || !dirty} className="bg-gradient-to-r from-orange-500 to-pink-500 text-white">
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save
-          </Button>
+        // Room on the right for the help button that floats over the page's corner.
+        <div className="sticky bottom-0 -mx-6 flex items-center gap-3 border-t border-slate-100 bg-white/90 py-3 pl-6 pr-20 backdrop-blur">
+          {dirty ? (
+            <span className="inline-flex items-center gap-2 text-sm font-medium text-amber-700" role="status">
+              <span className="h-2 w-2 rounded-full bg-amber-500" aria-hidden /> Unsaved changes
+            </span>
+          ) : (
+            <span className="text-sm text-slate-400">All changes saved</span>
+          )}
+          <div className="ml-auto flex items-center gap-2">
+            {dirty && (
+              <Button type="button" variant="ghost" onClick={() => settings && take(settings)} disabled={saving}>
+                <RotateCcw className="h-4 w-4" /> Discard
+              </Button>
+            )}
+            <Button type="button" onClick={() => void save()} disabled={saving || !dirty} className="bg-gradient-to-r from-orange-500 to-pink-500 text-white">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save
+            </Button>
+          </div>
         </div>
       )}
     </div>

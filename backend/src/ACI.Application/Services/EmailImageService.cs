@@ -1,8 +1,6 @@
 using ACI.Application.Common;
-using ACI.Application.Configuration;
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
-using Microsoft.Extensions.Options;
 
 namespace ACI.Application.Services;
 
@@ -31,12 +29,12 @@ public sealed class EmailImageService : IEmailImageService
     public const int MaxImages = 300;
 
     private readonly IEmailImageRepository _images;
-    private readonly EmailSettings _settings;
+    private readonly IPublicAddress _address;
 
-    public EmailImageService(IEmailImageRepository images, IOptions<EmailSettings> settings)
+    public EmailImageService(IEmailImageRepository images, IPublicAddress address)
     {
         _images = images;
-        _settings = settings.Value;
+        _address = address;
     }
 
     public async Task<IReadOnlyList<EmailImageDto>> ListAsync(Guid organizationId, CancellationToken ct = default) =>
@@ -92,7 +90,7 @@ public sealed class EmailImageService : IEmailImageService
     // in a template's HTML and points the copy's emails at the copy's image.
     private EmailImageDto ToDto(EmailImage i) => new(
         i.Id,
-        $"{_settings.ApiBaseUrl.TrimEnd('/')}/api/public/email-images/{i.Id:D}.{Extension(i.ContentType)}",
+        $"{_address.ApiBaseUrl}/api/public/email-images/{i.Id:D}.{Extension(i.ContentType)}",
         i.FileName, i.ContentType, i.Size, i.Width, i.Height, i.CreatedAtUtc);
 
     private sealed record ImageType(string ContentType, string Extension);

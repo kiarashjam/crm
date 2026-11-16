@@ -302,6 +302,55 @@ public class OnboardingTests
     }
 
     [Fact]
+    public async Task ThePortalIsGivenThisServersPublicAddress_AndOldLocalImageLinksAreMended()
+    {
+        // Email:ApiBaseUrl never set: the callback was http://localhost, which the portal
+        // refuses (it reports back over https only), and images uploaded then pointed nowhere.
+        await using var app = new App();
+        var (owner, _, _, dealId) = await SetUpAsync(app);
+        app.Hook.AnswerBody = "{\"ok\":true}";
+        var local = await JsonAsync(await owner.PostAsync("/api/onboarding/settings/test", null));
+        local.GetProperty("ok").GetBoolean().Should().BeTrue();
+        local.GetProperty("callbackProblem").GetString().Should().Contain("https", "on this machine the address is http://localhost, which the portal would refuse");
+
+        owner.DefaultRequestHeaders.Host = "api.cadencee.ai";
+        var image = $"http://localhost:5160/api/public/email-images/{Guid.NewGuid():D}.jpg";
+        var saved = await JsonAsync(await owner.PutAsync("/api/onboarding/settings", Body(new
+        {
+            webhookUrl = Portal, defaultLanguage = "fr",
+            emailSubject = "Bienvenue", emailHtml = $"<p>{{{{firstName}}}}</p><img src=\"{image}\"><img src=\"https://cdn.example.ch/x.png\">",
+        })));
+        var html = saved.GetProperty("emailHtml").GetString()!;
+        html.Should().Contain(image.Replace("http://localhost:5160", "https://api.cadencee.ai"), "an image of ours on localhost now has the public address");
+        html.Should().Contain("https://cdn.example.ch/x.png", "someone else's image is left alone");
+
+        var publicTest = await JsonAsync(await owner.PostAsync("/api/onboarding/settings/test", null));
+        publicTest.GetProperty("callbackProblem").ValueKind.Should().Be(JsonValueKind.Null, "https://api.cadencee.ai is an address the portal reports to");
+
+        (await owner.PostAsync($"/api/deals/{dealId}/onboarding", Body(new { welcomeMessage = "Bienvenue !" }))).StatusCode.Should().Be(HttpStatusCode.Created);
+        await app.DispatchOutboxAsync();
+        using var doc = JsonDocument.Parse(app.Hook.Posts.Last().Body);
+        doc.RootElement.GetProperty("payload").GetProperty("callback").GetProperty("url").GetString()
+            .Should().StartWith("https://api.cadencee.ai/api/public/onboarding/");
+    }
+
+    [Fact]
+    public async Task ThePreviewStandsInForTheMembersReferralCode()
+    {
+        await using var app = new App();
+        var (owner, _, _, _) = await SetUpAsync(app);
+        var preview = await JsonAsync(await owner.PostAsync("/api/onboarding/preview", Body(new
+        {
+            name = "Jean Dupont", email = "jean@example.ch", startUndetermined = true,
+            emailHtml = "<p>Your code: {{referralCode}}</p>",
+        })));
+        preview.GetProperty("unknown").EnumerateArray().Should().BeEmpty("the portal fills the member's referral code");
+        preview.GetProperty("html").GetString().Should().Contain("PAV-7K2M9Q");
+        var settings = await JsonAsync(await owner.GetAsync("/api/onboarding/settings"));
+        settings.GetProperty("receiverFields").EnumerateArray().Select(f => f.GetString()).Should().Contain("referralCode");
+    }
+
+    [Fact]
     public async Task TheTestSaysWhoThePortalSendsFrom()
     {
         await using var app = new App();

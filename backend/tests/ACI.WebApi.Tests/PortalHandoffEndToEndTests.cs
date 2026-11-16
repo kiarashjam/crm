@@ -137,7 +137,7 @@ public class PortalHandoffEndToEndTests
             startsOnUtc = "2027-01-15",
             language = "fr",
             emailSubject = "Bienvenue, {{firstName}}",
-            emailHtml = "<p>Bonjour {{firstName}},</p><p>{{welcomeMessage}}</p><p>Début : {{startDate}}</p><a href=\"{{setPasswordUrl}}\">Choisir mon mot de passe</a><script>alert(1)</script>",
+            emailHtml = "<p>Bonjour {{firstName}},</p><p>{{welcomeMessage}}</p><p>Début : {{startDate}}</p><p>Votre code : {{referralCode}}</p><a href=\"{{setPasswordUrl}}\">Choisir mon mot de passe</a><script>alert(1)</script>",
         }));
         started.StatusCode.Should().Be(HttpStatusCode.Created, await started.Content.ReadAsStringAsync());
 

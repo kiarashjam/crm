@@ -42,7 +42,8 @@ public sealed class SaveOnboardingSettingsRequest
 public sealed record OnboardingSecretDto(string Secret);
 
 /// <summary>What the receiver answered to a signed test post, and who it says it sends from.</summary>
-public sealed record OnboardingPingDto(bool Ok, int? StatusCode, string? Error, string? FromName = null, string? FromEmail = null);
+/// <param name="CallbackProblem">Why the portal could not report a handoff's progress back here, or null.</param>
+public sealed record OnboardingPingDto(bool Ok, int? StatusCode, string? Error, string? FromName = null, string? FromEmail = null, string? CallbackProblem = null);
 
 /// <summary>
 /// The welcome email for someone, before it goes. With a deal, the person is the deal's

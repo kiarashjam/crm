@@ -322,6 +322,7 @@ try
     builder.Services.AddScoped<IAutomationService, AutomationService>();
     builder.Services.AddScoped<IAutomationEngine, AutomationEngine>();
     builder.Services.AddScoped<IClubService, ClubService>();
+    builder.Services.AddScoped<IPublicAddress, ACI.WebApi.Services.RequestPublicAddress>();
     builder.Services.AddScoped<IOnboardingService, OnboardingService>();
     builder.Services.AddScoped<IEmailImageService, EmailImageService>();
     builder.Services.AddScoped<IClubDocumentService, ClubDocumentService>();
@@ -468,6 +469,12 @@ try
             tags: ["db", "sql"]);
 
     var app = builder.Build();
+
+    // The API's public address builds email-image links and the portal's callback. Unset
+    // outside development, each request's own host stands in (see RequestPublicAddress).
+    var publicApi = builder.Configuration["Email:ApiBaseUrl"];
+    if (!app.Environment.IsDevelopment() && !app.Environment.IsEnvironment("Testing") && !ACI.Application.Interfaces.PublicAddresses.IsPublic(publicApi))
+        app.Logger.LogWarning("Email:ApiBaseUrl is not a public address ({ApiBaseUrl}); email images and portal callbacks use the address each request came in on. Set Email__ApiBaseUrl to the API's https address.", publicApi ?? "(not set)");
 
     // Configure middleware pipeline - Enable Swagger in all environments for API documentation
     app.UseSwagger();
