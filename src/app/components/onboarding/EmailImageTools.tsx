@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { toast } from 'sonner';
-import { AlertTriangle, CheckCircle2, ChevronDown, Copy, ImagePlus, Images, Loader2, Plus, Trash2, UploadCloud } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronDown, Copy, ImageOff, ImagePlus, Images, Loader2, Plus, Replace, Search, Trash2, UploadCloud, Wrench, X } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { cn } from '@/app/components/ui/utils';
-import { servesDemoData } from '@/app/api/apiClient';
+import { getApiBaseUrl, servesDemoData } from '@/app/api/apiClient';
 import {
   EMAIL_IMAGE_MAX_BYTES, EMAIL_IMAGE_TYPES, deleteEmailImage, isOwnEmailImage, listEmailImages, uploadEmailImage,
   type EmailImage,
@@ -24,24 +24,61 @@ export function imageTag(image: Pick<EmailImage, 'url' | 'fileName' | 'width'>):
   return `<img src="${escapeAttr(image.url)}" alt="${escapeAttr(alt)}"${width} style="display:block;max-width:100%;height:auto;border:0">`;
 }
 
-export type ImageSource = { src: string; kind: 'hosted' | 'embedded' | 'unreachable' };
+export type ImageSource = { src: string; alt?: string; kind: 'hosted' | 'embedded' | 'local' | 'unreachable' };
+
+const LOOPBACK = /^https?:\/\/(localhost|127(?:\.\d{1,3}){3}|\[::1\])(:\d+)?\//i;
+
+/**
+ * One of CadenceE's own images given the address of the computer it was uploaded on
+ * (the server's public address was not set then): the same image, at the API's address.
+ * Null when it is not one, or when this page has no public API address to give it.
+ */
+export function publicAddressFor(src: string): string | null {
+  if (!isOwnEmailImage(src) || !LOOPBACK.test(src)) return null;
+  const base = (getApiBaseUrl() ?? '').trim().replace(/\/+$/, '');
+  if (!/^https:\/\//i.test(base) || LOOPBACK.test(`${base}/`)) return null;
+  return src.replace(/^https?:\/\/[^/]+/i, base);
+}
+
+const attribute = (tag: string, name: string) =>
+  tag.match(new RegExp(`\\b${name}\\s*=\\s*(["'])(.*?)\\1`, 'is'))?.[2]?.trim();
+
+/** Text as the HTML means it: "Pavillon 46 &middot; Lutry" reads "Pavillon 46 · Lutry". */
+function decodeEntities(text: string): string {
+  if (!text.includes('&') || typeof document === 'undefined') return text;
+  const box = document.createElement('textarea');
+  box.innerHTML = text;
+  return box.value;
+}
 
 /**
  * Every image in the HTML, and whether a mail app can show it: one CadenceE hosts, or
- * any https address, it can; one embedded as data most block; one on a computer, over
- * plain http, or a cid: reference from another tool it cannot fetch at all.
+ * any https address, it can; one embedded as data most block; one of CadenceE's with a
+ * localhost address (uploaded before the server knew its own) only once corrected; one
+ * on a computer, over plain http, or a cid: reference from another tool it cannot fetch.
  */
 export function imageSources(html: string): ImageSource[] {
   const seen = new Map<string, ImageSource>();
-  for (const match of html.matchAll(/<img\b[^>]*?\bsrc\s*=\s*(["'])(.*?)\1/gis)) {
-    const src = match[2]!.trim();
+  for (const match of html.matchAll(/<img\b[^>]*>/gis)) {
+    const src = attribute(match[0], 'src');
     if (!src || src.includes('{{') || seen.has(src)) continue;
-    const kind = isOwnEmailImage(src) || /^https:\/\//i.test(src)
-      ? 'hosted'
-      : /^data:image\//i.test(src) ? 'embedded' : 'unreachable';
-    seen.set(src, { src, kind });
+    const kind = isOwnEmailImage(src) && LOOPBACK.test(src)
+      ? 'local'
+      : isOwnEmailImage(src) || /^https:\/\//i.test(src)
+        ? 'hosted'
+        : /^data:image\//i.test(src) ? 'embedded' : 'unreachable';
+    const alt = attribute(match[0], 'alt');
+    seen.set(src, { src, alt: alt ? decodeEntities(alt) : undefined, kind });
   }
   return [...seen.values()];
+}
+
+/** What an image is called on its card: its alt text, else its file's name. */
+function labelOf(source: ImageSource): string {
+  if (source.alt) return source.alt;
+  if (source.kind === 'embedded') return 'Embedded image';
+  const name = source.src.split(/[?#]/)[0]!.split('/').pop() ?? '';
+  return decodeURIComponent(name) || 'Image';
 }
 
 /** Why a file, as it will be uploaded, cannot be, or null. */
@@ -79,6 +116,10 @@ export function EmailImageTools({
   const [busy, setBusy] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
   const replacing = useRef<string | null>(null);
+  // The image being exchanged for one from the library, while the library is open for it.
+  const [picking, setPicking] = useState<ImageSource | null>(null);
+  // Images whose address answered with nothing to show (removed from the library, say).
+  const [broken, setBroken] = useState<ReadonlySet<string>>(new Set());
   // An upload finishes after the person may have typed on: what it changes is the HTML
   // as it is then, through the handler of that moment, not the ones it started with.
   const latest = useRef(html);
@@ -182,10 +223,53 @@ export function EmailImageTools({
   const sources = useMemo(() => imageSources(html), [html]);
   const embedded = sources.filter((s) => s.kind === 'embedded');
   const unreachable = sources.filter((s) => s.kind === 'unreachable');
+  const local = sources.filter((s) => s.kind === 'local');
+  const fixable = local.filter((s) => publicAddressFor(s.src));
   const hosted = sources.filter((s) => s.kind === 'hosted');
+  const missing = hosted.filter((s) => broken.has(s.src));
 
   /** Every use of one address swapped for another, in the HTML as it is now. */
   const swap = (from: string, to: string) => write(latest.current.split(from).join(to));
+
+  const correctLocal = () => {
+    for (const s of fixable) swap(s.src, publicAddressFor(s.src)!);
+    toast.success(fixable.length === 1 ? 'Its link now has the public address' : `${fixable.length} links now have the public address`);
+  };
+
+  /** The image's every use taken out of the HTML (the image stays in the library). */
+  const takeOut = (source: ImageSource) => {
+    const escaped = source.src.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    write(latest.current.replace(new RegExp(`[ \\t]*<img\\b[^>]*\\bsrc\\s*=\\s*(["'])${escaped}\\1[^>]*>[ \\t]*\\n?`, 'gi'), ''));
+  };
+
+  /** The image's first use selected in the HTML box, so it can be found and edited. */
+  const find = (source: ImageSource) => {
+    const box = document.getElementById(textareaId) as HTMLTextAreaElement | null;
+    const at = box?.value.indexOf(source.src) ?? -1;
+    if (!box || at < 0) return;
+    box.focus();
+    box.setSelectionRange(at, at + source.src.length);
+    // Scrolled to the selection: the lines before it, at the box's line height.
+    const lines = box.value.slice(0, at).split('\n').length;
+    const lineHeight = parseFloat(getComputedStyle(box).lineHeight) || 16;
+    box.scrollTop = Math.max(0, (lines - 3) * lineHeight);
+  };
+
+  const pickFromLibrary = (source: ImageSource) => {
+    if (!library || library.length === 0) {
+      toast.info('Your library has no images yet', { description: 'Use Replace to upload the photo for it instead.' });
+      return;
+    }
+    setPicking(source);
+    setOpen(true);
+  };
+
+  const use = (image: EmailImage) => {
+    if (!picking) return;
+    swap(picking.src, image.url);
+    toast.success(`${labelOf(picking)} exchanged for ${image.fileName}`);
+    setPicking(null);
+  };
 
   const hostEmbedded = () => track(async () => {
     let n = 0;
@@ -251,13 +335,13 @@ export function EmailImageTools({
           </Button>
         )}
         {library && library.length > 0 && (
-          <Button type="button" size="sm" variant="ghost" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+          <Button type="button" size="sm" variant="ghost" onClick={() => { setPicking(null); setOpen((o) => !o); }} aria-expanded={open}>
             <Images className="h-4 w-4" /> Your images ({library.length})
             <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-180')} />
           </Button>
         )}
         {!disabled && <span className="text-[11px] text-slate-500">or paste or drop an image onto the HTML</span>}
-        {hosted.length > 0 && embedded.length === 0 && unreachable.length === 0 && (
+        {hosted.length > 0 && embedded.length === 0 && unreachable.length === 0 && local.length === 0 && missing.length === 0 && (
           <span className="ml-auto inline-flex items-center gap-1 text-[11px] text-emerald-700">
             <CheckCircle2 className="h-3.5 w-3.5" /> {hosted.length === 1 ? 'Its image is' : `All ${hosted.length} images are`} on the web, so mail apps show {hosted.length === 1 ? 'it' : 'them'}
           </span>
@@ -278,31 +362,129 @@ export function EmailImageTools({
         </div>
       )}
 
-      {unreachable.length > 0 && (
-        <div role="alert" className="space-y-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-900">
-          <p className="flex items-center gap-2 font-medium">
-            <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600" />
-            {unreachable.length === 1 ? 'An image points' : `${unreachable.length} images point`} where no mail app can reach: upload the file for each.
-          </p>
-          {unreachable.map(({ src }) => (
-            <div key={src} className="flex items-center gap-2 pl-6">
-              <code className="min-w-0 flex-1 truncate rounded bg-white/70 px-1.5 py-0.5 font-mono text-[11px]" title={src}>{short(src)}</code>
-              {!disabled && (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="h-7 border-rose-200 bg-white"
-                  disabled={busy}
-                  aria-label={`Upload the file for ${src}`}
-                  onClick={() => { replacing.current = src; picker.current?.click(); }}
-                >
-                  <UploadCloud className="h-3.5 w-3.5" /> Upload it
-                </Button>
-              )}
-            </div>
-          ))}
+      {local.length > 0 && (
+        <div role="alert" className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+          <span className="flex-1">
+            {local.length === 1 ? 'An image\'s link points' : `${local.length} images' links point`} at localhost: uploaded before the server knew its public address, so no mail app can fetch {local.length === 1 ? 'it' : 'them'}.
+            {fixable.length > 0 ? ' The images are on the server; only the links need correcting (saving does it too).' : ''}
+          </span>
+          {!disabled && fixable.length > 0 && (
+            <Button type="button" size="sm" onClick={correctLocal} className="h-7 bg-amber-500 text-white hover:bg-amber-600">
+              <Wrench className="h-3.5 w-3.5" /> Correct {fixable.length === 1 ? 'it' : 'them'}
+            </Button>
+          )}
         </div>
+      )}
+
+      {(unreachable.length > 0 || missing.length > 0) && (
+        <p role="alert" className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-900">
+          <AlertTriangle className="mt-px h-4 w-4 shrink-0 text-rose-600" />
+          <span>
+            {unreachable.length + missing.length === 1 ? 'An image' : `${unreachable.length + missing.length} images`} cannot be shown
+            {unreachable.length > 0 ? ' (an address no mail app can reach)' : ''}{missing.length > 0 ? ' (gone from the server)' : ''}:
+            replace {unreachable.length + missing.length === 1 ? 'it' : 'them'} below, with a new upload or one of your images.
+          </span>
+        </p>
+      )}
+
+      {sources.length > 0 && (
+        <section aria-label="Images in this email" className="rounded-xl border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
+          <p className="px-1 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Images in this email ({sources.length})</p>
+          <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+            {sources.map((source) => {
+              const shown = source.kind === 'local' ? publicAddressFor(source.src) : source.kind === 'unreachable' ? null : source.src;
+              const gone = broken.has(source.src) || (shown != null && broken.has(shown));
+              const label = labelOf(source);
+              const status = gone
+                ? { text: 'Cannot be loaded', tone: 'text-rose-700' }
+                : source.kind === 'hosted' ? { text: 'Shown in mail apps', tone: 'text-emerald-700' }
+                  : source.kind === 'local' ? { text: 'Link points at localhost', tone: 'text-amber-700' }
+                    : source.kind === 'embedded' ? { text: 'Embedded: host it', tone: 'text-amber-700' }
+                      : { text: 'Not on the web', tone: 'text-rose-700' };
+              return (
+                <li
+                  key={source.src}
+                  className={cn(
+                    'overflow-hidden rounded-lg border bg-white dark:bg-slate-900',
+                    picking?.src === source.src ? 'border-orange-400 ring-2 ring-orange-200' : gone || source.kind === 'unreachable' ? 'border-rose-200' : 'border-slate-200',
+                  )}
+                >
+                  {/* A mid-grey checkerboard: a cream logo shows on it as well as a dark photo. */}
+                  <div className="relative flex h-24 items-center justify-center bg-[repeating-conic-gradient(#cbd5e1_0_25%,#e2e8f0_0_50%)] bg-[length:16px_16px]">
+                    {shown && !gone ? (
+                      <img
+                        src={shown}
+                        alt={label}
+                        className="max-h-24 max-w-full object-contain"
+                        loading="lazy"
+                        onError={() => setBroken((b) => new Set(b).add(source.src))}
+                      />
+                    ) : (
+                      <span className="flex flex-col items-center gap-1 px-2 text-center text-[10px] text-rose-600">
+                        <ImageOff className="h-5 w-5" aria-hidden />
+                        <span className="line-clamp-2 break-all font-mono" title={source.src}>{short(source.src)}</span>
+                      </span>
+                    )}
+                  </div>
+                  <div className="space-y-1 p-1.5">
+                    <p className="truncate text-[11px] font-medium text-slate-700 dark:text-slate-200" title={label}>{label}</p>
+                    <p className={cn('text-[10px] font-medium', status.tone)}>{status.text}</p>
+                    {!disabled && (
+                      <div className="space-y-1">
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-6 w-full px-1.5 text-[11px]"
+                          disabled={busy}
+                          aria-label={`Replace ${label} with a new upload`}
+                          onClick={() => { replacing.current = source.src; picker.current?.click(); }}
+                        >
+                          <UploadCloud className="h-3 w-3" /> Replace
+                        </Button>
+                        <div className="grid grid-cols-3 gap-1">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-6 w-full px-1.5"
+                          aria-label={`Exchange ${label} for one of your images`}
+                          title="Exchange for one of your images"
+                          onClick={() => pickFromLibrary(source)}
+                        >
+                          <Replace className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-6 w-full px-1.5"
+                          aria-label={`Find ${label} in the HTML`}
+                          title="Find it in the HTML"
+                          onClick={() => find(source)}
+                        >
+                          <Search className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-6 w-full px-1.5 hover:text-rose-600"
+                          aria-label={`Take ${label} out of the email`}
+                          title="Take it out of the email"
+                          onClick={() => takeOut(source)}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
       )}
 
       <AnimatePresence initial={false}>
@@ -313,6 +495,13 @@ export function EmailImageTools({
             exit={{ opacity: 0, height: 0 }}
             className="overflow-hidden"
           >
+            {picking && (
+              <div className="mb-1.5 flex items-center gap-2 rounded-lg bg-orange-50 px-3 py-1.5 text-xs text-orange-900">
+                <Replace className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                <span className="flex-1">Choose the image to put in place of <strong>{labelOf(picking)}</strong>.</span>
+                <Button type="button" size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={() => setPicking(null)}>Cancel</Button>
+              </div>
+            )}
             <ul className="grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-2 sm:grid-cols-3 lg:grid-cols-4">
               {library.map((image) => (
                 <li key={image.id} className="group overflow-hidden rounded-lg border border-slate-200 bg-white">
@@ -320,13 +509,20 @@ export function EmailImageTools({
                     <img src={image.url} alt={image.fileName} className="max-h-24 max-w-full object-contain" loading="lazy" />
                   </div>
                   <div className="space-y-1 p-1.5">
-                    <p className="truncate text-[11px] text-slate-600" title={image.fileName}>{image.fileName}</p>
+                    <p className="truncate text-[11px] text-slate-600" title={image.fileName}>
+                      {html.includes(image.url) && <span className="mr-1 rounded bg-emerald-100 px-1 text-[10px] font-medium text-emerald-700">In email</span>}
+                      {image.fileName}
+                    </p>
                     <div className="flex gap-1">
-                      {!disabled && (
+                      {!disabled && (picking ? (
+                        <Button type="button" size="sm" className="h-6 flex-1 bg-orange-500 px-1.5 text-[11px] text-white hover:bg-orange-600" onClick={() => use(image)}>
+                          <Replace className="h-3 w-3" /> Use this
+                        </Button>
+                      ) : (
                         <Button type="button" size="sm" className="h-6 flex-1 px-1.5 text-[11px]" onClick={() => insert([image])}>
                           <Plus className="h-3 w-3" /> Insert
                         </Button>
-                      )}
+                      ))}
                       <Button type="button" size="sm" variant="outline" className="h-6 px-1.5" onClick={() => void copy(image.url)} aria-label={`Copy the link to ${image.fileName}`}>
                         <Copy className="h-3 w-3" />
                       </Button>
