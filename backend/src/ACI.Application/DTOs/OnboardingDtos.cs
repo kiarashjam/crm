@@ -23,7 +23,9 @@ public sealed record OnboardingSettingsDto(
     /// <summary>What an empty sender name means: the organization's name.</summary>
     string? DefaultSenderName = null,
     /// <summary>What an empty reply-to means: the organization's sending address, when it has one.</summary>
-    string? DefaultReplyTo = null);
+    string? DefaultReplyTo = null,
+    /// <summary>The website's page where a lead books a meeting, with their invitation from a newsletter.</summary>
+    string? BookingPageUrl = null);
 
 public sealed class SaveOnboardingSettingsRequest
 {
@@ -36,6 +38,9 @@ public sealed class SaveOnboardingSettingsRequest
     public string? SenderName { get; set; }
     public string? SenderEmail { get; set; }
     public string? ReplyTo { get; set; }
+
+    /// <summary>The meeting booking page (https). Left out (null): kept as it is; empty: taken away.</summary>
+    public string? BookingPageUrl { get; set; }
 }
 
 /// <summary>A new signing secret, shown this once.</summary>

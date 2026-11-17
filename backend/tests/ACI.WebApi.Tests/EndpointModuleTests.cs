@@ -59,6 +59,7 @@ public class EndpointModuleTests
         ["PublicPaymentsController"] = "a pay link already sent and the payment provider's webhook: money coming in is never refused",
         ["PublicApplicationsController"] = "a public application form already on the club's website: the application is kept for the club",
         ["PublicOnboardingController"] = "a member portal reporting on a handoff already made: its report is kept, so the deal's timeline is right when Sales is on again",
+        ["PublicMeetingsController"] = "a meeting booked on the workspace's website: refusing it would lose the booking, which nobody could be told about",
         ["EmailImagesController"] = "images in the workspace's emails, which go to contacts of both modules",
         ["EmailTemplatesController"] = "the workspace's prepared emails, sent to leads and contacts of both modules",
         ["PublicEmailImagesController"] = "an image in an email already sent: mail apps fetch it every time the email is opened",

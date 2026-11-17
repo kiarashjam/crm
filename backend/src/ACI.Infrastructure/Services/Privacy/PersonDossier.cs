@@ -58,6 +58,8 @@ internal sealed class PersonDossier
     public List<ContractEvent> ContractEvents { get; private set; } = new();
     public List<ContractDeposit> ContractDeposits { get; private set; } = new();
     public List<DealOnboarding> Onboardings { get; private set; } = new();
+    /// <summary>Meetings they booked on the workspace's website, on their leads.</summary>
+    public List<MeetingBooking> MeetingBookings { get; private set; } = new();
     public List<Attachment> Attachments { get; private set; } = new();
     /// <summary>Values kept the old way, as JSON per record: read-only since they were copied into <see cref="CustomFieldEntries"/>.</summary>
     public List<CustomFieldValueSet> CustomFieldValues { get; private set; } = new();
@@ -184,6 +186,7 @@ internal sealed class PersonDossier
         var taskIds = d.Tasks.Select(t => t.Id).ToList();
         d.TaskComments = await Q(db.TaskComments).Where(c => taskIds.Contains(c.TaskItemId)).ToListAsync(ct);
         d.LeadStatusEvents = await Q(db.LeadStatusEvents).Where(e => leadIds.Contains(e.LeadId)).ToListAsync(ct);
+        d.MeetingBookings = await Q(db.MeetingBookings).Where(b => leadIds.Contains(b.LeadId)).ToListAsync(ct);
         d.Enrollments = await Q(db.OutreachEnrollments).Where(e =>
                 (e.TargetType == "lead" && leadIds.Contains(e.TargetId))
                 || (e.TargetType == "contact" && contactIds.Contains(e.TargetId))

@@ -28,6 +28,24 @@ public static class PlainTextEmail
     }
 
     /// <summary>
+    /// A designed email's own HTML with the same footer as <see cref="ToHtml"/> (and the
+    /// tracking image) at the foot of its body, centred under the design; at its end when it
+    /// is a fragment with no body.
+    /// </summary>
+    public static string WithFooter(string html, string? trackingUrl = null, string? workspaceName = null, IReadOnlyList<UnsubscribeLink>? unsubscribe = null,
+        string? question = null, string language = AppLanguages.English)
+    {
+        var footer = unsubscribe is { Count: > 0 }
+            ? $"\n<div style=\"text-align:center;padding:0 16px 24px\">{HtmlFooter(workspaceName, unsubscribe, question, language)}</div>"
+            : "";
+        var pixel = trackingUrl == null
+            ? ""
+            : $"\n<img src=\"{WebUtility.HtmlEncode(trackingUrl)}\" width=\"1\" height=\"1\" alt=\"\" style=\"display:block;border:0\">";
+        var end = html.LastIndexOf("</body", StringComparison.OrdinalIgnoreCase);
+        return end < 0 ? html + footer + pixel : html.Insert(end, footer + pixel + "\n");
+    }
+
+    /// <summary>
     /// The text part's footer: how to stop this workspace's email. One link per
     /// address when a message went to several people, each named, so nobody has to
     /// guess which is theirs.

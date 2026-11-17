@@ -57,6 +57,15 @@ public class OnboardingSettings : Common.BaseEntity
     /// <summary>Where replies go. Empty: the organization's sending address, if it has one.</summary>
     public string? ReplyTo { get; set; }
 
+    /// <summary>
+    /// The https page on the workspace's website where a lead books a meeting
+    /// ("https://pavillon46.ch/rendez-vous"). A newsletter's {{bookingUrl}} is this page with
+    /// the lead's own invitation (<c>?invite=…</c>), signed with <see cref="WebhookSecret"/>;
+    /// the page posts the booking back to /api/public/meetings, signed the same way.
+    /// Empty: newsletters cannot offer a booking link.
+    /// </summary>
+    public string? BookingPageUrl { get; set; }
+
     public DateTime UpdatedAtUtc { get; set; }
     public Guid? UpdatedByUserId { get; set; }
 }

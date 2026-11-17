@@ -235,6 +235,7 @@ public sealed partial class PersonDataService
         Add("Signed contracts", ErasureActions.Keep, d.Contracts.Count(c => c.Status is ContractStatuses.SignedByClient or ContractStatuses.Countersigned),
             "A signed contract is a legal record and is kept as it is.");
         Add("Hand-overs to the member portal", ErasureActions.Anonymise, d.Onboardings.Count);
+        Add("Meetings booked on the website", ErasureActions.Delete, d.MeetingBookings.Count, "With their leads; the meeting on the timeline goes with the timeline.");
         Add("Emails sent to them", ErasureActions.Anonymise, d.Outbound.Count(m => m.Status != OutboundStatuses.Queued),
             "The text and attachments are removed and the recipient replaced by the pseudonym; when it went and whether it arrived stay.");
         Add("Emails waiting to go to them", ErasureActions.Cancel, d.Outbound.Count(m => m.Status == OutboundStatuses.Queued));
@@ -351,6 +352,7 @@ public sealed partial class PersonDataService
             t.Notes = t.Notes == null ? null : Clip(Scrub(t.Notes) ?? "", 4096);
         }
         _db.LeadStatusEvents.RemoveRange(d.LeadStatusEvents);
+        _db.MeetingBookings.RemoveRange(d.MeetingBookings);
         _db.OutreachEnrollments.RemoveRange(d.Enrollments);
         _db.AutomationFires.RemoveRange(d.AutomationFires);
         // A run names the record and the address it wrote to, and its log what it did to them;

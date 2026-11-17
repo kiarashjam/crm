@@ -136,6 +136,8 @@ public sealed class OnboardingService : IOnboardingService
             return new Error("Onboarding.Sender", "The from address is not an email address.");
         if (Blank(request.ReplyTo) is { } replyTo && !IsEmail(replyTo))
             return new Error("Onboarding.Sender", "The reply-to address is not an email address.");
+        if (Blank(request.BookingPageUrl) is { } bookingPage && BookingPageProblem(bookingPage) is { } bookingProblem)
+            return new Error("Onboarding.BookingPage", bookingProblem);
 
         var settings = await _onboarding.GetSettingsAsync(organizationId, ct);
         if (settings == null)
@@ -152,6 +154,7 @@ public sealed class OnboardingService : IOnboardingService
         settings.SenderName = Blank(request.SenderName);
         settings.SenderEmail = Blank(request.SenderEmail)?.ToLowerInvariant();
         settings.ReplyTo = Blank(request.ReplyTo)?.ToLowerInvariant();
+        if (request.BookingPageUrl != null) settings.BookingPageUrl = Blank(request.BookingPageUrl);
         settings.UpdatedAtUtc = DateTime.UtcNow;
         settings.UpdatedByUserId = userId;
         await _onboarding.SaveAsync(ct);
@@ -823,7 +826,8 @@ public sealed class OnboardingService : IOnboardingService
         s?.SenderEmail,
         s?.ReplyTo,
         Blank(workspace?.Name),
-        Blank(workspace?.SendingAddress) is { } own && IsEmail(own) ? own : null);
+        Blank(workspace?.SendingAddress) is { } own && IsEmail(own) ? own : null,
+        s?.BookingPageUrl);
 
     // ── Rules ─────────────────────────────────────────────────────────────────
 
@@ -831,6 +835,18 @@ public sealed class OnboardingService : IOnboardingService
         string.IsNullOrWhiteSpace(s?.WebhookUrl) || string.IsNullOrWhiteSpace(s.WebhookSecret)
             ? new Error("Onboarding.NotSetUp", "Set up Welcome & portal in Settings first: the portal's address and its signing secret.")
             : null;
+
+    /// <summary>
+    /// Why this cannot be the meeting booking page, or null: an https page on the internet, which
+    /// a lead opens from their newsletter with their invitation added to it.
+    /// </summary>
+    internal static string? BookingPageProblem(string url) =>
+        url.Length > 500 ? "The booking page's address can be at most 500 characters."
+        : !Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || string.IsNullOrEmpty(uri.Host)
+            ? "The booking page must be an https address, such as https://pavillon46.ch/rendez-vous."
+            : !PublicAddress.LooksPublic(uri)
+                ? "The booking page must be on the public internet: leads open it from their email."
+                : null;
 
     /// <summary>Why the address cannot be posted to, or null. Checked again on the address dialled.</summary>
     private static string? AddressProblem(string url) =>

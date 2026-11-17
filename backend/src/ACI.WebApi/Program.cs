@@ -146,6 +146,17 @@ try
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
             }));
+        // A meeting booked on a workspace's website, posted by the website's server: a handful an
+        // hour, signed. Per caller address, since the workspace is only known from the body; a
+        // post with a wrong signature is refused before anything is written.
+        options.AddPolicy("public-meetings", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            "meetings:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 60,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
         // The unsubscribe link: a person opens it once or twice. Per token, like the
         // two above; a forged token fails its signature check before any database work.
         options.AddPolicy("public-unsubscribe", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
@@ -435,6 +446,8 @@ try
     builder.Services.AddScoped<IClubService, ClubService>();
     builder.Services.AddScoped<IPublicAddress, ACI.WebApi.Services.RequestPublicAddress>();
     builder.Services.AddScoped<IOnboardingService, OnboardingService>();
+    builder.Services.AddScoped<ILeadNewsletterService, LeadNewsletterService>();
+    builder.Services.AddScoped<IMeetingBookingService, MeetingBookingService>();
     builder.Services.AddScoped<IReferralHandoffSync, ReferralHandoffSync>();
     builder.Services.AddScoped<IEmailImageService, EmailImageService>();
     builder.Services.AddScoped<IEmailTemplateService, EmailTemplateService>();

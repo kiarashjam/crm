@@ -89,6 +89,9 @@ public partial class AppDbContext : DbContext
     public DbSet<OnboardingSettings> OnboardingSettings => Set<OnboardingSettings>();
     public DbSet<DealOnboarding> DealOnboardings => Set<DealOnboarding>();
     public DbSet<EmailImage> EmailImages => Set<EmailImage>();
+    // Newsletters to chosen leads, and the meetings leads book on the website.
+    public DbSet<LeadNewsletter> LeadNewsletters => Set<LeadNewsletter>();
+    public DbSet<MeetingBooking> MeetingBookings => Set<MeetingBooking>();
     public DbSet<EmailTemplate> EmailTemplates => Set<EmailTemplate>();
     public DbSet<EmailTemplateVersion> EmailTemplateVersions => Set<EmailTemplateVersion>();
     // The member portal: its settings, each member's use of it, their sessions and sign-in links.

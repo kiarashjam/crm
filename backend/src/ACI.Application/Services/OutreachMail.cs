@@ -44,7 +44,12 @@ public interface IOutreachMail
     /// part when one is given.
     /// </summary>
     /// <param name="language">The language it is written in, for its footer ("fr" ends in French); English when none.</param>
-    OutreachBody Body(Guid? organizationId, string? workspaceName, string text, IReadOnlyList<string> addresses, string? trackingUrl = null, string? language = null);
+    /// <param name="html">
+    /// A designed email's own HTML, used for the HTML part in place of the text's, with the same
+    /// footer (and tracking image) added at the foot of its body.
+    /// </param>
+    OutreachBody Body(Guid? organizationId, string? workspaceName, string text, IReadOnlyList<string> addresses, string? trackingUrl = null, string? language = null,
+        string? html = null);
 
     /// <summary>
     /// The two parts of an email to one club member. Marketing carries a link that withdraws
@@ -129,7 +134,8 @@ public sealed class OutreachMail : IOutreachMail
         return $"{api.GetLeftPart(UriPartial.Authority)}{api.AbsolutePath.TrimEnd('/')}/api/public/track/{leadId}";
     }
 
-    public OutreachBody Body(Guid? organizationId, string? workspaceName, string text, IReadOnlyList<string> addresses, string? trackingUrl = null, string? language = null)
+    public OutreachBody Body(Guid? organizationId, string? workspaceName, string text, IReadOnlyList<string> addresses, string? trackingUrl = null, string? language = null,
+        string? html = null)
     {
         var footerLanguage = AppLanguages.Normalise(language) ?? AppLanguages.English;
         var links = new List<UnsubscribeLink>();
@@ -156,7 +162,9 @@ public sealed class OutreachMail : IOutreachMail
             : null;
         return new OutreachBody(
             text + PlainTextEmail.TextFooter(workspaceName, links, language: footerLanguage),
-            PlainTextEmail.ToHtml(text, trackingUrl, workspaceName, links, language: footerLanguage),
+            html != null
+                ? PlainTextEmail.WithFooter(html, trackingUrl, workspaceName, links, language: footerLanguage)
+                : PlainTextEmail.ToHtml(text, trackingUrl, workspaceName, links, language: footerLanguage),
             oneClick ?? (links.Count == 1 ? links[0].Url : null),
             oneClick != null);
     }
