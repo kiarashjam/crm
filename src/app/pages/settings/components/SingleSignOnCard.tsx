@@ -4,7 +4,7 @@
 // refused by this workspace at once; they keep working in the members' other workspaces.
 // The owner is never held to it, so a provider that stops working cannot lock the workspace out.
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
@@ -33,16 +33,17 @@ export function SingleSignOnCard() {
     && (currentOrg!.isOwner || orgCan(currentOrg!, PERMISSION.ManageSettings) || orgCan(currentOrg!, PERMISSION.ManageMembers));
   const key = [...workspacePrefix(scope), 'organization-sso', currentOrg?.id ?? null] as const;
   const policy = useQuery({ queryKey: key, queryFn: () => getOrganizationSso(currentOrg!.id), enabled: canSee });
-  const [domains, setDomains] = useState('');
-
-  useEffect(() => {
-    if (policy.data) setDomains(policy.data.domains.join(', '));
-  }, [policy.data]);
+  // What is being typed; until something is, the workspace's domains as read. Copied into
+  // the field by an effect, they arrived a render after the rest, so the field showed empty
+  // beside a policy that had domains (and a test reading it then failed now and again).
+  const [draft, setDraft] = useState<string | null>(null);
+  const domains = draft ?? policy.data?.domains.join(', ') ?? '';
 
   const save = useMutation({
     mutationFn: (change: { required?: boolean; domains?: string[] }) => updateOrganizationSso(currentOrg!.id, change),
     onSuccess: (saved: OrganizationSso, change) => {
       client.setQueryData(key, saved);
+      setDraft(null);
       void org?.refreshOrgs();
       toast.success(change.required === undefined
         ? 'The workspace’s domains are saved.'
@@ -107,7 +108,7 @@ export function SingleSignOnCard() {
                 id="sso-domains"
                 value={domains}
                 disabled={!data.canChange}
-                onChange={(e) => setDomains(e.target.value)}
+                onChange={(e) => setDraft(e.target.value)}
                 placeholder="pavillon46.ch"
                 className={field}
               />
