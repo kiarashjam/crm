@@ -58,6 +58,47 @@ public sealed class OnboardingRepository : IOnboardingRepository
             .FirstOrDefaultAsync(ct);
     }
 
+    public async Task<DealOnboarding?> LatestHandoffForAsync(Guid organizationId, Guid? leadId, Guid? clubMemberId, CancellationToken ct = default)
+    {
+        if (leadId == null && clubMemberId == null) return null;
+        var dealOfLead = leadId == null ? null
+            : await _db.Leads.Where(l => l.Id == leadId && l.OrganizationId == organizationId).Select(l => l.ConvertedToDealId).FirstOrDefaultAsync(ct);
+        return await _db.DealOnboardings.AsNoTracking()
+            .Where(o => o.OrganizationId == organizationId
+                && ((leadId != null && o.LeadId == leadId) || (dealOfLead != null && o.DealId == dealOfLead) || (clubMemberId != null && o.ClubMemberId == clubMemberId)))
+            .OrderByDescending(o => o.CreatedAtUtc)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    public async Task<(string Name, string Email)?> ReferrerOfAsync(Guid organizationId, Guid dealId, Guid? leadId, Guid? clubMemberId, CancellationToken ct = default)
+    {
+        var referredBy = await _db.Leads
+            .Where(l => l.OrganizationId == organizationId && (leadId != null ? l.Id == leadId : l.ConvertedToDealId == dealId) && l.ReferredByContactId != null)
+            .OrderByDescending(l => l.UpdatedAtUtc ?? l.CreatedAtUtc)
+            .Select(l => l.ReferredByContactId)
+            .FirstOrDefaultAsync(ct);
+        if (referredBy != null)
+        {
+            var contact = await _db.Contacts
+                .Where(c => c.Id == referredBy && c.OrganizationId == organizationId)
+                .Select(c => new { c.Name, c.Email })
+                .FirstOrDefaultAsync(ct);
+            if (!string.IsNullOrWhiteSpace(contact?.Email)) return (contact.Name.Trim(), contact.Email.Trim());
+        }
+
+        if (clubMemberId == null) return null;
+        var member = await _db.ClubMembers
+            .Where(m => m.Id == clubMemberId && m.OrganizationId == organizationId && m.ReferredByMemberId != null)
+            .Select(m => m.ReferredByMemberId)
+            .FirstOrDefaultAsync(ct);
+        if (member == null) return null;
+        var referrer = await _db.ClubMembers
+            .Where(m => m.Id == member && m.OrganizationId == organizationId && m.ErasedAtUtc == null)
+            .Select(m => new { m.FirstName, m.LastName, m.Email })
+            .FirstOrDefaultAsync(ct);
+        return string.IsNullOrWhiteSpace(referrer?.Email) ? null : ($"{referrer.FirstName} {referrer.LastName}".Trim(), referrer.Email.Trim());
+    }
+
     public async Task SaveAsync(CancellationToken ct = default)
     {
         try

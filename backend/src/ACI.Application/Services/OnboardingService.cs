@@ -596,6 +596,9 @@ public sealed class OnboardingService : IOnboardingService
     {
         var sender = Sender(settings, await _organizations.GetByIdAsync(onboarding.OrganizationId, ct));
         var space = onboarding.Name.IndexOf(' ');
+        // Who referred them, so the portal credits that member: read at each sending, so a referrer
+        // set since the first handoff goes with a resend.
+        var referrer = await _onboarding.ReferrerOfAsync(onboarding.OrganizationId, onboarding.DealId, onboarding.LeadId, onboarding.ClubMemberId, ct);
         var payload = new
         {
             version = 1,
@@ -627,6 +630,7 @@ public sealed class OnboardingService : IOnboardingService
                 url = CallbackUrl(onboarding.Id),
                 token = WebhookSigning.CallbackToken(settings.WebhookSecret!, onboarding.Id),
             },
+            referrer = referrer is { } by ? new { name = by.Name, email = by.Email } : null,
             sentBy = new { name = values.SenderName },
             // Who the email is from: the organization, by name, with its replies coming
             // back to it. The portal sends from this address only on a domain its mail

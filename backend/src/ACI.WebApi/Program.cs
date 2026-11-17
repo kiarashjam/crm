@@ -435,6 +435,7 @@ try
     builder.Services.AddScoped<IClubService, ClubService>();
     builder.Services.AddScoped<IPublicAddress, ACI.WebApi.Services.RequestPublicAddress>();
     builder.Services.AddScoped<IOnboardingService, OnboardingService>();
+    builder.Services.AddScoped<IReferralHandoffSync, ReferralHandoffSync>();
     builder.Services.AddScoped<IEmailImageService, EmailImageService>();
     builder.Services.AddScoped<IEmailTemplateService, EmailTemplateService>();
     builder.Services.AddScoped<IClubDocumentService, ClubDocumentService>();

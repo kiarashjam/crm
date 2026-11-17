@@ -63,6 +63,13 @@ public interface ILeadService
     /// </summary>
     Task<Result<LeadDto>> SetReferralAsync(Guid id, Guid userId, Guid? organizationId, Guid? contactId, CancellationToken ct = default);
 
+    /// <summary>
+    /// The contact for someone a website says referred a lead: the workspace's contact with that
+    /// email, or a new one made for them (a club member referring a friend, say). Null without a
+    /// usable email, or when that contact is archived.
+    /// </summary>
+    Task<Guid?> ReferrerContactAsync(Guid userId, Guid organizationId, string? name, string? email, CancellationToken ct = default);
+
     /// <summary>Leads a contact referred, newest first.</summary>
     Task<Result<IReadOnlyList<LeadDto>>> GetReferredByContactAsync(Guid contactId, Guid userId, Guid? organizationId, CancellationToken ct = default);
 

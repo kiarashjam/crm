@@ -206,10 +206,20 @@ public class WebhookController : ControllerBase
             !establishment || string.IsNullOrWhiteSpace(request.City) ? null : $"City: {request.City.Trim()}",
             !establishment || string.IsNullOrWhiteSpace(request.ContactPersonName) ? null : $"Contact person: {request.ContactPersonName.Trim()}",
             !establishment || string.IsNullOrWhiteSpace(request.ContactPersonEmail) ? null : $"Contact person email: {request.ContactPersonEmail.Trim()}",
+            Referral(request),
         }.Where(line => line != null));
+        // Who referred them, as a contact here, so the lead shows "Referred by" and they are credited.
+        var referrer = await _leadService.ReferrerContactAsync(organization.OwnerUserId, organization.Id, request.ReferredBy, request.ReferrerEmail, ct);
         var existingId = establishment
             ? await _leadOps.AttachEstablishmentInquiryAsync(organization.Id, organization.OwnerUserId, request.Name.Trim(), request.City, email, source, summary, ct)
             : await _leadOps.AttachInquiryAsync(organization.Id, organization.OwnerUserId, email, source, summary, ct);
+        if (existingId is Guid openLead && referrer is Guid referredBy)
+        {
+            // An open lead keeps the referrer it has; one with none takes this one.
+            var open = await _leadService.GetByIdAsync(openLead, organization.OwnerUserId, organization.Id, ct);
+            if (open.IsSuccess && open.Value.ReferredByContactId == null)
+                await _leadService.SetReferralAsync(openLead, organization.OwnerUserId, organization.Id, referredBy, ct);
+        }
         if (existingId != null)
             return Ok(new { id = existingId, duplicate = true, message = establishment
                 ? "An open lead for this establishment already exists; the inquiry was added to it."
@@ -246,6 +256,8 @@ public class WebhookController : ControllerBase
             ContactPersonRole = establishment ? request.ContactPersonRole : null,
             ContactPersonEmail = establishment ? request.ContactPersonEmail : null,
             ContactPersonPhone = establishment ? request.ContactPersonPhone : null,
+            ReferredByContactId = referrer,
+            Description = Referral(request),
         };
 
         var leadResult = await _leadService.CreateAsync(organization.OwnerUserId, organization.Id, leadRequest, ct);
@@ -254,6 +266,18 @@ public class WebhookController : ControllerBase
             return leadResult.Error.ToProblemResult();
 
         return CreatedAtAction(nameof(CreateLeadViaWebhook), new { id = leadResult.Value.Id }, leadResult.Value);
+    }
+
+    /// <summary>"Referred by Anna Muster (anna@…) · code PAV-7KQ", from what the sender said, or null.</summary>
+    private static string? Referral(WebhookLeadRequest request)
+    {
+        var name = request.ReferredBy?.Trim();
+        var email = request.ReferrerEmail?.Trim();
+        var code = request.ReferralCode?.Trim();
+        if (string.IsNullOrEmpty(name) && string.IsNullOrEmpty(email) && string.IsNullOrEmpty(code)) return null;
+        var who = string.IsNullOrEmpty(name) ? email : string.IsNullOrEmpty(email) ? name : $"{name} ({email})";
+        return string.Join(" · ", new[] { who == null ? null : $"Referred by {who}", string.IsNullOrEmpty(code) ? null : $"referral code {code}" }
+            .Where(part => part != null));
     }
 
     /// <summary>

@@ -34,6 +34,16 @@ public interface IOnboardingRepository
     /// </summary>
     Task<ClubMember?> ClubMemberForAsync(Guid organizationId, string email, Guid? contactId, Guid? leadId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Who referred the person a handoff is for, as the CRM knows it: the "Referred by" contact of
+    /// the lead the deal came from, else the referrer of their club member here. Null when nobody
+    /// is recorded, or the referrer has no email to be found by.
+    /// </summary>
+    /// <summary>The latest handoff of the person who came from this lead, or is this club member; null when none was made.</summary>
+    Task<DealOnboarding?> LatestHandoffForAsync(Guid organizationId, Guid? leadId, Guid? clubMemberId, CancellationToken ct = default);
+
+    Task<(string Name, string Email)?> ReferrerOfAsync(Guid organizationId, Guid dealId, Guid? leadId, Guid? clubMemberId, CancellationToken ct = default);
+
     /// <summary>Keeps every change made through this repository; a concurrent change to a handoff throws ConcurrencyConflictException.</summary>
     Task SaveAsync(CancellationToken ct = default);
 

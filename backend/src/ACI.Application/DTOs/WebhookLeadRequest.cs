@@ -67,4 +67,16 @@ public record WebhookLeadRequest
     /// </summary>
     [StringLength(256, ErrorMessage = "Webhook password cannot exceed 256 characters")]
     public string? WebhookPassword { get; init; }
+
+    /// <summary>
+    /// Who referred this lead, when a website's form or member portal knows: their name
+    /// ("referredBy") and email ("referrerEmail"), and the code they shared ("referralCode",
+    /// e.g. PAV-7KQ). The lead records them as "Referred by" (a contact here, found by the email
+    /// or made for them), so the person who brought them in is credited.
+    /// </summary>
+    [StringLength(200)] public string? ReferredBy { get; init; }
+
+    [StringLength(254)] public string? ReferrerEmail { get; init; }
+
+    [StringLength(32)] public string? ReferralCode { get; init; }
 }

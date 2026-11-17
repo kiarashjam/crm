@@ -36,8 +36,12 @@ public sealed class ClubReferralService : IClubReferrals
     private readonly IPermissionService _permissions;
     private readonly ILogger<ClubReferralService> _logger;
 
-    public ClubReferralService(AppDbContext db, IClubLedger ledger, IPermissionService permissions, ILogger<ClubReferralService> logger)
+    private readonly IReferralHandoffSync? _referralSync;
+
+    public ClubReferralService(AppDbContext db, IClubLedger ledger, IPermissionService permissions, ILogger<ClubReferralService> logger,
+        IReferralHandoffSync? referralSync = null)
     {
+        _referralSync = referralSync;
         _db = db;
         _ledger = ledger;
         _permissions = permissions;
@@ -415,6 +419,9 @@ public sealed class ClubReferralService : IClubReferrals
             return DomainErrors.Referral.ReferrerNotFound;
         member.ReferredByMemberId = referrerId;
         await _db.SaveChangesAsync(ct);
+        // A member already welcomed on the portal: it hears who referred them, and credits that member.
+        if (referrerId != null && _referralSync != null)
+            await _referralSync.MemberReferrerChangedAsync(organizationId, memberId, ct);
         return await MemberAsync(organizationId, memberId, ct);
     }
 
