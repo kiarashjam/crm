@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { CalendarClock, CalendarDays, Code2, Crown, HelpCircle, Languages, MessageSquareHeart, Settings2 } from 'lucide-react';
+import { CalendarClock, CalendarDays, Code2, Crown, HelpCircle, Languages, MessageSquareHeart, Plus, Settings2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Input } from '@/app/components/ui/input';
 import { DateInput } from '@/app/components/DateInput';
@@ -11,28 +11,38 @@ import type { OnboardingSettings } from '@/app/api/onboarding';
 import { useModules } from '@/app/hooks/useModules';
 import type { WelcomeDraft } from './welcome';
 import { EmailImageTools } from './EmailImageTools';
+import { FIELD_LABELS } from './simpleEmail';
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 
-/** Placeholder chips: clicking one adds it where the cursor is, or at the end. */
+/**
+ * Placeholder chips: clicking one adds it where the cursor is, or at the end. Each is called
+ * by what it is ("First name"), and says the placeholder it adds when pointed at.
+ */
 export function PlaceholderChips({ fields, tone, onPick }: { fields: string[]; tone: 'orange' | 'violet'; onPick: (token: string) => void }) {
   return (
-    <div className="flex flex-wrap gap-1">
-      {fields.map((f) => (
-        <button
-          key={f}
-          type="button"
-          onClick={() => onPick(`{{${f}}}`)}
-          className={cn(
-            'rounded-md border px-1.5 py-0.5 font-mono text-[11px] transition hover:-translate-y-px',
-            tone === 'orange'
-              ? 'border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100'
-              : 'border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100',
-          )}
-        >
-          {`{{${f}}}`}
-        </button>
-      ))}
+    <div className="flex flex-wrap gap-1.5">
+      {fields.map((f) => {
+        const label = FIELD_LABELS[f];
+        return (
+          <button
+            key={f}
+            type="button"
+            title={`Adds {{${f}}}, filled in for each person`}
+            onClick={() => onPick(`{{${f}}}`)}
+            className={cn(
+              'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition hover:-translate-y-px',
+              !label && 'font-mono',
+              tone === 'orange'
+                ? 'border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-300'
+                : 'border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300',
+            )}
+          >
+            <Plus className="h-3 w-3" aria-hidden />
+            {label ?? `{{${f}}}`}
+          </button>
+        );
+      })}
     </div>
   );
 }

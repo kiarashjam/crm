@@ -2,15 +2,15 @@ import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNod
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import {
-  AlertTriangle, ArrowRight, AtSign, CheckCircle2, Copy, KeyRound, Link2, Loader2, Lock, Mail, Monitor, PlugZap, RotateCcw,
-  Save, Send, Smartphone, Sparkles, Wand2, XCircle, Zap,
+  AlertTriangle, ArrowRight, AtSign, CheckCircle2, Code2, Copy, KeyRound, LayoutTemplate, Link2, Loader2, Lock, Mail, Monitor, PenLine,
+  PlugZap, RotateCcw, Save, Send, Smartphone, Sparkles, Wand2, XCircle, Zap,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { servesDemoData } from '@/app/api/apiClient';
 import { orgCan, PERMISSION, type Organization } from '@/app/api/organizations';
 import {
-  getOnboardingSettings, newOnboardingSecret, previewOnboarding, saveOnboardingSettings, senderLabel, testOnboardingPortal,
-  type OnboardingLanguage, type OnboardingPreview, type OnboardingSettings,
+  getOnboardingSettings, newOnboardingSecret, previewOnboarding, saveOnboardingSettings, sendOnboardingTestEmail, senderLabel, testOnboardingPortal,
+  type OnboardingLanguage, type OnboardingPreview, type OnboardingPreviewRequest, type OnboardingSettings,
 } from '@/app/api/onboarding';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -21,18 +21,13 @@ import { cn } from '@/app/components/ui/utils';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import { useOrgMembers } from '@/app/hooks/queries/records';
 import { useModules } from '@/app/hooks/useModules';
-import { EmailPreviewFrame, PlaceholderChips, insertAt } from '@/app/components/onboarding';
+import {
+  EmailPreviewFrame, PlaceholderChips, SIMPLE_COLORS, buildSimpleHtml, designOf, insertAt, readSimple, simpleDefaults, withoutSimpleMark,
+  type EmailDesign, type SimpleEmail,
+} from '@/app/components/onboarding';
+import { getCurrentUser } from '@/app/lib/auth';
 import { EmailImageTools } from '@/app/components/onboarding/EmailImageTools';
 import { HelpTip, IconTile, SettingsCard, StatusPill, type PillTone } from './SettingsCard';
-
-const STARTER = `<div style="font-family:Georgia,serif;max-width:560px;margin:0 auto;padding:32px;background:#ffffff;color:#0f172a">
-  <h1 style="font-weight:normal;margin:0 0 16px">Bienvenue, {{firstName}}</h1>
-  <p style="font:15px/1.6 system-ui,sans-serif;color:#334155">{{welcomeMessage}}</p>
-  <p style="font:15px/1.6 system-ui,sans-serif;color:#334155">Votre adhésion commence le <strong>{{startDate}}</strong>.</p>
-  <p style="font:15px/1.6 system-ui,sans-serif;color:#334155">Votre identifiant : <strong>{{loginEmail}}</strong></p>
-  <p><a href="{{setPasswordUrl}}" style="display:inline-block;padding:12px 22px;border-radius:999px;background:#0f172a;color:#fff;text-decoration:none;font:600 14px system-ui,sans-serif">Choisir mon mot de passe</a></p>
-  <p style="font:13px system-ui,sans-serif;color:#94a3b8">{{workspace}} · <a href="{{portalUrl}}" style="color:#94a3b8">Espace membre</a></p>
-</div>`;
 
 /** "Anna", "Anna and Ben", "Anna, Ben and Carla", "Anna, Ben and 3 others". */
 function namesList(names: string[]): string {
@@ -42,6 +37,26 @@ function namesList(names: string[]): string {
 }
 
 const SAMPLE = { name: 'Camille Laurent', email: 'camille@example.com', company: 'Maison Laurent', dealName: 'Gold membership' };
+
+/** The email for the sample member, as typed so far: what the preview shows and a test sends. */
+function sampleRequest(language: OnboardingLanguage, subject: string, html: string): OnboardingPreviewRequest {
+  return {
+    ...SAMPLE,
+    welcomeMessage: language === 'fr' ? 'Nous sommes ravis de vous accueillir au club.' : "We're delighted to welcome you to the club.",
+    startsOnUtc: new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10),
+    language,
+    emailSubject: subject || null,
+    emailHtml: html || null,
+  };
+}
+
+const looksLikeEmail = (text: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text.trim());
+
+const DESIGNS: { id: EmailDesign; label: string; icon: ComponentType<{ className?: string }>; hint: string }[] = [
+  { id: 'portal', label: 'Portal design', icon: LayoutTemplate, hint: 'The portal’s own email, with your welcome message in it.' },
+  { id: 'simple', label: 'Simple', icon: PenLine, hint: 'Write the words; the email is designed for you.' },
+  { id: 'html', label: 'HTML', icon: Code2, hint: 'Your own HTML, for a design of your own.' },
+];
 
 const SECTION = { conversion: 'welcome-conversion', connection: 'welcome-connection', email: 'welcome-email' } as const;
 
@@ -89,6 +104,14 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
   const [testing, setTesting] = useState(false);
   const [test, setTest] = useState<TestResult | null>(null);
   const [device, setDevice] = useState<'desktop' | 'phone'>('desktop');
+  const [design, setDesign] = useState<EmailDesign>('portal');
+  // The simple email last left for the HTML editor, to come back to while that HTML is unchanged.
+  const leftSimple = useRef<{ email: SimpleEmail; html: string } | null>(null);
+  // The box a field button adds to: the one last typed in.
+  const lastField = useRef<string | null>(null);
+  const [testTo, setTestTo] = useState(() => getCurrentUser()?.email ?? '');
+  const [sendingTest, setSendingTest] = useState(false);
+  const [testEmail, setTestEmail] = useState<{ ok: boolean; text: string } | null>(null);
   const [preview, setPreview] = useState<OnboardingPreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const previewSeq = useRef(0);
@@ -104,6 +127,7 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
     setReplyTo(s.replyTo ?? '');
     setSubject(s.emailSubject ?? '');
     setHtml(s.emailHtml ?? '');
+    setDesign(designOf(s.emailHtml));
   };
 
   useEffect(() => {
@@ -119,14 +143,7 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
     if (servesDemoData() || loading) return;
     const seq = ++previewSeq.current;
     const t = window.setTimeout(() => {
-      previewOnboarding({
-        ...SAMPLE,
-        welcomeMessage: language === 'fr' ? 'Nous sommes ravis de vous accueillir au club.' : "We're delighted to welcome you to the club.",
-        startsOnUtc: new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10),
-        language,
-        emailSubject: subject || null,
-        emailHtml: html || null,
-      })
+      previewOnboarding(sampleRequest(language, subject, html))
         .then((p) => { if (seq === previewSeq.current) { setPreview(p); setPreviewError(null); } })
         .catch((e: unknown) => { if (seq === previewSeq.current) setPreviewError(e instanceof Error ? e.message : 'No preview'); });
     }, 450);
@@ -209,6 +226,57 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
     }
   };
 
+  const simple = design === 'simple' ? readSimple(html) ?? simpleDefaults(language) : null;
+  const editSimple = (change: Partial<SimpleEmail>) => setHtml(buildSimpleHtml({ ...(readSimple(html) ?? simpleDefaults(language)), ...change }));
+
+  const chooseDesign = (next: EmailDesign) => {
+    if (next === design) return;
+    if (next === 'portal') {
+      if (html.trim() && !window.confirm('Use the portal’s design? The email written here is cleared.')) return;
+      setHtml('');
+    } else if (next === 'simple') {
+      const back = leftSimple.current && leftSimple.current.html === html ? leftSimple.current.email : null;
+      if (!back && design === 'html' && html.trim() && !window.confirm('Write it in the simple editor? Your HTML is replaced by a simple email.')) return;
+      setHtml(buildSimpleHtml(back ?? readSimple(html) ?? simpleDefaults(language)));
+    } else {
+      const from = design === 'simple' ? html : buildSimpleHtml(simpleDefaults(language));
+      const own = withoutSimpleMark(from);
+      leftSimple.current = design === 'simple' && simple ? { email: simple, html: own } : null;
+      setHtml(own);
+    }
+    setDesign(next);
+  };
+
+  // Where each box's words are, so a field button can add to the one last typed in.
+  const boxes: Record<string, { value: string; set: (value: string) => void }> = {
+    'welcome-subject': { value: subject, set: setSubject },
+    'welcome-html': { value: html, set: setHtml },
+    'simple-heading': { value: simple?.heading ?? '', set: (v) => editSimple({ heading: v }) },
+    'simple-message': { value: simple?.message ?? '', set: (v) => editSimple({ message: v }) },
+    'simple-button': { value: simple?.button ?? '', set: (v) => editSimple({ button: v }) },
+    'simple-signoff': { value: simple?.signoff ?? '', set: (v) => editSimple({ signoff: v }) },
+  };
+  const addField = (token: string) => {
+    const shown = (id: string | null): id is string => Boolean(id && boxes[id] && document.getElementById(id));
+    const id = shown(lastField.current) ? lastField.current : design === 'html' ? 'welcome-html' : design === 'simple' ? 'simple-message' : 'welcome-subject';
+    const box = boxes[id];
+    if (box) box.set(insertAt(id, box.value, token));
+  };
+  const typingIn = (id: string) => () => { lastField.current = id; };
+
+  const sendTestEmail = async () => {
+    setSendingTest(true);
+    setTestEmail(null);
+    try {
+      const r = await sendOnboardingTestEmail({ ...sampleRequest(language, subject, html), to: testTo.trim() });
+      setTestEmail({ ok: true, text: r.status === 'sent' ? `Sent to ${r.to}. Have a look in that inbox.` : `Queued for ${r.to}: the mail server was busy, it goes in a minute.` });
+    } catch (e) {
+      setTestEmail({ ok: false, text: e instanceof Error ? e.message : 'The test could not be sent.' });
+    } finally {
+      setSendingTest(false);
+    }
+  };
+
   const copy = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -260,7 +328,7 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
           { icon: Send, title: 'Hand over', text: 'Signed to your portal', target: SECTION.connection, status: connection },
           {
             icon: Mail, title: 'Welcome', text: 'Email to set a password', target: SECTION.email,
-            status: { tone: 'info', text: `${html.trim() ? 'Your design' : 'Portal design'} · ${language.toUpperCase()}` },
+            status: { tone: 'info', text: `${design === 'portal' ? 'Portal design' : design === 'simple' ? 'Simple email' : 'Your HTML'} · ${language.toUpperCase()}` },
           },
         ]}
       />
@@ -332,10 +400,10 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
           <div className="mt-4 space-y-3 border-t border-slate-200 pt-4 dark:border-white/10">
             <div className="flex flex-wrap items-center gap-3">
               <Button type="button" variant="outline" size="sm" onClick={() => void runTest()} disabled={testing || dirty || !settings?.configured}>
-                {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlugZap className="h-4 w-4" />} Send a test
+                {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlugZap className="h-4 w-4" />} Test the connection
               </Button>
               <span className="text-xs text-slate-500">
-                {!settings?.configured ? 'Add the address and the secret, then save, to test.' : dirty ? 'Save first, then test.' : 'Checks the portal and the sender it uses.'}
+                {!settings?.configured ? 'Add the address and the secret, then save, to test it.' : dirty ? 'Save first, then test.' : 'Checks the portal and the sender it uses.'}
               </span>
             </div>
             {test && (
@@ -459,85 +527,205 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
         icon={Mail}
         tone="orange"
         title="Welcome email"
-        description="Your own HTML, or the portal's design when left empty."
-        aside={canEdit && !html && (
-          <Button type="button" variant="outline" size="sm" onClick={() => setHtml(STARTER)}>
-            <Wand2 className="h-4 w-4" /> Start from an example
-          </Button>
-        )}
+        description={DESIGNS.find((d) => d.id === design)?.hint}
       >
         <div className="grid gap-6 xl:grid-cols-2">
-          <div className="min-w-0 space-y-3">
+          <div className="min-w-0 space-y-4">
+            <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1 dark:bg-white/5" role="radiogroup" aria-label="How the email is made">
+              {DESIGNS.map((d) => (
+                <button
+                  key={d.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={design === d.id}
+                  disabled={!canEdit}
+                  onClick={() => chooseDesign(d.id)}
+                  className={cn(
+                    'inline-flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-sm font-medium transition',
+                    design === d.id ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white' : 'text-slate-500 hover:text-slate-800',
+                  )}
+                >
+                  <d.icon className="h-4 w-4 shrink-0" aria-hidden /> <span className="truncate">{d.label}</span>
+                </button>
+              ))}
+            </div>
+
             <div>
               <Label htmlFor="welcome-subject">Subject</Label>
               <Input
                 id="welcome-subject"
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
-                placeholder="Bienvenue au club, {{firstName}}"
+                onFocus={typingIn('welcome-subject')}
+                placeholder={language === 'fr' ? 'Bienvenue au club, {{firstName}}' : 'Welcome to the club, {{firstName}}'}
                 disabled={!canEdit}
                 maxLength={300}
                 className="mt-1"
               />
             </div>
 
-            <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-950 shadow-sm">
-              <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2">
-                <span className="flex gap-1.5" aria-hidden>
-                  <span className="h-2.5 w-2.5 rounded-full bg-rose-400/80" />
-                  <span className="h-2.5 w-2.5 rounded-full bg-amber-400/80" />
-                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/80" />
-                </span>
-                <Label htmlFor="welcome-html" className="ml-1 font-mono text-xs font-medium text-slate-300">HTML</Label>
-                <span className="ml-auto text-[11px] text-slate-400">
-                  {html.trim() ? `${html.split('\n').length} lines` : 'Empty: the portal’s design'}
-                </span>
+            {design === 'portal' && (
+              <div className="flex items-start gap-3 rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-600">
+                <LayoutTemplate className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+                <p>
+                  The portal sends its own design, with the welcome message you write when you convert a lead. To write the whole
+                  email yourself, choose <strong>Simple</strong>.
+                </p>
               </div>
-              <Textarea
-                id="welcome-html"
-                value={html}
-                onChange={(e) => setHtml(e.target.value)}
-                placeholder="<div>…your email's HTML…</div>"
-                rows={14}
-                spellCheck={false}
-                disabled={!canEdit}
-                className="max-h-[28rem] min-h-[11rem] overflow-y-auto rounded-none border-0 bg-transparent font-mono text-xs leading-relaxed text-emerald-200 shadow-none placeholder:text-slate-500 hover:border-0 focus-visible:ring-0 dark:bg-transparent"
-              />
-            </div>
-
-            {/<style[\s>]/i.test(html.replace(/<!--[\s\S]*?-->/g, '')) && (
-              <p className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
-                <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0 text-amber-600" aria-hidden />
-                <span>
-                  This email has a <code className="rounded bg-amber-100 px-1 dark:bg-amber-500/20">&lt;style&gt;</code> block. The portal removes it before sending,
-                  so put the styles you need inline, on each element.
-                </span>
-              </p>
             )}
 
-            <EmailImageTools html={html} onChange={setHtml} textareaId="welcome-html" disabled={!canEdit} />
+            {design === 'simple' && simple && (
+              <div className="space-y-3">
+                <div>
+                  <Label htmlFor="simple-heading">Heading</Label>
+                  <Input
+                    id="simple-heading"
+                    value={simple.heading}
+                    onChange={(e) => editSimple({ heading: e.target.value })}
+                    onFocus={typingIn('simple-heading')}
+                    disabled={!canEdit}
+                    maxLength={200}
+                    className="mt-1 text-base"
+                  />
+                </div>
+                <div>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <Label htmlFor="simple-message">Message</Label>
+                    <span className="text-[11px] text-slate-400">Blank line: new paragraph · **bold**</span>
+                  </div>
+                  <Textarea
+                    id="simple-message"
+                    value={simple.message}
+                    onChange={(e) => editSimple({ message: e.target.value })}
+                    onFocus={typingIn('simple-message')}
+                    disabled={!canEdit}
+                    rows={7}
+                    className="mt-1 min-h-[9rem] leading-relaxed"
+                  />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <Label htmlFor="simple-button">Button</Label>
+                    <Input
+                      id="simple-button"
+                      value={simple.button}
+                      onChange={(e) => editSimple({ button: e.target.value })}
+                      onFocus={typingIn('simple-button')}
+                      disabled={!canEdit}
+                      maxLength={80}
+                      className="mt-1"
+                    />
+                    <p className="mt-1 text-[11px] text-slate-400">Opens the page to set their password.</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-slate-700" id="simple-color-label">Colour</p>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5" role="radiogroup" aria-labelledby="simple-color-label">
+                      {SIMPLE_COLORS.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          role="radio"
+                          aria-checked={simple.color.toLowerCase() === c}
+                          aria-label={c}
+                          disabled={!canEdit}
+                          onClick={() => editSimple({ color: c })}
+                          className={cn(
+                            'h-7 w-7 rounded-full ring-offset-2 transition hover:scale-110 dark:ring-offset-slate-900',
+                            simple.color.toLowerCase() === c ? 'ring-2 ring-slate-900 dark:ring-white' : 'ring-1 ring-black/10',
+                          )}
+                          style={{ background: c }}
+                        />
+                      ))}
+                      <label className="relative h-7 w-7 cursor-pointer overflow-hidden rounded-full ring-1 ring-black/10" title="Another colour">
+                        <span className="sr-only">Another colour</span>
+                        <span aria-hidden className="absolute inset-0 bg-[conic-gradient(#f43f5e,#f59e0b,#22c55e,#3b82f6,#a855f7,#f43f5e)]" />
+                        <input
+                          type="color"
+                          value={simple.color}
+                          disabled={!canEdit}
+                          onChange={(e) => editSimple({ color: e.target.value })}
+                          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="simple-signoff">Sign-off</Label>
+                  <Textarea
+                    id="simple-signoff"
+                    value={simple.signoff}
+                    onChange={(e) => editSimple({ signoff: e.target.value })}
+                    onFocus={typingIn('simple-signoff')}
+                    disabled={!canEdit}
+                    rows={2}
+                    className="mt-1"
+                  />
+                </div>
+              </div>
+            )}
+
+            {design === 'html' && (
+              <>
+                <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-950 shadow-sm">
+                  <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2">
+                    <span className="flex gap-1.5" aria-hidden>
+                      <span className="h-2.5 w-2.5 rounded-full bg-rose-400/80" />
+                      <span className="h-2.5 w-2.5 rounded-full bg-amber-400/80" />
+                      <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/80" />
+                    </span>
+                    <Label htmlFor="welcome-html" className="ml-1 font-mono text-xs font-medium text-slate-300">HTML</Label>
+                    <span className="ml-auto text-[11px] text-slate-400">
+                      {html.trim() ? `${html.split('\n').length} lines` : 'Empty: the portal’s design'}
+                    </span>
+                  </div>
+                  <Textarea
+                    id="welcome-html"
+                    value={html}
+                    onChange={(e) => setHtml(e.target.value)}
+                    onFocus={typingIn('welcome-html')}
+                    placeholder="<div>…your email's HTML…</div>"
+                    rows={14}
+                    spellCheck={false}
+                    disabled={!canEdit}
+                    className="max-h-[28rem] min-h-[11rem] overflow-y-auto rounded-none border-0 bg-transparent font-mono text-xs leading-relaxed text-emerald-200 shadow-none placeholder:text-slate-500 hover:border-0 focus-visible:ring-0 dark:bg-transparent"
+                  />
+                </div>
+
+                {/<style[\s>]/i.test(html.replace(/<!--[\s\S]*?-->/g, '')) && (
+                  <p className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+                    <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0 text-amber-600" aria-hidden />
+                    <span>
+                      This email has a <code className="rounded bg-amber-100 px-1 dark:bg-amber-500/20">&lt;style&gt;</code> block. The portal removes it before sending,
+                      so put the styles you need inline, on each element.
+                    </span>
+                  </p>
+                )}
+
+                <EmailImageTools html={html} onChange={setHtml} textareaId="welcome-html" disabled={!canEdit} />
+              </>
+            )}
 
             {canEdit && settings && (
               <div className="rounded-xl border border-slate-200 p-3">
                 <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-                  <span className="font-medium text-slate-700">Insert a field</span>
-                  <span className="inline-flex items-center gap-1 text-slate-500"><span className="h-2 w-2 rounded-full bg-orange-400" aria-hidden /> CadenceE fills</span>
-                  <span className="inline-flex items-center gap-1 text-slate-500"><span className="h-2 w-2 rounded-full bg-violet-400" aria-hidden /> Portal fills</span>
+                  <span className="font-medium text-slate-700">Add a field</span>
+                  <span className="text-slate-500">to the box you last typed in, filled in for each person</span>
                   <HelpTip label="About fields" className="-my-1 ml-auto">
-                    Orange fields are filled by CadenceE, as text; violet ones by the portal when it sends. Give any a fallback:{' '}
-                    <code className="rounded bg-slate-100 px-1 text-xs">{'{{firstName|there}}'}</code>. The portal keeps inline styles only:
-                    before sending it removes <code className="text-xs">&lt;style&gt;</code> blocks, scripts, anything else unsafe, and images that are not https.
+                    A field is written like <code className="rounded bg-slate-100 px-1 text-xs">{'{{firstName}}'}</code> and is replaced by
+                    each person&apos;s own. Orange ones are filled by CadenceE; violet ones by the portal when it sends (the links, the login).
+                    Give any a fallback for someone without it: <code className="rounded bg-slate-100 px-1 text-xs">{'{{firstName|there}}'}</code>.
                   </HelpTip>
                 </div>
                 <div className="space-y-1.5">
-                  <PlaceholderChips fields={settings.cadenceFields} tone="orange" onPick={(t) => setHtml(insertAt('welcome-html', html, t))} />
-                  <PlaceholderChips fields={settings.receiverFields} tone="violet" onPick={(t) => setHtml(insertAt('welcome-html', html, t))} />
+                  <PlaceholderChips fields={settings.cadenceFields} tone="orange" onPick={addField} />
+                  <PlaceholderChips fields={settings.receiverFields} tone="violet" onPick={addField} />
                 </div>
               </div>
             )}
           </div>
 
-          <div className="min-w-0 space-y-2 xl:sticky xl:top-4 xl:self-start">
+          <div className="min-w-0 space-y-3 xl:sticky xl:top-4 xl:self-start">
             <div className="flex items-center gap-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Preview</p>
               <span className="truncate text-xs text-slate-400">for a sample member</span>
@@ -570,6 +758,41 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
             ) : (
               <div className="flex h-60 items-center justify-center rounded-xl border border-dashed border-slate-200 text-slate-400"><Loader2 className="h-5 w-5 animate-spin" /></div>
             )}
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+              <Label htmlFor="welcome-test-to" className="flex items-center gap-1.5">
+                <Send className="h-3.5 w-3.5 text-orange-500" aria-hidden /> Send a test email
+              </Label>
+              <form
+                className="mt-1.5 flex gap-2"
+                onSubmit={(e) => { e.preventDefault(); void sendTestEmail(); }}
+              >
+                <Input
+                  id="welcome-test-to"
+                  type="email"
+                  value={testTo}
+                  onChange={(e) => { setTestTo(e.target.value); setTestEmail(null); }}
+                  placeholder="name@example.com"
+                  className="min-w-0 bg-white"
+                />
+                <Button type="submit" disabled={sendingTest || !looksLikeEmail(testTo) || Boolean(preview?.unknown.length)} className="shrink-0">
+                  {sendingTest ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Send test email
+                </Button>
+              </form>
+              <p className="mt-1.5 text-xs text-slate-500">This email as shown here, for the sample member, marked as a test. Nothing is saved or handed to the portal.</p>
+              {testEmail && (
+                <p
+                  role={testEmail.ok ? 'status' : 'alert'}
+                  className={cn(
+                    'mt-2 flex items-start gap-1.5 text-sm',
+                    testEmail.ok ? 'text-emerald-700' : 'text-rose-700',
+                  )}
+                >
+                  {testEmail.ok ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden /> : <XCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />}
+                  {testEmail.text}
+                </p>
+              )}
+            </div>
           </div>
         </div>
       </SettingsCard>

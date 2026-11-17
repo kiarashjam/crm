@@ -45,6 +45,14 @@ public sealed record OutboundEmailRequest
     /// <summary>The words as written, plain text; placeholders are filled and the footer added.</summary>
     public required string Body { get; init; }
 
+    /// <summary>
+    /// A finished HTML part, sent as it is, in place of the one made from <see cref="Body"/>:
+    /// only for a test copy of a designed email (<see cref="ForOwnTeam"/>), such as the welcome
+    /// email, which someone sends to an address of their choosing to see how it looks. Its
+    /// placeholders are already filled.
+    /// </summary>
+    public string? Html { get; init; }
+
     /// <summary>Who queued it: the timeline entry is theirs, and they hear about a message that fails.</summary>
     public Guid? CreatedByUserId { get; init; }
 
@@ -66,8 +74,8 @@ public sealed record OutboundEmailRequest
 
     /// <summary>
     /// For someone in the workspace itself, such as a campaign's test copy for the person who
-    /// pressed "Send a test to me": nobody there is unsubscribing from anything, so it
-    /// carries no unsubscribe link.
+    /// pressed "Send a test to me", or a test copy they send to an address of their choosing:
+    /// nobody is unsubscribing from a test, so it carries no unsubscribe link.
     /// </summary>
     public bool ForOwnTeam { get; init; }
 
@@ -272,6 +280,10 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
                 return new Error("Email.PurposeNeedsMember", "An email to a member goes to that member's address alone.");
         }
 
+        // A finished HTML part skips the footer, and with it the unsubscribe link: a test alone may.
+        if (request.Html != null && !request.ForOwnTeam)
+            return new Error("Email.HtmlForTestsOnly", "Only a test copy is sent with HTML of its own.");
+
         var organizationId = request.OrganizationId;
         if (await RefusalAsync(organizationId, to.Concat(cc).Concat(bcc).ToList(), request.LeadId, request.ContactId, purpose, request.MemberId, ct) is { } refusal)
             return refusal;
@@ -296,7 +308,7 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
         // service message none: their choices do not stop their statements.
         var tracking = request.TrackOpens && request.LeadId is Guid leadId ? _outreach.TrackingUrl(leadId) : null;
         var mail = request.ForOwnTeam
-            ? new OutreachBody(body, PlainTextEmail.ToHtml(body, null, sender.WorkspaceName), null)
+            ? new OutreachBody(body, request.Html ?? PlainTextEmail.ToHtml(body, null, sender.WorkspaceName), null)
             : purpose != null && request.MemberId is Guid memberId
                 ? _outreach.MemberBody(organizationId, sender.WorkspaceName, body, memberId, to[0], purpose == ConsentPurposes.Marketing,
                     purpose == ConsentPurposes.Marketing ? await MemberLanguageAsync(organizationId, memberId, ct) : AppLanguages.English)

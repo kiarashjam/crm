@@ -168,6 +168,15 @@ export async function previewOnboarding(request: OnboardingPreviewRequest): Prom
   return authFetchJson<OnboardingPreview>('/api/onboarding/preview', { method: 'POST', body: JSON.stringify(request) });
 }
 
+/**
+ * The welcome email as the preview shows it, for its sample member, sent by this CRM's mail
+ * to `to` (or, left out, to whoever asks), marked as a test, to see it in a mail app.
+ */
+export async function sendOnboardingTestEmail(request: OnboardingPreviewRequest & { to?: string }): Promise<{ to: string; status: 'sent' | 'queued' }> {
+  if (servesDemoData()) throw new Error(DEMO_MESSAGE);
+  return authFetchJson('/api/onboarding/test-email', { method: 'POST', body: JSON.stringify(request) });
+}
+
 export async function startOnboarding(dealId: string, request: StartOnboardingRequest): Promise<Onboarding> {
   if (servesDemoData()) throw new Error(DEMO_MESSAGE);
   return authFetchJson<Onboarding>(`/api/deals/${dealId}/onboarding`, { method: 'POST', body: JSON.stringify(request) });

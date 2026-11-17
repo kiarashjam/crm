@@ -130,6 +130,53 @@ public static partial class OnboardingTemplate
     public static string Html(string? text) =>
         (text ?? "").Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;").Replace("'", "&#39;");
 
+    [GeneratedRegex(@"<(head|style|script)\b[^>]*>[\s\S]*?</\1\s*>|<!--[\s\S]*?-->", RegexOptions.IgnoreCase)]
+    private static partial Regex HiddenParts();
+
+    [GeneratedRegex(@"<a\b[^>]*?\bhref\s*=\s*[""']([^""']+)[""'][^>]*>([\s\S]*?)</a\s*>", RegexOptions.IgnoreCase)]
+    private static partial Regex Links();
+
+    [GeneratedRegex(@"<br\s*/?>|</(?:p|div|h[1-6]|li|tr|table|blockquote|section)\s*>", RegexOptions.IgnoreCase)]
+    private static partial Regex BlockEnds();
+
+    [GeneratedRegex(@"<[^>]+>")]
+    private static partial Regex Tags();
+
+    [GeneratedRegex(@"<body\b[^>]*>", RegexOptions.IgnoreCase)]
+    private static partial Regex BodyOpen();
+
+    /// <summary>
+    /// The words an email's HTML shows, for its plain-text part: a line for each block, and a
+    /// link's address after its words. What is not shown (the head, styles, scripts, comments) is left out.
+    /// </summary>
+    public static string PlainText(string html)
+    {
+        var text = HiddenParts().Replace(html, "");
+        text = Links().Replace(text, m =>
+        {
+            var words = Tags().Replace(m.Groups[2].Value, "").Trim();
+            var href = m.Groups[1].Value.Trim();
+            return words.Length == 0 || words == href ? href : $"{words} ({href})";
+        });
+        text = Tags().Replace(BlockEnds().Replace(text, "\n"), "");
+        text = System.Net.WebUtility.HtmlDecode(text).Replace('\u00A0', ' ');
+        var lines = text.Replace("\r\n", "\n").Split('\n').Select(l => string.Join(' ', l.Split(' ', StringSplitOptions.RemoveEmptyEntries)));
+        // A line between paragraphs, never a run of empty ones.
+        var kept = new List<string>();
+        foreach (var line in lines)
+            if (line.Length > 0 || (kept.Count > 0 && kept[^1].Length > 0)) kept.Add(line);
+        return string.Join("\n", kept).Trim();
+    }
+
+    /// <summary>The HTML with a line across its top saying what it is: at the start of its body, or of the fragment.</summary>
+    public static string WithBanner(string html, string note)
+    {
+        var banner = "<div style=\"background:#fff7ed;border-bottom:1px solid #fed7aa;color:#9a3412;font:13px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;padding:10px 16px;text-align:center\">"
+            + Html(note) + "</div>";
+        var body = BodyOpen().Match(html);
+        return body.Success ? html.Insert(body.Index + body.Length, banner) : banner + html;
+    }
+
     private static string Encode(string key, string value, bool html)
     {
         if (!html) return value;

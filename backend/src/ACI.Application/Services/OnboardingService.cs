@@ -22,6 +22,12 @@ public interface IOnboardingService
     Task<Result<OnboardingSecretDto>> NewSecretAsync(Guid organizationId, Guid userId, CancellationToken ct = default);
     Task<Result<OnboardingPingDto>> PingAsync(Guid organizationId, Guid userId, CancellationToken ct = default);
     Task<Result<OnboardingPreviewDto>> PreviewAsync(Guid organizationId, Guid userId, OnboardingPreviewRequest request, CancellationToken ct = default);
+
+    /// <summary>
+    /// The welcome email as the preview shows it, for its sample member, sent by this CRM's own
+    /// mail to an address someone chose, marked as a test, to see how it looks in a mail app.
+    /// </summary>
+    Task<Result<OnboardingTestEmailDto>> SendTestEmailAsync(Guid organizationId, Guid userId, OnboardingTestEmailRequest request, CancellationToken ct = default);
     Task<Result<OnboardingDto>> StartAsync(Guid dealId, Guid organizationId, Guid userId, StartOnboardingRequest request, CancellationToken ct = default);
     Task<Result<IReadOnlyList<OnboardingDto>>> ForDealAsync(Guid dealId, Guid organizationId, Guid userId, CancellationToken ct = default);
     Task<Result<OnboardingDto>> ResendAsync(Guid id, Guid organizationId, Guid userId, CancellationToken ct = default);
@@ -69,6 +75,7 @@ public sealed class OnboardingService : IOnboardingService
     private readonly IPublicAddress _address;
     private readonly IWorkspaceModules _modules;
     private readonly ILogger<OnboardingService> _logger;
+    private readonly IOutbox? _mailer;
 
     public OnboardingService(
         IOnboardingRepository onboarding,
@@ -84,8 +91,10 @@ public sealed class OnboardingService : IOnboardingService
         ITenantContext tenant,
         IPublicAddress address,
         IWorkspaceModules modules,
-        ILogger<OnboardingService> logger)
+        ILogger<OnboardingService> logger,
+        IOutbox? mailer = null)
     {
+        _mailer = mailer;
         _address = address;
         _onboarding = onboarding;
         _organizations = organizations;
@@ -261,6 +270,56 @@ public sealed class OnboardingService : IOnboardingService
             UsesReceiverDesign: false,
             unknownInSubject.Concat(unknownInHtml).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
             sender.Name, sender.Email, sender.ReplyTo);
+    }
+
+    // ── A test of the email ───────────────────────────────────────────────────
+
+    public async Task<Result<OnboardingTestEmailDto>> SendTestEmailAsync(Guid organizationId, Guid userId, OnboardingTestEmailRequest request, CancellationToken ct = default)
+    {
+        if (_mailer == null) return new Error("Email.NotConfigured", "Sending email is not set up on the server yet.");
+        var to = request.To?.Trim() ?? "";
+        if (to.Length == 0) to = (await _users.GetByIdAsync(userId, ct))?.Email?.Trim() ?? "";
+        if (!IsEmail(to)) return new Error("Onboarding.TestAddress", "Enter the email address to send the test to.");
+
+        var preview = await PreviewAsync(organizationId, userId, request, ct);
+        if (preview.IsFailure) return preview.Error;
+        var email = preview.Value;
+        // Sent with a blank in it, the test would show the email as it never goes.
+        if (email.Unknown.Count > 0) return Unknown(email.Unknown);
+
+        var french = (Language(request.Language) ?? "fr") == "fr";
+        var note = french
+            ? "Ceci est un test de votre e-mail de bienvenue, pour un membre fictif. Ses liens sont des exemples."
+            : "This is a test of your welcome email, for a sample member. Its links are examples.";
+        var queued = await _mailer.QueueEmailAsync(new OutboundEmailRequest
+        {
+            OrganizationId = organizationId,
+            Source = OutboundSources.WelcomeTest,
+            To = [to],
+            Language = french ? "fr" : "en",
+            Subject = $"[Test] {email.Subject}",
+            Body = $"{note}\n\n{OnboardingTemplate.PlainText(email.Html)}",
+            Html = OnboardingTemplate.WithBanner(email.Html, note),
+            // As the welcome goes: under its sender's name, with replies where its replies go.
+            FromName = email.FromName,
+            FromAddress = email.FromEmail,
+            ReplyTo = email.ReplyTo,
+            CreatedByUserId = userId,
+            ReplyToUserId = userId,
+            ForOwnTeam = true,
+            PersonWaiting = true,
+        }, ct);
+        if (queued.IsFailure) return queued.Error;
+
+        // Not the request's token: a browser that hangs up must not cut the attempt off halfway.
+        var attempt = await _mailer.SendNowAsync(queued.Value, CancellationToken.None);
+        return attempt.Result switch
+        {
+            OutboxAttemptResult.NotConfigured => new Error("Email.NotConfigured", "Sending email is not set up on the server yet."),
+            OutboxAttemptResult.Suppressed => new Error(attempt.Code ?? "Email.Suppressed", attempt.Error ?? $"{to} is on the suppression list, so the test was not sent."),
+            OutboxAttemptResult.Failed => new Error("Email.SendFailed", $"The test was not sent. {attempt.Error ?? "The mail server refused it."}"),
+            _ => new OnboardingTestEmailDto(to, attempt.Result == OutboxAttemptResult.Sent ? "sent" : "queued"),
+        };
     }
 
     // ── Handing over ──────────────────────────────────────────────────────────
