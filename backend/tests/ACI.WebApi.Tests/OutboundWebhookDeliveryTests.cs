@@ -194,8 +194,13 @@ public class OutboundWebhookDeliveryTests
         var dispatching = app.DispatchOutboxAsync();
         try
         {
+            // Both attempts run at once, and either may get going first: the event reads its
+            // workspace's settings and signs its body before it posts, so the email can go out
+            // before the post has begun. Waiting for the email alone and then counting posts
+            // raced with that. A dispatcher taking one at a time never gets here with both: it
+            // reaches the event first, which hangs, and the email waits behind it.
             var waited = Stopwatch.StartNew();
-            while (app.Mail.Sent.Count == 0 && waited.Elapsed < TimeSpan.FromSeconds(10))
+            while ((app.Mail.Sent.Count == 0 || app.Hook.Count == 0) && waited.Elapsed < TimeSpan.FromSeconds(10))
                 await Task.Delay(50);
 
             app.Mail.Sent.Should().ContainSingle("the email goes while the receiver keeps the event waiting");
