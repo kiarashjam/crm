@@ -45,9 +45,38 @@ public class ProductionWorkflowTests
     {
         var ci = Workflow("ci.yml");
         Triggers(ci).Should().Contain(new[] { "pull_request", "push", "workflow_call" });
-        foreach (var command in new[] { "dotnet build ACI.sln", "dotnet test ACI.sln", "npx tsc --noEmit", "npm run lint", "npx vitest run", "npm run build" })
+        foreach (var command in new[] { "dotnet build ACI.sln", "npx tsc --noEmit", "npm run lint", "npx vitest run", "npm run build" })
             ci.Should().Contain(command);
         ci.Should().Contain("CADENCE_TEST_SQLSERVER", "the start-up schema tests need a real SQL Server, or they are skipped");
+    }
+
+    [Fact]
+    public void TheBackendTestsRunInSharesThatTogetherRunEveryTestProject()
+    {
+        // The backend tests run in shares on several machines at once (tests/run-shard.sh).
+        // Split up, they must still run every test project, every share must run, and the
+        // one check that deploy.yml and a required check wait on must fail when any share does.
+        var ci = Workflow("ci.yml");
+        var jobs = Jobs(ci);
+
+        var matrix = System.Text.RegularExpressions.Regex.Match(jobs["backend"], @"shard:\s*\[([^\]]*)\]");
+        matrix.Success.Should().BeTrue("the backend job runs one share per entry of its matrix");
+        var shares = matrix.Groups[1].Value.Split(',').Select(s => int.Parse(s.Trim())).ToList();
+        shares.Should().Equal(Enumerable.Range(1, shares.Count), "every share from 1 to the number of shares runs once");
+        jobs["backend"].Should().Contain($"tests/run-shard.sh ${{{{ matrix.shard }}}} {shares.Count}");
+        jobs["backend"].Should().Contain("fail-fast: false", "one share failing still lets the others report theirs");
+
+        var script = File.ReadAllText(Path.Combine(RepoRoot(), "backend", "tests", "run-shard.sh"));
+        var projects = Directory.GetFiles(Path.Combine(RepoRoot(), "backend", "tests"), "*.Tests.csproj", SearchOption.AllDirectories)
+            .Select(f => Path.GetFileName(f)).ToList();
+        projects.Should().NotBeEmpty();
+        foreach (var project in projects)
+            script.Should().Contain(project, "every test project runs in one of the shares");
+
+        jobs["backend-result"].Should().Contain("name: Backend build and tests")
+            .And.Contain("needs: backend")
+            .And.Contain("if: always()", "it reports a failed share rather than being skipped with it")
+            .And.Contain("needs.backend.result }}\" != \"success\"");
     }
 
     [Fact]
