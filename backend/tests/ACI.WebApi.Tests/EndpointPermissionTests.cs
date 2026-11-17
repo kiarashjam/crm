@@ -50,6 +50,8 @@ public class EndpointPermissionTests
         ["WebhookController.UpdateWebhookPassword"] = "OrganizationService: settings.manage",
         ["WebhookController.UpdateOutbound"] = "OrganizationService: settings.manage",
         ["OnboardingController.Preview"] = "reads only: the welcome email filled as it would go, nothing kept or sent",
+        ["LeadNewsletterController.Audience"] = "reads only: who a newsletter's filters choose, counted, nothing kept or sent",
+        ["LeadNewsletterController.Preview"] = "reads only: the newsletter filled for one lead as it would go, nothing kept or sent",
         ["AgentController.Chat"] = "reads only, as the caller sees the records: a change it proposes is made only by the caller's confirm, through the endpoint that makes it and that endpoint's permission",
         // A list reads the custom values and tags of its page of records in one POST (the ids
         // would not fit a query string); nothing is changed and only records the caller sees come back.

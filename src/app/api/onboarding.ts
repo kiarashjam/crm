@@ -34,6 +34,8 @@ export interface OnboardingSettings {
   replyTo?: string | null;
   defaultSenderName?: string | null;
   defaultReplyTo?: string | null;
+  /** The website's page where a lead books a meeting, with their invitation from a lead newsletter. */
+  bookingPageUrl?: string | null;
 }
 
 export interface SaveOnboardingSettings {
@@ -46,6 +48,8 @@ export interface SaveOnboardingSettings {
   senderName?: string | null;
   senderEmail?: string | null;
   replyTo?: string | null;
+  /** The meeting booking page (https). Left out: kept as it is; empty: taken away. */
+  bookingPageUrl?: string | null;
 }
 
 export interface OnboardingPreviewRequest {

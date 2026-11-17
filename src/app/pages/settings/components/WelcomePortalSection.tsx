@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNod
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import {
-  AlertTriangle, ArrowRight, AtSign, CheckCircle2, Code2, Copy, KeyRound, LayoutTemplate, Link2, Loader2, Lock, Mail, Monitor, PenLine,
+  AlertTriangle, ArrowRight, AtSign, CalendarClock, CheckCircle2, Code2, Copy, KeyRound, LayoutTemplate, Link2, Loader2, Lock, Mail, Monitor, PenLine,
   PlugZap, RotateCcw, Save, Send, Smartphone, Sparkles, Wand2, XCircle, Zap,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -90,6 +90,7 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
   );
 
   const [url, setUrl] = useState('');
+  const [bookingPage, setBookingPage] = useState('');
   const [enabled, setEnabled] = useState(true);
   const [language, setLanguage] = useState<OnboardingLanguage>('fr');
   const [addToMembers, setAddToMembers] = useState(true);
@@ -119,6 +120,7 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
   const take = (s: OnboardingSettings) => {
     setSettings(s);
     setUrl(s.webhookUrl ?? '');
+    setBookingPage(s.bookingPageUrl ?? '');
     setEnabled(s.enabled);
     setLanguage(s.defaultLanguage);
     setAddToMembers(s.addToClubMembers);
@@ -154,7 +156,8 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
     url !== (settings?.webhookUrl ?? '') || enabled !== settings?.enabled || language !== settings?.defaultLanguage
     || addToMembers !== settings?.addToClubMembers || subject !== (settings?.emailSubject ?? '') || html !== (settings?.emailHtml ?? '')
     || senderName !== (settings?.senderName ?? '') || senderEmail !== (settings?.senderEmail ?? '') || replyTo !== (settings?.replyTo ?? '')
-  ), [settings, url, enabled, language, addToMembers, subject, html, senderName, senderEmail, replyTo]);
+    || bookingPage !== (settings?.bookingPageUrl ?? '')
+  ), [settings, url, enabled, language, addToMembers, subject, html, senderName, senderEmail, replyTo, bookingPage]);
 
   // Leaving with edits not saved: the browser asks first, rather than dropping them.
   useEffect(() => {
@@ -175,6 +178,8 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
         webhookUrl: url.trim() || null, enabled, defaultLanguage: language, addToClubMembers: addToMembers,
         emailSubject: subject.trim() || null, emailHtml: html.trim() || null,
         senderName: senderName.trim() || null, senderEmail: senderEmail.trim() || null, replyTo: replyTo.trim() || null,
+        // Sent only when changed: left out, the server keeps it as it is (and empty takes it away).
+        ...(bookingPage !== (settings?.bookingPageUrl ?? '') ? { bookingPageUrl: bookingPage.trim() } : {}),
       }));
       toast.success('Welcome & portal saved');
     } catch (e) {
@@ -357,6 +362,30 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder="https://api.your-portal.com/api/integrations/cadence/onboarding"
+                className="pl-9 font-mono text-sm"
+                disabled={!canEdit}
+              />
+            </div>
+          </div>
+
+          <div id="welcome-booking">
+            <div className="flex items-center gap-0.5">
+              <Label htmlFor="booking-page">Meeting booking page</Label>
+              <HelpTip label="About the meeting booking page">
+                Where a lead books a meeting from Leads › Invite to a meeting: each lead&apos;s link opens it with their own invitation,
+                signed with the secret below. For Pavillon 46, its{' '}
+                <code className="rounded bg-slate-100 px-1 text-xs">/rendez-vous</code> page.
+              </HelpTip>
+            </div>
+            <div className="relative mt-1">
+              <CalendarClock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
+              <Input
+                id="booking-page"
+                type="url"
+                value={bookingPage}
+                onChange={(e) => setBookingPage(e.target.value)}
+                placeholder="https://your-club.ch/rendez-vous"
+                maxLength={500}
                 className="pl-9 font-mono text-sm"
                 disabled={!canEdit}
               />

@@ -327,6 +327,17 @@ public class OrganizationCloneTests
             {
                 Id = Guid.NewGuid(), OrganizationId = org.Id, DealId = deal.Id, ContactId = contact.Id, ClubMemberId = member.Id, Name = "Jean Dupont",
                 Email = $"jean@{name}.ch", Status = OnboardingStatuses.Welcomed, CreatedAtUtc = now, CreatedByUserId = owner, UpdatedAtUtc = now,
+            },
+            // A newsletter to the leads, and the meeting the lead booked from it on the website.
+            new LeadNewsletter
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, Subject = "Votre rendez-vous, {{firstName}}", Language = "fr", AudienceJson = "{}",
+                Status = LeadNewsletterStatuses.Sent, Recipients = 1, CreatedByUserId = owner, CreatedAtUtc = now, SentAtUtc = now,
+            },
+            new MeetingBooking
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, LeadId = lead.Id, BookingId = $"bk-{name}", Code = "RDV-7K2Q", StartsAtUtc = now.AddDays(7),
+                OffsetMinutes = 60, DurationMinutes = 45, Status = MeetingBookingStatuses.Booked, CreatedAtUtc = now, UpdatedAtUtc = now,
             });
         // The public application form, an application approved as the member from the lead and
         // contact, and a household with the member as primary and the contact (not a member) as

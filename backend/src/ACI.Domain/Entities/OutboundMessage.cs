@@ -251,6 +251,13 @@ public static class OutboundSources
     /// <see cref="OutboundMessage.SourceId"/> is the member.
     /// </summary>
     public const string Retention = "retention";
+    /// <summary>
+    /// A newsletter to chosen leads (the Leads page's "Send a newsletter"), one email per lead,
+    /// with an HTML part of its own; <see cref="OutboundMessage.SourceId"/> is the send (LeadNewsletter).
+    /// </summary>
+    public const string Newsletter = "newsletter";
+    /// <summary>A newsletter sent to the person who pressed "Send a test to me", marked as a test.</summary>
+    public const string NewsletterTest = "newsletter_test";
 }
 
 /// <summary>

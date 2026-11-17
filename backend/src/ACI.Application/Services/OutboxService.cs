@@ -46,12 +46,19 @@ public sealed record OutboundEmailRequest
     public required string Body { get; init; }
 
     /// <summary>
-    /// A finished HTML part, sent as it is, in place of the one made from <see cref="Body"/>:
-    /// only for a test copy of a designed email (<see cref="ForOwnTeam"/>), such as the welcome
-    /// email, which someone sends to an address of their choosing to see how it looks. Its
-    /// placeholders are already filled.
+    /// A finished HTML part, in place of the one made from <see cref="Body"/>, its placeholders
+    /// already filled (and HTML-encoded) for the one person it is for. Taken for a test copy of
+    /// a designed email (<see cref="ForOwnTeam"/>), sent as it is, and for a designed email to
+    /// one lead (a newsletter), which gets the same unsubscribe footer as any other at the foot
+    /// of its HTML, and the List-Unsubscribe headers. <see cref="Body"/> is its plain-text part.
     /// </summary>
     public string? Html { get; init; }
+
+    /// <summary>
+    /// Not sent before this: a newsletter to many leads is spread over minutes, so the mail
+    /// server takes it at a steady rate rather than all at once. Null: as soon as it can go.
+    /// </summary>
+    public DateTime? NotBeforeUtc { get; init; }
 
     /// <summary>Who queued it: the timeline entry is theirs, and they hear about a message that fails.</summary>
     public Guid? CreatedByUserId { get; init; }
@@ -280,9 +287,12 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
                 return new Error("Email.PurposeNeedsMember", "An email to a member goes to that member's address alone.");
         }
 
-        // A finished HTML part skips the footer, and with it the unsubscribe link: a test alone may.
-        if (request.Html != null && !request.ForOwnTeam)
-            return new Error("Email.HtmlForTestsOnly", "Only a test copy is sent with HTML of its own.");
+        // A finished HTML part goes as it is in a test copy alone. Anything else with HTML of its
+        // own is a designed email to one lead, which gets the unsubscribe footer in its HTML as
+        // every email does: the link is that one person's, so it goes to nobody else.
+        if (request.Html != null && !request.ForOwnTeam
+            && (request.LeadId == null || purpose != null || request.MemberId != null || to.Count != 1 || cc.Count > 0 || bcc.Count > 0))
+            return new Error("Email.HtmlForTestsOnly", "Only a test copy, or an email to one lead, is sent with HTML of its own.");
 
         var organizationId = request.OrganizationId;
         if (await RefusalAsync(organizationId, to.Concat(cc).Concat(bcc).ToList(), request.LeadId, request.ContactId, purpose, request.MemberId, ct) is { } refusal)
@@ -312,7 +322,11 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
             : purpose != null && request.MemberId is Guid memberId
                 ? _outreach.MemberBody(organizationId, sender.WorkspaceName, body, memberId, to[0], purpose == ConsentPurposes.Marketing,
                     purpose == ConsentPurposes.Marketing ? await MemberLanguageAsync(organizationId, memberId, ct) : AppLanguages.English)
-                : _outreach.Body(organizationId, sender.WorkspaceName, body, to.Concat(cc).ToList(), tracking, request.Language);
+                : _outreach.Body(organizationId, sender.WorkspaceName, body, to.Concat(cc).ToList(), tracking, request.Language, request.Html);
+        // A designed email to a lead goes with its unsubscribe link or not at all: without the
+        // app's public address (Email:FrontendBaseUrl) there is none to give.
+        if (request.Html != null && !request.ForOwnTeam && mail.UnsubscribeUrl == null)
+            return new Error("Email.NoUnsubscribeLink", "This email cannot carry its unsubscribe link (the server's Email:FrontendBaseUrl is not set), so it was not sent.");
 
         var id = Guid.NewGuid();
         var replyDomain = _settings.CapturesReplies ? _settings.ReplyDomain() : null;
@@ -344,7 +358,7 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
             // the dispatcher sends it.
             Attempts = request.PersonWaiting ? 1 : 0,
             ClaimedUntilUtc = request.PersonWaiting ? now.Add(ClaimFor) : null,
-            NextAttemptAtUtc = now,
+            NextAttemptAtUtc = !request.PersonWaiting && request.NotBeforeUtc is DateTime notBefore && notBefore > now ? notBefore : now,
             CreatedAtUtc = now,
             CreatedByUserId = request.CreatedByUserId,
             // A workspace's name may be 256 characters and the column holds 200: unclipped,

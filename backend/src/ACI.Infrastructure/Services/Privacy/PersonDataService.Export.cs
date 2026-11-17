@@ -126,6 +126,8 @@ public sealed partial class PersonDataService
                 RowsOf(tasksById.GetValueOrDefault(t.Id)))).ToList()),
             new("timeline/tasks-mentioning-them.json", "Tasks elsewhere whose words mention them.", d.TaskMentions.Select(t => Row(t)).ToList()),
             new("timeline/lead-status-history.json", "How the status of their leads changed.", d.LeadStatusEvents.Select(e => Row(e)).ToList()),
+            new("timeline/meetings-booked.json", "Meetings they booked on the workspace's website: when, the code and the website's reference.",
+                d.MeetingBookings.Select(b => Row(b)).ToList()),
             new("timeline/notifications.json", "Alerts staff were shown about them.", d.Notifications.Select(n => Row(n)).ToList()),
             new("mail/sent.json", "Emails sent to them, and events about them posted to the workspace's integrations.",
                 d.Outbound.Select(m => With(Row(m), "bcc", OwnBlindCopy(m.Bcc, s))).ToList()),

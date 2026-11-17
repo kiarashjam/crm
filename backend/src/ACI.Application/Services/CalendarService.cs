@@ -67,9 +67,14 @@ public sealed class CalendarService : ICalendarService
         var lastDay = DateOnly.FromDateTime(to).AddDays(1);
         // One more than is read says whether the read was cut short.
         var leads = await _leads.GetWithMeetingInMonthsAsync(userId, organizationId, Months(firstDay, lastDay), mine, MaxLeadsRead + 1, ct);
+        // A lead's meeting already on the calendar at its time (one booked on the website, which
+        // also sets the pipeline's day) is not shown a second time as an all-day entry. The
+        // pipeline's day is the lead's own, the meeting's time UTC: a day either side matches.
+        var timed = meetings.Where(m => m.LeadId != null).Select(m => (m.LeadId!.Value, DateOnly.FromDateTime(m.OccurredAtUtc))).ToHashSet();
         var leadMeetings = leads
             .Select(lead => (Lead: lead, Meeting: MeetingOf(lead.PipelineState)))
-            .Where(x => x.Meeting is { } m && m.Day >= firstDay && m.Day <= lastDay)
+            .Where(x => x.Meeting is { } m && m.Day >= firstDay && m.Day <= lastDay
+                && !timed.Contains((x.Lead.Id, m.Day)) && !timed.Contains((x.Lead.Id, m.Day.AddDays(1))) && !timed.Contains((x.Lead.Id, m.Day.AddDays(-1))))
             .ToList();
 
         var entries = tasks.Take(MaxPerKind).Select(TaskEntry)

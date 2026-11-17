@@ -6658,6 +6658,57 @@ namespace ACI.Infrastructure.Migrations
                     b.ToTable("LeadCaptureForms", (string)null);
                 });
 
+            modelBuilder.Entity("ACI.Domain.Entities.LeadNewsletter", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AudienceJson")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .HasMaxLength(5)
+                        .HasColumnType("nvarchar(5)");
+
+                    b.Property<int>("LeftOut")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Recipients")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("SentAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId", "CreatedAtUtc")
+                        .HasDatabaseName("IX_LeadNewsletters_OrganizationId_CreatedAtUtc");
+
+                    b.ToTable("LeadNewsletters", (string)null);
+                });
+
             modelBuilder.Entity("ACI.Domain.Entities.LeadOpsSettings", b =>
                 {
                     b.Property<Guid>("Id")
@@ -6879,6 +6930,62 @@ namespace ACI.Infrastructure.Migrations
                     b.HasIndex("MemberId");
 
                     b.ToTable("LoyaltyLedger", (string)null);
+                });
+
+            modelBuilder.Entity("ACI.Domain.Entities.MeetingBooking", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ActivityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("BookingId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Code")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DurationMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("LeadId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("OffsetMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("StartsAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LeadId")
+                        .HasDatabaseName("IX_MeetingBookings_LeadId");
+
+                    b.HasIndex("OrganizationId", "BookingId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_MeetingBookings_OrganizationId_BookingId");
+
+                    b.ToTable("MeetingBookings", (string)null);
                 });
 
             modelBuilder.Entity("ACI.Domain.Entities.MemberMessage", b =>
@@ -7209,6 +7316,10 @@ namespace ACI.Infrastructure.Migrations
 
                     b.Property<bool>("AddToClubMembers")
                         .HasColumnType("bit");
+
+                    b.Property<string>("BookingPageUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
 
                     b.Property<string>("DefaultLanguage")
                         .IsRequired()

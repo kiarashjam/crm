@@ -72,6 +72,9 @@ public static class DependencyInjection
         services.AddScoped<IProductRepository, ProductRepository>();
         services.AddScoped<IOutboxRepository, OutboxRepository>();
         services.AddScoped<IOnboardingRepository, OnboardingRepository>();
+        // Newsletters to leads, and the meetings they book on the website.
+        services.AddScoped<ILeadNewsletterRepository, LeadNewsletterRepository>();
+        services.AddScoped<IMeetingBookingRepository, MeetingBookingRepository>();
         services.AddScoped<IEmailImageRepository, EmailImageRepository>();
         services.AddScoped<IEmailTemplateRepository, EmailTemplateRepository>();
         services.AddScoped<IAutomationRepository, AutomationRepository>();

@@ -174,4 +174,22 @@ describe('Welcome & portal settings', () => {
     expect(String(api.tests[0]?.emailHtml)).toContain('Choisir mon mot de passe');
     expect(api.saved).toHaveLength(0);
   });
+
+  it('keeps the meeting booking page a lead newsletter links to, sent only when changed', async () => {
+    render(<MemoryRouter><WelcomePortalSection currentOrg={org({ isOwner: true, role: 0 })} /></MemoryRouter>);
+    const page = await screen.findByLabelText('Meeting booking page');
+    expect(page).toHaveValue('');
+
+    // Another change saved: the booking page is left as the server has it.
+    fireEvent.change(screen.getByLabelText('Subject'), { target: { value: 'Bienvenue, {{firstName}}' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Save$/ }));
+    await waitFor(() => expect(api.saved).toHaveLength(1));
+    expect(api.saved[0]).not.toHaveProperty('bookingPageUrl');
+
+    fireEvent.change(page, { target: { value: ' https://pavillon46.ch/rendez-vous ' } });
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^Save$/ }));
+    await waitFor(() => expect(api.saved).toHaveLength(2));
+    expect(api.saved[1]).toMatchObject({ bookingPageUrl: 'https://pavillon46.ch/rendez-vous' });
+  });
 });
