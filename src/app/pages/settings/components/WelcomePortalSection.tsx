@@ -580,7 +580,7 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
           <div
             className={cn(
               'flex items-center gap-3 rounded-2xl border px-4 py-2.5 shadow-lg backdrop-blur transition-colors',
-              dirty ? 'border-amber-200 bg-white/95 dark:border-amber-500/30' : 'border-slate-200 bg-white/90',
+              dirty ? 'border-amber-200 bg-white/95 dark:border-amber-500/30 dark:bg-slate-900/95' : 'border-slate-200 bg-white/90 dark:bg-slate-900/90',
             )}
           >
             {dirty ? (
