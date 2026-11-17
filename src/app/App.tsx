@@ -15,6 +15,7 @@ import { PageLoadingProvider } from '@/app/components/LoadingOverlay';
 import { RouteProgress } from '@/app/components/motion/RouteProgress';
 import { ModuleOutlet, SalesHome } from '@/app/components/ModuleOff';
 import { I18nProvider } from '@/app/i18n';
+import { EmailComposerProvider } from '@/app/components/email/EmailComposerProvider';
 import { LanguageNotice } from '@/app/i18n/LanguageNotice';
 
 // Eager-loaded pages (critical path)
@@ -132,6 +133,7 @@ export default function App() {
             <OrgProvider>
               {/* Inside the workspaces: someone who has not chosen a language reads their workspace's. */}
               <I18nProvider>
+              <EmailComposerProvider>
               <WorkspaceCacheGuard />
               <SkipLink />
               <Toaster position="top-center" richColors closeButton />
@@ -296,6 +298,7 @@ export default function App() {
                 {/* Catch-all redirect */}
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
+              </EmailComposerProvider>
               </I18nProvider>
             </OrgProvider>
             </PageLoadingProvider>

@@ -771,6 +771,8 @@ export default function ContactDetail() {
           open={emailOpen}
           onOpenChange={setEmailOpen}
           to={contact.email}
+          recipientName={contact.name}
+          company={contact.companyName || undefined}
           context={{ contactId: contact.id }}
           onSent={() => { if (id) getActivitiesByContact(id).then(setActivities).catch(() => {}); }}
         />

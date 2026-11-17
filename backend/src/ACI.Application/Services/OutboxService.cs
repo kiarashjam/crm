@@ -36,6 +36,9 @@ public sealed record OutboundEmailRequest
     /// <summary>The recipient's name, when the message has no lead or contact to take it from.</summary>
     public string? RecipientName { get; init; }
 
+    /// <summary>The language it is written in ("fr", "en"), so its footer is in it too; English when none.</summary>
+    public string? Language { get; init; }
+
     /// <summary>The subject as written; placeholders are filled.</summary>
     public required string Subject { get; init; }
 
@@ -297,7 +300,7 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
             : purpose != null && request.MemberId is Guid memberId
                 ? _outreach.MemberBody(organizationId, sender.WorkspaceName, body, memberId, to[0], purpose == ConsentPurposes.Marketing,
                     purpose == ConsentPurposes.Marketing ? await MemberLanguageAsync(organizationId, memberId, ct) : AppLanguages.English)
-                : _outreach.Body(organizationId, sender.WorkspaceName, body, to.Concat(cc).ToList(), tracking);
+                : _outreach.Body(organizationId, sender.WorkspaceName, body, to.Concat(cc).ToList(), tracking, request.Language);
 
         var id = Guid.NewGuid();
         var replyDomain = _settings.CapturesReplies ? _settings.ReplyDomain() : null;

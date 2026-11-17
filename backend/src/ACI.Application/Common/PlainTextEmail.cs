@@ -36,7 +36,7 @@ public static class PlainTextEmail
         string language = AppLanguages.English)
     {
         if (unsubscribe.Count == 0) return "";
-        var lead = question ?? $"Don't want emails from {Who(workspaceName, language)}?";
+        var lead = question ?? MemberTexts.T(language, "footer.question", ("club", Who(workspaceName, language)));
         var word = MemberTexts.T(language, "footer.unsubscribe");
         if (unsubscribe.Count == 1) return $"\n\n--\n{lead} {word}: {unsubscribe[0].Url}\n";
         var lines = string.Join("\n", unsubscribe.Select(link => $"{link.Address}: {link.Url}"));
@@ -45,7 +45,7 @@ public static class PlainTextEmail
 
     private static string HtmlFooter(string? workspaceName, IReadOnlyList<UnsubscribeLink> unsubscribe, string? question, string language)
     {
-        var lead = WebUtility.HtmlEncode(question ?? $"Don't want emails from {Who(workspaceName, language)}?");
+        var lead = WebUtility.HtmlEncode(question ?? MemberTexts.T(language, "footer.question", ("club", Who(workspaceName, language))));
         var word = WebUtility.HtmlEncode(MemberTexts.T(language, "footer.unsubscribe"));
         var links = unsubscribe.Count == 1
             ? $"<a href=\"{WebUtility.HtmlEncode(unsubscribe[0].Url)}\">{word}</a>"

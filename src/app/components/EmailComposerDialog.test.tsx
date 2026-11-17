@@ -2,6 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 
 const api = { sendEmail: vi.fn(), cancelEmail: vi.fn(), createActivity: vi.fn(), generateCopy: vi.fn() };
 vi.mock('@/app/api', async () => {
@@ -18,18 +19,34 @@ vi.mock('@/app/api', async () => {
 });
 const toast = { success: vi.fn(), error: vi.fn(), info: vi.fn() };
 vi.mock('sonner', () => ({ toast }));
+const templates = vi.hoisted(() => ({ getEmailTemplates: vi.fn(), createEmailTemplate: vi.fn() }));
+vi.mock('@/app/api/emailTemplates', async () => ({
+  ...(await vi.importActual<typeof import('@/app/api/emailTemplates')>('@/app/api/emailTemplates')),
+  ...templates,
+}));
+const orgs = vi.hoisted(() => ({ getEmailSending: vi.fn() }));
+vi.mock('@/app/api/organizations', async () => ({
+  ...(await vi.importActual<typeof import('@/app/api/organizations')>('@/app/api/organizations')),
+  ...orgs,
+}));
+vi.mock('@/app/contexts/OrgContext', () => ({
+  useOrgOptional: () => ({ currentOrg: { id: 'org-1', name: 'Pavillon 46' } }),
+}));
 
 const EmailComposerDialog = (await import('./EmailComposerDialog')).default;
 const { ApiError } = await import('@/app/api/apiClient');
 
 beforeEach(() => {
-  for (const fn of [...Object.values(api), ...Object.values(toast)]) fn.mockReset();
+  for (const fn of [...Object.values(api), ...Object.values(toast), ...Object.values(templates), ...Object.values(orgs)]) fn.mockReset();
   api.createActivity.mockResolvedValue({});
+  templates.getEmailTemplates.mockResolvedValue({ templates: [], languages: ['fr', 'en'], defaultLanguage: 'fr', placeholders: ['firstName', 'lastName', 'name', 'email', 'company', 'senderName', 'workspace'] });
+  orgs.getEmailSending.mockResolvedValue({ sendingAddress: 'hello@pavillon46.ch', verified: true, sharedAddress: 'mail@cadencee.ai', repliesCaptured: true });
+  localStorage.clear();
 });
 
 async function send() {
   const onOpenChange = vi.fn();
-  render(<EmailComposerDialog open onOpenChange={onOpenChange} to="jean@example.ch" defaultSubject="Votre visite" defaultBody="Bonjour" context={{ leadId: 'l1' }} />);
+  render(<MemoryRouter><EmailComposerDialog open onOpenChange={onOpenChange} to="jean@example.ch" defaultSubject="Votre visite" defaultBody="Bonjour" context={{ leadId: 'l1' }} /></MemoryRouter>);
   await userEvent.setup().click(screen.getByRole('button', { name: 'Send' }));
   return onOpenChange;
 }

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { useEmailComposer } from '@/app/components/email/EmailComposerProvider';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   Search, Plus, Pencil, Trash2, Building2, Mail, Phone, Briefcase,
@@ -98,6 +99,7 @@ const NO_DEALS: Deal[] = [];
 const NO_TASKS: TaskItem[] = [];
 
 export default function Contacts() {
+  const compose = useEmailComposer();
   const money = useMoney();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1067,16 +1069,23 @@ export default function Contacts() {
 
                     {/* Contact details */}
                     <div className="space-y-2 mb-4">
-                      <a 
-                        href={`mailto:${contact.email}`}
-                        className="flex items-center gap-2 text-sm text-slate-600 hover:text-blue-600 transition-colors group/link"
+                      {/* The composer, with the prepared emails, rather than the person's own email app. */}
+                      <button
+                        type="button"
+                        onClick={() => compose({
+                          to: contact.email,
+                          recipientName: contact.name,
+                          company: company ?? contact.companyName ?? undefined,
+                          context: { contactId: contact.id },
+                        })}
+                        title={`Email ${contact.email}`}
+                        className="flex w-full items-center gap-2 text-left text-sm text-slate-600 hover:text-blue-600 transition-colors group/link"
                       >
                         <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center group-hover/link:bg-blue-100 transition-colors">
                           <Mail className="w-4 h-4 text-slate-500 group-hover/link:text-blue-600" />
                         </div>
                         <span className="truncate">{contact.email}</span>
-                        <ExternalLink className="w-3 h-3 opacity-0 group-hover/link:opacity-100 transition-opacity" />
-                      </a>
+                      </button>
                       
                       {contact.phone && (
                         <a 

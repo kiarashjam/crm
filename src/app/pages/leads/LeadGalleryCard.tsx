@@ -14,6 +14,7 @@ import { Button } from '@/app/components/ui/button';
 import { Checkbox } from '@/app/components/ui/checkbox';
 import { cn } from '@/app/components/ui/utils';
 import { useMotionPreference } from '@/app/hooks/useMotionPreference';
+import { useEmailComposer } from '@/app/components/email/EmailComposerProvider';
 import { AssignPopover } from './components/AssignPopover';
 import { DerivedStatusBadge } from './components/DerivedStatusBadge';
 import { InlineSalesEditorPopover } from './components/InlineSalesEditorPopover';
@@ -276,6 +277,7 @@ export function LeadGalleryCard({
   statusesUnavailable, statusSync, onOpen, onToggleSelected, onAssign, onQuickLog, onSaved,
 }: LeadGalleryCardProps) {
   const reduce = useMotionPreference();
+  const compose = useEmailComposer();
   const pipeline = parsePipeline(lead.pipelineState);
   const life = describeLifecycle(lead, pipeline);
   const tone = TONES[life.tone];
@@ -523,14 +525,25 @@ export function LeadGalleryCard({
               </span>
             )}
             {email && (
-              <a
-                href={`mailto:${email}`}
-                onClick={(e) => e.stopPropagation()}
+              // The composer, with the prepared emails, rather than the person's own email app.
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  compose({
+                    to: email,
+                    recipientName: (place ? lead.contactPersonName : lead.name) || undefined,
+                    company: (place ? lead.name : company ?? lead.companyName) || undefined,
+                    context: { leadId: lead.id },
+                    aiContext: `${lead.name}${lead.companyName ? ` at ${lead.companyName}` : ''} · ${lead.status} lead`,
+                  });
+                }}
+                title={`Email ${email}`}
                 className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full bg-purple-50 px-2.5 py-1 text-xs font-medium text-purple-800 ring-1 ring-purple-200/70 transition-colors hover:bg-purple-100"
               >
                 <Mail className="h-3.5 w-3.5 shrink-0" aria-hidden />
                 <span className="truncate">{email}</span>
-              </a>
+              </button>
             )}
             {phone && (
               <a

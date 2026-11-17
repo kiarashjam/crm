@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import PreparedEmails from '@/app/pages/templates/PreparedEmails';
 import { Mail, MessageSquare, Calendar, Handshake, RotateCcw, Plus, Pencil, Trash2, X, Users, Sparkles, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -76,7 +77,46 @@ const emptyFormData: TemplateFormData = {
   isSharedWithOrganization: false,
 };
 
+/** The two kinds of template: prepared emails to send, and prompts for the AI writer. */
+function TemplateTabs({ tab }: { tab: 'email' | 'ai' }) {
+  const item = (key: 'email' | 'ai', label: string) => (
+    <Link
+      to={key === 'email' ? '/templates' : '/templates?tab=ai'}
+      role="tab"
+      aria-selected={tab === key}
+      className={`rounded-lg px-4 py-2 text-sm font-medium transition ${tab === key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+    >
+      {label}
+    </Link>
+  );
+  return (
+    <div role="tablist" aria-label="Templates" className="mb-6 inline-flex rounded-xl bg-slate-100 p-1">
+      {item('email', 'Prepared emails')}
+      {item('ai', 'AI writing templates')}
+    </div>
+  );
+}
+
+/** Templates: prepared emails (the default), or the AI writer's templates (?tab=ai). */
 export default function Templates() {
+  const [params] = useSearchParams();
+  const tab = params.get('tab') === 'ai' ? 'ai' : 'email';
+  if (tab === 'ai') return <AiTemplates tabs={<TemplateTabs tab="ai" />} />;
+  return (
+    <div className="min-h-screen flex flex-col bg-gradient-subtle">
+      <AppHeader />
+      <PageTransition>
+        <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
+          <div className="w-full">
+            <PreparedEmails tabs={<TemplateTabs tab="email" />} />
+          </div>
+        </main>
+      </PageTransition>
+    </div>
+  );
+}
+
+function AiTemplates({ tabs }: { tabs: React.ReactNode }) {
   const [templates, setTemplates] = useState<ExtendedTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   usePageLoading(loading);
@@ -294,8 +334,8 @@ export default function Templates() {
           <PageHero
             icon={Mail}
             tone="fuchsia"
-            title="Templates"
-            subtitle="Quick-start templates for common scenarios"
+            title="AI writing templates"
+            subtitle="Quick-start prompts for the AI writer"
             actions={
               <WriteOnly>
                 <button
@@ -315,6 +355,7 @@ export default function Templates() {
               { label: 'Times used', value: totalUses, icon: Handshake, tone: 'orange', hint: 'all templates' },
             ]}
           />
+          {tabs}
 
           {loading ? (
             <ContentSkeleton rows={6} />

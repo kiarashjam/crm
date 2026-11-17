@@ -102,6 +102,7 @@ public sealed class ComposedEmailService : IComposedEmailService
             DealId = request.DealId,
             CountsAsResponse = true,
             PersonWaiting = true,
+            Language = request.Language,
         }, ct);
         if (queued.IsFailure) return queued.Error;
         var message = queued.Value;

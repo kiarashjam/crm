@@ -45,6 +45,8 @@ export interface SendEmailRequest {
   dealId?: string;
   /** Who wrote it: the composer (the default) or the sales assistant. */
   source?: 'composer' | 'assistant';
+  /** The language it is written in, so the footer the server adds is in it too. */
+  language?: 'fr' | 'en';
 }
 
 /** `queued`: the mail server did not take it yet, and the server keeps trying. */

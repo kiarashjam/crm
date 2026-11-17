@@ -6,9 +6,10 @@ namespace ACI.Application.DTOs;
 /// is wrong rather than "one or more validation errors occurred".
 /// </summary>
 /// <param name="Source">"assistant" when the sales assistant drafted it; otherwise the composer.</param>
+/// <param name="Language">The language it is written in ("fr", "en"), for the footer the server adds; English when none.</param>
 public record SendEmailRequest(
     string? To, string? Cc, string? Bcc, string? Subject, string? Body,
-    Guid? LeadId = null, Guid? ContactId = null, Guid? DealId = null, string? Source = null);
+    Guid? LeadId = null, Guid? ContactId = null, Guid? DealId = null, string? Source = null, string? Language = null);
 
 /// <summary>
 /// A message that was sent, or queued to be: the shape the composer shows. Status is

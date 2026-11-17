@@ -18,7 +18,10 @@ import {
   Unlock,
   Clock,
   Hourglass,
+  Mail,
 } from 'lucide-react';
+import { getContactById } from '@/app/api/contacts';
+import { useEmailComposer } from '@/app/components/email/EmailComposerProvider';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
 import { Spinner } from '@/app/components/motion/CadenceLoader';
@@ -70,6 +73,29 @@ export default function DealDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [deal, setDeal] = useState<Deal | null>(null);
+  const compose = useEmailComposer();
+  const [openingEmail, setOpeningEmail] = useState(false);
+  /** Email the deal's contact from the composer, the email noted on the deal and on them. */
+  const emailContact = async () => {
+    if (!deal?.contactId) return;
+    setOpeningEmail(true);
+    try {
+      const contact = await getContactById(deal.contactId);
+      if (!contact?.email) { toast.error(`${deal.contactName ?? 'The contact'} has no email address.`); return; }
+      compose({
+        to: contact.email,
+        recipientName: contact.name,
+        company: contact.companyName ?? deal.companyName ?? undefined,
+        context: { dealId: deal.id, contactId: contact.id },
+        aiContext: `${contact.name} · deal "${deal.name}"`,
+        onSent: () => { if (id) getActivitiesByDeal(id).then(setActivities).catch(() => {}); },
+      });
+    } catch {
+      toast.error('The contact could not be read.');
+    } finally {
+      setOpeningEmail(false);
+    }
+  };
   const [loading, setLoading] = useState(true);
   usePageLoading(loading);
 
@@ -314,6 +340,11 @@ export default function DealDetail() {
             )}
             actions={
               <>
+                {deal.contactId && (
+                  <Button variant="outline" onClick={() => void emailContact()} disabled={openingEmail} className={heroSecondary}>
+                    <Mail className="h-4 w-4" /> Email
+                  </Button>
+                )}
                 <WriteOnly>
                   <Button variant="outline" onClick={() => navigate(`/deals`)} className={heroSecondary}>
                     <Pencil className="h-4 w-4" /> Edit

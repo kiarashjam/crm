@@ -1646,6 +1646,8 @@ export default function LeadDetailPage() {
           open={emailOpen}
           onOpenChange={setEmailOpen}
           to={reachEmail}
+          recipientName={(place ? lead.contactPersonName : lead.name) || undefined}
+          company={(place ? lead.name : lead.companyName) || undefined}
           context={{ leadId: lead.id }}
           aiContext={`${lead.name}${lead.companyName ? ` at ${lead.companyName}` : ''} · ${lead.status} lead`}
           onSent={() => {
