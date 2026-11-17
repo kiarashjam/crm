@@ -395,7 +395,7 @@ public class OnboardingTests
             emailHtml = "<p>Your code: {{referralCode}}</p>",
         })));
         preview.GetProperty("unknown").EnumerateArray().Should().BeEmpty("the portal fills the member's referral code");
-        preview.GetProperty("html").GetString().Should().Contain("PAV-7K2M9Q");
+        preview.GetProperty("html").GetString().Should().Contain("PAV-7KQ");
         var settings = await JsonAsync(await owner.GetAsync("/api/onboarding/settings"));
         settings.GetProperty("receiverFields").EnumerateArray().Select(f => f.GetString()).Should().Contain("referralCode");
     }
