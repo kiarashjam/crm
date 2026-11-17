@@ -868,8 +868,13 @@ public sealed class ClubApplicationService : IClubApplications
             _db.ClubMembers.Add(member);
             created = true;
         }
-        else if (member.Status is "Pending" or "Lapsed" or "Cancelled")
+        // A member the deal's welcome made Active, with no dues running yet, is joining now too:
+        // the welcome made them a member before any contract, and this approval (a countersigned
+        // contract, say) is what starts their membership at the tier approved and its dues.
+        else if (member.Status is "Pending" or "Lapsed" or "Cancelled"
+            || (member.Status == "Active" && member.DealId != null && !await HasRunningSubscriptionAsync(organizationId, member.Id, ct)))
         {
+            var joinedWithWelcome = member.Status == "Active";
             // Approving someone who was a member is admitting them again, at the tier approved
             // and its dues: the dues started below are that tier's, so the record says so too.
             member.Status = "Active";
@@ -888,7 +893,9 @@ public sealed class ClubApplicationService : IClubApplications
                 member.StartsOnUtc = now;
             }
             readmitted = true;
-            notes.Add($"{Name(member)} was already a member, so their record was used and set active again.");
+            notes.Add(joinedWithWelcome
+                ? $"{Name(member)} joined with the deal's welcome: this approval starts their membership at the tier approved."
+                : $"{Name(member)} was already a member, so their record was used and set active again.");
         }
         else notes.Add($"{Name(member)} is already an active member: the application is linked to their record, their tier stays {member.Tier}, and nothing was charged or started.");
         // A member the club had already keeps the language staff set; one with none takes the one they applied in.

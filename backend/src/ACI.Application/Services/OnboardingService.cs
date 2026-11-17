@@ -544,8 +544,10 @@ public sealed class OnboardingService : IOnboardingService
         {
             // Made the way the club makes every member (ClubService): at its first tier on
             // sale, with the house account the money ledger keeps for each member, and links
-            // to the contact and lead checked to be this workspace's. No dues and no fee: the
-            // club starts those when the membership does.
+            // to the contact and lead checked to be this workspace's. Active at once: a lead
+            // converted with the welcome has agreed to join, contract or not, and the start is
+            // set later, when the club fixes it. No dues and no fee: the club starts those when
+            // the membership does.
             var space = onboarding.Name.IndexOf(' ');
             var first = space < 0 ? onboarding.Name : onboarding.Name[..space];
             var last = space < 0 ? "" : onboarding.Name[(space + 1)..].Trim();
@@ -557,7 +559,7 @@ public sealed class OnboardingService : IOnboardingService
                 LastName = Clip(last.Length > 0 ? last : first, 100),
                 Email = onboarding.Email,
                 Phone = onboarding.Phone,
-                Status = "Pending",
+                Status = "Active",
                 JoinedAtUtc = joined,
                 RenewsAtUtc = joined.AddYears(1),
                 Notes = Clip($"Joined through the deal \"{person.Deal.Name}\".", 1000),
@@ -584,6 +586,9 @@ public sealed class OnboardingService : IOnboardingService
         }
         else
         {
+            // Pending (added before, or by a contract not signed yet) becomes Active with the
+            // welcome; a lapsed or cancelled member is the club's to reinstate.
+            if (member.Status == "Pending") member.Status = "Active";
             member.StartsOnUtc = onboarding.StartsOnUtc;
             member.StartUndetermined = onboarding.StartUndetermined;
             member.ContactId ??= onboarding.ContactId;

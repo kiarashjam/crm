@@ -524,7 +524,7 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
             </SettingRow>
             {/* With the club turned off there are no members to add them to (the server adds nobody). */}
             {clubOn && (
-              <SettingRow title="Add to club members" hint="Here too, with their start date.">
+              <SettingRow title="Add to club members" hint="Active at once; the start date can come later.">
                 <Switch checked={addToMembers} onCheckedChange={setAddToMembers} disabled={!canEdit} aria-label="Add to club members" />
               </SettingRow>
             )}

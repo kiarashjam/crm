@@ -140,7 +140,9 @@ public class OnboardingTests
         var member = await app.Services.Read(db => db.ClubMembers.Single());
         member.OrganizationId.Should().Be(org);
         member.Email.Should().Be("jean@example.ch");
-        member.Status.Should().Be("Pending");
+        member.Status.Should().Be("Active", "converted with the welcome is a member at once; the start and dues come later");
+        member.DuesAmount.Should().BeGreaterThanOrEqualTo(0);
+        (await app.Services.Read(db => db.ClubSubscriptions.IgnoreQueryFilters().Count(s => s.MemberId == member.Id))).Should().Be(0, "no dues start with the welcome");
         member.StartsOnUtc.Should().Be(new DateTime(2027, 1, 15));
         member.StartUndetermined.Should().BeFalse();
         member.DealId.Should().Be(dealId);

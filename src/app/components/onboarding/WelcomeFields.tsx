@@ -194,6 +194,7 @@ export function WelcomeFields({
                       <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600">
                         <Switch checked={draft.addToClubMembers} onCheckedChange={(v) => set({ addToClubMembers: v })} aria-label="Add to club members" />
                         <Crown className="h-3.5 w-3.5 text-indigo-500" /> Add to club members
+                        <span className="text-xs text-slate-400">· active at once</span>
                       </label>
                     )}
                   </div>
