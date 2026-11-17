@@ -140,6 +140,8 @@ public static class PersonDataInventory
         [typeof(OnboardingSettings)] = "Settings: the hand-over to the member portal.",
         [typeof(MemberPortalSettings)] = "Settings: whether members can sign in to the member portal.",
         [typeof(EmailImage)] = "Images used in the workspace's emails.",
+        [typeof(EmailTemplate)] = "The workspace's prepared emails: wording with placeholders, about no one in particular.",
+        [typeof(EmailTemplateVersion)] = "A prepared email's subject and text in one language, about no one in particular.",
         [typeof(ClubCatalogItem)] = "The club's price catalogue.",
         [typeof(ClubBillingRun)] = "What a billing run did, in counts.",
         [typeof(ClubEvent)] = "The club's events.",

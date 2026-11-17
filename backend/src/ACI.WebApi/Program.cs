@@ -436,6 +436,7 @@ try
     builder.Services.AddScoped<IPublicAddress, ACI.WebApi.Services.RequestPublicAddress>();
     builder.Services.AddScoped<IOnboardingService, OnboardingService>();
     builder.Services.AddScoped<IEmailImageService, EmailImageService>();
+    builder.Services.AddScoped<IEmailTemplateService, EmailTemplateService>();
     builder.Services.AddScoped<IClubDocumentService, ClubDocumentService>();
     // What the club's settings and price catalogue say the server applies (points, dues, billing).
     builder.Services.AddScoped<IClubRules, ClubRules>();

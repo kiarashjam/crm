@@ -5996,6 +5996,89 @@ namespace ACI.Infrastructure.Migrations
                     b.ToTable("EmailSuppressions", (string)null);
                 });
 
+            modelBuilder.Entity("ACI.Domain.Entities.EmailTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Category")
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("StarterKey")
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId", "Name")
+                        .HasDatabaseName("IX_EmailTemplates_OrganizationId_Name");
+
+                    b.HasIndex("OrganizationId", "StarterKey")
+                        .IsUnique()
+                        .HasDatabaseName("UX_EmailTemplates_OrganizationId_StarterKey")
+                        .HasFilter("[StarterKey] IS NOT NULL");
+
+                    b.ToTable("EmailTemplates", (string)null);
+                });
+
+            modelBuilder.Entity("ACI.Domain.Entities.EmailTemplateVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("EmailTemplateId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmailTemplateId", "Language")
+                        .IsUnique()
+                        .HasDatabaseName("UX_EmailTemplateVersions_Template_Language");
+
+                    b.ToTable("EmailTemplateVersions", (string)null);
+                });
+
             modelBuilder.Entity("ACI.Domain.Entities.ForecastSnapshot", b =>
                 {
                     b.Property<Guid>("Id")
@@ -7221,6 +7304,9 @@ namespace ACI.Infrastructure.Migrations
                         .HasMaxLength(3)
                         .HasColumnType("nvarchar(3)")
                         .HasDefaultValue("CHF");
+
+                    b.Property<DateTime?>("EmailTemplatesSeededAtUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("LeadKinds")
                         .IsRequired()
@@ -9131,6 +9217,15 @@ namespace ACI.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("ACI.Domain.Entities.EmailTemplateVersion", b =>
+                {
+                    b.HasOne("ACI.Domain.Entities.EmailTemplate", null)
+                        .WithMany("Versions")
+                        .HasForeignKey("EmailTemplateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("ACI.Domain.Entities.Invite", b =>
                 {
                     b.HasOne("ACI.Domain.Entities.Organization", "Organization")
@@ -9498,6 +9593,11 @@ namespace ACI.Infrastructure.Migrations
             modelBuilder.Entity("ACI.Domain.Entities.DealStage", b =>
                 {
                     b.Navigation("Deals");
+                });
+
+            modelBuilder.Entity("ACI.Domain.Entities.EmailTemplate", b =>
+                {
+                    b.Navigation("Versions");
                 });
 
             modelBuilder.Entity("ACI.Domain.Entities.Lead", b =>

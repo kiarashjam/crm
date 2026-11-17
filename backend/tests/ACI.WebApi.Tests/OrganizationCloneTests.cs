@@ -313,6 +313,16 @@ public class OrganizationCloneTests
             new MemberPortalSession { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, CreatedAtUtc = now, ExpiresAtUtc = now.AddDays(30), LastSeenAtUtc = now },
             new MemberPortalLink { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, TokenHash = $"hash-{name}", CreatedAtUtc = now, ExpiresAtUtc = now.AddDays(3) },
             new EmailImage { Id = Guid.NewGuid(), OrganizationId = org.Id, FileName = "logo.png", ContentType = "image/png", Size = 4, Content = [0x89, 0x50, 0x4E, 0x47], CreatedAtUtc = now, CreatedByUserId = owner },
+            // A prepared email, in both languages.
+            new EmailTemplate
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, Name = "Visit", Category = "Club", StarterKey = "club-visit-invitation", CreatedAtUtc = now, CreatedByUserId = owner,
+                Versions =
+                [
+                    new EmailTemplateVersion { Id = Guid.NewGuid(), Language = "fr", Subject = "Une visite", Body = "Bonjour {{firstName}}," },
+                    new EmailTemplateVersion { Id = Guid.NewGuid(), Language = "en", Subject = "A visit", Body = "Dear {{firstName}}," },
+                ],
+            },
             new DealOnboarding
             {
                 Id = Guid.NewGuid(), OrganizationId = org.Id, DealId = deal.Id, ContactId = contact.Id, ClubMemberId = member.Id, Name = "Jean Dupont",

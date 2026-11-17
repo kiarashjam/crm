@@ -59,6 +59,7 @@ public sealed class OrganizationCloner
         (typeof(OutreachStep), nameof(OutreachStep.SequenceId), typeof(OutreachSequence)),
         (typeof(AutomationFire), nameof(AutomationFire.RuleId), typeof(AutomationRule)),
         (typeof(SalesTeamMember), nameof(SalesTeamMember.TeamId), typeof(SalesTeam)),
+        (typeof(EmailTemplateVersion), nameof(EmailTemplateVersion.EmailTemplateId), typeof(EmailTemplate)),
     ];
 
     /// <summary>Tables that are not copied, and why.</summary>
