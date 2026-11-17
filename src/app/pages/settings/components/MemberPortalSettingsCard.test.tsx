@@ -128,7 +128,7 @@ describe('the member portal in Settings', () => {
     const user = userEvent.setup();
     render(withQueries(<MemberPortalSettingsCard />));
 
-    expect(await screen.findByText('0 of 2 have signed in; 1 invited.')).toBeInTheDocument();
+    expect(await screen.findByLabelText('Members at a glance')).toHaveTextContent(/Members2Invited1\/ 2Signed in0\/ 2/);
     await user.click(screen.getByRole('button', { name: 'Invite every member' }));
     expect(await screen.findByText(/Invited 200 members\. Left out: 3 invited before, 2 without an email address, 1 whose address bounced or unsubscribed\. 40 more to invite/)).toBeInTheDocument();
 

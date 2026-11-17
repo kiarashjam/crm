@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
-import { AlertTriangle, CheckCircle2, Copy, KeyRound, Loader2, Lock, MessageSquareHeart, Monitor, PlugZap, RotateCcw, Save, ShieldCheck, Smartphone, Wand2, XCircle } from 'lucide-react';
+import {
+  AlertTriangle, ArrowRight, AtSign, CheckCircle2, Copy, KeyRound, Link2, Loader2, Lock, Mail, Monitor, PlugZap, RotateCcw,
+  Save, Send, Smartphone, Sparkles, Wand2, XCircle, Zap,
+} from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { servesDemoData } from '@/app/api/apiClient';
 import { orgCan, PERMISSION, type Organization } from '@/app/api/organizations';
@@ -20,6 +23,7 @@ import { useOrgMembers } from '@/app/hooks/queries/records';
 import { useModules } from '@/app/hooks/useModules';
 import { EmailPreviewFrame, PlaceholderChips, insertAt } from '@/app/components/onboarding';
 import { EmailImageTools } from '@/app/components/onboarding/EmailImageTools';
+import { HelpTip, IconTile, SettingsCard, StatusPill, type PillTone } from './SettingsCard';
 
 const STARTER = `<div style="font-family:Georgia,serif;max-width:560px;margin:0 auto;padding:32px;background:#ffffff;color:#0f172a">
   <h1 style="font-weight:normal;margin:0 0 16px">Bienvenue, {{firstName}}</h1>
@@ -38,6 +42,16 @@ function namesList(names: string[]): string {
 }
 
 const SAMPLE = { name: 'Camille Laurent', email: 'camille@example.com', company: 'Maison Laurent', dealName: 'Gold membership' };
+
+const SECTION = { conversion: 'welcome-conversion', connection: 'welcome-connection', email: 'welcome-email' } as const;
+
+const LANGUAGES: { id: OnboardingLanguage; label: string }[] = [
+  { id: 'fr', label: 'Français' },
+  { id: 'en', label: 'English' },
+];
+
+/** What a test of the portal found: a headline, the detail, and what to know about the sender. */
+type TestResult = { ok: boolean; title: string; detail: string; note?: string; warning?: string | null };
 
 /**
  * Welcome & portal: where new customers are handed over when their lead becomes a deal,
@@ -73,7 +87,7 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
   const [secret, setSecret] = useState<string | null>(null);
   const [making, setMaking] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [test, setTest] = useState<{ ok: boolean; text: string; warning?: string | null } | null>(null);
+  const [test, setTest] = useState<TestResult | null>(null);
   const [device, setDevice] = useState<'desktop' | 'phone'>('desktop');
   const [preview, setPreview] = useState<OnboardingPreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -172,19 +186,24 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
     try {
       const r = await testOnboardingPortal();
       if (!r.ok) {
-        setTest({ ok: false, text: r.error ?? `The portal answered ${r.statusCode}.` });
+        setTest({ ok: false, title: 'The portal did not accept the test', detail: r.error ?? `It answered ${r.statusCode}.` });
         return;
       }
-      const sends = r.fromEmail ? ` It sends from ${senderLabel(r.fromName, r.fromEmail)}.` : '';
       // A from address the portal's mail service may not use: it sends from its own, and replies come to you.
       const domain = (e?: string | null) => e?.split('@')[1]?.toLowerCase();
       const own = senderEmail.trim() || settings?.senderEmail;
-      const mismatch = own && r.fromEmail && domain(own) !== domain(r.fromEmail)
-        ? ` ${own} is not on its domain (${domain(r.fromEmail)}), so it will send from ${r.fromEmail} under your name, with replies to ${replyShown || own}.`
-        : '';
-      setTest({ ok: true, text: `The portal answered ${r.statusCode}: it checked the signature and is ready.${sends}${mismatch}`, warning: r.callbackProblem });
+      const note = own && r.fromEmail && domain(own) !== domain(r.fromEmail)
+        ? `${own} is not on its domain (${domain(r.fromEmail)}), so it sends from ${r.fromEmail} under your name, with replies to ${replyShown || own}.`
+        : undefined;
+      setTest({
+        ok: true,
+        title: 'Connected: the portal is ready',
+        detail: [`Answered ${r.statusCode}`, 'signature checked', r.fromEmail ? `sends from ${senderLabel(r.fromName, r.fromEmail)}` : null].filter(Boolean).join(' · '),
+        note,
+        warning: r.callbackProblem,
+      });
     } catch (e) {
-      setTest({ ok: false, text: e instanceof Error ? e.message : 'The test could not be sent.' });
+      setTest({ ok: false, title: 'The test could not be sent', detail: e instanceof Error ? e.message : 'Try again in a moment.' });
     } finally {
       setTesting(false);
     }
@@ -201,85 +220,95 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
 
   if (servesDemoData()) {
     return (
-      <div className="space-y-3 p-6">
-        <Heading />
-        <p className="text-sm text-slate-600">Connect the real API to hand new customers to your portal from here.</p>
-      </div>
+      <SettingsCard icon={PlugZap} tone="violet" title="Welcome handoff" description="Connect the real API to hand new customers to your portal from here." />
     );
   }
   if (loading) {
     return <div className="flex items-center justify-center gap-2 p-12 text-slate-500"><Loader2 className="h-6 w-6 animate-spin" /> Loading…</div>;
   }
 
-  return (
-    <div className="space-y-8 p-6">
-      <div className="flex flex-wrap items-start gap-3">
-        <Heading />
-        <span className={cn(
-          'ml-auto inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold',
-          settings?.configured ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500',
-        )}>
-          {settings?.configured ? <CheckCircle2 className="h-3.5 w-3.5" /> : <PlugZap className="h-3.5 w-3.5" />}
-          {settings?.configured ? 'Connected' : 'Not connected'}
-        </span>
-      </div>
+  const connection: { tone: PillTone; text: string } = settings?.configured
+    ? { tone: 'good', text: 'Connected' }
+    : !settings?.webhookUrl
+      ? { tone: 'warn', text: 'Address needed' }
+      : { tone: 'warn', text: 'Secret needed' };
+  const languageName = LANGUAGES.find((l) => l.id === language)?.label ?? language;
 
+  return (
+    <div className="space-y-5">
       {!canEdit && (
-        <div role="status" className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+        <div role="status" className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
           <Lock className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden />
           <div>
             <p className="font-medium">You can see these settings, but not change them.</p>
-            <p className="mt-0.5 text-amber-800">
-              Changing the portal, its secret or the welcome email takes the <strong>Manage settings</strong> permission
+            <p className="mt-0.5 text-amber-800 dark:text-amber-200/80">
+              It takes the <strong>Manage settings</strong> permission
               {managers.length > 0 ? `, which ${namesList(managers)} ${managers.length === 1 ? 'has' : 'have'}` : ''}.
-              They can change it here, or give you that permission in{' '}
+              Ask them, or for that permission in{' '}
               <Link to="/settings?tab=organization" className="font-medium underline underline-offset-2">Settings › Team</Link>.
             </p>
           </div>
         </div>
       )}
 
-      <ol className="grid gap-3 sm:grid-cols-3">
-        {[
-          { n: 1, title: 'Convert', text: 'A lead becomes a deal. You write a welcome and say when they start, or that it is still to be decided.' },
-          { n: 2, title: 'Hand over', text: 'CadenceE posts a signed handoff to your portal, which opens their account.' },
-          { n: 3, title: 'Welcome', text: 'The portal sends your email with a link to set their password, and reports each step back.' },
-        ].map((s, i) => (
-          <motion.li
-            key={s.n}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.08 }}
-            className="rounded-xl border border-slate-200 bg-gradient-to-br from-white to-orange-50/40 p-3"
-          >
-            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-pink-500 text-xs font-bold text-white">{s.n}</span>
-            <p className="mt-2 text-sm font-semibold text-slate-800">{s.title}</p>
-            <p className="mt-0.5 text-xs text-slate-500">{s.text}</p>
-          </motion.li>
-        ))}
-      </ol>
+      <FlowOverview
+        steps={[
+          {
+            icon: Sparkles, title: 'Convert', text: 'Lead becomes a deal', target: SECTION.conversion,
+            status: enabled ? { tone: 'good', text: 'Welcome on' } : { tone: 'idle', text: 'Welcome off' },
+          },
+          { icon: Send, title: 'Hand over', text: 'Signed to your portal', target: SECTION.connection, status: connection },
+          {
+            icon: Mail, title: 'Welcome', text: 'Email to set a password', target: SECTION.email,
+            status: { tone: 'info', text: `${html.trim() ? 'Your design' : 'Portal design'} · ${language.toUpperCase()}` },
+          },
+        ]}
+      />
 
-      <section className="space-y-4">
-        <h3 className="font-semibold text-slate-900">Your portal</h3>
-        <div>
-          <Label htmlFor="portal-url">Handoff address</Label>
-          <Input
-            id="portal-url"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://api.your-portal.com/api/integrations/cadence/onboarding"
-            className="mt-1.5 font-mono text-sm"
-            disabled={!canEdit}
-          />
-          <p className="mt-1 text-xs text-slate-500">An https address on the internet. For Pavillon 46, its API's <code className="rounded bg-slate-100 px-1">/api/integrations/cadence/onboarding</code>.</p>
-        </div>
+      <SettingsCard
+        id={SECTION.connection}
+        icon={PlugZap}
+        tone="violet"
+        title="Connection"
+        description="Where new members are handed over."
+        aside={<StatusPill tone={connection.tone}>{connection.text}</StatusPill>}
+      >
+        <div className="space-y-4">
+          <div>
+            <div className="flex items-center gap-0.5">
+              <Label htmlFor="portal-url">Handoff address</Label>
+              <HelpTip label="About the handoff address">
+                An https address on the internet. For Pavillon 46, its API&apos;s{' '}
+                <code className="rounded bg-slate-100 px-1 text-xs">/api/integrations/cadence/onboarding</code>.
+              </HelpTip>
+            </div>
+            <div className="relative mt-1">
+              <Link2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
+              <Input
+                id="portal-url"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="https://api.your-portal.com/api/integrations/cadence/onboarding"
+                className="pl-9 font-mono text-sm"
+                disabled={!canEdit}
+              />
+            </div>
+          </div>
 
-        <div className="rounded-xl border border-slate-200 p-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <KeyRound className="h-4 w-4 text-violet-500" />
-            <p className="flex-1 text-sm text-slate-700">
-              Signing secret {settings?.hasSecret ? <span className="font-mono text-slate-500">••••{settings.secretHint}</span> : <span className="text-slate-400">not made yet</span>}
-            </p>
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+            <IconTile icon={KeyRound} tone="violet" size="sm" />
+            <div className="min-w-0 flex-1">
+              <p className="flex items-center gap-0.5 text-sm font-medium text-slate-800">
+                Signing secret
+                <HelpTip label="About the signing secret">
+                  Every handoff is signed with it (X-Cadence-Signature-256, with the time), so the portal knows it came from you
+                  and is not a replay. The portal needs the same secret: in Pavillon 46, its CadenceE onboarding secret setting.
+                </HelpTip>
+              </p>
+              <p className="font-mono text-xs text-slate-500">
+                {settings?.hasSecret ? <>••••••••{settings.secretHint}</> : <span className="font-sans">Not made yet</span>}
+              </p>
+            </div>
             {canEdit && (
               <Button type="button" variant="outline" size="sm" onClick={() => void makeSecret()} disabled={making}>
                 {making ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
@@ -287,193 +316,242 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
               </Button>
             )}
           </div>
+
           {secret && (
-            <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
-              <p className="text-xs font-medium text-amber-800">Shown this once. Give it to the portal (in Pavillon 46, its CadenceE onboarding secret setting).</p>
+            <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="rounded-xl border border-amber-300 bg-amber-50 p-3 dark:border-amber-500/30 dark:bg-amber-500/10">
+              <p className="text-xs font-semibold text-amber-800 dark:text-amber-200">Shown only once: copy it into the portal now.</p>
               <div className="mt-2 flex gap-2">
                 <Input readOnly value={secret} className="font-mono text-xs" aria-label="New signing secret" />
                 <Button type="button" variant="outline" onClick={() => void copy(secret)}><Copy className="h-4 w-4" /> Copy</Button>
               </div>
             </motion.div>
           )}
-          <p className="mt-2 flex items-start gap-1.5 text-xs text-slate-500">
-            <ShieldCheck className="mt-px h-3.5 w-3.5 shrink-0 text-emerald-500" />
-            Every handoff is signed with it (X-Cadence-Signature-256, with the time), so the portal knows it came from you and is not a replay.
-          </p>
         </div>
 
-        {canEdit && settings?.configured && (
-          <div className="flex flex-wrap items-center gap-3">
-            <Button type="button" variant="outline" size="sm" onClick={() => void runTest()} disabled={testing || dirty}>
-              {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlugZap className="h-4 w-4" />} Send a test
-            </Button>
-            {dirty && <span className="text-xs text-slate-500">Save first, then test.</span>}
-            {test && (
-              <span role="status" className={cn('inline-flex items-start gap-1.5 text-sm', test.ok ? 'text-emerald-700' : 'text-rose-700')}>
-                {test.ok ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> : <XCircle className="mt-0.5 h-4 w-4 shrink-0" />} {test.text}
+        {canEdit && (
+          <div className="mt-4 space-y-3 border-t border-slate-200 pt-4 dark:border-white/10">
+            <div className="flex flex-wrap items-center gap-3">
+              <Button type="button" variant="outline" size="sm" onClick={() => void runTest()} disabled={testing || dirty || !settings?.configured}>
+                {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlugZap className="h-4 w-4" />} Send a test
+              </Button>
+              <span className="text-xs text-slate-500">
+                {!settings?.configured ? 'Add the address and the secret, then save, to test.' : dirty ? 'Save first, then test.' : 'Checks the portal and the sender it uses.'}
               </span>
+            </div>
+            {test && (
+              <motion.div
+                role="status"
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={cn(
+                  'flex items-start gap-3 rounded-xl border p-3 text-sm',
+                  test.ok
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100'
+                    : 'border-rose-200 bg-rose-50 text-rose-900 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100',
+                )}
+              >
+                {test.ok
+                  ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden />
+                  : <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" aria-hidden />}
+                <div className="min-w-0">
+                  <p className="font-medium">{test.title}</p>
+                  <p className="break-words text-xs opacity-80">{test.detail}</p>
+                  {test.note && <p className="mt-1 break-words text-xs text-amber-800 dark:text-amber-200">{test.note}</p>}
+                </div>
+              </motion.div>
+            )}
+            {test?.warning && (
+              <p role="alert" className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden />
+                <span><strong>The portal could not report back.</strong> {test.warning}</span>
+              </p>
             )}
           </div>
         )}
-        {test?.warning && (
-          <p role="alert" className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden />
-            <span><strong>The portal could not report back.</strong> {test.warning}</span>
-          </p>
-        )}
-      </section>
+      </SettingsCard>
 
-      <section className="space-y-3">
-        <div>
-          <h3 className="font-semibold text-slate-900">Sent from</h3>
-          <p className="text-sm text-slate-500">
-            The portal sends the welcome through its own mail service, as your organization: under this name, with replies coming back to you.
-          </p>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div>
-            <Label htmlFor="sender-name">Name</Label>
-            <Input
-              id="sender-name"
-              value={senderName}
-              onChange={(e) => setSenderName(e.target.value)}
-              placeholder={settings?.defaultSenderName ?? 'Your organization'}
-              maxLength={100}
-              disabled={!canEdit}
-              className="mt-1.5"
-            />
-          </div>
-          <div>
-            <Label htmlFor="sender-email">From address</Label>
-            <Input
-              id="sender-email"
-              type="email"
-              value={senderEmail}
-              onChange={(e) => setSenderEmail(e.target.value)}
-              placeholder="The portal's own address"
-              maxLength={256}
-              disabled={!canEdit}
-              className="mt-1.5"
-            />
-          </div>
-          <div>
-            <Label htmlFor="reply-to">Replies go to</Label>
-            <Input
-              id="reply-to"
-              type="email"
-              value={replyTo}
-              onChange={(e) => setReplyTo(e.target.value)}
-              placeholder={settings?.defaultReplyTo ?? 'e.g. members@your-club.ch'}
-              maxLength={256}
-              disabled={!canEdit}
-              className="mt-1.5"
-            />
-          </div>
-        </div>
-        <p className="text-xs text-slate-500">
-          A from address works only on a domain the portal's mail service is set up to send for (for Pavillon 46, its own domain).
-          Any other, and it sends from its own address under your name, with replies still coming to you. Send a test to see which it uses.
-        </p>
-      </section>
-
-      <section className="space-y-3">
-        <h3 className="font-semibold text-slate-900">When a lead is converted</h3>
-        <label className="flex items-center gap-3 text-sm text-slate-700">
-          <Switch checked={enabled} onCheckedChange={setEnabled} disabled={!canEdit} aria-label="Offer the welcome by default" />
-          Offer the welcome on every conversion into a deal
-        </label>
-        {/* With the club turned off there are no members to add them to (the server adds nobody). */}
-        {clubOn && (
-          <label className="flex items-center gap-3 text-sm text-slate-700">
-            <Switch checked={addToMembers} onCheckedChange={setAddToMembers} disabled={!canEdit} aria-label="Add to club members" />
-            Also add them to the club's members here, with their start date
-          </label>
-        )}
-        <div className="flex items-center gap-3 text-sm text-slate-700">
-          Language
-          <div className="inline-flex rounded-lg border border-slate-200 p-0.5">
-            {(['fr', 'en'] as const).map((l) => (
-              <button
-                key={l}
-                type="button"
+      <div className="grid gap-5 lg:grid-cols-2">
+        <SettingsCard icon={AtSign} tone="sky" title="Sent from" description="How the welcome shows in their inbox.">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <Label htmlFor="sender-name">Name</Label>
+              <Input
+                id="sender-name"
+                value={senderName}
+                onChange={(e) => setSenderName(e.target.value)}
+                placeholder={settings?.defaultSenderName ?? 'Your organization'}
+                maxLength={100}
                 disabled={!canEdit}
-                aria-pressed={language === l}
-                onClick={() => setLanguage(l)}
-                className={cn('rounded-md px-3 py-1 text-sm font-medium transition', language === l ? 'bg-slate-900 text-white' : 'text-slate-500 hover:text-slate-800')}
-              >
-                {l === 'fr' ? 'Français' : 'English'}
-              </button>
-            ))}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <div className="flex items-center gap-0.5">
+                <Label htmlFor="sender-email">From address</Label>
+                <HelpTip label="About the from address">
+                  The portal sends through its own mail service, which can send only for its own domain (for Pavillon 46, its own).
+                  On any other, it sends from its own address under your name, and replies still come to you. Send a test to see which it uses.
+                </HelpTip>
+              </div>
+              <Input
+                id="sender-email"
+                type="email"
+                value={senderEmail}
+                onChange={(e) => setSenderEmail(e.target.value)}
+                placeholder="The portal's own"
+                maxLength={256}
+                disabled={!canEdit}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label htmlFor="reply-to" className="flex h-7 items-center">Replies go to</Label>
+              <Input
+                id="reply-to"
+                type="email"
+                value={replyTo}
+                onChange={(e) => setReplyTo(e.target.value)}
+                placeholder={settings?.defaultReplyTo ?? 'members@your-club.ch'}
+                maxLength={256}
+                disabled={!canEdit}
+                className="mt-1"
+              />
+            </div>
           </div>
-        </div>
-      </section>
+        </SettingsCard>
 
-      <section className="space-y-3">
-        <div className="flex flex-wrap items-end gap-2">
-          <div>
-            <h3 className="font-semibold text-slate-900">Welcome email</h3>
-            <p className="text-sm text-slate-500">Paste your own HTML, or leave it empty for the portal's design with your message in it.</p>
+        <SettingsCard id={SECTION.conversion} icon={Zap} tone="emerald" title="On conversion" description="When a lead becomes a deal.">
+          <div className="divide-y divide-slate-200 dark:divide-white/10">
+            <SettingRow title="Offer the welcome" hint="On by default for every new deal.">
+              <Switch checked={enabled} onCheckedChange={setEnabled} disabled={!canEdit} aria-label="Offer the welcome by default" />
+            </SettingRow>
+            {/* With the club turned off there are no members to add them to (the server adds nobody). */}
+            {clubOn && (
+              <SettingRow title="Add to club members" hint="Here too, with their start date.">
+                <Switch checked={addToMembers} onCheckedChange={setAddToMembers} disabled={!canEdit} aria-label="Add to club members" />
+              </SettingRow>
+            )}
+            <SettingRow title="Language" hint={`The welcome is written in ${languageName}.`}>
+              <div className="inline-flex rounded-lg bg-slate-100 p-0.5 dark:bg-white/5" role="group" aria-label="Language">
+                {LANGUAGES.map((l) => (
+                  <button
+                    key={l.id}
+                    type="button"
+                    disabled={!canEdit}
+                    aria-pressed={language === l.id}
+                    onClick={() => setLanguage(l.id)}
+                    className={cn(
+                      'rounded-md px-3 py-1.5 text-sm font-medium transition',
+                      language === l.id ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white' : 'text-slate-500 hover:text-slate-800',
+                    )}
+                  >
+                    {l.label}
+                  </button>
+                ))}
+              </div>
+            </SettingRow>
           </div>
-          {canEdit && !html && (
-            <Button type="button" variant="outline" size="sm" className="ml-auto" onClick={() => setHtml(STARTER)}>
-              <Wand2 className="h-4 w-4" /> Start from an example
-            </Button>
-          )}
-        </div>
-        <div className="grid gap-4 xl:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="welcome-subject">Subject</Label>
-            <Input
-              id="welcome-subject"
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              placeholder="Subject, e.g. Bienvenue au club, {{firstName}}"
-              disabled={!canEdit}
-              maxLength={300}
-            />
-            <Label htmlFor="welcome-html" className="pt-1">HTML</Label>
-            <Textarea
-              id="welcome-html"
-              value={html}
-              onChange={(e) => setHtml(e.target.value)}
-              placeholder="<div>…your email's HTML…</div>"
-              rows={16}
-              spellCheck={false}
-              disabled={!canEdit}
-              className="max-h-[28rem] overflow-y-auto bg-slate-950 font-mono text-xs text-emerald-200 placeholder:text-slate-500"
-            />
+        </SettingsCard>
+      </div>
+
+      <SettingsCard
+        id={SECTION.email}
+        icon={Mail}
+        tone="orange"
+        title="Welcome email"
+        description="Your own HTML, or the portal's design when left empty."
+        aside={canEdit && !html && (
+          <Button type="button" variant="outline" size="sm" onClick={() => setHtml(STARTER)}>
+            <Wand2 className="h-4 w-4" /> Start from an example
+          </Button>
+        )}
+      >
+        <div className="grid gap-6 xl:grid-cols-2">
+          <div className="min-w-0 space-y-3">
+            <div>
+              <Label htmlFor="welcome-subject">Subject</Label>
+              <Input
+                id="welcome-subject"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                placeholder="Bienvenue au club, {{firstName}}"
+                disabled={!canEdit}
+                maxLength={300}
+                className="mt-1"
+              />
+            </div>
+
+            <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-950 shadow-sm">
+              <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2">
+                <span className="flex gap-1.5" aria-hidden>
+                  <span className="h-2.5 w-2.5 rounded-full bg-rose-400/80" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-amber-400/80" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/80" />
+                </span>
+                <Label htmlFor="welcome-html" className="ml-1 font-mono text-xs font-medium text-slate-300">HTML</Label>
+                <span className="ml-auto text-[11px] text-slate-400">
+                  {html.trim() ? `${html.split('\n').length} lines` : 'Empty: the portal’s design'}
+                </span>
+              </div>
+              <Textarea
+                id="welcome-html"
+                value={html}
+                onChange={(e) => setHtml(e.target.value)}
+                placeholder="<div>…your email's HTML…</div>"
+                rows={14}
+                spellCheck={false}
+                disabled={!canEdit}
+                className="max-h-[28rem] min-h-[11rem] overflow-y-auto rounded-none border-0 bg-transparent font-mono text-xs leading-relaxed text-emerald-200 shadow-none placeholder:text-slate-500 hover:border-0 focus-visible:ring-0 dark:bg-transparent"
+              />
+            </div>
+
             {/<style[\s>]/i.test(html.replace(/<!--[\s\S]*?-->/g, '')) && (
-              <p className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900">
+              <p className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
                 <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0 text-amber-600" aria-hidden />
                 <span>
-                  This email has a <code className="rounded bg-amber-100 px-1">&lt;style&gt;</code> block. The portal removes it before sending,
-                  so anything it does (a phone layout, say) is lost: put the styles you need inline, on each element.
+                  This email has a <code className="rounded bg-amber-100 px-1 dark:bg-amber-500/20">&lt;style&gt;</code> block. The portal removes it before sending,
+                  so put the styles you need inline, on each element.
                 </span>
               </p>
             )}
+
             <EmailImageTools html={html} onChange={setHtml} textareaId="welcome-html" disabled={!canEdit} />
+
             {canEdit && settings && (
-              <>
-                <PlaceholderChips fields={settings.cadenceFields} tone="orange" onPick={(t) => setHtml(insertAt('welcome-html', html, t))} />
-                <PlaceholderChips fields={settings.receiverFields} tone="violet" onPick={(t) => setHtml(insertAt('welcome-html', html, t))} />
-                <p className="text-[11px] text-slate-500">
-                  <span className="text-orange-600">Orange</span>: filled by CadenceE, as text. <span className="text-violet-600">Violet</span>: filled by the portal when it sends. Give any a fallback: {'{{firstName|there}}'}.
-                  The portal keeps inline styles only: before sending it removes <code>&lt;style&gt;</code> blocks, scripts, anything else unsafe, and images that are not https.
-                </p>
-              </>
+              <div className="rounded-xl border border-slate-200 p-3">
+                <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                  <span className="font-medium text-slate-700">Insert a field</span>
+                  <span className="inline-flex items-center gap-1 text-slate-500"><span className="h-2 w-2 rounded-full bg-orange-400" aria-hidden /> CadenceE fills</span>
+                  <span className="inline-flex items-center gap-1 text-slate-500"><span className="h-2 w-2 rounded-full bg-violet-400" aria-hidden /> Portal fills</span>
+                  <HelpTip label="About fields" className="-my-1 ml-auto">
+                    Orange fields are filled by CadenceE, as text; violet ones by the portal when it sends. Give any a fallback:{' '}
+                    <code className="rounded bg-slate-100 px-1 text-xs">{'{{firstName|there}}'}</code>. The portal keeps inline styles only:
+                    before sending it removes <code className="text-xs">&lt;style&gt;</code> blocks, scripts, anything else unsafe, and images that are not https.
+                  </HelpTip>
+                </div>
+                <div className="space-y-1.5">
+                  <PlaceholderChips fields={settings.cadenceFields} tone="orange" onPick={(t) => setHtml(insertAt('welcome-html', html, t))} />
+                  <PlaceholderChips fields={settings.receiverFields} tone="violet" onPick={(t) => setHtml(insertAt('welcome-html', html, t))} />
+                </div>
+              </div>
             )}
           </div>
-          <div className="space-y-2">
+
+          <div className="min-w-0 space-y-2 xl:sticky xl:top-4 xl:self-start">
             <div className="flex items-center gap-2">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Preview, for a sample member</p>
-              <div className="ml-auto inline-flex rounded-lg border border-slate-200 p-0.5" role="group" aria-label="Preview size">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Preview</p>
+              <span className="truncate text-xs text-slate-400">for a sample member</span>
+              <div className="ml-auto inline-flex rounded-lg bg-slate-100 p-0.5 dark:bg-white/5" role="group" aria-label="Preview size">
                 {([['desktop', Monitor, 'Desktop'], ['phone', Smartphone, 'Phone']] as const).map(([d, Icon, label]) => (
                   <button
                     key={d}
                     type="button"
                     aria-pressed={device === d}
                     onClick={() => setDevice(d)}
-                    className={cn('inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition', device === d ? 'bg-slate-900 text-white' : 'text-slate-500 hover:text-slate-800')}
+                    className={cn(
+                      'inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition',
+                      device === d ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white' : 'text-slate-500 hover:text-slate-800',
+                    )}
                   >
                     <Icon className="h-3.5 w-3.5" aria-hidden /> {label}
                   </button>
@@ -494,27 +572,40 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
             )}
           </div>
         </div>
-      </section>
+      </SettingsCard>
 
       {canEdit && (
-        // Room on the right for the help button that floats over the page's corner.
-        <div className="sticky bottom-0 -mx-6 flex items-center gap-3 border-t border-slate-100 bg-white/90 py-3 pl-6 pr-20 backdrop-blur">
-          {dirty ? (
-            <span className="inline-flex items-center gap-2 text-sm font-medium text-amber-700" role="status">
-              <span className="h-2 w-2 rounded-full bg-amber-500" aria-hidden /> Unsaved changes
-            </span>
-          ) : (
-            <span className="text-sm text-slate-400">All changes saved</span>
-          )}
-          <div className="ml-auto flex items-center gap-2">
-            {dirty && (
-              <Button type="button" variant="ghost" onClick={() => settings && take(settings)} disabled={saving}>
-                <RotateCcw className="h-4 w-4" /> Discard
-              </Button>
+        // Clear of the help button that floats over the page's bottom right corner.
+        <div className="sticky bottom-4 z-20 mr-16">
+          <div
+            className={cn(
+              'flex items-center gap-3 rounded-2xl border px-4 py-2.5 shadow-lg backdrop-blur transition-colors',
+              dirty ? 'border-amber-200 bg-white/95 dark:border-amber-500/30' : 'border-slate-200 bg-white/90',
             )}
-            <Button type="button" onClick={() => void save()} disabled={saving || !dirty} className="bg-gradient-to-r from-orange-500 to-pink-500 text-white">
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save
-            </Button>
+          >
+            {dirty ? (
+              <span className="inline-flex items-center gap-2 whitespace-nowrap text-sm font-medium text-amber-700" role="status">
+                <span className="relative flex h-2 w-2" aria-hidden>
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-60 motion-reduce:animate-none" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
+                </span>
+                Unsaved changes
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-sm text-slate-500">
+                <CheckCircle2 className="h-4 w-4 text-emerald-500" aria-hidden /> <span className="max-sm:sr-only">All changes saved</span>
+              </span>
+            )}
+            <div className="ml-auto flex items-center gap-2">
+              {dirty && (
+                <Button type="button" variant="ghost" size="sm" onClick={() => settings && take(settings)} disabled={saving}>
+                  <RotateCcw className="h-4 w-4" /> Discard
+                </Button>
+              )}
+              <Button type="button" size="sm" onClick={() => void save()} disabled={saving || !dirty} className="bg-gradient-to-r from-orange-500 to-pink-500 text-white">
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save
+              </Button>
+            </div>
           </div>
         </div>
       )}
@@ -522,14 +613,64 @@ export function WelcomePortalSection({ currentOrg }: { currentOrg: Organization 
   );
 }
 
-function Heading() {
+/** A setting on one line: what it is, a few words about it, and its control on the right. */
+function SettingRow({ title, hint, children }: { title: string; hint: string; children: ReactNode }) {
   return (
-    <div>
-      <h2 className="flex items-center gap-2 text-xl font-semibold text-slate-900">
-        <MessageSquareHeart className="h-5 w-5 text-orange-600" />
-        Welcome &amp; portal
-      </h2>
-      <p className="mt-1 text-sm text-slate-600">When a lead becomes a deal, hand them to your member portal with a welcome email.</p>
+    <div className="flex items-center gap-4 py-3 first:pt-0 last:pb-0">
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-slate-800">{title}</p>
+        <p className="text-xs text-slate-500">{hint}</p>
+      </div>
+      {children}
     </div>
+  );
+}
+
+type FlowStep = {
+  icon: ComponentType<{ className?: string }>;
+  title: string;
+  text: string;
+  target: string;
+  status: { tone: PillTone; text: string };
+};
+
+/** The three steps from a converted lead to a welcomed member, each with where it stands; a step takes you to its settings. */
+function FlowOverview({ steps }: { steps: FlowStep[] }) {
+  const go = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  return (
+    <nav
+      aria-label="How a new member is welcomed"
+      className="rounded-2xl border border-orange-100 bg-gradient-to-br from-orange-50 via-white to-pink-50 p-2 dark:border-white/10 dark:from-orange-500/10 dark:via-transparent dark:to-pink-500/10"
+    >
+      <ol className="grid gap-1 sm:grid-cols-3">
+        {steps.map((step, i) => (
+          <li key={step.title} className="relative">
+            <button
+              type="button"
+              onClick={() => go(step.target)}
+              className="group flex w-full items-center gap-3 rounded-xl p-3 text-left transition hover:bg-white/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 dark:hover:bg-white/5"
+            >
+              <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-pink-500 text-white shadow-md shadow-orange-500/25">
+                <step.icon className="h-[18px] w-[18px]" aria-hidden />
+                <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-white text-[10px] font-bold text-orange-600 ring-1 ring-orange-200 dark:bg-slate-900">
+                  {i + 1}
+                </span>
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-slate-900">{step.title}</span>
+                <span className="block truncate text-xs text-slate-500">{step.text}</span>
+                <StatusPill tone={step.status.tone} className="mt-1.5">{step.status.text}</StatusPill>
+              </span>
+            </button>
+            {i < steps.length - 1 && (
+              <ArrowRight
+                className="pointer-events-none absolute -right-2.5 top-1/2 z-10 hidden h-4 w-4 -translate-y-1/2 text-orange-300 sm:block"
+                aria-hidden
+              />
+            )}
+          </li>
+        ))}
+      </ol>
+    </nav>
   );
 }

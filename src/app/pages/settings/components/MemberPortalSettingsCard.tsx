@@ -3,13 +3,13 @@
 // inviting members (club.members), and who has used it, with a way to sign someone out.
 //
 // It starts off in every workspace. When the workspace also hands new members to its own
-// portal (the handoff further down this tab), this says so plainly: members would then have
+// portal (the Welcome handoff view of this tab), this says so plainly: members would then have
 // two places to sign in.
 
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { AlertTriangle, CheckCircle2, Copy, DoorOpen, Loader2, Lock, Mail, Send, UserX } from 'lucide-react';
+import { AlertTriangle, Clock, Copy, DoorOpen, ExternalLink, Globe, Loader2, Lock, Mail, Search, Send, UserX, Users } from 'lucide-react';
 import { ApiError, servesDemoData } from '@/app/api/apiClient';
 import { orgCan, PERMISSION } from '@/app/api/organizations';
 import {
@@ -26,6 +26,7 @@ import { cn } from '@/app/components/ui/utils';
 import { queryKeys } from '@/app/hooks/queries/queryKeys';
 import { useWorkspaceScope } from '@/app/hooks/queries/useWorkspaceScope';
 import { useFormat } from '@/app/i18n';
+import { HelpTip, SettingsCard, StatusPill } from './SettingsCard';
 
 const SHOWN = 100;
 
@@ -148,175 +149,211 @@ export function MemberPortalSettingsCard() {
     }
   };
 
+  const switchAside = s && (
+    <>
+      <StatusPill tone={s.enabled ? 'good' : 'idle'}>{s.enabled ? 'On' : 'Off'}</StatusPill>
+      <Switch
+        checked={s.enabled}
+        onCheckedChange={toggle}
+        disabled={!canManage || save.isPending}
+        aria-label="Members can sign in to the member portal"
+      />
+    </>
+  );
+
   return (
-    <section aria-labelledby="member-portal-heading" className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5">
-      <div className="flex flex-wrap items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <h3 id="member-portal-heading" className="flex items-center gap-2 text-lg font-semibold text-slate-900">
-            <DoorOpen className="h-5 w-5 text-pink-600" aria-hidden /> Member portal
-          </h3>
-          <p className="mt-1 text-sm text-slate-600">
-            Your members sign in with a link emailed to them, no password, to see their statements and pay, sign up for events,
-            book, and choose what they hear from you, in French, German or English. Each member sees only their own account
-            (and, for a household&apos;s primary member, the household&apos;s).
-          </p>
-        </div>
-        {s && (
-          <span className={cn(
-            'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold',
-            s.enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500',
-          )}>
-            {s.enabled ? <CheckCircle2 className="h-3.5 w-3.5" aria-hidden /> : null}
-            {s.enabled ? 'On' : 'Off'}
-          </span>
+    <div className="space-y-5">
+      <SettingsCard
+        icon={DoorOpen}
+        tone="pink"
+        title={(
+          <>
+            Member portal
+            <HelpTip label="About the member portal">
+              Your members sign in with a link emailed to them, no password, to see their statements and pay, sign up for events,
+              book, and choose what they hear from you, in French, German or English. Each member sees only their own account
+              (and, for a household&apos;s primary member, the household&apos;s).
+            </HelpTip>
+          </>
         )}
-      </div>
-
-      {settings.isError ? (
-        <LoadFailed what="The member portal's settings" error={settings.error} onRetry={() => void settings.refetch()} retrying={settings.isFetching} />
-      ) : !s ? (
-        <p className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Loading…</p>
-      ) : (
-        <>
-          {s.handsOverToOwnPortal && (
-            <div role="status" className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden />
-              <p>
-                {s.enabled ? (
-                  <><strong>Your members have two places to sign in.</strong> This workspace also hands new members to your own portal (the handoff below), which sends them its own welcome. Tell them which one to use, or turn one of the two off.</>
-                ) : (
-                  <><strong>This workspace hands new members to your own portal</strong> (the handoff below). Turning the member portal on gives them a second place to sign in: say in your welcome which one to use, or turn the handoff off.</>
-                )}
-              </p>
-            </div>
-          )}
-
-          {!canManage && (
-            <p className="flex items-start gap-2 text-sm text-slate-600">
-              <Lock className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden />
-              Turning the portal on or off and its rules take the Manage settings permission.
-            </p>
-          )}
-
-          <label className="flex items-center gap-3 text-sm text-slate-800">
-            <Switch
-              checked={s.enabled}
-              onCheckedChange={toggle}
-              disabled={!canManage || save.isPending}
-              aria-label="Members can sign in to the member portal"
-            />
-            Members can sign in to the member portal
-          </label>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <Label htmlFor="portal-cancel-hours">Members may cancel there up to</Label>
-              <div className="mt-1.5 flex items-center gap-2">
-                <Input
-                  id="portal-cancel-hours"
-                  type="number"
-                  min={0}
-                  max={720}
-                  value={hours}
-                  onChange={(e) => setHours(e.target.value)}
-                  disabled={!canManage}
-                  className="w-24"
-                />
-                <span className="text-sm text-slate-600">hours before the start</span>
-                {canManage && hours !== String(s.memberCancelHours) && (
-                  <Button type="button" variant="outline" size="sm" onClick={saveHours} disabled={save.isPending}>Save</Button>
-                )}
-              </div>
-              <p className="mt-1 text-xs text-slate-500">
-                For a place on an event and a booking. Closer to the start, they ask you. Members book only the resources you open to
-                them (Reservations, Resources: members can book it in the portal).
-              </p>
-            </div>
-            {s.portalUrl && (
-              <div>
-                <Label htmlFor="portal-url-copy">Its address</Label>
-                <div className="mt-1.5 flex gap-2">
-                  <Input id="portal-url-copy" readOnly value={s.portalUrl} className="font-mono text-xs" />
-                  <Button type="button" variant="outline" onClick={() => void copy(s.portalUrl!)}><Copy className="h-4 w-4" aria-hidden /> Copy</Button>
-                </div>
-                <p className="mt-1 text-xs text-slate-500">
-                  {s.enabled ? 'Put it on your website: members ask for their sign-in link there.' : 'It opens once the portal is on.'}
+        description="Members sign in by emailed link to pay, book and sign up."
+        aside={switchAside}
+      >
+        {settings.isError ? (
+          <LoadFailed what="The member portal's settings" error={settings.error} onRetry={() => void settings.refetch()} retrying={settings.isFetching} />
+        ) : !s ? (
+          <p className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Loading…</p>
+        ) : (
+          <div className="space-y-4">
+            {s.handsOverToOwnPortal && (
+              <div role="status" className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden />
+                <p>
+                  {s.enabled ? (
+                    <><strong>Your members have two places to sign in.</strong> This workspace also hands new members to your own portal, which sends its own welcome. Tell them which to use, or turn one off.</>
+                  ) : (
+                    <><strong>This workspace hands new members to your own portal.</strong> Turning this on gives them a second place to sign in.</>
+                  )}
                 </p>
               </div>
             )}
-          </div>
 
-          <div className="space-y-3 border-t border-slate-100 pt-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="min-w-0 flex-1">
-                <h4 className="font-medium text-slate-900">Members</h4>
-                <p className="text-sm text-slate-500">
-                  {usage.data ? `${signedIn} of ${people.length} have signed in; ${invited} invited.` : 'Who was invited, and who has signed in.'}
-                </p>
+            {!canManage && (
+              <p className="flex items-center gap-2 text-xs text-slate-500">
+                <Lock className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
+                Turning the portal on or off and its rules take the Manage settings permission.
+              </p>
+            )}
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                <div className="flex items-center gap-1.5">
+                  <Clock className="h-4 w-4 text-slate-400" aria-hidden />
+                  <Label htmlFor="portal-cancel-hours">Members can cancel up to</Label>
+                  <HelpTip label="About cancelling in the portal">
+                    For a place on an event and a booking. Closer to the start, they ask you. Members book only the resources you open to
+                    them (Reservations, Resources: members can book it in the portal).
+                  </HelpTip>
+                </div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  <Input
+                    id="portal-cancel-hours"
+                    type="number"
+                    min={0}
+                    max={720}
+                    value={hours}
+                    onChange={(e) => setHours(e.target.value)}
+                    disabled={!canManage}
+                    className="w-20 bg-white text-center tabular-nums"
+                  />
+                  <span className="text-sm text-slate-600">hours before the start</span>
+                  {canManage && hours !== String(s.memberCancelHours) && (
+                    <Button type="button" size="sm" onClick={saveHours} disabled={save.isPending}>Save</Button>
+                  )}
+                </div>
               </div>
-              {canInvite && s.enabled && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={inviteAll.isPending}
-                  onClick={() => {
-                    if (window.confirm('Email an invitation to every member with an email address who has not been invited yet? It is sent from your Welcome & portal sender, in each member’s language.')) inviteAll.mutate();
-                  }}
-                >
-                  {inviteAll.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Send className="h-4 w-4" aria-hidden />} Invite every member
-                </Button>
+              {s.portalUrl && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                  <div className="flex h-7 items-center gap-1.5">
+                    <Globe className="h-4 w-4 text-slate-400" aria-hidden />
+                    <Label htmlFor="portal-url-copy">Portal address</Label>
+                  </div>
+                  <div className="mt-1.5 flex gap-2">
+                    <Input id="portal-url-copy" readOnly value={s.portalUrl} className="bg-white font-mono text-xs" />
+                    <Button type="button" variant="outline" onClick={() => void copy(s.portalUrl!)}><Copy className="h-4 w-4" aria-hidden /> Copy</Button>
+                    {s.enabled && (
+                      <Button asChild variant="outline" size="icon" aria-label="Open the member portal">
+                        <a href={s.portalUrl} target="_blank" rel="noreferrer"><ExternalLink className="h-4 w-4" aria-hidden /></a>
+                      </Button>
+                    )}
+                  </div>
+                  <p className="mt-1.5 text-xs text-slate-500">
+                    {s.enabled ? 'Put it on your website: members ask for their link there.' : 'It opens once the portal is on.'}
+                  </p>
+                </div>
               )}
             </div>
-            {inviteResult && <p role="status" className="rounded-lg bg-slate-50 p-3 text-sm text-slate-700">{inviteResult}</p>}
+          </div>
+        )}
+      </SettingsCard>
+
+      {s && (
+        <SettingsCard
+          icon={Users}
+          tone="violet"
+          title="Members"
+          description="Who was invited, and who has signed in."
+          aside={canInvite && s.enabled && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={inviteAll.isPending}
+              onClick={() => {
+                if (window.confirm('Email an invitation to every member with an email address who has not been invited yet? It is sent from your Welcome & portal sender, in each member’s language.')) inviteAll.mutate();
+              }}
+            >
+              {inviteAll.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Send className="h-4 w-4" aria-hidden />} Invite every member
+            </Button>
+          )}
+        >
+          <div className="space-y-4">
+            {usage.data && (
+              <dl aria-label="Members at a glance" className="grid grid-cols-3 gap-2 sm:gap-3">
+                <Stat label="Members" value={people.length} />
+                <Stat label="Invited" value={invited} of={people.length} tone="bg-sky-500" />
+                <Stat label="Signed in" value={signedIn} of={people.length} tone="bg-emerald-500" />
+              </dl>
+            )}
+            {inviteResult && <p role="status" className="rounded-xl bg-slate-50 p-3 text-sm text-slate-700">{inviteResult}</p>}
             {!s.enabled && <p className="text-sm text-slate-500">Members can be invited once the portal is on.</p>}
 
             {usage.isError ? (
               <LoadFailed what="Who has used the member portal" error={usage.error} onRetry={() => void usage.refetch()} retrying={usage.isFetching} />
             ) : !usage.data ? (
-              <p className="text-sm text-slate-500">Loading…</p>
+              <p className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Loading…</p>
             ) : people.length === 0 ? (
-              <p className="text-sm text-slate-500">No members yet.</p>
+              <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-200 p-8 text-center">
+                <Users className="h-6 w-6 text-slate-300" aria-hidden />
+                <p className="text-sm text-slate-500">No members yet.</p>
+              </div>
             ) : (
               <>
-                <Input
-                  type="search"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Find a member"
-                  aria-label="Find a member"
-                  className="max-w-xs"
-                />
-                <div className="overflow-x-auto">
+                <div className="relative max-w-xs">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
+                  <Input
+                    type="search"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Find a member"
+                    aria-label="Find a member"
+                    className="pl-9"
+                  />
+                </div>
+                <div className="-mx-4 overflow-x-auto sm:mx-0">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
-                        <th scope="col" className="py-2 pr-3 font-medium">Member</th>
-                        <th scope="col" className="py-2 pr-3 font-medium">Invited</th>
-                        <th scope="col" className="py-2 pr-3 font-medium">Last signed in</th>
-                        <th scope="col" className="py-2 pr-3 font-medium">Signed in on</th>
-                        <th scope="col" className="py-2 font-medium"><span className="sr-only">Actions</span></th>
+                      <tr className="border-b border-slate-200 text-left text-xs text-slate-500">
+                        <th scope="col" className="py-2 pl-4 pr-3 font-medium sm:pl-0">Member</th>
+                        <th scope="col" className="py-2 pr-3 font-medium">Portal</th>
+                        <th scope="col" className="hidden py-2 pr-3 font-medium md:table-cell">Last signed in</th>
+                        <th scope="col" className="hidden py-2 pr-3 font-medium md:table-cell">Devices</th>
+                        <th scope="col" className="py-2 pr-4 font-medium sm:pr-0"><span className="sr-only">Actions</span></th>
                       </tr>
                     </thead>
                     <tbody>
                       {matching.slice(0, SHOWN).map((p) => (
-                        <tr key={p.memberId} className="border-b border-slate-100 last:border-0">
-                          <td className="py-2 pr-3">
-                            <span className="block font-medium text-slate-900">{p.name}</span>
-                            <span className="block text-xs text-slate-500">
-                              {p.email ?? 'No email address'}
-                              {p.fromHandoff && ' · handed to your own portal too'}
-                            </span>
+                        <tr key={p.memberId} className="border-b border-slate-100 transition-colors last:border-0 hover:bg-slate-50/60 dark:border-white/5">
+                          <td className="py-2.5 pl-4 pr-3 sm:pl-0">
+                            <div className="flex items-center gap-3">
+                              <span aria-hidden className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-pink-100 to-orange-100 text-xs font-semibold text-pink-700 dark:from-pink-500/20 dark:to-orange-500/20 dark:text-pink-200">
+                                {initials(p.name)}
+                              </span>
+                              <div className="min-w-0">
+                                <span className="block truncate font-medium text-slate-900">{p.name}</span>
+                                <span className="block truncate text-xs text-slate-500">
+                                  {p.email ?? 'No email address'}
+                                  {p.fromHandoff && ' · also in your own portal'}
+                                </span>
+                              </div>
+                            </div>
                           </td>
-                          <td className="whitespace-nowrap py-2 pr-3 text-slate-600">
-                            {p.invitedAtUtc ? f.date(p.invitedAtUtc) : '—'}
-                            {p.invitationsSent > 1 && <span className="text-xs text-slate-400"> ({p.invitationsSent}×)</span>}
+                          <td className="whitespace-nowrap py-2.5 pr-3">
+                            {p.firstSignInAtUtc ? (
+                              <StatusPill tone="good">Signed in</StatusPill>
+                            ) : p.invitedAtUtc ? (
+                              <StatusPill tone="info">
+                                Invited {f.date(p.invitedAtUtc)}{p.invitationsSent > 1 && ` (${p.invitationsSent}×)`}
+                              </StatusPill>
+                            ) : (
+                              <StatusPill tone="idle">Not invited</StatusPill>
+                            )}
                           </td>
-                          <td className="whitespace-nowrap py-2 pr-3 text-slate-600">{p.lastSeenAtUtc ? f.dateTime(p.lastSeenAtUtc) : 'Never'}</td>
-                          <td className="py-2 pr-3 text-slate-600">
+                          <td className="hidden whitespace-nowrap py-2.5 pr-3 text-slate-600 md:table-cell">{p.lastSeenAtUtc ? f.dateTime(p.lastSeenAtUtc) : 'Never'}</td>
+                          <td className="hidden py-2.5 pr-3 text-slate-600 md:table-cell">
                             {p.activeSessions > 0 ? `${p.activeSessions} device${p.activeSessions === 1 ? '' : 's'}` : '—'}
                           </td>
-                          <td className="py-2 text-right">
+                          <td className="py-2.5 pr-4 text-right sm:pr-0">
                             <div className="flex justify-end gap-1.5">
                               {canInvite && s.enabled && p.canInvite && (
                                 <Button
@@ -355,8 +392,35 @@ export function MemberPortalSettingsCard() {
               </>
             )}
           </div>
-        </>
+        </SettingsCard>
       )}
-    </section>
+    </div>
+  );
+}
+
+/** "Anna Keller" → "AK"; one name, its first two letters. */
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const first = parts[0] ?? '';
+  const last = parts.length > 1 ? parts[parts.length - 1] ?? '' : '';
+  return (last ? (first[0] ?? '') + (last[0] ?? '') : first.slice(0, 2)).toUpperCase() || '?';
+}
+
+/** A count, and for a share of the members, a bar of how far along it is. */
+function Stat({ label, value, of, tone }: { label: string; value: number; of?: number; tone?: string }) {
+  const share = of ? Math.round((value / of) * 100) : 0;
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+      <dt className="text-xs font-medium text-slate-500">{label}</dt>
+      <dd className="mt-0.5 text-2xl font-semibold tabular-nums text-slate-900">
+        {value}
+        {of !== undefined && <span className="ml-1 text-sm font-normal text-slate-400">/ {of}</span>}
+      </dd>
+      {of !== undefined && (
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-white/10" aria-hidden>
+          <div className={cn('h-full rounded-full transition-[width] duration-500', tone)} style={{ width: `${share}%` }} />
+        </div>
+      )}
+    </div>
   );
 }
