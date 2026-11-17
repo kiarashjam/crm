@@ -28,6 +28,8 @@ public class LeadService : ILeadService
     private readonly ICollaborationNotifier? _notifier;
     private readonly ILogger<LeadService> _logger;
 
+    private readonly IReferralHandoffSync? _referralSync;
+
     public LeadService(
         ILeadRepository repository, 
         ICompanyRepository companyRepository, 
@@ -44,8 +46,10 @@ public class LeadService : ILeadService
         IDealStageRepository? stages = null,
         ICollaborationNotifier? notifier = null,
         IClubHouseholds? households = null,
-        IPipelineRepository? pipelines = null)
+        IPipelineRepository? pipelines = null,
+        IReferralHandoffSync? referralSync = null)
     {
+        _referralSync = referralSync;
         _households = households;
         _pipelines = pipelines;
         _repository = repository;
@@ -584,6 +588,9 @@ public class LeadService : ILeadService
         var updated = await _repository.SetReferralAsync(id, userId, organizationId, contactId, ct);
         if (updated == null) return DomainErrors.Lead.NotFound;
         _logger.LogInformation("Lead {LeadId} referral set to {ContactId}", id, contactId);
+        // Someone already welcomed on the portal: it hears who referred them, and credits that member.
+        if (contactId != null && organizationId is Guid org && _referralSync != null)
+            await _referralSync.LeadReferrerChangedAsync(org, id, ct);
         return Map(updated);
     }
 
@@ -604,6 +611,30 @@ public class LeadService : ILeadService
     /// A referrer has to be a contact this workspace can see, still active, and not the
     /// contact this same lead became: a lead cannot refer itself.
     /// </summary>
+    /// <inheritdoc />
+    public async Task<Guid?> ReferrerContactAsync(Guid userId, Guid organizationId, string? name, string? email, CancellationToken ct = default)
+    {
+        var address = email?.Trim() ?? "";
+        var at = address.IndexOf('@');
+        if (at < 1 || at == address.Length - 1 || address.Length > 254) return null;
+        var found = await _contactRepository.GetByEmailAsync(address, userId, organizationId, ct);
+        if (found != null) return found.IsArchived ? null : found.Id;
+
+        var who = string.IsNullOrWhiteSpace(name) ? address[..at] : name.Trim();
+        var contact = await _contactRepository.AddAsync(new Contact
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            OrganizationId = organizationId,
+            Name = who.Length > 200 ? who[..200] : who,
+            Email = address,
+            Description = "Referred someone to the workspace.",
+            CreatedAtUtc = DateTime.UtcNow,
+        }, ct);
+        _logger.LogInformation("Contact {ContactId} made for the referrer of a lead from a website", contact.Id);
+        return contact.Id;
+    }
+
     private async Task<Result> CheckReferrerAsync(Guid contactId, Lead? lead, Guid userId, Guid? organizationId, CancellationToken ct)
     {
         var contact = await _contactRepository.GetByIdAsync(contactId, userId, organizationId, ct);
