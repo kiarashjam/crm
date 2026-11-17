@@ -198,7 +198,7 @@ public class ContractToMemberFlowTests
         var (lead, contact, deal) = await DealAsync(club);
         await HandOverAsync(club, deal, lead);
         var handedOver = await Read(app, db => db.ClubMembers.IgnoreQueryFilters().Single());
-        (handedOver.Status, handedOver.DealId).Should().Be(("Pending", (Guid?)deal));
+        (handedOver.Status, handedOver.DealId).Should().Be(("Active", (Guid?)deal), "the welcome makes them a member at once");
 
         var (contract, token) = await SignedOnDealAsync(app, club.Owner, deal);
         await Json(await CountersignAsync(club.Owner, contract), "countersign before the deposit is paid");
@@ -407,7 +407,7 @@ public class ContractToMemberFlowTests
         var (lead, _, deal) = await DealAsync(club);
         await HandOverAsync(club, deal, lead);
         var handedOver = await Read(app, db => db.ClubMembers.IgnoreQueryFilters().Single());
-        (handedOver.Status, handedOver.StartUndetermined).Should().Be(("Pending", true), "the hand-over left the start to be decided");
+        (handedOver.Status, handedOver.StartUndetermined).Should().Be(("Active", true), "a member at once, with the start left to be decided");
 
         var (contract, _) = await SignedOnDealAsync(app, club.Owner, deal, deposit: null);
         await Json(await CountersignAsync(club.Owner, contract), "countersign");
