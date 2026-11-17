@@ -88,8 +88,9 @@ function serve({ setupOver = {}, send }: { setupOver?: Partial<NewsletterSetup>;
       return HttpResponse.json(preview());
     }),
     http.post(`${API}/test`, async ({ request }) => {
-      asked.test.push((await request.json()) as Record<string, unknown>);
-      return HttpResponse.json({ to: 'owner@pavillon46.ch', status: 'sent' });
+      const body = (await request.json()) as Record<string, unknown>;
+      asked.test.push(body);
+      return HttpResponse.json({ to: (body.to as string | null) ?? 'owner@pavillon46.ch', status: 'sent' });
     }),
     http.post(`${API}/send`, async ({ request }) => {
       asked.send.push((await request.json()) as NewsletterSendRequest);
@@ -257,7 +258,7 @@ describe('inviting leads to a meeting', () => {
     expect(screen.getByLabelText('Button')).toHaveValue('Book my meeting');
   });
 
-  it('sends a test to the person asking, and says where it went', async () => {
+  it('sends a test to the person asking, or to anyone typed, and says where it went', async () => {
     serve();
     const user = userEvent.setup();
     await open(user);
@@ -267,7 +268,15 @@ describe('inviting leads to a meeting', () => {
     await user.click(screen.getByRole('button', { name: /Send test/ }));
     expect(await screen.findByText('Sent to owner@pavillon46.ch.')).toBeInTheDocument();
     expect(asked.test).toHaveLength(1);
-    expect(asked.test[0]).toMatchObject({ language: 'fr', sampleLeadId: LEA });
+    expect(asked.test[0]).toMatchObject({ language: 'fr', sampleLeadId: LEA, to: 'owner@pavillon46.ch' });
+
+    // Or to anyone typed: a colleague, a second inbox.
+    const to = screen.getByLabelText(/Send a test to/);
+    await user.clear(to);
+    await user.type(to, 'pierre@pavillon46.ch');
+    await user.click(screen.getByRole('button', { name: /Send test/ }));
+    expect(await screen.findByText('Sent to pierre@pavillon46.ch.')).toBeInTheDocument();
+    expect(asked.test[1]).toMatchObject({ to: 'pierre@pavillon46.ch' });
   });
 
   it('sends after a confirm, once, and shows what went', async () => {

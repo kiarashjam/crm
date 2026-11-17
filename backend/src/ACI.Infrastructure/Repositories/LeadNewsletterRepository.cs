@@ -117,7 +117,20 @@ public sealed class LeadNewsletterRepository : ILeadNewsletterRepository
                 if (markedLeads.Contains(lead.Id) || (lead.ConvertedToContactId is Guid contact && markedContacts.Contains(contact)))
                     stopped.Add(lead.Id);
         }
-        return new NewsletterUnreachable(stopped, suppressed);
+        // A meeting booked and still to come: they have already answered the invitation.
+        var booked = new HashSet<Guid>();
+        var now = DateTime.UtcNow;
+        foreach (var slice in leads.Chunk(Slice))
+        {
+            var leadIds = slice.Select(l => l.Id).ToList();
+            booked.UnionWith(await _db.MeetingBookings.AsNoTracking()
+                .Where(b => b.OrganizationId == organizationId && leadIds.Contains(b.LeadId)
+                    && b.Status == MeetingBookingStatuses.Booked && b.StartsAtUtc >= now)
+                .Select(b => b.LeadId)
+                .Distinct()
+                .ToListAsync(ct));
+        }
+        return new NewsletterUnreachable(stopped, suppressed, booked);
     }
 
     public Task<LeadNewsletter?> GetAsync(Guid organizationId, Guid id, CancellationToken ct = default) =>

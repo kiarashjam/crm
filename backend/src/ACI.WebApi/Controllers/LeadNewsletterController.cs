@@ -57,12 +57,12 @@ public class LeadNewsletterController : ControllerBase
         return (await _newsletters.PreviewAsync(org, userId, request, ct)).ToActionResult();
     }
 
-    /// <summary>The email as the preview shows it, marked as a test, to the caller's own address and nobody else.</summary>
+    /// <summary>The email as the preview shows it, marked as a test, to the address given, or the caller's own.</summary>
     [HttpPost("test")]
     [Requires(MemberPermissions.EditRecords)]
     [EnableRateLimiting("composed-email")]
     [RequestSizeLimit(512 * 1024)]
-    public async Task<ActionResult<NewsletterTestDto>> Test([FromBody] NewsletterEmailRequest request, CancellationToken ct)
+    public async Task<ActionResult<NewsletterTestDto>> Test([FromBody] NewsletterTestRequest request, CancellationToken ct)
     {
         if (_currentUser.UserId is not { } userId || _currentUser.CurrentOrganizationId is not { } org) return Unauthorized();
         return (await _newsletters.SendTestAsync(org, userId, request, ct)).ToActionResult();

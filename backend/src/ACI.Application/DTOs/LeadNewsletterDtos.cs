@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 namespace ACI.Application.DTOs;
 
 /// <summary>
@@ -32,7 +33,7 @@ public sealed class NewsletterAudienceRequest
 }
 
 /// <summary>A lead in the audience, or left out of it with why.</summary>
-/// <param name="Reason">For one left out: "no_email", "do_not_contact", "suppressed" or "duplicate".</param>
+/// <param name="Reason">For one left out: "no_email", "do_not_contact", "suppressed", "already_booked" or "duplicate".</param>
 public sealed record NewsletterPersonDto(Guid LeadId, string Name, string? Email, string Status, string? Reason = null);
 
 /// <summary>
@@ -45,12 +46,13 @@ public sealed record NewsletterPersonDto(Guid LeadId, string Name, string? Email
 /// <param name="DoNotContact">Marked do not contact (an unsubscribe marks them so).</param>
 /// <param name="Suppressed">Their address unsubscribed through the mail service, bounced or complained.</param>
 /// <param name="Duplicates">Another chosen lead has the same address and gets the one email.</param>
+/// <param name="AlreadyBooked">A meeting already booked and still to come.</param>
 /// <param name="Recipients">The first of those who get it, for the list's preview.</param>
 /// <param name="LeftOut">The first of those left out, with why.</param>
 /// <param name="MaxRecipients">The most one newsletter goes to.</param>
 public sealed record NewsletterAudienceDto(
     int Matching, int WillReceive, int NoEmail, int DoNotContact, int Suppressed, int Duplicates,
-    IReadOnlyList<NewsletterPersonDto> Recipients, IReadOnlyList<NewsletterPersonDto> LeftOut, int MaxRecipients);
+    IReadOnlyList<NewsletterPersonDto> Recipients, IReadOnlyList<NewsletterPersonDto> LeftOut, int MaxRecipients, int AlreadyBooked = 0);
 
 /// <summary>What a newsletter can do in this workspace: whether it can give each lead a booking link, and if not, why.</summary>
 public sealed record NewsletterSetupDto(
@@ -66,6 +68,13 @@ public class NewsletterEmailRequest
 
     /// <summary>The lead the preview or test is filled in for; none: a sample person.</summary>
     public Guid? SampleLeadId { get; set; }
+}
+
+/// <summary>The email, and who its test goes to.</summary>
+public sealed class NewsletterTestRequest : NewsletterEmailRequest
+{
+    /// <summary>Where the test goes: anyone (a colleague, a second inbox); none: the sender's own address.</summary>
+    [StringLength(254)] public string? To { get; set; }
 }
 
 /// <summary>The email as one lead will read it.</summary>

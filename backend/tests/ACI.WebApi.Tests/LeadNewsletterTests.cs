@@ -19,7 +19,8 @@ namespace ACI.WebApi.Tests;
 /// A newsletter to chosen leads (Pavillon 46 inviting its prospects to book a meeting): the
 /// server counts who it goes to and who is left out and why, sends each lead one email of its
 /// own with a signed booking link and code and the unsubscribe footer, honours the suppression
-/// list and do not contact, sends a send id once, and sends a test to the caller alone.
+/// list, do not contact and meetings already booked, sends a send id once, and sends a test to the
+/// caller, or to the one address they type.
 /// </summary>
 public class LeadNewsletterTests
 {
@@ -168,6 +169,39 @@ public class LeadNewsletterTests
     }
 
     [Fact]
+    public async Task ALeadWithAMeetingStillToCome_IsLeftOut_ButNotOneWhoCancelledOrHasAlreadyMet()
+    {
+        await using var app = new App();
+        var club = await ClubAsync(app);
+        var leads = await BookAsync(app, club);
+        using (var scope = app.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            using var acting = db.ActFor(club.Org, club.OwnerId);
+            MeetingBooking Meeting(Guid lead, string id, DateTime at, string status) => new()
+            {
+                Id = Guid.NewGuid(), OrganizationId = club.Org, LeadId = lead, BookingId = id, StartsAtUtc = at, OffsetMinutes = 60,
+                DurationMinutes = 45, Status = status, CreatedAtUtc = DateTime.UtcNow, UpdatedAtUtc = DateTime.UtcNow,
+            };
+            db.MeetingBookings.AddRange(
+                Meeting(leads["Léa"], "b-lea", DateTime.UtcNow.AddDays(3), MeetingBookingStatuses.Booked),         // to come: left out
+                Meeting(leads["Marc"], "b-marc", DateTime.UtcNow.AddDays(3), MeetingBookingStatuses.Cancelled),    // cancelled: invited again
+                Meeting(leads["Paul"], "b-paul", DateTime.UtcNow.AddDays(-3), MeetingBookingStatuses.Booked));     // already met: up to the filters
+            await db.SaveChangesAsync();
+        }
+
+        var audience = await Json(await club.Owner.PostAsync("/api/leads/newsletter/audience", Body(NotLostOrUninterested)), "all but lost");
+        audience.GetProperty("alreadyBooked").GetInt32().Should().Be(1);
+        audience.GetProperty("recipients").EnumerateArray().Select(r => r.GetProperty("name").GetString()).Should().BeEquivalentTo("Marc Dubois", "Paul Meier");
+        audience.GetProperty("leftOut").EnumerateArray().Single(r => r.GetProperty("name").GetString() == "Léa Favre")
+            .GetProperty("reason").GetString().Should().Be("already_booked");
+
+        await Json(await club.Owner.PostAsync("/api/leads/newsletter/send", Body(Send(Guid.NewGuid(), expected: 2))), "send");
+        await app.DispatchOutboxAsync();
+        app.Mail.Sent.SelectMany(m => m.To).Should().BeEquivalentTo("marc@example.ch", "paul@example.ch");
+    }
+
+    [Fact]
     public async Task Sending_QueuesOnePersonalisedEmailPerLead_WithItsOwnSignedBookingLink_AndTheUnsubscribeFooter()
     {
         await using var app = new App();
@@ -288,6 +322,19 @@ public class LeadNewsletterTests
         await app.DispatchOutboxAsync();
         app.Mail.Sent.Should().HaveCount(1, "no lead was emailed");
         (await app.Services.Read(db => db.OutboundMessages.Count(m => m.LeadId != null))).Should().Be(0);
+
+        // To a colleague, or a second inbox, as typed.
+        var colleague = await Json(await club.Owner.PostAsync("/api/leads/newsletter/test",
+            Body(new { language = "fr", subject = "{{firstName}}, votre rendez-vous", html = Html, sampleLeadId = leads["Léa"], to = " pierre@pavillon46.ch " })), "test to a colleague");
+        colleague.GetProperty("to").GetString().Should().Be("pierre@pavillon46.ch");
+        app.Mail.Sent.Last().To.Should().Equal("pierre@pavillon46.ch");
+        app.Mail.Sent.Last().Subject.Should().StartWith("[Test] ");
+
+        var wrong = await Json(await club.Owner.PostAsync("/api/leads/newsletter/test",
+            Body(new { language = "fr", subject = "Bonjour", html = Html, to = "pierre" })), "not an address", HttpStatusCode.BadRequest);
+        wrong.ToString().Should().Contain("not an email address");
+        app.Mail.Sent.Should().HaveCount(2);
+        (await app.Services.Read(db => db.OutboundMessages.Count(m => m.LeadId != null))).Should().Be(0, "a test is never a lead's email");
     }
 
     [Fact]

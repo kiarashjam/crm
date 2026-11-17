@@ -4,7 +4,7 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import {
-  CheckCircle2, Code2, KeyRound, Languages, Loader2, Lock, Mail, Monitor, Palette, PenLine, Send, Smartphone, TriangleAlert,
+  CheckCircle2, Code2, KeyRound, Languages, Loader2, Mail, Monitor, Palette, PenLine, Send, Smartphone, TriangleAlert,
 } from 'lucide-react';
 import {
   sendNewsletterTest, type NewsletterEmailRequest, type NewsletterLanguage, type NewsletterPerson, type NewsletterPreview,
@@ -61,7 +61,7 @@ export function EmailStep({
   request: NewsletterEmailRequest;
   /** Why a test cannot go yet, or null. */
   testBlocked: string | null;
-  /** The signed-in person's address: the test goes there and nowhere else. */
+  /** The signed-in person's address: where the test goes unless another is typed. */
   testTo: string | null;
 }) {
   const ids = useId();
@@ -69,6 +69,9 @@ export function EmailStep({
   // The box a field button adds to: the one last typed in.
   const lastField = useRef<string>(`${ids}-message`);
   const [testing, setTesting] = useState(false);
+  // Where the test goes: the person's own address to start with, or anyone they type.
+  const [testAddress, setTestAddress] = useState(testTo ?? '');
+  useEffect(() => { setTestAddress((now) => now || testTo || ''); }, [testTo]);
   const [test, setTest] = useState<{ ok: true; result: NewsletterTestResult } | { ok: false; text: string } | null>(null);
 
   // A test said about an email since changed says nothing about this one.
@@ -96,7 +99,7 @@ export function EmailStep({
     setTesting(true);
     setTest(null);
     try {
-      setTest({ ok: true, result: await sendNewsletterTest(request) });
+      setTest({ ok: true, result: await sendNewsletterTest({ ...request, to: testAddress.trim() || null }) });
     } catch (e) {
       setTest({ ok: false, text: e instanceof Error ? e.message : 'The test was not sent.' });
     } finally {
@@ -298,16 +301,16 @@ export function EmailStep({
             <Send className="h-3.5 w-3.5 text-orange-500" aria-hidden /> Send a test to
           </Label>
           <div className="mt-1.5 flex gap-2">
-            <div className="relative min-w-0 flex-1">
-              <Lock className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden />
+            <div className="min-w-0 flex-1">
               <Input
                 id={`${ids}-test-to`}
                 type="email"
-                value={testTo ?? ''}
-                placeholder="Your account's address"
-                readOnly
+                value={testAddress}
+                onChange={(e) => setTestAddress(e.target.value)}
+                placeholder={testTo ?? 'name@example.com'}
+                autoComplete="email"
                 aria-describedby={`${ids}-test-hint`}
-                className="bg-white pl-8 text-slate-600 dark:bg-white/5 dark:text-slate-300"
+                className="bg-white dark:bg-white/5"
               />
             </div>
             <Button type="submit" disabled={testing || Boolean(testBlocked)} className="shrink-0">
@@ -315,7 +318,7 @@ export function EmailStep({
             </Button>
           </div>
           <p id={`${ids}-test-hint`} className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
-            {testBlocked ?? 'Only to you, marked as a test. Its booking link books nothing.'}
+            {testBlocked ?? 'To you or anyone you type, marked as a test. Its booking link books nothing.'}
           </p>
           {test && (
             test.ok ? (

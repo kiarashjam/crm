@@ -23,7 +23,7 @@ public interface ILeadNewsletterService
     Task<Result<NewsletterPreviewDto>> PreviewAsync(Guid organizationId, Guid userId, NewsletterEmailRequest request, CancellationToken ct = default);
 
     /// <summary>The email as the preview shows it, marked as a test, to the person asking and nobody else.</summary>
-    Task<Result<NewsletterTestDto>> SendTestAsync(Guid organizationId, Guid userId, NewsletterEmailRequest request, CancellationToken ct = default);
+    Task<Result<NewsletterTestDto>> SendTestAsync(Guid organizationId, Guid userId, NewsletterTestRequest request, CancellationToken ct = default);
 
     /// <summary>
     /// Queues one email per lead the filters choose, each with the lead's own booking link and
@@ -122,7 +122,8 @@ public sealed class LeadNewsletterService : ILeadNewsletterService
             plan.LeftOut.Count(p => p.Reason == Reasons.Duplicate),
             plan.Recipients.Take(SampleSize).Select(r => Person(r.Lead, null)).ToList(),
             plan.LeftOut.Take(SampleSize).ToList(),
-            MaxRecipients);
+            MaxRecipients,
+            plan.LeftOut.Count(p => p.Reason == Reasons.AlreadyBooked));
     }
 
     private static class Reasons
@@ -131,6 +132,7 @@ public sealed class LeadNewsletterService : ILeadNewsletterService
         public const string DoNotContact = "do_not_contact";
         public const string Suppressed = "suppressed";
         public const string Duplicate = "duplicate";
+        public const string AlreadyBooked = "already_booked";
     }
 
     private sealed record Recipient(NewsletterLead Lead, string Email);
@@ -155,6 +157,7 @@ public sealed class LeadNewsletterService : ILeadNewsletterService
             var reason = email.Length == 0 || !ValidationHelper.IsValidEmail(email) ? Reasons.NoEmail
                 : unreachable.DoNotContact.Contains(lead.Id) ? Reasons.DoNotContact
                 : unreachable.Suppressed.Contains(key) ? Reasons.Suppressed
+                : unreachable.Booked.Contains(lead.Id) ? Reasons.AlreadyBooked
                 : !addresses.Add(key) ? Reasons.Duplicate
                 : null;
             if (reason == null) recipients.Add(new Recipient(lead, email));
@@ -191,11 +194,19 @@ public sealed class LeadNewsletterService : ILeadNewsletterService
             sender.WorkspaceName, sender.ReplyTo);
     }
 
-    public async Task<Result<NewsletterTestDto>> SendTestAsync(Guid organizationId, Guid userId, NewsletterEmailRequest request, CancellationToken ct = default)
+    public async Task<Result<NewsletterTestDto>> SendTestAsync(Guid organizationId, Guid userId, NewsletterTestRequest request, CancellationToken ct = default)
     {
         if (EmailProblem(request, sending: true) is { } problem) return problem;
-        var to = (await _users.GetByIdAsync(userId, ct))?.Email?.Trim() ?? "";
-        if (!ValidationHelper.IsValidEmail(to)) return new Error("Newsletter.NoTestAddress", "Your account has no email address to send the test to.");
+        var to = request.To?.Trim() ?? "";
+        if (to.Length > 0)
+        {
+            if (!ValidationHelper.IsValidEmail(to)) return new Error("Newsletter.TestAddress", $"\"{to}\" is not an email address.");
+        }
+        else
+        {
+            to = (await _users.GetByIdAsync(userId, ct))?.Email?.Trim() ?? "";
+            if (!ValidationHelper.IsValidEmail(to)) return new Error("Newsletter.NoTestAddress", "Your account has no email address to send the test to.");
+        }
         var preview = await PreviewAsync(organizationId, userId, request, ct);
         if (preview.IsFailure) return preview.Error;
         var email = preview.Value;

@@ -92,7 +92,7 @@ export interface ReasonInfo {
   icon: ComponentType<{ className?: string }>;
 }
 
-/** Why someone is left out, in a few words. "already_booked" is ready for when the server says it. */
+/** Why someone is left out, in a few words. */
 export const REASONS: Record<string, ReasonInfo> = {
   no_email: { label: 'No email', icon: MailX },
   do_not_contact: { label: 'Do not contact', icon: Ban },
@@ -111,12 +111,13 @@ export function leftOutCounts(audience: NewsletterAudience): { reason: string; c
     { reason: 'no_email', count: audience.noEmail },
     { reason: 'do_not_contact', count: audience.doNotContact },
     { reason: 'suppressed', count: audience.suppressed },
+    { reason: 'already_booked', count: audience.alreadyBooked ?? 0 },
     { reason: 'duplicate', count: audience.duplicates },
   ].filter((r) => r.count > 0);
 }
 
 export function leftOutTotal(audience: NewsletterAudience): number {
-  return audience.noEmail + audience.doNotContact + audience.suppressed + audience.duplicates;
+  return audience.noEmail + audience.doNotContact + audience.suppressed + (audience.alreadyBooked ?? 0) + audience.duplicates;
 }
 
 /** A status's colours, as the Leads page shows them; grey for one it does not know. */

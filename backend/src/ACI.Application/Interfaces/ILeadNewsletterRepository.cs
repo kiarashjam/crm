@@ -10,7 +10,8 @@ public sealed record NewsletterLead(
 /// <summary>Of a newsletter's leads, those email may not go to.</summary>
 /// <param name="DoNotContact">Leads marked do not contact: through their person contact, or a contact with their address.</param>
 /// <param name="Suppressed">Addresses (normalised) the mail service reported: unsubscribed, bounced, invalid, complained, or an erased person's.</param>
-public sealed record NewsletterUnreachable(IReadOnlySet<Guid> DoNotContact, IReadOnlySet<string> Suppressed);
+/// <param name="Booked">Leads with a meeting booked and still to come: inviting them to book again would be odd.</param>
+public sealed record NewsletterUnreachable(IReadOnlySet<Guid> DoNotContact, IReadOnlySet<string> Suppressed, IReadOnlySet<Guid> Booked);
 
 /// <summary>Newsletters to leads: who they go to, and each send's record.</summary>
 public interface ILeadNewsletterRepository
@@ -21,7 +22,7 @@ public interface ILeadNewsletterRepository
     /// <summary>One of the workspace's leads, as a newsletter needs it.</summary>
     Task<NewsletterLead?> LeadAsync(Guid organizationId, Guid leadId, CancellationToken ct = default);
 
-    /// <summary>Of these leads, those marked do not contact, and of their addresses, those suppressed.</summary>
+    /// <summary>Of these leads, those marked do not contact or with a meeting to come, and of their addresses, those suppressed.</summary>
     Task<NewsletterUnreachable> UnreachableAsync(Guid organizationId, IReadOnlyCollection<NewsletterLead> leads, CancellationToken ct = default);
 
     Task<LeadNewsletter?> GetAsync(Guid organizationId, Guid id, CancellationToken ct = default);

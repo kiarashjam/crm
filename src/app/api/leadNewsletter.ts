@@ -72,6 +72,8 @@ export interface NewsletterAudience {
   leftOut: NewsletterPerson[];
   /** The most one newsletter goes to. */
   maxRecipients: number;
+  /** A meeting already booked and still to come. */
+  alreadyBooked?: number;
 }
 
 /** What a newsletter can do in this workspace: whether it can give each lead a booking link, and if not, why. */
@@ -176,7 +178,12 @@ export async function previewNewsletter(request: NewsletterEmailRequest, options
 }
 
 /** The email as the preview shows it, marked as a test, to the signed-in person's own address and nobody else. */
-export async function sendNewsletterTest(request: NewsletterEmailRequest): Promise<NewsletterTestResult> {
+/** A test of the email, to the address given, or the signed-in person's own. */
+export interface NewsletterTestRequest extends NewsletterEmailRequest {
+  to?: string | null;
+}
+
+export async function sendNewsletterTest(request: NewsletterTestRequest): Promise<NewsletterTestResult> {
   requireApi();
   return authFetchJson<NewsletterTestResult>(`${BASE}/test`, { method: 'POST', body: JSON.stringify(request) });
 }
