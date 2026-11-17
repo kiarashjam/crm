@@ -43,7 +43,8 @@ public interface IOutreachMail
     /// <paramref name="addresses"/> at the foot, and the tracking image in the HTML
     /// part when one is given.
     /// </summary>
-    OutreachBody Body(Guid? organizationId, string? workspaceName, string text, IReadOnlyList<string> addresses, string? trackingUrl = null);
+    /// <param name="language">The language it is written in, for its footer ("fr" ends in French); English when none.</param>
+    OutreachBody Body(Guid? organizationId, string? workspaceName, string text, IReadOnlyList<string> addresses, string? trackingUrl = null, string? language = null);
 
     /// <summary>
     /// The two parts of an email to one club member. Marketing carries a link that withdraws
@@ -128,8 +129,9 @@ public sealed class OutreachMail : IOutreachMail
         return $"{api.GetLeftPart(UriPartial.Authority)}{api.AbsolutePath.TrimEnd('/')}/api/public/track/{leadId}";
     }
 
-    public OutreachBody Body(Guid? organizationId, string? workspaceName, string text, IReadOnlyList<string> addresses, string? trackingUrl = null)
+    public OutreachBody Body(Guid? organizationId, string? workspaceName, string text, IReadOnlyList<string> addresses, string? trackingUrl = null, string? language = null)
     {
+        var footerLanguage = AppLanguages.Normalise(language) ?? AppLanguages.English;
         var links = new List<UnsubscribeLink>();
         // A "stop" is kept per workspace; outreach always has one (its endpoints require it).
         if (organizationId is Guid org)
@@ -153,8 +155,8 @@ public sealed class OutreachMail : IOutreachMail
             ? OneClickUrl(_links.CreateToken(only, links[0].Address))
             : null;
         return new OutreachBody(
-            text + PlainTextEmail.TextFooter(workspaceName, links),
-            PlainTextEmail.ToHtml(text, trackingUrl, workspaceName, links),
+            text + PlainTextEmail.TextFooter(workspaceName, links, language: footerLanguage),
+            PlainTextEmail.ToHtml(text, trackingUrl, workspaceName, links, language: footerLanguage),
             oneClick ?? (links.Count == 1 ? links[0].Url : null),
             oneClick != null);
     }

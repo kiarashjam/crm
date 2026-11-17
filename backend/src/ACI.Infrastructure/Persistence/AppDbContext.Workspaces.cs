@@ -187,6 +187,7 @@ public partial class AppDbContext
         Scope<OnboardingSettings>(model, e => e.OrganizationId);
         Scope<DealOnboarding>(model, e => e.OrganizationId);
         Scope<EmailImage>(model, e => e.OrganizationId);
+        Scope<EmailTemplate>(model, e => e.OrganizationId);
         // An automation's runs and the log of their steps: an organization's alone, as its
         // rules are. The runner finds what is due across workspaces first (IgnoreQueryFilters,
         // said where), then acts for each run's own.

@@ -168,6 +168,23 @@ public class UnsubscribeTests
     }
 
     [Fact]
+    public async Task AnEmailWrittenInFrenchEndsInFrench_AndOneWithNoLanguageInEnglish()
+    {
+        // The composer says which language the prepared email was in: its footer followed
+        // the English default, under a French email.
+        await using var app = new App();
+        var (owner, ownerId) = await SignInAsync(app, "owner@example.ch");
+        owner.In(await CreateAsync(app, ownerId, "Pavillon46"));
+        await Json(await owner.PostAsync("/api/email/send", Body(new { to = "jean@example.ch", subject = "Une visite", body = "Bonjour Jean,", language = "fr" })), "in French");
+        await Json(await owner.PostAsync("/api/email/send", Body(new { to = "anna@example.ch", subject = "A visit", body = "Dear Anna," })), "no language");
+
+        var french = app.Composed.Single(m => m.To.Contains("jean@example.ch"));
+        french.TextBody.Should().Contain("Vous ne souhaitez plus recevoir d'e-mails de Pavillon46\u00a0? Se désinscrire: http://localhost:5173/unsubscribe/");
+        french.HtmlBody.Should().Contain("Se d&#233;sinscrire");
+        app.Composed.Single(m => m.To.Contains("anna@example.ch")).TextBody.Should().Contain("Don't want emails from Pavillon46? Unsubscribe:");
+    }
+
+    [Fact]
     public async Task ALinkOnlyStopsTheWorkspaceThatSentIt()
     {
         await using var app = new App();

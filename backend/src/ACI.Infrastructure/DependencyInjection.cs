@@ -73,6 +73,7 @@ public static class DependencyInjection
         services.AddScoped<IOutboxRepository, OutboxRepository>();
         services.AddScoped<IOnboardingRepository, OnboardingRepository>();
         services.AddScoped<IEmailImageRepository, EmailImageRepository>();
+        services.AddScoped<IEmailTemplateRepository, EmailTemplateRepository>();
         services.AddScoped<IAutomationRepository, AutomationRepository>();
         // An automation's runs and their logs, and the records they are about.
         services.AddScoped<IAutomationRunStore, AutomationRunStore>();

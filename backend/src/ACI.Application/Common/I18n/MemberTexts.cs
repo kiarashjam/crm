@@ -228,6 +228,11 @@ public static partial class MemberTexts
             "Keine Neuigkeiten und Angebote von {club} mehr per E-Mail?",
             $"Vous ne souhaitez plus recevoir les nouvelles et offres de {{club}} par e-mail{Nb}?"),
         ["footer.unsubscribe"] = new("Unsubscribe", "Abmelden", "Se désinscrire"),
+        // ── the footer of any other email: one written in French ends in French ──
+        ["footer.question"] = new(
+            "Don't want emails from {club}?",
+            "Keine E-Mails mehr von {club}?",
+            $"Vous ne souhaitez plus recevoir d'e-mails de {{club}}{Nb}?"),
 
         // ── statement and invoice PDFs ─────────────────────────────────────────
         ["pdf.datePattern"] = new("d MMM yyyy", "d. MMM yyyy", "d MMM yyyy"),

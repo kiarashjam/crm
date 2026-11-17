@@ -6,6 +6,8 @@ import { MemoryRouter } from 'react-router-dom';
 import type { Lead } from '@/app/api/types';
 
 vi.mock('@/app/hooks/useMotionPreference', () => ({ useMotionPreference: () => true }));
+const compose = vi.hoisted(() => vi.fn());
+vi.mock('@/app/components/email/EmailComposerProvider', () => ({ useEmailComposer: () => compose }));
 
 import { LeadGalleryCard } from './LeadGalleryCard';
 import type { useLeadStatusSync } from './useLeadStatusSync';
@@ -64,7 +66,11 @@ describe('an establishment in the leads gallery', () => {
     expect(screen.getByText('Restaurant · Lausanne')).toBeInTheDocument();
     expect(screen.getByText('Marco Rossi · Owner')).toBeInTheDocument();
     // No email or number of its own: the contact person's.
-    expect(screen.getByRole('link', { name: 'marco@trattoria.ch' })).toHaveAttribute('href', 'mailto:marco@trattoria.ch');
+    // The composer, with the prepared emails, addressed to them at the establishment.
+    fireEvent.click(screen.getByRole('button', { name: 'marco@trattoria.ch' }));
+    expect(compose).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'marco@trattoria.ch', recipientName: 'Marco Rossi', company: 'Trattoria Bella', context: { leadId: trattoria.id },
+    }));
     expect(screen.getByRole('link', { name: '+41 79 000 00 00' })).toHaveAttribute('href', 'tel:+41 79 000 00 00');
     // Not initials ("TB"): the type's picture.
     expect(screen.queryByText('TB')).not.toBeInTheDocument();

@@ -46,6 +46,11 @@ public class Organization : Common.BaseEntity
     /// ("de-CH"). Month and day names stay in each viewer's language, as the app is in English.
     /// </summary>
     public string Locale { get; set; } = "de-CH";
+    /// <summary>
+    /// When the workspace was given the starter set of prepared emails, so it is given once:
+    /// prepared emails it deletes do not come back.
+    /// </summary>
+    public DateTime? EmailTemplatesSeededAtUtc { get; set; }
     /// <summary>IANA time zone the workspace's days and months begin in, for reports and forecasts.</summary>
     public string TimeZone { get; set; } = "Europe/Zurich";
     /// <summary>
