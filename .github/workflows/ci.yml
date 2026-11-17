@@ -20,8 +20,15 @@ permissions:
 
 jobs:
   backend:
-    name: Backend build and tests
+    # The backend tests take about 14 minutes on one machine and were the whole wait of
+    # every check and deploy, so they run in four shares at once, each on its own machine
+    # with its own SQL Server: every test class goes to one share (tests/run-shard.sh).
+    name: Backend tests (${{ matrix.shard }} of 4)
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     services:
       # The start-up schema work is T-SQL, which only a real SQL Server runs. The tests
       # marked [SqlServerFact] start the API against a database of their own on it (see
@@ -56,9 +63,24 @@ jobs:
         working-directory: backend
         run: dotnet build ACI.sln --configuration Release --no-restore
 
-      - name: Test
+      - name: Test (share ${{ matrix.shard }} of 4)
         working-directory: backend
-        run: dotnet test ACI.sln --configuration Release --no-build
+        run: tests/run-shard.sh ${{ matrix.shard }} 4
+
+  backend-result:
+    # One check under the name the backend job always had, green only when every share is:
+    # what waits on "Backend build and tests" (a required check, the deploy) is unchanged.
+    name: Backend build and tests
+    needs: backend
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every share passed
+        run: |
+          if [ "${{ needs.backend.result }}" != "success" ]; then
+            echo "::error::A share of the backend tests did not pass (${{ needs.backend.result }})."
+            exit 1
+          fi
 
   frontend:
     name: Frontend typecheck, lint, tests and build
