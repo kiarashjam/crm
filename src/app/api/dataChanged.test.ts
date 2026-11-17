@@ -44,6 +44,15 @@ describe('which writes count as a record change', () => {
     expect(changesRecords('POST', '/api/imports')).toBe(true);
     expect(changesRecords('POST', '/api/imports/0b1c/undo')).toBe(true);
   });
+
+  it("the lead newsletter's count, preview and test do not, but its send does", () => {
+    // Each count follows the filters as they are chosen: announced, the leads would re-read each time.
+    expect(changesRecords('POST', '/api/leads/newsletter/audience')).toBe(false);
+    expect(changesRecords('POST', '/api/leads/newsletter/preview')).toBe(false);
+    expect(changesRecords('POST', '/api/leads/newsletter/test')).toBe(false);
+    expect(changesRecords('POST', '/api/leads/newsletter/send')).toBe(true);
+    expect(resourcesChangedBy('POST', '/api/leads/newsletter/send')).toContain('leads');
+  });
 });
 
 describe('what a write changes', () => {

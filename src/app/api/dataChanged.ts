@@ -64,6 +64,9 @@ const NOT_RECORD_WRITES = [
   // A list reads its page's custom values and tags in one POST each (the ids would not fit
   // in an address): reads, which announced as writes would make every list read itself again.
   '/api/custom-fields/values/batch', '/api/tags/records/batch',
+  // The lead newsletter's count, preview and test to oneself are POSTs only because they carry
+  // the filters or the email. Announced, each count typed in the dialog would re-read the leads.
+  '/api/leads/newsletter/audience', '/api/leads/newsletter/preview', '/api/leads/newsletter/test',
 ];
 
 /** …except these, under an excluded prefix, which do change records. */

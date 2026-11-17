@@ -29,6 +29,9 @@ export const FIELD_LABELS: Record<string, string> = {
   portalUrl: 'Portal link',
   loginEmail: 'Login email',
   referralCode: 'Referral code',
+  // The lead newsletter's: each lead's own booking link and code (RDV-XXXX).
+  bookingUrl: 'Booking link',
+  bookingCode: 'Booking code',
 };
 
 export const SIMPLE_COLORS = ['#0f172a', '#ea580c', '#db2777', '#7c3aed', '#1d4ed8', '#0f766e'] as const;

@@ -98,6 +98,7 @@ import {
   type SalesTrackerFilterState,
 } from './leads/components/SalesTrackerFilters';
 import { SalesTrackerPanel } from './leads/salesTracker/SalesTrackerPanel';
+import { LeadNewsletterButton } from './leads/newsletter/LeadNewsletterButton';
 import { leadToTrackedRow } from './leads/leadTrackerMap';
 import {
   declineStage,
@@ -381,6 +382,15 @@ export default function Leads() {
     statusesUnavailable,
   });
   const sourceOptions = leadSources.length > 0 ? leadSources : FALLBACK_SOURCES.map((name) => ({ id: name, name, organizationId: '', displayOrder: 0 }));
+  // The newsletter's chips: the workspace's own statuses in its order, and its sources.
+  const newsletterStatuses = useMemo(
+    () => (leadStatuses.length > 0 ? leadStatuses.slice().sort((a, b) => a.displayOrder - b.displayOrder).map((s) => s.name) : FALLBACK_STATUSES),
+    [leadStatuses],
+  );
+  const newsletterSources = useMemo(
+    () => (leadSources.length > 0 ? leadSources.map((s) => s.name) : FALLBACK_SOURCES),
+    [leadSources],
+  );
 
   // Debounce search input
   useEffect(() => {
@@ -1759,6 +1769,13 @@ export default function Leads() {
                     </Button>
                   </>
                 )}
+                {/* A newsletter inviting the leads chosen to book a meeting: for whoever may send it (records.edit). */}
+                <LeadNewsletterButton
+                  className={heroSecondary}
+                  statuses={newsletterStatuses}
+                  sources={newsletterSources}
+                  members={orgMembers}
+                />
                 {/* Export is read-only, so viewers keep it, where their role lets them export. */}
                 {canExport && (
                   <Button onClick={handleExportLeads} disabled={exporting} variant="outline" className={`${heroSecondary} disabled:opacity-60`} aria-label={exporting ? 'Exporting...' : 'Export CSV'}>
