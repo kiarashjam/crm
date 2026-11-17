@@ -75,14 +75,25 @@ async function openConversion(leadId = 'l1') {
 }
 
 describe('welcoming a lead as they are converted', () => {
-  it('offers the welcome from the start, before any deal is picked', async () => {
+  it('opens with the deal and its welcome when the workspace welcomes every new customer', async () => {
+    // Unticked, the usual conversion made a contact alone: no deal to find, no welcome sent.
+    const welcome = await openConversion();
+    await waitFor(() => expect(welcome).toHaveAttribute('aria-pressed', 'true'));
+    expect(screen.getByRole('button', { name: /create new deal/i })).toHaveClass('border-amber-400');
+    expect(screen.getByRole('button', { name: /preview welcome & convert/i })).toBeInTheDocument();
+  });
+
+  it('offers the welcome from the start, before any deal is picked, where it is not on by default', async () => {
+    onboarding.getOnboardingSettings.mockResolvedValue(settings({ enabled: false }));
     const welcome = await openConversion();
     expect(welcome).toHaveAttribute('aria-pressed', 'false');
     expect(welcome).toBeEnabled();
+    expect(screen.getByRole('button', { name: /create new deal/i })).not.toHaveClass('border-amber-400');
     expect(screen.getByRole('button', { name: /convert lead/i })).toBeInTheDocument();
   });
 
   it('adds the deal it goes with when chosen, then previews the welcome before converting', async () => {
+    onboarding.getOnboardingSettings.mockResolvedValue(settings({ enabled: false }));
     api.convertLead.mockResolvedValue({ leadId: 'l1', contactId: 'c1', dealId: 'd1' });
     fireEvent.click(await openConversion());
 
@@ -105,8 +116,9 @@ describe('welcoming a lead as they are converted', () => {
   });
 
   it('can be taken off again, leaving the deal', async () => {
-    fireEvent.click(await openConversion());
-    fireEvent.click(screen.getByRole('button', { name: /send welcome email/i }));
+    const welcome = await openConversion();
+    await waitFor(() => expect(welcome).toHaveAttribute('aria-pressed', 'true'));
+    fireEvent.click(welcome);
 
     expect(screen.getByRole('button', { name: /send welcome email/i })).toHaveAttribute('aria-pressed', 'false');
     expect(screen.getByRole('button', { name: /create new deal/i })).toHaveClass('border-amber-400');
@@ -114,7 +126,8 @@ describe('welcoming a lead as they are converted', () => {
   });
 
   it('goes off with the deal it went with', async () => {
-    fireEvent.click(await openConversion());
+    const welcome = await openConversion();
+    await waitFor(() => expect(welcome).toHaveAttribute('aria-pressed', 'true'));
     fireEvent.click(screen.getByRole('button', { name: /create new deal/i }));
 
     expect(screen.getByRole('button', { name: /send welcome email/i })).toHaveAttribute('aria-pressed', 'false');

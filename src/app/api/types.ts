@@ -118,6 +118,9 @@ export interface Lead {
   lifecycleStage?: string;
   isConverted?: boolean;
   convertedAtUtc?: string;
+  /** What the conversion made of the lead, for its page to lead there. */
+  convertedToContactId?: string;
+  convertedToDealId?: string;
   assignedToId?: string;
   /** Display name of the assigned user, resolved server-side. */
   assignedToName?: string;

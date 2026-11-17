@@ -196,3 +196,38 @@ describe('the board from the server', () => {
     await waitFor(() => expect(api.getDealBoard.mock.calls.length).toBeGreaterThan(before));
   });
 });
+
+// A pipeline with no deals is not a workspace without any. The page showed "Build your
+// sales pipeline" with the pipeline picker gone, so a deal on the other pipeline could not
+// be reached from there.
+describe('a pipeline with no deals yet', () => {
+  const OTHER = '44444444-4444-4444-4444-444444444444';
+  const emptyBoard = (): DealBoard => ({
+    pipelineId: OTHER, pipelineName: 'Events', staleAfterDays: 30, count: 0,
+    columns: [column({ key: 'e1', dealStageId: 'e1', name: 'Booked' })],
+    summary: { total: 0, open: 0, won: 0, lost: 0, openTotals: [], wonTotals: [], weighted: [], winRate: 0, overdue: 0, closingThisWeek: 0, stale: 0 },
+  });
+
+  it('keeps the pipeline picker and the board, and the welcome for a first deal is not shown', async () => {
+    api.getPipelines.mockResolvedValue([
+      { id: OTHER, organizationId: 'org-1', name: 'Events', displayOrder: 0, dealStages: [{ id: 'e1', pipelineId: OTHER, name: 'Booked', displayOrder: 0, isWon: false, isLost: false }] },
+      { id: PIPELINE, organizationId: 'org-1', name: 'Memberships', displayOrder: 1, dealStages: [] },
+    ]);
+    api.getDealBoard.mockImplementation(async (q: { pipelineId?: string }) => (q.pipelineId === PIPELINE ? board() : emptyBoard()));
+    render(withQueries(<MemoryRouter><Pipeline /></MemoryRouter>));
+
+    expect(await screen.findByRole('heading', { name: 'Booked' }, { timeout: 5000 })).toBeInTheDocument();
+    expect(screen.queryByText('Build Your Sales Pipeline')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('combobox').some((c) => c.textContent?.includes('Events'))).toBe(true);
+  });
+
+  it('shows the welcome for a first deal in a workspace with one pipeline and no deals', async () => {
+    api.getPipelines.mockResolvedValue([
+      { id: OTHER, organizationId: 'org-1', name: 'Events', displayOrder: 0, dealStages: [{ id: 'e1', pipelineId: OTHER, name: 'Booked', displayOrder: 0, isWon: false, isLost: false }] },
+    ]);
+    api.getDealBoard.mockImplementation(async () => emptyBoard());
+    render(withQueries(<MemoryRouter><Pipeline /></MemoryRouter>));
+
+    expect(await screen.findByText('Build Your Sales Pipeline', undefined, { timeout: 5000 })).toBeInTheDocument();
+  });
+});

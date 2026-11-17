@@ -36,6 +36,8 @@ export type LeadRaw = {
   lifecycleStage?: string | null;
   isConverted?: boolean;
   convertedAtUtc?: string | null;
+  convertedToContactId?: string | null;
+  convertedToDealId?: string | null;
   createdAtUtc?: string | null;
   assignedToUserId?: string | null;
   assignedToName?: string | null;
@@ -87,6 +89,8 @@ export function mapLead(d: LeadRaw): Lead {
     lifecycleStage: d.lifecycleStage ?? undefined,
     isConverted: d.isConverted ?? false,
     convertedAtUtc: d.convertedAtUtc ?? undefined,
+    convertedToContactId: d.convertedToContactId ?? undefined,
+    convertedToDealId: d.convertedToDealId ?? undefined,
     createdAtUtc: d.createdAtUtc ?? undefined,
     assignedToId: d.assignedToUserId ?? undefined,
     assignedToName: d.assignedToName ?? undefined,

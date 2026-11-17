@@ -52,7 +52,12 @@ public record LeadDto(
     string? ContactPersonName = null,
     string? ContactPersonRole = null,
     string? ContactPersonEmail = null,
-    string? ContactPersonPhone = null);
+    string? ContactPersonPhone = null,
+    // What the conversion made of it, so its page can lead there: there was no way from a
+    // converted lead to its deal.
+    Guid? ConvertedToContactId = null,
+    Guid? ConvertedToDealId = null,
+    Guid? ConvertedToCompanyId = null);
 
 /// <summary>The lead to fold into the one named in the route.</summary>
 public record MergeLeadsRequest(Guid OtherLeadId);

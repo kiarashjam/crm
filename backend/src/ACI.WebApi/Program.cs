@@ -715,8 +715,9 @@ try
             // means a mistyped name in the connection string: creating it would start
             // the app on a new, empty database (on Azure, one at the default, paid tier)
             // while the real one sat unused, and people would sign up into it.
+            // Asked without SqlClient's 10 s retry of a login to a missing database (see DatabaseProbe).
             var databaseCreator = db.Database.GetService<IRelationalDatabaseCreator>();
-            var databaseExists = await databaseCreator.ExistsAsync();
+            var databaseExists = await ACI.WebApi.DatabaseProbe.ExistsAsync(db.Database);
             if (!databaseExists && !app.Environment.IsDevelopment())
             {
                 throw new InvalidOperationException(

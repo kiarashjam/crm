@@ -827,6 +827,10 @@ export default function Pipeline() {
     : null;
   // Every layout but the board filters every deal here; the board's are counted by the server.
   const hasDeals = dealStats.total > 0;
+  // The board's figures are one pipeline's. With more than one, an empty pipeline is not an
+  // empty workspace: it showed "Add your first deal" with the pipeline picker gone, so a
+  // deal on the other pipeline could not be found from there.
+  const workspaceEmpty = !hasDeals && pipelines.length <= 1;
   const shownCount = view.layout === 'board' ? (board?.count ?? 0) : filteredDeals.length;
   const filtersActive = !!(searchQuery || filterStage !== 'all' || filterMyDeals || filterAssignee !== 'all' || filterValueMin
     || filterValueMax || filterCloseDateFrom || filterCloseDateTo || filterStale);
@@ -1028,7 +1032,7 @@ export default function Pipeline() {
           )}
 
           {/* Search and filter bar */}
-          {!loading && hasDeals && (
+          {!loading && !workspaceEmpty && (
             <motion.div 
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -1313,7 +1317,7 @@ export default function Pipeline() {
           <KanbanSkeleton columns={5} />
         ) : boardResult.isError && !board ? (
           <LoadFailed what="Your deals" error={boardResult.error} onRetry={refresh} retrying={boardResult.isFetching} />
-        ) : !hasDeals ? (
+        ) : workspaceEmpty ? (
           /* Empty State - matching Leads page style */
           <div className="w-full">
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">

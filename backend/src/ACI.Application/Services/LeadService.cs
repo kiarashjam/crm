@@ -24,6 +24,7 @@ public class LeadService : ILeadService
     private readonly IClubHouseholds? _households;
     private readonly IOrganizationRepository? _organizations;
     private readonly IDealStageRepository? _stages;
+    private readonly IPipelineRepository? _pipelines;
     private readonly ICollaborationNotifier? _notifier;
     private readonly ILogger<LeadService> _logger;
 
@@ -42,9 +43,11 @@ public class LeadService : ILeadService
         IOrganizationRepository? organizations = null,
         IDealStageRepository? stages = null,
         ICollaborationNotifier? notifier = null,
-        IClubHouseholds? households = null)
+        IClubHouseholds? households = null,
+        IPipelineRepository? pipelines = null)
     {
         _households = households;
+        _pipelines = pipelines;
         _repository = repository;
         _companyRepository = companyRepository;
         _contactRepository = contactRepository;
@@ -856,6 +859,11 @@ public class LeadService : ILeadService
         // Handle deal creation
         if (request.CreateDeal && !request.ExistingDealId.HasValue)
         {
+            // The stage it goes into: the one asked for, else one on the pipeline asked for
+            // (or the workspace's first). A conversion that named none put the deal on no
+            // pipeline at all, so a workspace working on another one never found it.
+            var placeStageId = request.DealStageId
+                ?? await DefaultStageAsync(organizationId, request.PipelineId, request.DealStage, ct);
             var deal = new Deal
             {
                 Id = Guid.NewGuid(),
@@ -865,7 +873,7 @@ public class LeadService : ILeadService
                 Currency = dealCurrency,
                 Stage = request.DealStage?.Trim(),
                 PipelineId = request.PipelineId,
-                DealStageId = request.DealStageId,
+                DealStageId = placeStageId,
                 CompanyId = companyId,
                 ContactId = contactId,
                 CreatedAtUtc = DateTime.UtcNow,
@@ -873,7 +881,7 @@ public class LeadService : ILeadService
             DealMoney.SetAmount(deal, dealAmount);
             // As a deal created on the board: the stage decides its pipeline and stage
             // name, and its history starts with the stage it was converted into.
-            if (request.DealStageId is Guid convertedStageId && _stages != null && organizationId is Guid stageOrg
+            if (placeStageId is Guid convertedStageId && _stages != null && organizationId is Guid stageOrg
                 && await _stages.GetByIdAsync(convertedStageId, stageOrg, ct) is { } stage)
                 DealStageMoves.Place(deal, stage, deal.CreatedAtUtc);
             if (DealStageMoves.Entered(deal, null, null, null, userId, deal.CreatedAtUtc) is { } entered)
@@ -1018,9 +1026,30 @@ public class LeadService : ILeadService
             ContactPersonName: e.ContactPersonName,
             ContactPersonRole: e.ContactPersonRole,
             ContactPersonEmail: e.ContactPersonEmail,
-            ContactPersonPhone: e.ContactPersonPhone);
+            ContactPersonPhone: e.ContactPersonPhone,
+            ConvertedToContactId: e.ConvertedToContactId,
+            ConvertedToDealId: e.ConvertedToDealId,
+            ConvertedToCompanyId: e.ConvertedToCompanyId);
 
     private static string? Blank(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+    /// <summary>
+    /// The stage a converted deal goes into when none was named: on the pipeline named, else
+    /// the workspace's first, the stage of the name given, else its first open stage. Null
+    /// for a workspace without pipelines, whose board goes by stage names.
+    /// </summary>
+    private async Task<Guid?> DefaultStageAsync(Guid? organizationId, Guid? pipelineId, string? stageName, CancellationToken ct)
+    {
+        if (organizationId is not Guid org || _pipelines == null) return null;
+        var pipelines = await _pipelines.GetByOrganizationIdAsync(org, ct);
+        var pipeline = pipelineId is Guid wanted ? pipelines.FirstOrDefault(p => p.Id == wanted) : pipelines.FirstOrDefault();
+        var stages = pipeline?.DealStages.OrderBy(st => st.DisplayOrder).ThenBy(st => st.Name).ToList();
+        if (stages is not { Count: > 0 }) return null;
+        var named = string.IsNullOrWhiteSpace(stageName)
+            ? null
+            : stages.FirstOrDefault(st => string.Equals(st.Name.Trim(), stageName.Trim(), StringComparison.OrdinalIgnoreCase));
+        return (named ?? stages.FirstOrDefault(st => !st.IsWon && !st.IsLost) ?? stages[0]).Id;
+    }
 
     /// <summary>What the workspace's leads may be (Organization.LeadKinds); null for a personal workspace, which takes both.</summary>
     private async Task<string?> WorkspaceLeadKindsAsync(Guid? organizationId, CancellationToken ct) =>
