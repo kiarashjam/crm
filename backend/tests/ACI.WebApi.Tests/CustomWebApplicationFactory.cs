@@ -44,24 +44,12 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
 
         builder.ConfigureServices(services =>
         {
-            if (!RunsOutboxInBackground)
-            {
-                foreach (var dispatcher in services.Where(d => d.ImplementationType == typeof(ACI.WebApi.Services.OutboxDispatcherBackgroundService)).ToList())
-                    services.Remove(dispatcher);
-            }
-            // Likewise the campaign scheduler: a test runs what is due when it chooses
-            // (ICampaignService.RunDueAsync), not whenever a loop wakes mid-test.
-            foreach (var scheduler in services.Where(d => d.ImplementationType == typeof(ACI.WebApi.Services.CampaignSchedulerBackgroundService)).ToList())
-                services.Remove(scheduler);
-            // And the automation runner: a test carries due runs on when it chooses (AutomationRunner).
-            foreach (var runner in services.Where(d => d.ImplementationType == typeof(ACI.WebApi.Services.AutomationRunnerBackgroundService)).ToList())
-                services.Remove(runner);
-            // And the morning briefs: a test sends what is due at the time it names (IMorningBrief.SendDueAsync).
-            foreach (var briefs in services.Where(d => d.ImplementationType == typeof(ACI.WebApi.Services.MorningBriefBackgroundService)).ToList())
-                services.Remove(briefs);
-            // And the daily at-risk scoring: a test scores when it chooses (IClubRetention.RunScheduledAsync).
-            foreach (var scoring in services.Where(d => d.ImplementationType == typeof(ACI.WebApi.Services.ClubScoringBackgroundService)).ToList())
-                services.Remove(scoring);
+            // None of the app's own background jobs runs in a test host unless the test asks
+            // (RunsOutboxInBackground): a test runs the job it needs when it chooses (the outbox,
+            // reminders, sequences and campaigns each have a way), so what it sees does not depend
+            // on when a loop woke. Fifteen loops started with every one of ~1,600 hosts also kept
+            // the test machine busy for nothing, and slowed the tests that time out under load.
+            TestHosts.RemoveBackgroundJobs(services, RunsOutboxInBackground ? [typeof(ACI.WebApi.Services.OutboxDispatcherBackgroundService)] : []);
 
             // Remove existing DbContext registration
             var descriptor = services.SingleOrDefault(
