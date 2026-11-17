@@ -68,6 +68,8 @@ export interface Contract {
   depositCurrency?: string | null;
   /** That deposit once the contract is sent: whether it is paid, and whose account it went on. */
   deposit?: ContractDeposit | null;
+  /** Signed outside CadenceE: executed by uploading its signed copy, which is its PDF. Nothing was emailed. */
+  signedElsewhere?: boolean;
 }
 
 export type DepositStatus = 'awaiting' | 'processing' | 'paid' | 'refunded' | 'cancelled';
@@ -195,6 +197,40 @@ export interface DraftArgs {
   templateOverride?: string;
   /** Values for placeholders the CRM cannot know — fee, term, jurisdiction. */
   values?: Record<string, string>;
+}
+
+/** A signed copy: a PDF, or a JPEG or PNG photo of the signed pages, up to 10 MB. */
+export const SIGNED_COPY_ACCEPT = '.pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png';
+export const SIGNED_COPY_MAX_BYTES = 10 * 1024 * 1024;
+
+export interface SignedCopyArgs {
+  file: File;
+  /** The deal (or lead) it is for, when no contract here is being closed by it. */
+  dealId?: string;
+  leadId?: string;
+  /** A contract drafted or sent here that was signed another way. */
+  contractId?: string;
+  /** Who signed it for the other side; the counterparty when left out. */
+  signedBy?: string;
+  /** The day they signed it, yyyy-MM-dd; today when left out. */
+  signedOn?: string;
+}
+
+/**
+ * Records a contract signed outside CadenceE by uploading its signed copy. It is executed at
+ * once, as a countersignature executes one: the deal is won and the member admitted. Nothing is
+ * emailed; the copy is kept with the deal.
+ */
+export async function uploadSignedContract(args: SignedCopyArgs): Promise<Contract> {
+  requireApi();
+  const form = new FormData();
+  form.append('file', args.file);
+  if (args.dealId) form.append('dealId', args.dealId);
+  if (args.leadId) form.append('leadId', args.leadId);
+  if (args.contractId) form.append('contractId', args.contractId);
+  if (args.signedBy?.trim()) form.append('signedBy', args.signedBy.trim());
+  if (args.signedOn) form.append('signedOn', args.signedOn);
+  return await authFetchJson<Contract>('/api/contracts/signed-copy', { method: 'POST', body: form });
 }
 
 export async function createContractDraft(args: DraftArgs): Promise<Contract | null> {

@@ -72,8 +72,28 @@ public record ContractDto(
     string? MembershipTier = null,
     decimal? DepositAmount = null,
     string? DepositCurrency = null,
-    ACI.Application.Services.ContractDepositDto? Deposit = null
+    ACI.Application.Services.ContractDepositDto? Deposit = null,
+    /// <summary>Signed outside CadenceE: executed by uploading the signed copy, which is its PDF.</summary>
+    bool SignedElsewhere = false
 );
+
+/// <summary>
+/// A contract signed outside CadenceE (on paper, or with another signing service), recorded by
+/// uploading the signed copy: for a deal (or lead) with no contract here yet, or to close one
+/// drafted or sent here that was signed another way.
+/// </summary>
+/// <param name="ContractId">The contract drafted or sent here that this copy signs, if any.</param>
+/// <param name="SignedBy">Who signed it for the other side; the contract's counterparty when left out.</param>
+/// <param name="SignedOn">The day they signed it; today when left out. Never in the future.</param>
+public sealed record RecordSignedCopyRequest(
+    Guid? DealId,
+    Guid? LeadId,
+    Guid? ContractId,
+    string? SignedBy,
+    DateTime? SignedOn,
+    string FileName,
+    string? ContentType,
+    byte[] Content);
 
 /// <summary>
 /// What the counterparty sees on the public signing page.

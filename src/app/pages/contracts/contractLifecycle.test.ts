@@ -256,6 +256,16 @@ describe('describeState', () => {
   const d = (over: Partial<DescribeInput> & { status: ContractStatus }) =>
     describeState({ ...base, ...over }, NOW);
 
+  it('a contract signed outside CadenceE is finished, though nothing was emailed', () => {
+    const s = d({
+      status: 'countersigned', signedElsewhere: true, clientSignatureName: 'Jean Dupont',
+      counterSignedAtUtc: '2026-08-25T12:00:00Z', executedCopySentAtUtc: null,
+    });
+    expect([s.tone, s.turn, s.completed]).toEqual(['done', 'nobody', 4]);
+    expect(s.headline).toBe('Signed outside CadenceE');
+    expect(s.detail).toMatch(/^Signed by Jean Dupont; the signed copy was uploaded .* and is kept with the deal\.$/);
+  });
+
   it('a draft is your move and says nobody has seen it', () => {
     const s = d({ status: 'draft' });
     expect(s.turn).toBe('you');

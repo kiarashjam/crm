@@ -101,7 +101,7 @@ public static partial class OnboardingTemplate
                 "setpasswordurl" => "#set-password",
                 "portalurl" => "#portal",
                 "loginemail" => email,
-                "referralcode" => "PAV-7K2M9Q",
+                "referralcode" => "PAV-7KQ",
                 _ => null,
             };
             return sample == null ? match.Value : html ? Html(sample) : sample;

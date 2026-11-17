@@ -16,7 +16,7 @@ import { Check, Clock, ArrowRight, Ban, PartyPopper } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
 import { useMotionPreference } from '@/app/hooks/useMotionPreference';
 import {
-  CONTRACT_STEPS, describeState, type DescribeInput, type StateTone,
+  CONTRACT_STEPS, SIGNED_ELSEWHERE_STEPS, describeState, type DescribeInput, type StateTone,
 } from './contractLifecycle';
 
 /** One palette per tone, so colour carries the same meaning everywhere. */
@@ -77,7 +77,7 @@ export function ContractProgress({ contract }: { contract: DescribeInput }) {
         // reader read the state twice.
         aria-hidden
       >
-        {CONTRACT_STEPS.map((label, i) => {
+        {(contract.signedElsewhere ? SIGNED_ELSEWHERE_STEPS : CONTRACT_STEPS).map((label, i) => {
           const n = i + 1;
           const complete = n <= state.completed;
           const current = !stopped && n === state.step && !complete;

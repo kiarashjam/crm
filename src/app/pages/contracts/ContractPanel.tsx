@@ -15,7 +15,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   FileText, Loader2, PenLine, Send, Sparkles, TriangleAlert, Copy, Check,
-  ShieldCheck, Clock, Eye, Ban, RefreshCw, MailWarning, ChevronDown, FileDown,
+  ShieldCheck, Clock, Eye, Ban, RefreshCw, MailWarning, ChevronDown, FileDown, FileCheck2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -35,6 +35,7 @@ import { ContractProgress } from './ContractProgress';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import { LoadFailed } from '@/app/components/LoadFailed';
 import { currentDateLocale } from '@/app/i18n/current';
+import { SignedContractDialog } from './SignedContractDialog';
 
 /** Fields the seeded template asks for that the CRM cannot know. */
 const ASK_FOR: { key: string; label: string; placeholder: string }[] = [
@@ -181,6 +182,8 @@ export function ContractPanel({ leadId, dealId, leadName, readOnly, onLeadChange
   const [signAgreed, setSignAgreed] = useState<Record<string, boolean>>({});
   const [signProblem, setSignProblem] = useState<Record<string, string | null>>({});
   const [lastLink, setLastLink] = useState<{ id: string; url: string; emailed: boolean } | null>(null);
+  // The signed-copy upload: open for a new contract (null) or to close one drafted or sent here.
+  const [uploading, setUploading] = useState<{ contract: Contract | null } | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -350,6 +353,15 @@ export function ContractPanel({ leadId, dealId, leadName, readOnly, onLeadChange
               ? <><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Generating…</>
               : <><Sparkles className="h-4 w-4" aria-hidden /> Generate the draft contract</>}
           </Button>
+
+          {!readOnly && (
+            <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-4">
+              <p className="text-xs text-slate-500">Already signed on paper, or with another service?</p>
+              <Button variant="outline" size="sm" onClick={() => setUploading({ contract: null })} className="gap-1.5">
+                <FileCheck2 className="h-3.5 w-3.5 text-emerald-600" aria-hidden /> Upload the signed contract
+              </Button>
+            </div>
+          )}
         </div>
       ) : (
         <ul className="space-y-4">
@@ -485,8 +497,14 @@ export function ContractPanel({ leadId, dealId, leadName, readOnly, onLeadChange
                       {busy === `pdf-${c.id}`
                         ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
                         : <FileDown className="h-3.5 w-3.5" aria-hidden />}
-                      {c.status === 'countersigned' ? 'Signed PDF' : 'Open as PDF'}
+                      {c.signedElsewhere ? 'Signed copy' : c.status === 'countersigned' ? 'Signed PDF' : 'Open as PDF'}
                     </Button>
+                    {/* Signed another way while it was here: its copy closes it. */}
+                    {(c.status === 'draft' || c.status === 'sent' || c.status === 'signed_by_client') && !readOnly && (
+                      <Button size="sm" variant="outline" onClick={() => setUploading({ contract: c })} className="gap-1.5">
+                        <FileCheck2 className="h-3.5 w-3.5 text-emerald-600" aria-hidden /> Upload the signed copy
+                      </Button>
+                    )}
                     {allowed.has('edit') && !readOnly && (
                       <Button
                         size="sm" variant="outline"
@@ -519,7 +537,7 @@ export function ContractPanel({ leadId, dealId, leadName, readOnly, onLeadChange
                         <RefreshCw className="h-3.5 w-3.5" aria-hidden /> Resend with a new link
                       </Button>
                     )}
-                    {c.status === 'countersigned' && !readOnly && (
+                    {c.status === 'countersigned' && !c.signedElsewhere && !readOnly && (
                       <Button
                         size="sm"
                         variant={c.executedCopySentAtUtc ? 'ghost' : 'outline'}
@@ -554,7 +572,7 @@ export function ContractPanel({ leadId, dealId, leadName, readOnly, onLeadChange
                 )}
 
                 {/* Executed but undelivered is a real state, and worth seeing. */}
-                {c.status === 'countersigned' && !c.executedCopySentAtUtc && (
+                {c.status === 'countersigned' && !c.signedElsewhere && !c.executedCopySentAtUtc && (
                   <p className="mt-2 text-xs font-medium text-amber-700">
                     Signed by both parties, but the copy has not been emailed to everyone yet.
                   </p>
@@ -625,13 +643,28 @@ export function ContractPanel({ leadId, dealId, leadName, readOnly, onLeadChange
                   contract with its deposit too. */}
               <MembershipTermsFields tier={tier} onTier={(t) => { setTier(t); if (!t) setDeposit(''); }}
                 deposit={deposit} onDeposit={setDeposit} />
-              <Button variant="outline" size="sm" onClick={() => void draft()} disabled={busy === 'draft'} className="mt-3 gap-1.5">
-                <Sparkles className="h-3.5 w-3.5" aria-hidden /> New draft
-              </Button>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" onClick={() => void draft()} disabled={busy === 'draft'} className="gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5" aria-hidden /> New draft
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setUploading({ contract: null })} className="gap-1.5">
+                  <FileCheck2 className="h-3.5 w-3.5 text-emerald-600" aria-hidden /> Upload a signed contract
+                </Button>
+              </div>
             </li>
           )}
         </ul>
       )}
+
+      <SignedContractDialog
+        open={uploading !== null}
+        onOpenChange={(open) => { if (!open) setUploading(null); }}
+        dealId={dealId}
+        leadId={leadId}
+        contract={uploading?.contract ?? null}
+        counterpartyName={uploading?.contract?.counterpartyName || leadName}
+        onRecorded={() => { void reload(); onLeadChanged?.(); }}
+      />
     </Card>
   );
 }
@@ -653,7 +686,7 @@ function Header() {
       <div>
         <h2 className="text-base font-bold text-slate-900">Contract</h2>
         <p className="text-xs text-slate-500">
-          Draft, send for signature, countersign — the pipeline moves by itself
+          Draft, send, countersign — or upload one signed elsewhere
         </p>
       </div>
     </div>
