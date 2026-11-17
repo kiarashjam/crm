@@ -21,6 +21,14 @@ namespace ACI.Application.Interfaces;
 /// </remarks>
 public interface IContractService
 {
+    /// <summary>
+    /// Records a contract signed outside CadenceE by its signed copy: executed at once, as a
+    /// countersignature executes one (the deal won, the member admitted), with the copy kept on
+    /// the deal and served as its PDF. Nothing is emailed.
+    /// </summary>
+    Task<Result<ContractDto>> RecordSignedCopyAsync(
+        Guid userId, string? userName, Guid organizationId, RecordSignedCopyRequest request, CancellationToken ct = default);
+
     Task<Result<ContractDto>> CreateDraftAsync(
         Guid userId, Guid organizationId, CreateContractDraftRequest request, CancellationToken ct = default);
 

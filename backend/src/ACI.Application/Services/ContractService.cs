@@ -59,8 +59,12 @@ public class ContractService : IContractService
         IWorkspaceModules? modules = null,
         IContractDeposits? deposits = null,
         IDealService? dealService = null,
-        IPrivateEventContracts? privateEvents = null)
+        IPrivateEventContracts? privateEvents = null,
+        IAttachmentService? attachments = null,
+        IAttachmentRepository? attachmentFiles = null)
     {
+        _attachments = attachments;
+        _attachmentFiles = attachmentFiles;
         _privateEvents = privateEvents;
         _deposits = deposits;
         _dealService = dealService;
@@ -91,6 +95,8 @@ public class ContractService : IContractService
     private readonly IContractDeposits? _deposits;
     private readonly IDealService? _dealService;
     private readonly IPrivateEventContracts? _privateEvents;
+    private readonly IAttachmentService? _attachments;
+    private readonly IAttachmentRepository? _attachmentFiles;
 
     /// <summary>
     /// The workspace's rules for a signature, as the contract's lead or deal. A contract is
@@ -537,6 +543,132 @@ public class ContractService : IContractService
         return Result.Success(await ToPublicDtoAsync(contract, ct));
     }
 
+    /* ------------------------------------- signed outside CadenceE: the copy */
+
+    /// <summary>What a signed copy may be: a PDF, or a photo of the signed pages.</summary>
+    private static readonly IReadOnlyDictionary<string, string> SignedCopyTypes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        [".pdf"] = "application/pdf",
+        [".jpg"] = "image/jpeg",
+        [".jpeg"] = "image/jpeg",
+        [".png"] = "image/png",
+    };
+
+    /// <summary>The type a file's first bytes say it is, of those a signed copy may be.</summary>
+    private static string? SignedCopyTypeOf(byte[] content) =>
+        content.Length >= 4 && content[0] == 0x25 && content[1] == 0x50 && content[2] == 0x44 && content[3] == 0x46 ? "application/pdf"
+        : content.Length >= 3 && content[0] == 0xFF && content[1] == 0xD8 && content[2] == 0xFF ? "image/jpeg"
+        : content.Length >= 8 && content[0] == 0x89 && content[1] == 0x50 && content[2] == 0x4E && content[3] == 0x47 ? "image/png"
+        : null;
+
+    public async Task<Result<ContractDto>> RecordSignedCopyAsync(
+        Guid userId, string? userName, Guid organizationId, RecordSignedCopyRequest request, CancellationToken ct = default)
+    {
+        if (_attachments == null) return Result.Failure<ContractDto>(DomainErrors.Contract.DocumentUnavailable);
+        if (request.Content.Length == 0) return Result.Failure<ContractDto>(DomainErrors.Attachment.Empty);
+        if (request.Content.Length > AttachmentService.MaxBytes) return Result.Failure<ContractDto>(DomainErrors.Attachment.TooLarge);
+        // What it is, by its content and its name both: a renamed file is not taken for a contract.
+        var type = SignedCopyTypeOf(request.Content);
+        if (type == null || !SignedCopyTypes.TryGetValue(Path.GetExtension(request.FileName ?? ""), out var named) || named != type)
+            return Result.Failure<ContractDto>(DomainErrors.Contract.SignedCopyType);
+
+        var today = DateTime.UtcNow.Date;
+        var signedOn = request.SignedOn?.Date ?? today;
+        // A day ahead for the time zones east of UTC, where it is already tomorrow.
+        if (signedOn > today.AddDays(1)) return Result.Failure<ContractDto>(DomainErrors.Contract.SignedOnInFuture);
+
+        // The contract it signs: one drafted or sent here, or a new one for the deal or lead.
+        Contract? contract = null;
+        if (request.ContractId is Guid contractId)
+        {
+            contract = await _contracts.GetByIdAsync(contractId, organizationId, ct);
+            if (contract is null) return Result.Failure<ContractDto>(DomainErrors.Contract.NotFound);
+            if (ContractStateMachine.IsTerminal(contract.Status))
+                return Result.Failure<ContractDto>(DomainErrors.Contract.NotAllowedInThisState);
+        }
+
+        Deal? deal = null;
+        if ((request.DealId ?? contract?.DealId) is Guid dealId && _deals != null)
+        {
+            // Read as this person, so a private deal they may not open cannot be signed for.
+            deal = await _deals.GetByIdAsync(dealId, userId, organizationId, ct);
+            if (deal is null) return Result.Failure<ContractDto>(DomainErrors.Contract.DealNotFound);
+        }
+        Lead? lead = null;
+        var leadId = request.LeadId ?? contract?.LeadId;
+        if (leadId is null && deal != null) leadId = await _contracts.LeadOfDealAsync(deal.Id, organizationId, ct);
+        if (leadId is Guid lid)
+        {
+            lead = await _leads.GetByIdAsync(lid, userId, organizationId, ct);
+            if (lead is null && request.LeadId.HasValue) return Result.Failure<ContractDto>(DomainErrors.Contract.LeadNotFound);
+        }
+        if (deal is null && lead is null) return Result.Failure<ContractDto>(DomainErrors.Contract.SignedCopyNeedsRecord);
+
+        // The copy is kept with the deal, or the lead, as any file attached to it, so it is found
+        // there too and goes when the record goes.
+        var stored = await _attachments.UploadAsync(userId, userName, organizationId, new AttachmentUpload(
+            deal != null ? RecordTypes.Deal : RecordTypes.Lead, deal?.Id ?? lead!.Id, request.FileName!, type, request.Content), ct);
+        if (stored.IsFailure) return Result.Failure<ContractDto>(stored.Error);
+
+        var now = DateTime.UtcNow;
+        var person = Counterparty(lead, deal);
+        var isNew = contract is null;
+        contract ??= new Contract
+        {
+            Id = Guid.NewGuid(),
+            OrganizationId = organizationId,
+            LeadId = lead?.Id,
+            DealId = deal?.Id,
+            Title = person.Name is null ? "Signed contract" : $"Signed contract — {person.Name}",
+            Body = "",
+            CounterpartyName = person.Name ?? "",
+            CounterpartyEmail = person.Email ?? "",
+            CreatedByUserId = userId,
+            CreatedAtUtc = now,
+        };
+        var signer = string.IsNullOrWhiteSpace(request.SignedBy)
+            ? (string.IsNullOrWhiteSpace(contract.CounterpartyName) ? "The other party" : contract.CounterpartyName)
+            : request.SignedBy.Trim();
+        if (signer.Length > 300) signer = signer[..300];
+        var ours = string.IsNullOrWhiteSpace(userName) ? "CadenceE" : userName.Trim();
+
+        contract.Status = ContractStatuses.Countersigned;
+        contract.DealId ??= deal?.Id;
+        contract.LeadId ??= lead?.Id;
+        contract.ClientSignatureName = signer;
+        contract.ClientSignedAtUtc = DateTime.SpecifyKind(signedOn, DateTimeKind.Utc);
+        contract.CounterSignatureName = ours.Length > 300 ? ours[..300] : ours;
+        contract.CounterSignedAtUtc = now;
+        contract.CounterSignedByUserId = userId;
+        contract.SignedCopyAttachmentId = stored.Value.Id;
+        contract.UpdatedAtUtc = now;
+        // A link sent for it signs nothing now: it was signed another way.
+        contract.SigningTokenHash = null;
+        contract.SigningTokenExpiresAtUtc = null;
+
+        if (isNew) await _contracts.AddAsync(contract, ct);
+        else if (!await _contracts.UpdateAsync(contract, ct))
+        {
+            // Someone signed or voided it here meanwhile: the copy stays with the deal, the contract as they left it.
+            return Result.Failure<ContractDto>(DomainErrors.Contract.ChangedByAnother);
+        }
+
+        await LogEventAsync(contract.Id, "signed_elsewhere",
+            $"Signed outside CadenceE by {signer} on {signedOn:d MMM yyyy}; signed copy \"{stored.Value.FileName}\" uploaded by {ours}",
+            userId, ours, null, null, ct);
+
+        // What an executed contract does, as a countersignature does it, but nothing is emailed:
+        // the signed copy was made, and passed on, outside CadenceE.
+        await ApplyPipelineEffectAsync(contract, userId, organizationId, userId, ct);
+        await WinDealAsync(contract, userId, organizationId, ct);
+        await AdmitMemberAsync(contract, userId, ct);
+        await ConfirmPrivateEventAsync(contract, ct);
+        await SettleDepositAsync(contract, userId, ct);
+        await AnnounceSignatureAsync(contract, AutomationCatalog.ContractCountersigned, "countersigned", userId, ct);
+
+        return Result.Success(await ToDtoAsync(contract, ct));
+    }
+
     /* ------------------------------------------------- step 4: countersign */
 
     public async Task<Result<ContractDto>> CountersignAsync(
@@ -750,6 +882,9 @@ public class ContractService : IContractService
         if (contract is null) return Result.Failure<bool>(DomainErrors.Contract.NotFound);
         if (contract.Status != ContractStatuses.Countersigned)
             return Result.Failure<bool>(DomainErrors.Contract.NotAllowedInThisState);
+        // Its copy is the one uploaded, not a document rendered here, and it was never emailed.
+        if (contract.SignedCopyAttachmentId != null)
+            return Result.Failure<bool>(DomainErrors.Contract.SignedElsewhere);
 
         var sent = await SendExecutedCopiesAsync(contract, userId, ct);
         return Result.Success(sent);
@@ -877,6 +1012,15 @@ public class ContractService : IContractService
     {
         var contract = await _contracts.GetByIdAsync(contractId, organizationId, ct);
         if (contract is null) return Result.Failure<ContractDocument>(DomainErrors.Contract.NotFound);
+
+        // Signed outside CadenceE: its document is the signed copy that was uploaded.
+        if (contract.SignedCopyAttachmentId is Guid copyId)
+        {
+            var copy = _attachmentFiles == null ? null : await _attachmentFiles.GetWithContentAsync(copyId, ct);
+            return copy == null || copy.OrganizationId != organizationId
+                ? Result.Failure<ContractDocument>(DomainErrors.Contract.DocumentUnavailable)
+                : Result.Success(new ContractDocument(copy.FileName, copy.ContentType, copy.Content));
+        }
 
         var org = await _organizations.GetByIdAsync(organizationId, ct);
         return Document(contract, org?.Name ?? "");
@@ -1249,7 +1393,8 @@ public class ContractService : IContractService
             c.MembershipTier,
             c.DepositAmount,
             c.DepositCurrency,
-            _deposits == null || c.DepositAmount == null ? null : (await _deposits.ForContractsAsync(c.OrganizationId, [c.Id], ct)).GetValueOrDefault(c.Id));
+            _deposits == null || c.DepositAmount == null ? null : (await _deposits.ForContractsAsync(c.OrganizationId, [c.Id], ct)).GetValueOrDefault(c.Id),
+            c.SignedCopyAttachmentId != null);
     }
 
     /// <summary>

@@ -5132,6 +5132,9 @@ namespace ACI.Infrastructure.Migrations
                     b.Property<Guid?>("SentByUserId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("SignedCopyAttachmentId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime?>("SigningTokenExpiresAtUtc")
                         .HasColumnType("datetime2");
 

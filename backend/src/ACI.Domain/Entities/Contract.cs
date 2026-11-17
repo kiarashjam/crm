@@ -143,6 +143,17 @@ public class Contract
     public DateTime? ExecutedCopySentAtUtc { get; set; }
 
     /// <summary>
+    /// For a contract signed outside CadenceE (on paper, or with another signing service): the
+    /// signed copy someone uploaded, kept as an attachment on the deal (or lead). Null for a
+    /// contract signed here, whose executed copy is rendered from <see cref="Body"/>.
+    /// </summary>
+    /// <remarks>
+    /// Such a contract is executed by the upload: nobody signs it in CadenceE, nothing is
+    /// emailed, and its PDF is the uploaded file itself.
+    /// </remarks>
+    public Guid? SignedCopyAttachmentId { get; set; }
+
+    /// <summary>
     /// SQL Server's own row stamp, changed by the database on every UPDATE.
     /// </summary>
     /// <remarks>

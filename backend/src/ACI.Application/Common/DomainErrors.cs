@@ -472,6 +472,21 @@ public static partial class DomainErrors
         public static readonly Error DocumentUnavailable = new(
             "Contract.DocumentUnavailable", "The contract document could not be produced");
 
+        /// <summary>A signed copy is a PDF or a photo of the signed pages.</summary>
+        public static readonly Error SignedCopyType = new(
+            "Contract.SignedCopyType", "Upload the signed contract as a PDF, or a JPEG or PNG photo of it");
+
+        /// <summary>A signed copy is for a deal or a lead.</summary>
+        public static readonly Error SignedCopyNeedsRecord = new(
+            "Contract.SignedCopyNeedsRecord", "Say which deal or lead the signed contract is for");
+
+        public static readonly Error SignedOnInFuture = new(
+            "Contract.SignedOnInFuture", "The day it was signed cannot be in the future");
+
+        /// <summary>A contract signed outside CadenceE was never emailed by it, so there is no copy to send again.</summary>
+        public static readonly Error SignedElsewhere = new(
+            "Contract.SignedElsewhere", "This contract was signed outside CadenceE: its signed copy is kept with the deal, and nothing is emailed");
+
         /// <summary>
         /// Sending is blocked while any template placeholder is still unfilled,
         /// rather than posting a contract that reads "Dear {{lead.name}},".

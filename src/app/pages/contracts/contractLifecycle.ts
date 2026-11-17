@@ -307,6 +307,9 @@ export interface DescribeInput {
    */
   signingLinkExpiresAtUtc?: string | null;
   closedReason?: string | null;
+  /** Signed outside CadenceE, by its uploaded copy: finished, though nothing was emailed. */
+  signedElsewhere?: boolean;
+  clientSignatureName?: string | null;
 }
 
 /**
@@ -369,6 +372,14 @@ export function describeState(c: DescribeInput, now: number = Date.now()): Contr
 
     case 'countersigned': {
       const executed = timeAgo(c.counterSignedAtUtc, now);
+      if (c.signedElsewhere) {
+        // Signed and passed on outside CadenceE: nothing was to be emailed, so it is finished.
+        return {
+          step: 4, completed: 4, turn: 'nobody', tone: 'done',
+          headline: 'Signed outside CadenceE',
+          detail: `Signed by ${c.clientSignatureName?.trim() || who}; the signed copy was uploaded ${executed ?? 'recently'} and is kept with the deal.`,
+        };
+      }
       if (!c.executedCopySentAtUtc) {
         // Deliberately NOT "done". The contract is binding, but nobody has been
         // sent it — usually because SMTP is unconfigured. Reading this as

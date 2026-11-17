@@ -1,5 +1,7 @@
 using ACI.Application.DTOs;
+using ACI.Application.Common;
 using ACI.Application.Interfaces;
+using ACI.Application.Services;
 using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -47,6 +49,49 @@ public class ContractsController : ControllerBase
         if (userId is null || orgId is null) return Unauthorized();
 
         var result = await _contracts.CreateDraftAsync(userId.Value, orgId.Value, request, ct);
+        return result.ToActionResult();
+    }
+
+    /// <summary>
+    /// Records a contract signed outside CadenceE (on paper, or with another signing service)
+    /// by uploading the signed copy: a PDF, or a JPEG or PNG photo, up to 10 MB. Multipart form:
+    /// file, and dealId or leadId, or contractId for one drafted or sent here; signedBy and
+    /// signedOn (yyyy-MM-dd) optionally.
+    /// </summary>
+    /// <remarks>
+    /// The contract is executed by it, as by a countersignature: its deal is marked won and the
+    /// membership behind it approved. The copy is kept as a file on the deal and is the
+    /// contract's PDF. Nothing is emailed.
+    /// </remarks>
+    /// <response code="200">The executed contract.</response>
+    /// <response code="400">No file, one too large, not a PDF or photo, or a day in the future.</response>
+    /// <response code="404">The deal, lead or contract is not in this workspace.</response>
+    [HttpPost("signed-copy")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(32 * 1024 * 1024)]
+    [ProducesResponseType(typeof(ContractDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ContractDto>> SignedCopy(
+        IFormFile? file,
+        [FromForm] Guid? dealId,
+        [FromForm] Guid? leadId,
+        [FromForm] Guid? contractId,
+        [FromForm] string? signedBy,
+        [FromForm] DateTime? signedOn,
+        CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        var orgId = _currentUser.CurrentOrganizationId;
+        if (userId is null || orgId is null) return Unauthorized();
+        if (file == null || file.Length == 0) return DomainErrors.Attachment.Empty.ToProblemResult();
+        // Refused before it is read into memory.
+        if (file.Length > AttachmentService.MaxBytes) return DomainErrors.Attachment.TooLarge.ToProblemResult();
+
+        using var buffer = new MemoryStream((int)file.Length);
+        await file.CopyToAsync(buffer, ct);
+        var result = await _contracts.RecordSignedCopyAsync(userId.Value, _currentUser.UserName, orgId.Value,
+            new RecordSignedCopyRequest(dealId, leadId, contractId, signedBy, signedOn, file.FileName, file.ContentType, buffer.ToArray()), ct);
         return result.ToActionResult();
     }
 
