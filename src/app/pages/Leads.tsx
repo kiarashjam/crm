@@ -52,7 +52,7 @@ import {
   useAllLeads, useLeadSources, useLeadStatuses, useLeadStats, useLeadsPage, useOrgMembers,
 } from '@/app/hooks/queries';
 import { LoadFailed } from '@/app/components/LoadFailed';
-import type { Lead, LeadKind, Company, Contact, Deal, LeadStatus, LeadSource, Pipeline, Activity } from '@/app/api/types';
+import type { Lead, LeadKind, Company, Contact, Deal, DealStage, LeadStatus, LeadSource, Pipeline, Activity } from '@/app/api/types';
 import { recordHref } from '@/app/hooks/useDocumentTitle';
 import { orgCan, PERMISSION, type OrgMemberDto } from '@/app/api/organizations';
 import { relationshipLabel } from '@/app/api/relationships';
@@ -168,6 +168,15 @@ function parseFieldSort(value: string | null): { key: string; dir: 'asc' | 'desc
 }
 
 const leadIdOf = (l: Lead) => l.id;
+
+/** A record's id, as the server takes it: not an empty or made-up value. */
+const isRecordId = (v?: string | null): v is string => !!v && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+
+/** Where a new deal on this pipeline starts: its first stage that is neither won nor lost. */
+function openingStage(pipeline: Pipeline): DealStage | undefined {
+  const stages = (pipeline.dealStages ?? []).slice().sort((a, b) => a.displayOrder - b.displayOrder);
+  return stages.find((st) => !st.isWon && !st.isLost) ?? stages[0];
+}
 
 export default function Leads() {
   const money = useMoney();
@@ -980,7 +989,14 @@ export default function Leads() {
     setWelcomeConfirm(false);
     Promise.all([getContacts(), getDeals(), getPipelines()])
       .then(([contacts, deals, pipelines]) => {
-        setConvertOptions({ contacts: contacts ?? [], deals: deals ?? [], pipelines: pipelines ?? [] });
+        const list = pipelines ?? [];
+        setConvertOptions({ contacts: contacts ?? [], deals: deals ?? [], pipelines: list });
+        // The pipeline and stage the dialog shows are the ones the deal goes into. They were
+        // shown as if chosen but not sent, so the deal went on no pipeline at all.
+        const first = list[0];
+        if (first) {
+          setConvertForm((f) => ({ ...f, pipelineId: f.pipelineId ?? first.id, dealStageId: f.dealStageId ?? openingStage(first)?.id }));
+        }
       })
       .catch(() => {})
       .finally(() => setConvertOptionsLoading(false));
@@ -989,6 +1005,10 @@ export default function Leads() {
       .then((s) => {
         setOnboardingSettings(s);
         setWelcome(draftFrom(s));
+        // A workspace that welcomes every new customer converts into the deal the welcome
+        // goes with: unticked, the usual conversion made a contact alone, no deal to find
+        // and no welcome sent. The email is still previewed before anything goes.
+        if (s?.configured && s.enabled && !place) setConvertForm((f) => (f.existingDealId ? f : { ...f, createDeal: true }));
       })
       .catch(() => setOnboardingSettings(null));
   };
@@ -1005,7 +1025,7 @@ export default function Leads() {
     ? convertOptions.pipelines.find((p) => p.id === convertForm.pipelineId)
     : convertOptions.pipelines[0];
   const convertStageList = (convertPipeline?.dealStages ?? []).slice().sort((a, b) => a.displayOrder - b.displayOrder);
-  const defaultConvertStageId = convertStageList[0]?.id ?? 'Qualification';
+  const defaultConvertStageId = (convertPipeline ? openingStage(convertPipeline)?.id : undefined) ?? convertStageList[0]?.id ?? 'Qualification';
 
   // A welcome goes with a deal (their membership) to the deal's contact: it goes when the
   // portal is connected, the person left it on, and both are there.
@@ -1055,7 +1075,16 @@ export default function Leads() {
     }
     // The amount as a number, read here: the server took plain digits only, so
     // "10'000" or "CHF 10,000" made the whole conversion fail with "Something went wrong".
-    const { dealValue, ...request } = convertForm;
+    const { dealValue, ...form } = convertForm;
+    // Only ids go to the server: an empty one made it refuse the whole conversion.
+    const pipelineId = isRecordId(form.pipelineId) ? form.pipelineId : undefined;
+    const dealStageId = isRecordId(form.dealStageId) ? form.dealStageId : undefined;
+    const request = {
+      ...form,
+      pipelineId,
+      dealStageId,
+      dealStage: (dealStageId && convertStageList.find((st) => st.id === dealStageId)?.name) || form.dealStage,
+    };
     const dealAmount = dealValue?.trim() ? parseMoneyInput(dealValue) : 0;
     if (convertForm.createDeal && dealAmount === null) {
       toast.error(AMOUNT_HINT);
@@ -1073,10 +1102,15 @@ export default function Leads() {
         : { ...request, dealCurrency: undefined });
       if (result) {
         const parts: string[] = [];
-        if (result.companyId) parts.push('company created');
+        // The result names the lead's company whether or not one was made.
+        if (result.companyId && convertForm.createNewCompany) parts.push('company created');
         if (result.contactId) parts.push('contact created');
         if (result.dealId) parts.push('deal created');
-        toast.success(parts.length ? `Lead converted: ${parts.join(', ')}` : messages.success.leadConverted);
+        const newDealId = result.dealId;
+        toast.success(
+          parts.length ? `Lead converted: ${parts.join(', ')}` : messages.success.leadConverted,
+          newDealId && !welcomeGoes ? { action: { label: 'Open the deal', onClick: () => navigate(`/deals/${newDealId}`) } } : undefined,
+        );
         if (welcomeGoes && result.dealId) {
           setWelcomeProgress({ dealId: result.dealId, name: convertRecipient(convertDialogLead).name ?? convertDialogLead.name, request: toStartRequest(welcome, convertDialogLead.id) });
         }
@@ -2764,9 +2798,9 @@ export default function Leads() {
                           <Select
                             value={convertForm.pipelineId || convertOptions.pipelines[0]?.id}
                             onValueChange={(v) => {
+                              if (!v) return;
                               const p = convertOptions.pipelines.find((x) => x.id === v);
-                              const stages = (p?.dealStages ?? []).slice().sort((a, b) => a.displayOrder - b.displayOrder);
-                              setConvertForm((f) => ({ ...f, pipelineId: v, dealStageId: stages[0]?.id }));
+                              setConvertForm((f) => ({ ...f, pipelineId: v, dealStageId: p ? openingStage(p)?.id : undefined }));
                             }}
                           >
                             <SelectTrigger className="flex-1 h-10 bg-white">
@@ -2780,7 +2814,9 @@ export default function Leads() {
                           </Select>
                           <Select
                             value={convertForm.dealStageId || defaultConvertStageId}
-                            onValueChange={(v) => setConvertForm((f) => ({ ...f, dealStageId: v }))}
+                            // An empty value comes while the stages change with the pipeline:
+                            // sent, the server refused the whole conversion over it.
+                            onValueChange={(v) => { if (v) setConvertForm((f) => ({ ...f, dealStageId: v })); }}
                           >
                             <SelectTrigger className="flex-1 h-10 bg-white">
                               <SelectValue />

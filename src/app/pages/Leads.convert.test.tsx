@@ -85,3 +85,59 @@ describe('converting a lead into a deal', () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('A currency is a three-letter ISO code, such as CHF or EUR.'));
   });
 });
+
+// The pipeline and stage on screen are where the deal goes. They were shown as chosen but
+// not sent, so the deal went on no pipeline at all; and picking another pipeline sent an
+// empty stage, which the server refused along with the whole conversion.
+describe('the pipeline and stage a converted deal goes into', () => {
+  const stage = (id: string, pipelineId: string, name: string, displayOrder: number, extra: { isWon?: boolean; isLost?: boolean } = {}) =>
+    ({ id, pipelineId, name, displayOrder, isWon: false, isLost: false, ...extra });
+  const sales = { id: '11111111-1111-4111-8111-111111111111', name: 'Sales', displayOrder: 0, dealStages: [
+    stage('11111111-0000-4000-8000-000000000002', '11111111-1111-4111-8111-111111111111', 'Proposal', 1),
+    stage('11111111-0000-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111', 'Qualification', 0),
+  ] };
+  const membership = { id: '22222222-2222-4222-8222-222222222222', name: 'Membership', displayOrder: 1, dealStages: [
+    stage('22222222-0000-4000-8000-000000000009', '22222222-2222-4222-8222-222222222222', 'Declined', 0, { isLost: true }),
+    stage('22222222-0000-4000-8000-000000000001', '22222222-2222-4222-8222-222222222222', 'Enquiry', 1),
+  ] };
+
+  beforeEach(() => {
+    api.getPipelines.mockResolvedValue([sales, membership]);
+    api.convertLead.mockResolvedValue({ leadId: 'l1', dealId: 'd1' });
+  });
+
+  it('sends the pipeline and stage the dialog shows, without being touched', async () => {
+    await openConversion();
+    fireEvent.click(screen.getByRole('button', { name: /convert lead/i }));
+
+    await waitFor(() => expect(api.convertLead).toHaveBeenCalled());
+    expect(api.convertLead.mock.calls[0]?.[1]).toMatchObject({
+      createDeal: true, pipelineId: sales.id, dealStageId: '11111111-0000-4000-8000-000000000001', dealStage: 'Qualification',
+    });
+  });
+
+  it("sends another pipeline's opening stage when it is picked, never an empty one", async () => {
+    await openConversion();
+    // As the stage list changes with the pipeline, the stage picker reports an empty value.
+    const [pipelinePicker] = screen.getAllByRole('combobox').filter((c) => c.textContent?.includes('Sales'));
+    fireEvent.click(pipelinePicker!);
+    fireEvent.click(await screen.findByRole('option', { name: 'Membership' }));
+    fireEvent.click(screen.getByRole('button', { name: /convert lead/i }));
+
+    await waitFor(() => expect(api.convertLead).toHaveBeenCalled());
+    const sent = api.convertLead.mock.calls[0]?.[1];
+    // The first stage that is neither won nor lost.
+    expect(sent).toMatchObject({ pipelineId: membership.id, dealStageId: '22222222-0000-4000-8000-000000000001', dealStage: 'Enquiry' });
+    // No id the server cannot read: an empty one made it refuse the whole conversion.
+    const ids = Object.entries(sent as Record<string, unknown>).filter(([key]) => key.endsWith('Id'));
+    expect(ids.filter(([, value]) => value === '')).toEqual([]);
+  });
+
+  it('leads to the new deal from the message that says it was made', async () => {
+    await openConversion();
+    fireEvent.click(screen.getByRole('button', { name: /convert lead/i }));
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    expect(toast.success.mock.calls[0]?.[1]).toMatchObject({ action: { label: 'Open the deal' } });
+  });
+});

@@ -5,7 +5,7 @@ import {
   ArrowLeft, Mail, Phone, Building2, Sparkles, Trash2,
   User as UserIcon, CheckCircle2, Loader2, Pencil, Plus, Calendar,
   MessageSquarePlus, FileText, Clock, UserPlus, Copy, Check, AlertCircle,
-  ArrowRightCircle, Eye, Store, MapPin, UserRound, Globe,
+  ArrowRightCircle, Eye, Store, MapPin, UserRound, Globe, Handshake,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ApiError } from '@/app/api/apiClient';
@@ -970,6 +970,17 @@ export default function LeadDetailPage() {
                   </Button>
                 ))}
                 <PrivacyRequestLink kind="lead" id={lead.id} className={heroSecondary} />
+                {/* Where the lead went: there was no way from a converted lead to its deal. */}
+                {lead.isConverted && lead.convertedToContactId && (
+                  <Button asChild variant="outline" className={heroSecondary}>
+                    <Link to={`/contacts/${lead.convertedToContactId}`}><UserRound className="h-4 w-4" /> Contact</Link>
+                  </Button>
+                )}
+                {lead.isConverted && lead.convertedToDealId && (
+                  <Button asChild className={heroPrimary('orange')}>
+                    <Link to={`/deals/${lead.convertedToDealId}`}><Handshake className="h-4 w-4" /> Open the deal</Link>
+                  </Button>
+                )}
                 {!isReadOnly && (
                   <>
                     <QuickLogPopover
