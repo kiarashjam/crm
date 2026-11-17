@@ -61,8 +61,7 @@ import {
 import type { Pipeline, DealStage } from '@/app/api/types';
 import { BrandSection } from './settings/components/BrandSection';
 import { IntegrationsSection } from './settings/components/IntegrationsSection';
-import { WelcomePortalSection } from './settings/components/WelcomePortalSection';
-import { MemberPortalSettingsCard } from './settings/components/MemberPortalSettingsCard';
+import { WelcomeTab } from './settings/components/WelcomeTab';
 import { ClaudeSection } from './McpSetup';
 import { AssistantSection } from './settings/components/AssistantSection';
 import PageHero from '@/app/components/PageHero';
@@ -587,22 +586,7 @@ export default function Settings() {
       case 'integrations':
         return <IntegrationsSection currentOrg={currentOrg} />;
       case 'welcome':
-        return (
-          <>
-            {clubOn && (
-              <div className="px-6 pt-6">
-                <MemberPortalSettingsCard />
-              </div>
-            )}
-            {salesOn ? (
-              <WelcomePortalSection currentOrg={currentOrg} />
-            ) : (
-              <div className="p-6 text-sm text-slate-600">
-                Handing a deal&apos;s contact to your own portal belongs to the Sales module, which this workspace has turned off. Turning it on again (Team) brings those settings back as they were.
-              </div>
-            )}
-          </>
-        );
+        return <WelcomeTab currentOrg={currentOrg} salesOn={salesOn} clubOn={clubOn} />;
       case 'claude':
         return <ClaudeSection />;
       case 'organization':
