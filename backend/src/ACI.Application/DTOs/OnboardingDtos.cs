@@ -50,7 +50,7 @@ public sealed record OnboardingPingDto(bool Ok, int? StatusCode, string? Error, 
 /// contact; without one (a lead about to be converted), the name, email and company sent.
 /// A subject or HTML left out uses the workspace's template.
 /// </summary>
-public sealed class OnboardingPreviewRequest
+public class OnboardingPreviewRequest
 {
     public Guid? DealId { get; set; }
     public string? Name { get; set; }
@@ -64,6 +64,19 @@ public sealed class OnboardingPreviewRequest
     public string? EmailSubject { get; set; }
     public string? EmailHtml { get; set; }
 }
+
+/// <summary>
+/// A test of the welcome email: as <see cref="OnboardingPreviewRequest"/> shows it, sent to
+/// <see cref="To"/> (or, left out, to whoever asks) to see how it looks in a mail app.
+/// </summary>
+public sealed class OnboardingTestEmailRequest : OnboardingPreviewRequest
+{
+    public string? To { get; set; }
+}
+
+/// <param name="To">Where the test went.</param>
+/// <param name="Status">"sent", or "queued" when the mail server could not take it yet and it is tried again.</param>
+public sealed record OnboardingTestEmailDto(string To, string Status);
 
 /// <param name="UsesReceiverDesign">No HTML of the workspace's own: the receiver sends its own design, with the welcome message in it, and Html is a stand-in for it.</param>
 /// <param name="Unknown">Placeholders nobody fills, as written.</param>

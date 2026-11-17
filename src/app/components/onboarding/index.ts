@@ -7,3 +7,4 @@ export { OnboardingTimeline, useDealOnboarding } from './OnboardingTimeline';
 export { EmailPreviewFrame } from './EmailPreviewFrame';
 export { draftFrom, toPreviewRequest, toStartRequest, startLabel, type WelcomeDraft } from './welcome';
 export { EmailImageTools, imageSources, imageTag } from './EmailImageTools';
+export { FIELD_LABELS, SIMPLE_COLORS, buildSimpleHtml, designOf, readSimple, simpleDefaults, withoutSimpleMark, type EmailDesign, type SimpleEmail } from './simpleEmail';

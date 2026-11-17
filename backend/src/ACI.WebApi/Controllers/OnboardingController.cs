@@ -81,6 +81,20 @@ public class OnboardingController : ControllerBase
         return (await _onboarding.PreviewAsync(org, userId, request, ct)).ToActionResult();
     }
 
+    /// <summary>
+    /// The welcome email for a sample member, sent by this CRM's mail to the address given
+    /// (or the caller's own), marked as a test, to see it in a mail app before anyone gets it.
+    /// </summary>
+    [HttpPost("test-email")]
+    [Requires(MemberPermissions.EditRecords)]
+    [EnableRateLimiting("composed-email")]
+    [RequestSizeLimit(512 * 1024)]
+    public async Task<ActionResult<OnboardingTestEmailDto>> TestEmail([FromBody] OnboardingTestEmailRequest request, CancellationToken ct)
+    {
+        if (_currentUser.UserId is not { } userId || _currentUser.CurrentOrganizationId is not { } org) return Unauthorized();
+        return (await _onboarding.SendTestEmailAsync(org, userId, request, ct)).ToActionResult();
+    }
+
     [HttpGet("/api/deals/{dealId:guid}/onboarding")]
     public async Task<ActionResult<IReadOnlyList<OnboardingDto>>> ForDeal(Guid dealId, CancellationToken ct)
     {

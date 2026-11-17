@@ -417,6 +417,64 @@ public class OnboardingTests
     }
 
     [Fact]
+    public async Task ATestOfTheWelcomeEmailGoesToTheAddressGiven_MarkedAsATest_AsItWillLook()
+    {
+        await using var app = new App();
+        var (owner, _, _, _) = await SetUpAsync(app);
+        (await owner.PutAsync("/api/onboarding/settings", Body(new
+        {
+            webhookUrl = Portal, defaultLanguage = "fr", senderName = "Le Pavillon", replyTo = "membres@pavillon46.ch",
+        }))).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var sent = await JsonAsync(await owner.PostAsync("/api/onboarding/test-email", Body(new
+        {
+            to = "sarah@pavillon46.ch",
+            name = "Camille Laurent", email = "camille@example.com", startUndetermined = true, language = "fr",
+            emailSubject = "Bienvenue, {{firstName}}",
+            emailHtml = "<html><head><style>p{color:red}</style></head><body><p>Bonjour {{firstName}} {{lastName}},</p>"
+                + "<p><a href=\"{{setPasswordUrl}}\">Choisir mon mot de passe</a></p></body></html>",
+        })));
+        sent.GetProperty("to").GetString().Should().Be("sarah@pavillon46.ch");
+        sent.GetProperty("status").GetString().Should().Be("sent");
+
+        var email = app.Mail.Sent.Should().ContainSingle().Subject;
+        email.To.Should().Equal("sarah@pavillon46.ch");
+        email.Subject.Should().Be("[Test] Bienvenue, Camille");
+        email.FromName.Should().Be("Le Pavillon", "it goes under the welcome's own sender");
+        email.ReplyTo.Should().Contain("membres@pavillon46.ch");
+        email.HtmlBody.Should().Contain("<body><div style=", "the line saying it is a test is at the top of the email")
+            .And.Contain("Ceci est un test de votre e-mail de bienvenue")
+            .And.Contain("<p>Bonjour Camille Laurent,</p>")
+            .And.Contain("href=\"#set-password\"", "the portal's own links are stand-ins");
+        email.TextBody.Should().StartWith("Ceci est un test de votre e-mail de bienvenue")
+            .And.Contain("Bonjour Camille Laurent,")
+            .And.Contain("Choisir mon mot de passe (#set-password)")
+            .And.NotContain("color:red");
+        email.UnsubscribeUrl.Should().BeNull("nobody is unsubscribing from a test");
+        app.Hook.Posts.Should().BeEmpty("a test goes from this CRM's mail; nothing is handed to the portal");
+    }
+
+    [Fact]
+    public async Task ATestIsNotSentWithABlankInIt_OrToSomethingNotAnAddress_AndWithNoAddressGoesToWhoeverAsked()
+    {
+        await using var app = new App();
+        var (owner, _, _, _) = await SetUpAsync(app);
+        var sample = new { name = "Camille Laurent", email = "camille@example.com", startUndetermined = true };
+
+        (await owner.PostAsync("/api/onboarding/test-email", Body(new { to = "not an address", sample.name, sample.email, sample.startUndetermined })))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await owner.PostAsync("/api/onboarding/test-email", Body(new
+        {
+            to = "sarah@pavillon46.ch", sample.name, sample.email, sample.startUndetermined, emailHtml = "<p>{{favouriteColour}}</p>",
+        }))).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        app.Mail.Sent.Should().BeEmpty();
+
+        var mine = await JsonAsync(await owner.PostAsync("/api/onboarding/test-email", Body(sample)));
+        mine.GetProperty("to").GetString().Should().Be("owner@example.ch");
+        app.Mail.Sent.Should().ContainSingle().Which.HtmlBody.Should().Contain("Ceci est un test", "the portal's design, in the workspace's language");
+    }
+
+    [Fact]
     public async Task ThePreviewFillsCadencesPlaceholders_AndStandsInForThePortals()
     {
         await using var app = new App();
