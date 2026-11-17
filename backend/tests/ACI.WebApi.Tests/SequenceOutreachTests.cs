@@ -32,8 +32,6 @@ public class SequenceOutreachTests
             base.ConfigureWebHost(builder);
             builder.ConfigureTestServices(services =>
             {
-                var runner = services.Single(d => d.ImplementationType == typeof(ACI.WebApi.Services.LeadFollowUpBackgroundService));
-                services.Remove(runner);
                 services.AddSingleton(Mail.Mock.Object);
             });
         }

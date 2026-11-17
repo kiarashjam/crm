@@ -136,6 +136,9 @@ public sealed class SqlServerApp : WebApplicationFactory<Program>
         });
         builder.ConfigureServices(services =>
         {
+            // No background jobs: they all read the database on start, and with several tests
+            // starting hosts on one SQL Server at once they made a sign-up wait past its timeout.
+            TestHosts.RemoveBackgroundJobs(services, []);
             services.RemoveAll(typeof(DbContextOptions<AppDbContext>));
             services.RemoveAll(typeof(AppDbContext));
             services.AddDbContext<AppDbContext>(options => options.UseSqlServer(_connectionString));

@@ -39,7 +39,6 @@ public class UnsubscribeTests
             base.ConfigureWebHost(builder);
             builder.ConfigureTestServices(services =>
             {
-                services.Remove(services.Single(d => d.ImplementationType == typeof(ACI.WebApi.Services.LeadFollowUpBackgroundService)));
                 services.AddSingleton(Mail.Mock.Object);
             });
         }

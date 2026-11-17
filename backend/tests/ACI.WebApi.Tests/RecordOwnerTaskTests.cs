@@ -25,13 +25,6 @@ public class RecordOwnerTaskTests
     /// <summary>The app, with due sequence steps run by the test rather than the minute-by-minute runner.</summary>
     private sealed class App : CustomWebApplicationFactory
     {
-        protected override void ConfigureWebHost(IWebHostBuilder builder)
-        {
-            base.ConfigureWebHost(builder);
-            builder.ConfigureTestServices(services =>
-                services.Remove(services.Single(d => d.ImplementationType == typeof(ACI.WebApi.Services.LeadFollowUpBackgroundService))));
-        }
-
         public async Task RunDueStepsAsync()
         {
             using var scope = Services.CreateScope();

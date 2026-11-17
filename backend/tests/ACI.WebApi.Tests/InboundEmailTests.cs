@@ -43,7 +43,6 @@ public class InboundEmailTests
             builder.ConfigureAppConfiguration(config => config.AddInMemoryCollection(Settings));
             builder.ConfigureTestServices(services =>
             {
-                services.Remove(services.Single(d => d.ImplementationType == typeof(ACI.WebApi.Services.LeadFollowUpBackgroundService)));
                 services.AddSingleton(Mail.Mock.Object);
             });
         }
