@@ -273,6 +273,14 @@ export const CONTRACT_STEPS = [
   'Copies sent',
 ] as const;
 
+/** The steps of a contract signed outside CadenceE: on paper or elsewhere, and its copy uploaded here. */
+export const SIGNED_ELSEWHERE_STEPS = [
+  'Draft',
+  'Their signature',
+  'Your signature',
+  'Copy uploaded',
+] as const;
+
 export type ContractTurn = 'you' | 'them' | 'nobody';
 export type StateTone = 'neutral' | 'waiting' | 'action' | 'done' | 'stopped';
 
