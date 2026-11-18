@@ -42,19 +42,25 @@ public sealed class CampaignSchedulerBackgroundService : BackgroundService
     private static readonly TimeSpan FirstPass = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(30);
 
+    /// <summary>Its name in the job heartbeats (/health, the System health page).</summary>
+    public const string JobName = "campaign-scheduler";
+
     private readonly IServiceScopeFactory _scopes;
     private readonly CampaignSignal _signal;
+    private readonly IJobHeartbeats _heartbeats;
     private readonly ILogger<CampaignSchedulerBackgroundService> _logger;
 
-    public CampaignSchedulerBackgroundService(IServiceScopeFactory scopes, CampaignSignal signal, ILogger<CampaignSchedulerBackgroundService> logger)
+    public CampaignSchedulerBackgroundService(IServiceScopeFactory scopes, CampaignSignal signal, IJobHeartbeats heartbeats, ILogger<CampaignSchedulerBackgroundService> logger)
     {
         _scopes = scopes;
         _signal = signal;
+        _heartbeats = heartbeats;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        _heartbeats.Register(JobName, Interval);
         try
         {
             await _signal.WaitAsync(FirstPass, stoppingToken);
@@ -73,6 +79,7 @@ public sealed class CampaignSchedulerBackgroundService : BackgroundService
                 using var scope = _scopes.CreateScope();
                 var taken = await scope.ServiceProvider.GetRequiredService<ICampaignService>().RunDueAsync(DateTime.UtcNow, stoppingToken);
                 if (taken > 0) _logger.LogInformation("Took up {Count} campaign(s) to send", taken);
+                _heartbeats.Beat(JobName);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -80,6 +87,7 @@ public sealed class CampaignSchedulerBackgroundService : BackgroundService
             }
             catch (Exception ex)
             {
+                _heartbeats.Failed(JobName, ex);
                 _logger.LogError(ex, "Sending due campaigns failed");
             }
 

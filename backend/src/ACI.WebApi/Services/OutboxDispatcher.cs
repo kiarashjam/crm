@@ -97,19 +97,25 @@ public sealed class OutboxDispatcherBackgroundService : BackgroundService
     /// <summary>Full batches worked through in one pass before waiting again, so a backlog clears but never spins.</summary>
     private const int MaxBatchesPerPass = 20;
 
+    /// <summary>Its name in the job heartbeats (/health, the System health page).</summary>
+    public const string JobName = "outbox";
+
     private readonly OutboxDispatcher _dispatcher;
     private readonly OutboxSignal _signal;
+    private readonly IJobHeartbeats _heartbeats;
     private readonly ILogger<OutboxDispatcherBackgroundService> _logger;
 
-    public OutboxDispatcherBackgroundService(OutboxDispatcher dispatcher, OutboxSignal signal, ILogger<OutboxDispatcherBackgroundService> logger)
+    public OutboxDispatcherBackgroundService(OutboxDispatcher dispatcher, OutboxSignal signal, IJobHeartbeats heartbeats, ILogger<OutboxDispatcherBackgroundService> logger)
     {
         _dispatcher = dispatcher;
         _signal = signal;
+        _heartbeats = heartbeats;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        _heartbeats.Register(JobName, PollInterval);
         try
         {
             await Task.Delay(FirstPass, stoppingToken);
@@ -125,7 +131,11 @@ public sealed class OutboxDispatcherBackgroundService : BackgroundService
             {
                 for (var batch = 0; batch < MaxBatchesPerPass; batch++)
                 {
-                    if (await _dispatcher.DispatchDueAsync(stoppingToken) < OutboxDispatcher.BatchSize) break;
+                    var due = await _dispatcher.DispatchDueAsync(stoppingToken);
+                    // Each batch, not only the pass: a backlog's pass of many batches is a
+                    // loop at work, not one that has stopped.
+                    _heartbeats.Beat(JobName);
+                    if (due < OutboxDispatcher.BatchSize) break;
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -134,6 +144,7 @@ public sealed class OutboxDispatcherBackgroundService : BackgroundService
             }
             catch (Exception ex)
             {
+                _heartbeats.Failed(JobName, ex);
                 _logger.LogError(ex, "Outbox dispatch failed");
             }
 

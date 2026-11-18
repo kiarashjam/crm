@@ -27,7 +27,11 @@ namespace ACI.WebApi.Services;
 /// </summary>
 public class TaskReminderBackgroundService : BackgroundService
 {
+    /// <summary>Its name in the job heartbeats (/health, the System health page).</summary>
+    public const string JobName = "task-reminders";
+
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IJobHeartbeats _heartbeats;
     private readonly ILogger<TaskReminderBackgroundService> _logger;
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(5);
     private const int BatchSize = 200;
@@ -42,14 +46,17 @@ public class TaskReminderBackgroundService : BackgroundService
     private readonly HashSet<Guid> _dueSoonDone = new();
     private const int MaxRemembered = 50_000;
 
-    public TaskReminderBackgroundService(IServiceScopeFactory scopeFactory, ILogger<TaskReminderBackgroundService> logger)
+    public TaskReminderBackgroundService(IServiceScopeFactory scopeFactory, ILogger<TaskReminderBackgroundService> logger, IJobHeartbeats? heartbeats = null)
     {
         _scopeFactory = scopeFactory;
+        // Tests make one to run a single pass by hand, with no registry to report to.
+        _heartbeats = heartbeats ?? new JobHeartbeats();
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        _heartbeats.Register(JobName, Interval);
         _logger.LogInformation("TaskReminderBackgroundService started");
 
         while (!stoppingToken.IsCancellationRequested)
@@ -57,9 +64,11 @@ public class TaskReminderBackgroundService : BackgroundService
             try
             {
                 await ProcessRemindersAsync(stoppingToken);
+                _heartbeats.Beat(JobName);
             }
             catch (Exception ex)
             {
+                _heartbeats.Failed(JobName, ex);
                 _logger.LogError(ex, "Error processing task reminders");
             }
 

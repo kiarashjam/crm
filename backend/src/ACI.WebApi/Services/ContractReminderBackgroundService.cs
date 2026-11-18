@@ -10,17 +10,24 @@ public sealed class ContractReminderBackgroundService : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromHours(1);
     private static readonly TimeSpan Wait = TimeSpan.FromDays(3);
+
+    /// <summary>Its name in the job heartbeats (/health, the System health page).</summary>
+    public const string JobName = "contract-reminders";
+
     private readonly IServiceScopeFactory _scopes;
+    private readonly IJobHeartbeats _heartbeats;
     private readonly ILogger<ContractReminderBackgroundService> _logger;
 
-    public ContractReminderBackgroundService(IServiceScopeFactory scopes, ILogger<ContractReminderBackgroundService> logger)
+    public ContractReminderBackgroundService(IServiceScopeFactory scopes, IJobHeartbeats heartbeats, ILogger<ContractReminderBackgroundService> logger)
     {
         _scopes = scopes;
+        _heartbeats = heartbeats;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        _heartbeats.Register(JobName, Interval);
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -54,9 +61,11 @@ public sealed class ContractReminderBackgroundService : BackgroundService
                     contract.ReminderSentAtUtc = DateTime.UtcNow;
                 }
                 if (rows.Count > 0) await db.SaveChangesAsync(stoppingToken);
+                _heartbeats.Beat(JobName);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
+                _heartbeats.Failed(JobName, ex);
                 _logger.LogError(ex, "Contract reminder run failed");
             }
 

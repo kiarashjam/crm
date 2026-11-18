@@ -1,3 +1,4 @@
+using ACI.Application.Interfaces;
 using ACI.Application.Services;
 
 namespace ACI.WebApi.Services;
@@ -26,17 +27,23 @@ public sealed class ClubScoringBackgroundService : BackgroundService
     private static readonly TimeSpan FirstPass = TimeSpan.FromMinutes(16);
     private static readonly TimeSpan Interval = TimeSpan.FromHours(1);
 
+    /// <summary>Its name in the job heartbeats (/health, the System health page).</summary>
+    public const string JobName = "club-scoring";
+
     private readonly IServiceScopeFactory _scopes;
+    private readonly IJobHeartbeats _heartbeats;
     private readonly ILogger<ClubScoringBackgroundService> _logger;
 
-    public ClubScoringBackgroundService(IServiceScopeFactory scopes, ILogger<ClubScoringBackgroundService> logger)
+    public ClubScoringBackgroundService(IServiceScopeFactory scopes, IJobHeartbeats heartbeats, ILogger<ClubScoringBackgroundService> logger)
     {
         _scopes = scopes;
+        _heartbeats = heartbeats;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        _heartbeats.Register(JobName, Interval);
         try
         {
             await Task.Delay(FirstPass, stoppingToken);
@@ -55,6 +62,7 @@ public sealed class ClubScoringBackgroundService : BackgroundService
                 using var scope = _scopes.CreateScope();
                 var ran = await scope.ServiceProvider.GetRequiredService<IClubRetention>().RunScheduledAsync(DateTime.UtcNow, stoppingToken);
                 if (ran > 0) _logger.LogInformation("Worked out the members' at-risk scores for {Count} workspace(s)", ran);
+                _heartbeats.Beat(JobName);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -62,6 +70,7 @@ public sealed class ClubScoringBackgroundService : BackgroundService
             }
             catch (Exception ex)
             {
+                _heartbeats.Failed(JobName, ex);
                 _logger.LogError(ex, "The at-risk scoring run failed");
             }
 
