@@ -376,7 +376,10 @@ try
     });
     builder.Services.AddResponseCompression(options => options.EnableForHttps = true);
     builder.Services.AddEndpointsApiExplorer();
-    builder.Services.AddProblemDetails();
+    // Every problem response's traceId is the W3C trace id Application Insights shows as the
+    // Operation ID (MVC's own would be the whole traceparent). GlobalExceptionHandler sets its own.
+    builder.Services.AddProblemDetails(options => options.CustomizeProblemDetails = context =>
+        context.ProblemDetails.Extensions["traceId"] = ACI.WebApi.Monitoring.TraceIds.Of(context.HttpContext));
 
     // Global Exception Handler
     builder.Services.AddExceptionHandler<GlobalExceptionHandler>();

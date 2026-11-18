@@ -26,11 +26,14 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
         CancellationToken cancellationToken)
     {
         var (statusCode, title, detail) = MapException(exception);
+        // The W3C trace id, which Application Insights shows as the Operation ID: the one the
+        // response gives can be searched for there.
+        var traceId = ACI.WebApi.Monitoring.TraceIds.Of(httpContext);
 
         _logger.LogError(
             exception,
             "Unhandled exception occurred. TraceId: {TraceId}, Path: {Path}, Method: {Method}, StatusCode: {StatusCode}",
-            httpContext.TraceIdentifier,
+            traceId,
             httpContext.Request.Path,
             httpContext.Request.Method,
             statusCode);
@@ -44,7 +47,7 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
             Type = GetProblemType(statusCode)
         };
 
-        problemDetails.Extensions["traceId"] = httpContext.TraceIdentifier;
+        problemDetails.Extensions["traceId"] = traceId;
         // The code a client branches on to offer a reload, as for a service's own ".Changed.Conflict".
         if (exception is ConcurrencyConflictException or DbUpdateConcurrencyException)
             problemDetails.Extensions["errorCode"] = "Record.Changed.Conflict";
