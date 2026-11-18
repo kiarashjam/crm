@@ -1,0 +1,3 @@
+// API server errors, burst: every 5xx response. The alert counts them per cloud role.
+requests
+| where toint(resultCode) >= 500
