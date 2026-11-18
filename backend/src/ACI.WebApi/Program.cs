@@ -332,6 +332,17 @@ try
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
             }));
+        // Browsers reporting their crashes (ClientErrorsController), anonymous, by address: a page
+        // sends ten at most, so this is room for a few people behind one address, and a script
+        // posting in a loop fills no log.
+        options.AddPolicy(ACI.WebApi.Controllers.ClientErrorsController.RateLimitPolicy, context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            "client-errors:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = ACI.WebApi.Controllers.ClientErrorsController.PerMinute,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
     });
     builder.Services.AddResponseCompression(options => options.EnableForHttps = true);
     builder.Services.AddEndpointsApiExplorer();

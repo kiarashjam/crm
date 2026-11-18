@@ -64,6 +64,7 @@ public class EndpointModuleTests
         ["EmailTemplatesController"] = "the workspace's prepared emails, sent to leads and contacts of both modules",
         ["PublicEmailImagesController"] = "an image in an email already sent: mail apps fetch it every time the email is opened",
         ["PublicMemberPortalController"] = "members signing in to the member portal, who are not on the team; with the club off the service itself refuses (Module.Off)",
+        ["ClientErrorsController"] = "the browser reporting its own crashes, anonymous and from any page, of either module or neither",
     };
 
     private static IEnumerable<Type> Controllers() =>
