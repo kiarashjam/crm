@@ -4,9 +4,16 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 namespace ACI.WebApi.Monitoring;
 
 /// <summary>
-/// "jobs": the background jobs on this instance (<see cref="IJobHeartbeats"/>). Unhealthy when
-/// one is silent (its loop has stopped or hangs), Degraded when one's last run threw.
+/// "jobs": the background jobs on this instance (<see cref="IJobHeartbeats"/>). Degraded when one
+/// is silent (its loop has stopped or hangs) or its last run threw; never Unhealthy.
 /// </summary>
+/// <remarks>
+/// Never Unhealthy, on purpose: /health is what App Service's health check and the availability
+/// test call, and an Unhealthy answer has App Service restart or replace the instance. A long
+/// pass (a club's billing run, the six-hourly rescoring) reads as silent for a while, and a
+/// restart in the middle of it would do harm. A stopped job is alerted on instead: the
+/// "job.silent" monitoring signal, at Error severity, names it.
+/// </remarks>
 /// <remarks>
 /// The data gives each job's last sign of life and its failures in a row, by name. Never its
 /// last error: /health is anonymous, and an error's message can name a server, a login or a
@@ -59,7 +66,7 @@ public sealed class JobsHealthCheck : IHealthCheck
         if (silent.Count > 0)
         {
             var also = failing.Count > 0 ? $" Failing: {string.Join(", ", failing)}." : "";
-            return Task.FromResult(HealthCheckResult.Unhealthy(
+            return Task.FromResult(HealthCheckResult.Degraded(
                 $"Not heard from for three of their intervals: {string.Join(", ", silent)}.{also}", data: data));
         }
         if (failing.Count > 0)

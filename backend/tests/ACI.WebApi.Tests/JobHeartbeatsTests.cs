@@ -54,15 +54,15 @@ public class JobHeartbeatsTests
     }
 
     [Fact]
-    public void AShortIntervalStillGetsAMinuteBeforeItIsSilent()
+    public void AShortIntervalStillGetsTenMinutesBeforeItIsSilent()
     {
         var heartbeats = new JobHeartbeats(_clock);
         heartbeats.Register("outbox", TimeSpan.FromSeconds(15));
         heartbeats.Beat("outbox");
 
-        _clock.Advance(TimeSpan.FromSeconds(50));
-        Job(heartbeats, "outbox").IsSilent(_clock.UtcNow).Should().BeFalse("three times 15 s is 45 s, but a job gets at least a minute");
-        _clock.Advance(TimeSpan.FromSeconds(11));
+        _clock.Advance(TimeSpan.FromMinutes(10));
+        Job(heartbeats, "outbox").IsSilent(_clock.UtcNow).Should().BeFalse("three times 15 s is 45 s, but a long pass is a busy job, not a stopped one");
+        _clock.Advance(TimeSpan.FromSeconds(1));
         Job(heartbeats, "outbox").IsSilent(_clock.UtcNow).Should().BeTrue();
     }
 
@@ -153,7 +153,10 @@ public class JobHeartbeatsTests
     }
 }
 
-/// <summary>"jobs" in /health: Unhealthy when a job is silent, Degraded when one is failing.</summary>
+/// <summary>
+/// "jobs" in /health: Degraded when a job is silent or failing, never Unhealthy (an Unhealthy
+/// /health has App Service restart the instance, mid-run; a stopped job is alerted on instead).
+/// </summary>
 public class JobsHealthCheckTests
 {
     private readonly ManualClock _clock = new();
@@ -183,7 +186,7 @@ public class JobsHealthCheckTests
     }
 
     [Fact]
-    public async Task UnhealthyWhenAJobIsSilent()
+    public async Task DegradedNotUnhealthyWhenAJobIsSilent()
     {
         var heartbeats = new JobHeartbeats(_clock);
         heartbeats.Register("outbox", TimeSpan.FromSeconds(15));
@@ -191,12 +194,12 @@ public class JobsHealthCheckTests
         heartbeats.Beat("outbox");
         heartbeats.Beat("retention");
 
-        _clock.Advance(TimeSpan.FromMinutes(5));
+        _clock.Advance(TimeSpan.FromMinutes(11));
         heartbeats.Beat("retention");
 
         var result = await CheckAsync(heartbeats);
 
-        result.Status.Should().Be(HealthStatus.Unhealthy);
+        result.Status.Should().Be(HealthStatus.Degraded, "an Unhealthy /health would have App Service restart the instance");
         result.Description.Should().Contain("outbox").And.NotContain("retention");
         Json(result.Data["outbox"]).GetProperty("state").GetString().Should().Be("silent");
         Json(result.Data["retention"]).GetProperty("state").GetString().Should().Be("ok");
@@ -235,7 +238,9 @@ public class JobsHealthCheckTests
         Json(waiting.Data["club-pos"]).GetProperty("state").GetString().Should().Be("waiting");
 
         _clock.Advance(JobsHealthCheck.StartupGrace);
-        (await CheckAsync(heartbeats)).Status.Should().Be(HealthStatus.Unhealthy, "a job that never runs has stopped");
+        var stopped = await CheckAsync(heartbeats);
+        stopped.Status.Should().Be(HealthStatus.Degraded, "a job that never runs has stopped: alerted on, not restarted for");
+        Json(stopped.Data["club-pos"]).GetProperty("state").GetString().Should().Be("silent");
     }
 
     [Fact]

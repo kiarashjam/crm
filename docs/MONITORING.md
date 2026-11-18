@@ -57,6 +57,14 @@ role (`cadence-api`, `pavillon46-api`) wherever a view offers it.
 (database, startup, jobs, outbox), readable by anyone who can open Settings, without
 Azure access. `/health` and `/db-status` can also be opened in a browser.
 
+`/health` answers 503 (Unhealthy) only when the database cannot be reached or start-up
+failed: that is what App Service's health check and the availability tests act on, and an
+Unhealthy instance gets restarted. A stopped or failing background job, or a backlog in the
+outbox, makes it Degraded (still 200), never Unhealthy, so a long billing or rescoring pass is
+never restarted halfway; those are alerted on through the monitoring signals instead
+(`job.silent`, `outbox.backlog`, …). A job counts as stopped after three of its intervals
+without a sign of life, and never before ten minutes.
+
 **Outside Azure.** Stripe (Developers › Events, Webhooks) for payments; SendGrid
 (Activity, Suppressions, and its status page) for email.
 

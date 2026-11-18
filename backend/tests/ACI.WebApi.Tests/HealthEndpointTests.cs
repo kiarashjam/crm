@@ -128,7 +128,7 @@ public class HealthEndpointTests
     }
 
     [Fact]
-    public async Task ASilentJobMakesJobsUnhealthy()
+    public async Task ASilentJobMakesJobsDegraded_StillAnswering200_SoAppServiceDoesNotRestartMidRun()
     {
         using var app = new App(JobsHealthCheck.Name);
         app.Heartbeats.Register(OutboxDispatcherBackgroundService.JobName, TimeSpan.FromSeconds(15));
@@ -139,16 +139,17 @@ public class HealthEndpointTests
         var (fine, _, _) = await app.HealthAsync();
         fine.Should().Be(HttpStatusCode.OK);
 
-        app.Clock.Advance(TimeSpan.FromMinutes(2));
+        app.Clock.Advance(TimeSpan.FromMinutes(11));
+        app.Heartbeats.Beat(RetentionBackgroundService.JobName);
         var (status, body, _) = await app.HealthAsync();
 
-        status.Should().Be(HttpStatusCode.ServiceUnavailable);
+        status.Should().Be(HttpStatusCode.OK, "an Unhealthy /health has App Service restart the instance; a stopped job is alerted on instead");
         var jobs = Check(body, JobsHealthCheck.Name);
-        jobs.GetProperty("status").GetString().Should().Be("Unhealthy");
+        jobs.GetProperty("status").GetString().Should().Be("Degraded");
         jobs.GetProperty("description").GetString().Should().Contain("outbox");
         var outbox = jobs.GetProperty("data").GetProperty("outbox");
         outbox.GetProperty("state").GetString().Should().Be("silent");
-        outbox.GetProperty("lastSeenUtc").GetDateTime().Should().Be(app.Clock.UtcNow - TimeSpan.FromMinutes(2));
+        outbox.GetProperty("lastSeenUtc").GetDateTime().Should().Be(app.Clock.UtcNow - TimeSpan.FromMinutes(11));
         outbox.GetProperty("failures").GetInt32().Should().Be(0);
         jobs.GetProperty("data").GetProperty("retention").GetProperty("state").GetString().Should().Be("ok");
     }

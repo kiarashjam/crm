@@ -44,15 +44,21 @@ public sealed record JobHeartbeat(
     /// <summary>How many intervals a job may miss before it counts as stopped.</summary>
     public const int SilentAfterIntervals = 3;
 
+    /// <summary>
+    /// However short its interval, a job counts as stopped only after this long: a pass that
+    /// takes a few minutes (a backlog, a rescoring) is a busy job, not a stopped one.
+    /// </summary>
+    public static readonly TimeSpan SilentAtLeast = TimeSpan.FromMinutes(10);
+
     /// <summary>The last sign of life, a good run or a failed one: either says the loop still turns.</summary>
     public DateTime LastSeenAtUtc => new[] { RegisteredAtUtc, LastBeatAtUtc ?? DateTime.MinValue, LastFailureAtUtc ?? DateTime.MinValue }.Max();
 
     /// <summary>
-    /// Silent for three of its intervals (at least a minute): its loop has stopped or hangs. A job
-    /// that runs once a day, and so registers a day, is silent after three days.
+    /// Silent for three of its intervals, and at least ten minutes: its loop has stopped or hangs.
+    /// A job that runs once a day, and so registers a day, is silent after three days.
     /// </summary>
     public bool IsSilent(DateTime nowUtc) =>
-        nowUtc - LastSeenAtUtc > TimeSpan.FromTicks(Math.Max(Interval.Ticks * SilentAfterIntervals, TimeSpan.FromMinutes(1).Ticks));
+        nowUtc - LastSeenAtUtc > TimeSpan.FromTicks(Math.Max(Interval.Ticks * SilentAfterIntervals, SilentAtLeast.Ticks));
 
     /// <summary>Its last run threw, and none has finished well since.</summary>
     public bool IsFailing => ConsecutiveFailures > 0;
