@@ -197,6 +197,18 @@ public class EndpointPermissionTests
         RequiresOn(endpoint[0]).Should().Contain(r => r.Permissions.Contains(permission));
     }
 
+    /// <summary>Reads that only those who manage the workspace's settings may make: what went wrong, and where its events go.</summary>
+    [Theory]
+    [InlineData("SystemHealthController", "Get")]
+    [InlineData("AutomationsController", "Runs")]
+    public void ReadingWhatWentWrongTakesTheSettingsPermission(string controller, string action)
+    {
+        var read = typeof(Program).Assembly.GetTypes().Single(t => t.Name == controller).GetMethod(action)!;
+        read.GetCustomAttributes<HttpGetAttribute>().Should().ContainSingle();
+        read.GetCustomAttributes<RequiresAttribute>().Should().Contain(r => r.Permissions.SequenceEqual(new[] { MemberPermissions.ManageSettings }) && !r.WritesOnly,
+            "the failures name the workspace's customers and records, and the server's jobs");
+    }
+
     [Theory]
     [InlineData("ContactsController")]
     [InlineData("CompaniesController")]

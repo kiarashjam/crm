@@ -524,6 +524,13 @@ try
     // Each club's members' at-risk scores, once a day after its billing run, and the save actions.
     builder.Services.AddHostedService<ACI.WebApi.Services.ClubScoringBackgroundService>();
 
+    // System health: each workspace's last portal ping (daily, and "Test the connection"), the
+    // signals the Azure alert rules query (monitoring.alert …), and the daily digest at 08:00.
+    builder.Services.AddSingleton<ACI.Application.Interfaces.IPortalPings, ACI.WebApi.Services.PortalPings>();
+    builder.Services.AddHostedService<ACI.WebApi.Services.PortalPingBackgroundService>();
+    builder.Services.AddHostedService<ACI.WebApi.Services.MonitoringSignalsBackgroundService>();
+    builder.Services.AddHostedService<ACI.WebApi.Services.HealthDigestBackgroundService>();
+
     // HTTP Context accessor for current user service
     builder.Services.AddHttpContextAccessor();
     builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();

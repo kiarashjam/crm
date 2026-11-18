@@ -247,6 +247,12 @@ public static class OutboundSources
     /// </summary>
     public const string Brief = "brief";
     /// <summary>
+    /// The daily System health email to the people who manage a workspace's settings, when
+    /// something went wrong the day before; <see cref="OutboundMessage.SourceId"/> is the
+    /// recipient's notification of it, which is also what keeps it to one a day.
+    /// </summary>
+    public const string HealthDigest = "health_digest";
+    /// <summary>
     /// The email the club's retention rules send a member who has just become at risk;
     /// <see cref="OutboundMessage.SourceId"/> is the member.
     /// </summary>
