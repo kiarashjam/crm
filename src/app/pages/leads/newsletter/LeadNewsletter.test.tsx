@@ -76,6 +76,12 @@ const asked = vi.hoisted(() => ({
 /** The server: the count follows the statuses chosen, everything else answers as given. */
 function serve({ setupOver = {}, send }: { setupOver?: Partial<NewsletterSetup>; send?: () => Response } = {}) {
   server.use(
+    // The welcome letter, whose photos and logo the invitation wears too.
+    http.get(`${BASE}/api/onboarding/settings`, () => HttpResponse.json({
+      hasSecret: true, enabled: true, defaultLanguage: 'fr', addToClubMembers: true, configured: true, cadenceFields: [], receiverFields: [],
+      emailHtml: '<img src="https://img.example/hero.jpg" width="600"><p>Bonjour</p><img src="https://img.example/pool.jpg">'
+        + '<img src="https://img.example/salon.jpg"><img src="https://img.example/logo.png" height="42">',
+    })),
     http.get(`${API}/setup`, () => HttpResponse.json(setup(setupOver))),
     http.post(`${API}/audience`, async ({ request }) => {
       const body = (await request.json()) as NewsletterAudienceRequest;
@@ -242,10 +248,17 @@ describe('inviting leads to a meeting', () => {
     expect(screen.getByText('RDV-7K2Q')).toBeInTheDocument();
     // The letter, in French (the workspace's language), with the lead's link and code for the server to fill in.
     const sent = asked.preview[0]!;
-    expect(sent).toMatchObject({ language: 'fr', subject: '{{firstName}}, prenons rendez-vous', sampleLeadId: LEA });
+    expect(sent).toMatchObject({ language: 'fr', subject: '{{firstName}}, venez découvrir {{workspace}}', sampleLeadId: LEA });
     expect(String(sent.html)).toContain('href="{{bookingUrl}}"');
     expect(String(sent.html)).toContain('{{bookingCode}}');
     expect(String(sent.html)).toContain('Votre code');
+    // Dressed as the welcome letter: its cover, its two photos and its logo.
+    await waitFor(() => expect(String(last(asked.preview)?.html)).toContain('src="https://img.example/hero.jpg"'), { timeout: 3000 });
+    const dressed = String(last(asked.preview)?.html);
+    expect(dressed).toContain('src="https://img.example/pool.jpg"');
+    expect(dressed).toContain('src="https://img.example/salon.jpg"');
+    expect(dressed).toContain('src="https://img.example/logo.png"');
+    expect(screen.getByRole('button', { name: 'Cover: change the image' })).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Mobile' }));
     expect(screen.getByRole('button', { name: 'Mobile' })).toHaveAttribute('aria-pressed', 'true');
@@ -253,8 +266,9 @@ describe('inviting leads to a meeting', () => {
 
     // In English, the words that came with it are in English too.
     await user.click(screen.getByRole('button', { name: 'EN' }));
-    await waitFor(() => expect(last(asked.preview)).toMatchObject({ language: 'en', subject: '{{firstName}}, shall we meet?' }), { timeout: 3000 });
+    await waitFor(() => expect(last(asked.preview)).toMatchObject({ language: 'en', subject: '{{firstName}}, come and discover {{workspace}}' }), { timeout: 3000 });
     expect(String(last(asked.preview)?.html)).toContain('Your code');
+    expect(String(last(asked.preview)?.html)).toContain('src="https://img.example/hero.jpg"');
     expect(screen.getByLabelText('Button')).toHaveValue('Book my meeting');
   });
 
@@ -298,7 +312,7 @@ describe('inviting leads to a meeting', () => {
     expect(asked.send).toHaveLength(1);
     expect(asked.send[0]).toMatchObject({
       language: 'fr',
-      subject: '{{firstName}}, prenons rendez-vous',
+      subject: '{{firstName}}, venez découvrir {{workspace}}',
       expectedRecipients: 23,
       audience: { includeStatuses: ['New', 'Contacted', 'Connected'], excludeStatuses: ['Lost / Not Interested'] },
     });
