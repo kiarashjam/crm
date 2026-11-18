@@ -496,6 +496,9 @@ try
     builder.Services.AddScoped<ACI.WebApi.Assistant.AssistantTools>();
     builder.Services.AddScoped<ACI.WebApi.Assistant.AssistantChat>();
 
+    // Each background job's signs of life, for /health, the System health page and the alerts.
+    builder.Services.AddSingleton<ACI.Application.Interfaces.IJobHeartbeats, ACI.WebApi.Services.JobHeartbeats>();
+
     // Background services
     builder.Services.AddHostedService<ACI.WebApi.Services.TaskReminderBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.ContractReminderBackgroundService>();
