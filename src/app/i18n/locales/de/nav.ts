@@ -62,6 +62,7 @@ export const nav: Translation<typeof en> = {
   'nav.workspaces': 'Arbeitsbereiche',
   'nav.settings': 'Einstellungen',
   'nav.claude': 'Claude',
+  'nav.systemHealth': 'Systemzustand',
   'nav.help': 'Hilfe',
 
   'nav.openMenu': 'Menü öffnen',

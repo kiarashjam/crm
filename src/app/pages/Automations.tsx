@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Zap, Plus, Trash2, Pencil, Loader2, ArrowRight, Mail, CheckSquare, Bell, UserPlus, Workflow, Clock, GitBranch, Filter, CalendarClock,
@@ -69,13 +70,20 @@ export default function Automations() {
   const ws = useWorkspaceScope();
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<AutomationRule | null>(null);
-  const [runsRule, setRunsRule] = useState('');
+  // A link to one rule's runs (/automations?rule=…, from System health) opens them filtered to it.
+  const [params] = useSearchParams();
+  const linkedRule = params.get('rule') ?? '';
+  const [runsRule, setRunsRule] = useState(linkedRule);
   const org = useOrgOptional()?.currentOrg ?? null;
   // A rule acts for the whole workspace, so the server lets whoever manages its settings
   // (the owner and managers by default) change one, and see what the rules did. Everyone
   // else sees the rules but isn't offered what would be refused.
   const canChange = servesDemoData() || (Boolean(org) && orgCan(org, PERMISSION.ManageSettings));
   const modulesOn = { sales: moduleOn(org, 'sales'), club: moduleOn(org, 'club') };
+  const runsShown = canChange && !rulesQuery.isPending;
+  useEffect(() => {
+    if (linkedRule && runsShown) document.getElementById('automation-runs')?.scrollIntoView?.({ behavior: 'smooth' });
+  }, [linkedRule, runsShown]);
 
   const refresh = () => { void rulesQuery.refetch(); };
   const open = (rule: AutomationRule | null) => { setEditing(rule); setEditorOpen(true); };

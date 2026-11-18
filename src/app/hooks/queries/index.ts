@@ -13,3 +13,4 @@ export * from './assistant';
 export * from './retention';
 export * from './corporate';
 export * from './flexData';
+export * from './systemHealth';
