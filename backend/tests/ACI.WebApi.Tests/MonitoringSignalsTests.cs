@@ -128,9 +128,9 @@ public class MonitoringSignalsTests
         alerts.Values.Should().OnlyContain(a => a.Template == "monitoring.alert {Signal} {Count} {Detail}" && a.Values["Count"] is int);
 
         alerts["outbox.failed"].Level.Should().Be(LogLevel.Warning);
-        alerts["outbox.failed"].Values["Count"].Should().Be(2);
-        ((string)alerts["outbox.failed"].Values["Detail"]!).Should().Contain("1 email").And.Contain("1 webhook")
-            .And.Contain(failedEmail.Id.ToString()).And.NotContain(before.Id.ToString());
+        alerts["outbox.failed"].Values["Count"].Should().Be(1, "a customer's webhook endpoint refusing is theirs to fix: it shows on their page, it does not wake the tech owner");
+        ((string)alerts["outbox.failed"].Values["Detail"]!).Should().Contain("1 email").And.NotContain("webhook")
+            .And.Contain(failedEmail.Id.ToString()).And.NotContain(failedHook.Id.ToString()).And.NotContain(before.Id.ToString());
         alerts["outbox.backlog"].Values["Count"].Should().Be(1, "emails only: a webhook waiting is not an email backlog");
         alerts["handoff.undelivered"].Values["Count"].Should().Be(1);
         alerts["handoff.undelivered"].Values["Detail"].Should().Be("1 handoffs not taken by the portal after 1 h, in 1 workspaces");

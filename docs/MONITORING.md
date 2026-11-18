@@ -152,7 +152,7 @@ the email), or run "monitoring.alert history" below.
 | `job.silent` | 1 | tech owner | A background job has not run when it should. Check that job's last error (KQL below), then restart the app. If jobs stop whenever the site is idle, check that Always On is on (see [DEPLOY.md](../DEPLOY.md)). |
 | `job.failing` | 2 | tech owner | A job runs but keeps failing. Check that job's last error; a restart helps only if the error is about the app's state, not the data. |
 | `outbox.backlog` | 2 | tech owner | Email is waiting to be sent. Check SendGrid's status page and that the API key is valid (the `SENDGRID_API_KEY` secret, applied as `Email__SmtpPassword`), then the message's last error. |
-| `outbox.failed` | 2 | tech owner | Email failed for good. Check the message's last error, and SendGrid Activity and Suppressions for that address. |
+| `outbox.failed` | 2 | tech owner | An email or a portal handoff failed for good (a customer's own webhook endpoint failing is not alerted on: it shows on their System health page). Check the message's last error, and SendGrid Activity and Suppressions for that address. |
 | `handoff.undelivered` | 2 | tech owner + club ops | A member portal welcome did not reach Pavillon 46. Check the portal address and secret in Welcome & portal and the Pavillon 46 app settings, and that Pavillon 46 is up; then Send the welcome again. |
 | `portal.ping.failed` | 2 | tech owner + club ops | The CRM could not reach the member portal. As for `handoff.undelivered`. |
 | `payments.failed` | 1 | tech owner + finance | A Stripe webhook could not be processed. Open the event in Stripe (Developers › Events), fix the cause from the log, then resend it from Stripe. |

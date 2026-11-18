@@ -129,7 +129,10 @@ public sealed class MonitoringSignalsBackgroundService : BackgroundService
             var silent = jobs.Where(j => j.IsSilent(nowUtc)).ToList();
             var failing = jobs.Where(j => j.IsFailing).ToList();
 
-            var newMessages = New(readings.FailedMessageIds, ref _failedMessages);
+            // A customer's webhook endpoint that refuses is theirs to fix, and shows on their System
+            // health page; only the club's own email and portal handoffs wake the tech owner.
+            var ownMessages = readings.FailedMessageIds.Where(m => m.Value != "webhook").ToDictionary(m => m.Key, m => m.Value);
+            var newMessages = New(ownMessages, ref _failedMessages);
             var newStripe = New(readings.FailedStripeEventIds, ref _failedStripeEvents);
             var portals = _pings.Snapshot().Where(p => !p.Value.Ok).Select(p => p.Key).OrderBy(k => k).ToList();
 
