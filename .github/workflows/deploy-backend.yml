@@ -115,9 +115,102 @@ jobs:
             --output none
           echo "Set Email__ApiBaseUrl=$API_ORIGIN on $APP_NAME (it was '${CURRENT:-not set}')."
 
+      # App Service's health check pings /health every minute: with more than one
+      # instance it takes an unhealthy one out of rotation, and it replaces an instance
+      # that stays unhealthy. Set only when it is not /health already, as a change to
+      # the site config restarts the app. A failure here warns rather than stopping the
+      # deploy. (infra/monitoring/deploy.sh sets the same, and does it for Pavillon 46.)
+      - name: Configure the health check path
+        env:
+          APP_NAME: ${{ secrets.AZURE_WEBAPP_NAME }}
+        run: |
+          set -euo pipefail
+          RESOURCE_GROUP=$(az webapp list --query "[?name=='$APP_NAME'].resourceGroup | [0]" -o tsv)
+          if [ -z "$RESOURCE_GROUP" ]; then
+            echo "::warning::Could not find a Web App named '$APP_NAME'; leaving the health check path unchanged."
+            exit 0
+          fi
+          CURRENT=$(az webapp config show --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" --query healthCheckPath -o tsv)
+          if [ "$CURRENT" = "None" ]; then CURRENT=""; fi
+          if [ "$CURRENT" = "/health" ]; then
+            echo "The health check path is already /health."
+            exit 0
+          fi
+          if az webapp config set --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" \
+               --generic-configurations '{"healthCheckPath": "/health"}' --output none; then
+            echo "Set the health check path to /health on $APP_NAME (it was '${CURRENT:-not set}')."
+          else
+            echo "::warning::Could not set the health check path to /health on $APP_NAME."
+          fi
+
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v2
         with:
           app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
           package: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
+
+      # The deploy restarts the app, so /health and /db-status are polled for up to three
+      # minutes. The job fails unless /health answers 200 (Healthy or Degraded; 503 is
+      # Unhealthy) and /db-status says "ok", twice in a row ten seconds apart: the first
+      # good answer can still come from the instance being replaced. On failure the last
+      # answers are printed; /health is anonymous, so its JSON is no more than anyone can
+      # read there. The address is the one "Configure the API's public address" uses, or
+      # else the Web App's default host name.
+      - name: Smoke test (/health and /db-status)
+        env:
+          APP_NAME: ${{ secrets.AZURE_WEBAPP_NAME }}
+          API_ORIGIN: ${{ vars.API_BASE_URL || vars.VITE_API_URL }}
+        run: |
+          set -euo pipefail
+          API_ORIGIN="${API_ORIGIN%/}"
+          case "$API_ORIGIN" in
+            https://*) API_ORIGIN=$(printf '%s' "$API_ORIGIN" | sed -E 's#^(https://[^/]+).*#\1#') ;;
+            *)
+              RESOURCE_GROUP=$(az webapp list --query "[?name=='$APP_NAME'].resourceGroup | [0]" -o tsv)
+              HOST=""
+              if [ -n "$RESOURCE_GROUP" ]; then
+                HOST=$(az webapp show --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" --query defaultHostName -o tsv)
+              fi
+              if [ -z "$HOST" ] || [ "$HOST" = "None" ]; then
+                echo "::error::No https address in API_BASE_URL or VITE_API_URL, and could not read the Web App's host name: nothing to smoke-test."
+                exit 1
+              fi
+              API_ORIGIN="https://$HOST" ;;
+          esac
+          echo "Smoke-testing $API_ORIGIN/health and $API_ORIGIN/db-status ..."
+
+          HEALTH="$RUNNER_TEMP/health.json"
+          DB_STATUS="$RUNNER_TEMP/db-status.json"
+          DEADLINE=$(( $(date +%s) + 180 ))
+          PASSES=0
+          ATTEMPT=0
+          while :; do
+            ATTEMPT=$((ATTEMPT + 1))
+            : >"$HEALTH"; : >"$DB_STATUS"
+            HEALTH_CODE=$(curl -sS -o "$HEALTH" -w '%{http_code}' --max-time 20 "$API_ORIGIN/health" 2>/dev/null || true)
+            DB_CODE=$(curl -sS -o "$DB_STATUS" -w '%{http_code}' --max-time 20 "$API_ORIGIN/db-status" 2>/dev/null || true)
+            DB_STATE=$(jq -r '.status // empty' "$DB_STATUS" 2>/dev/null || true)
+            if [ "$HEALTH_CODE" = "200" ] && [ "$DB_STATE" = "ok" ]; then
+              PASSES=$((PASSES + 1))
+              echo "Attempt $ATTEMPT: /health 200, /db-status ok ($PASSES of 2)."
+              if [ "$PASSES" -ge 2 ]; then
+                echo "Smoke test passed."
+                exit 0
+              fi
+            else
+              PASSES=0
+              echo "Attempt $ATTEMPT: /health ${HEALTH_CODE:-000}, /db-status ${DB_CODE:-000} status '${DB_STATE:-none}'."
+            fi
+            [ "$(date +%s)" -lt "$DEADLINE" ] || break
+            sleep 10
+          done
+
+          echo "::error::Smoke test failed: after 3 minutes /health answered ${HEALTH_CODE:-000} (200 needed; 000 is no answer) and /db-status said '${DB_STATE:-nothing}' (\"ok\" needed). Runbook: docs/MONITORING.md, Deploy smoke test failed."
+          echo "Last /health response (HTTP ${HEALTH_CODE:-000}):"
+          jq . "$HEALTH" 2>/dev/null || cat "$HEALTH"
+          echo
+          echo "Last /db-status response (HTTP ${DB_CODE:-000}):"
+          jq . "$DB_STATUS" 2>/dev/null || cat "$DB_STATUS"
+          echo
+          exit 1

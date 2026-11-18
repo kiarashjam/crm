@@ -1,0 +1,9 @@
+// The CRM's monitoring signals: per Signal, the latest monitoring.alert or
+// monitoring.resolved in the window, kept while that latest is an alert.
+// main.bicep adds a filter on severityLevel (Error rule: >= 3, Warning rule: < 3).
+traces
+| where message startswith "monitoring.alert" or message startswith "monitoring.resolved"
+| extend Signal = tostring(customDimensions.Signal)
+| where isnotempty(Signal)
+| summarize arg_max(timestamp, message, severityLevel) by Signal, cloud_RoleName
+| where message startswith "monitoring.alert"

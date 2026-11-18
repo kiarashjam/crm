@@ -1,0 +1,4 @@
+// The workspace reached its daily cap: collection is stopped until the cap resets.
+_LogOperation
+| where Category =~ "Ingestion"
+| where Detail contains "OverQuota"

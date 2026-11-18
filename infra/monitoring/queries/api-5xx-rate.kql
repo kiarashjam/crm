@@ -1,0 +1,7 @@
+// API server errors, rate: per cloud role, the share of requests that returned 5xx.
+// main.bicep puts "let minFailed = <serverErrorMinCount>;" in front, and the alert
+// fires when FailedPercent is above serverErrorPercent over the 10-minute window.
+requests
+| summarize Total = count(), Failed = countif(toint(resultCode) >= 500), timestamp = max(timestamp) by cloud_RoleName
+| where Failed >= minFailed
+| extend FailedPercent = round(100.0 * Failed / Total, 2)
