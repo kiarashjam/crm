@@ -639,13 +639,22 @@ try
         });
     builder.Services.AddAuthorization();
 
-    // Health Checks
+    // Health Checks: what /health answers (ACI.WebApi.Monitoring.HealthResponse).
     var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+    builder.Services.AddSingleton<ACI.WebApi.Monitoring.StartupState>();
     builder.Services.AddHealthChecks()
         .AddSqlServer(
             connectionString ?? "Server=(localdb)\\mssqllocaldb;Database=ACI;Trusted_Connection=True;",
             name: "database",
-            tags: ["db", "sql"]);
+            tags: ["db", "sql"])
+        // Whether start-up database initialisation worked (the dbError behind /db-status, below).
+        .AddCheck<ACI.WebApi.Monitoring.StartupHealthCheck>(ACI.WebApi.Monitoring.StartupHealthCheck.Name, tags: ["startup"])
+        // Whether each background job is still running, and its last run went well.
+        .AddCheck<ACI.WebApi.Monitoring.JobsHealthCheck>(ACI.WebApi.Monitoring.JobsHealthCheck.Name, tags: ["jobs"])
+        // Whether email leaves the outbox. A database it cannot read is the "database" check's to report.
+        .AddCheck<ACI.WebApi.Monitoring.OutboxHealthCheck>(ACI.WebApi.Monitoring.OutboxHealthCheck.Name,
+            failureStatus: Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Degraded,
+            tags: ["db", "outbox"], timeout: TimeSpan.FromSeconds(10));
 
     var app = builder.Build();
 
@@ -700,8 +709,8 @@ try
     // (and stripped when forged) before the read-only role is resolved from it.
     app.UseMiddleware<ACI.WebApi.Middleware.ReadOnlyMemberMiddleware>();
 
-    // Health check endpoint
-    app.MapHealthChecks("/health");
+    // Health check endpoint: every check as JSON; 200 when Healthy or Degraded, 503 when Unhealthy.
+    app.MapHealthChecks("/health", ACI.WebApi.Monitoring.HealthResponse.Options());
     
     // Simple ping endpoint (no DB)
     app.MapGet("/ping", () => Results.Ok(new { status = "ok", time = DateTime.UtcNow }));
@@ -2523,6 +2532,8 @@ try
         catch (Exception dbEx)
         {
             dbError = dbEx.ToString();
+            // So /health says so too ("startup"), instead of answering 200 over it.
+            app.Services.GetRequiredService<ACI.WebApi.Monitoring.StartupState>().MarkDatabaseFailed(DateTime.UtcNow);
             Log.Error(dbEx, "Database migration failed (app will start but DB operations will fail): {ErrorMessage}", dbEx.Message);
             // Don't throw - allow app to start for debugging
         }
