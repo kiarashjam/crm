@@ -16,31 +16,42 @@ using Microsoft.OpenApi.Models;
 using Serilog;
 using Serilog.Events;
 
-// Configure Serilog early for startup logging
-var logConfig = new LoggerConfiguration()
-    .MinimumLevel.Information()
-    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
-    .MinimumLevel.Override("Microsoft.EntityFrameworkCore", LogEventLevel.Warning)
-    .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
-    .Enrich.FromLogContext()
-    .Enrich.WithEnvironmentName()
-    .Enrich.WithMachineName()
-    .Enrich.WithThreadId()
-    .WriteTo.Console(
-        outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {SourceContext} {Message:lj}{NewLine}{Exception}");
-
-// Only add file logging in Development (Azure App Service doesn't allow local file writes)
+// Configure Serilog early for startup logging. With Application Insights configured, the host
+// makes the app's logger from the same settings plus that sink (see UseSerilog below).
 var environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production";
-if (environment == "Development")
-{
-    logConfig.WriteTo.File(
-        path: "logs/aci-.log",
-        rollingInterval: RollingInterval.Day,
-        retainedFileCountLimit: 30,
-        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {SourceContext} {Message:lj}{NewLine}{Exception}");
-}
+var startupLogger = ConfigureLogging(new LoggerConfiguration(), environment).CreateLogger();
+Log.Logger = startupLogger;
+// The logger this run made static and closes at the end: the start-up one, or the host's.
+Serilog.ILogger ownLogger = startupLogger;
 
-Log.Logger = logConfig.CreateLogger();
+static LoggerConfiguration ConfigureLogging(LoggerConfiguration logConfig, string environment)
+{
+    logConfig
+        .MinimumLevel.Information()
+        .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+        .MinimumLevel.Override("Microsoft.EntityFrameworkCore", LogEventLevel.Warning)
+        .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+        .Enrich.FromLogContext()
+        .Enrich.WithEnvironmentName()
+        .Enrich.WithMachineName()
+        .Enrich.WithThreadId()
+        // A contract's signing token (and the like) out of every event's request path, not only
+        // the request log's: see SecretPathLogEnricher.
+        .Enrich.With<ACI.WebApi.Monitoring.SecretPathLogEnricher>()
+        .WriteTo.Console(
+            outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {SourceContext} {Message:lj}{NewLine}{Exception}");
+
+    // Only add file logging in Development (Azure App Service doesn't allow local file writes)
+    if (environment == "Development")
+    {
+        logConfig.WriteTo.File(
+            path: "logs/aci-.log",
+            rollingInterval: RollingInterval.Day,
+            retainedFileCountLimit: 30,
+            outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {SourceContext} {Message:lj}{NewLine}{Exception}");
+    }
+    return logConfig;
+}
 
 try
 {
@@ -48,8 +59,27 @@ try
 
     var builder = WebApplication.CreateBuilder(args);
 
-    // Use Serilog for all logging
-    builder.Host.UseSerilog();
+    // Use Serilog for all logging. With Application Insights configured (APPLICATIONINSIGHTS_CONNECTION_STRING
+    // or ApplicationInsights:ConnectionString), Serilog also sends its traces and exceptions there,
+    // through the SDK's own TelemetryConfiguration, so they carry the request they belong to and
+    // pass the same redaction and sampling (ACI.WebApi.Monitoring.ApplicationInsights). Without it,
+    // nothing changes.
+    var applicationInsights = ACI.WebApi.Monitoring.ApplicationInsights.AddIfConfigured(builder.Services, builder.Configuration);
+    if (applicationInsights)
+    {
+        // The host's own logger, which it closes itself; it is made the static one once the app
+        // is built (below). Left to replace the static logger, the host closed whichever was
+        // static when it stopped: in a test process, another host's.
+        builder.Host.UseSerilog((context, services, logConfig) => ConfigureLogging(logConfig, environment)
+            .WriteTo.ApplicationInsights(
+                services.GetRequiredService<Microsoft.ApplicationInsights.Extensibility.TelemetryConfiguration>(),
+                TelemetryConverter.Traces),
+            preserveStaticLogger: true);
+    }
+    else
+    {
+        builder.Host.UseSerilog();
+    }
 
     // CORS Configuration
     var browserOrigins = builder.Configuration["Cors:AllowedOrigins"]?.Split(',', StringSplitOptions.RemoveEmptyEntries)
@@ -668,6 +698,15 @@ try
             tags: ["db", "outbox"], timeout: TimeSpan.FromSeconds(10));
 
     var app = builder.Build();
+
+    // With Application Insights, what Program logs itself (the database set-up below, a fatal
+    // error) goes there too, through the host's logger.
+    if (applicationInsights)
+    {
+        ownLogger = app.Services.GetRequiredService<Serilog.ILogger>();
+        Log.Logger = ownLogger;
+        startupLogger.Dispose();
+    }
 
     // The API's public address builds email-image links and the portal's callback. Unset
     // outside development, each request's own host stands in (see RequestPublicAddress).
@@ -2844,7 +2883,10 @@ catch (Exception ex)
 }
 finally
 {
-    Log.CloseAndFlush();
+    // Only the logger this run made: in a test process, the static one may be another host's
+    // by now, and closing it silenced that host's log.
+    if (ReferenceEquals(Log.Logger, ownLogger)) Log.CloseAndFlush();
+    else startupLogger.Dispose();
 }
 
 // Expose Program class for integration testing with WebApplicationFactory
