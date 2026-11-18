@@ -104,6 +104,8 @@ export const queryKeys = {
   duplicates: {
     notSame: (s: WorkspaceScope) => key(s, 'duplicates', 'not-same'),
   },
+  /** Settings, System health: read again every minute while the page is open, and after a retry from it. */
+  systemHealth: (s: WorkspaceScope) => key(s, 'system-health'),
   // The workspace's own fields and their values. A value saved, a field added or changed,
   // refreshes them, and the lists whose columns and filters show them (api/dataChanged).
   customFields: {
