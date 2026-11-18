@@ -139,7 +139,7 @@ function Area({ icon, tone, title, count, link, linkLabel, empty, summary, more,
       description={summary}
       aside={(
         <>
-          {link && count > 0 && (
+          {link && (
             <Link to={link} className="text-xs font-medium text-slate-600 underline-offset-2 hover:text-slate-900 hover:underline">
               {linkLabel ?? 'Open'}
             </Link>
@@ -431,7 +431,7 @@ export function SystemHealthSection() {
           tone="orange"
           title="Email delivery"
           count={h.email.count}
-          link={h.email.newSuppressions > 0 ? h.email.link : null}
+          link={h.email.count > 0 || h.email.newSuppressions > 0 ? h.email.link : null}
           linkLabel="Do-not-send list"
           summary={h.email.count > 0 || h.email.newSuppressions > 0
             ? `${h.email.bounces} bounced · ${h.email.spamReports} spam ${h.email.spamReports === 1 ? 'report' : 'reports'} · ${h.email.newSuppressions} new on the do-not-send list`
@@ -457,7 +457,7 @@ export function SystemHealthSection() {
           tone="sky"
           title="Webhooks"
           count={h.webhooks.count}
-          link={h.webhooks.link}
+          link={h.webhooks.count > 0 ? h.webhooks.link : null}
           linkLabel="Integrations"
           empty="Every event reached your address this week."
           more={more(h.webhooks.count, h.webhooks.items.length)}
@@ -478,7 +478,7 @@ export function SystemHealthSection() {
           tone="emerald"
           title="Payments"
           count={h.payments.count}
-          link={h.payments.link}
+          link={h.payments.count > 0 ? h.payments.link : null}
           linkLabel="Payments"
           summary={h.payments.count > 0 ? 'Stripe sends each event again for a few days.' : undefined}
           empty="Every Stripe event was processed this week."
