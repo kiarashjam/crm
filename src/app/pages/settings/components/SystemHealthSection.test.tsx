@@ -10,7 +10,7 @@ import { http, HttpResponse } from 'msw';
 import { server } from '@/test/mocks/server';
 import { withQueries } from '@/test/queryWrapper';
 import { PERMISSION, type Permission } from '@/app/api/organizations';
-import type { SystemHealth } from '@/app/api/systemHealth';
+import type { SitesStatus, SystemHealth } from '@/app/api/systemHealth';
 
 vi.mock('@/app/hooks/useMotionPreference', () => ({ useMotionPreference: () => true }));
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
@@ -122,7 +122,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-function sitesUp() {
+function sitesUp(): SitesStatus {
   const now = new Date().toISOString();
   return {
     checkedAtUtc: now,
@@ -170,7 +170,7 @@ describe('System health', () => {
       const body = sitesUp();
       body.sites[0]!.status = 'Degraded';
       body.sites[0]!.checks[2] = { name: 'outbox', status: 'Degraded', description: '2 emails queued over 30 min.' };
-      body.sites[1] = { ...body.sites[1]!, status: 'Unreachable', responseMs: null as unknown as number, checks: [], error: 'It could not be reached.' } as typeof body.sites[1];
+      body.sites[1] = { ...body.sites[1]!, status: 'Unreachable', responseMs: null, checks: [], error: 'It could not be reached.' };
       return HttpResponse.json(body);
     };
     show();
