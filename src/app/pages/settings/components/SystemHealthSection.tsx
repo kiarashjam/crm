@@ -7,8 +7,8 @@ import { useState, type ComponentType, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
-  CircleCheck, CreditCard, HeartPulse, Mail, MailWarning, OctagonAlert, Plug, RefreshCw, RotateCcw, Send, ServerCog,
-  TriangleAlert, Webhook, Zap,
+  Activity, CircleCheck, CreditCard, ExternalLink, Globe, HeartPulse, Mail, MailWarning, OctagonAlert, Plug, RefreshCw,
+  RotateCcw, Send, ServerCog, TriangleAlert, Webhook, Zap,
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { cn } from '@/app/components/ui/utils';
@@ -19,9 +19,9 @@ import { PERMISSION } from '@/app/api/organizations';
 import { servesDemoData } from '@/app/api/apiClient';
 import { resendOnboarding } from '@/app/api/onboarding';
 import { retryAutomationRun } from '@/app/api/automations';
-import type { HealthRetry, HealthStatus, JobHealth, SystemHealth } from '@/app/api/systemHealth';
+import type { HealthRetry, HealthStatus, JobHealth, SiteStatus, SystemHealth } from '@/app/api/systemHealth';
 import { mayIn } from '@/app/hooks/useMay';
-import { useSystemHealth } from '@/app/hooks/queries/systemHealth';
+import { useSitesStatus, useSystemHealth } from '@/app/hooks/queries/systemHealth';
 import { currentDateLocale } from '@/app/i18n/current';
 import { SettingsCard, StatusPill, type CardTone } from './SettingsCard';
 
@@ -91,6 +91,124 @@ function headline(health: SystemHealth): string {
   const n = health.overall.issues;
   if (health.overall.status === 'ok' || n === 0) return 'All good';
   return `${n} ${n === 1 ? 'thing needs' : 'things need'} attention`;
+}
+
+/** How each site's state reads, and its colours. */
+const SITE_LOOK: Record<string, { label: string; dot: string; text: string; ring: string }> = {
+  Healthy: { label: 'Operational', dot: 'bg-emerald-500', text: 'text-emerald-700 dark:text-emerald-300', ring: 'ring-emerald-200 dark:ring-emerald-500/30' },
+  Degraded: { label: 'Degraded', dot: 'bg-amber-500', text: 'text-amber-700 dark:text-amber-300', ring: 'ring-amber-200 dark:ring-amber-500/30' },
+  Unhealthy: { label: 'Down', dot: 'bg-rose-500', text: 'text-rose-700 dark:text-rose-300', ring: 'ring-rose-200 dark:ring-rose-500/30' },
+  Unreachable: { label: 'Unreachable', dot: 'bg-rose-500', text: 'text-rose-700 dark:text-rose-300', ring: 'ring-rose-200 dark:ring-rose-500/30' },
+};
+const siteLook = (status: string) => SITE_LOOK[status] ?? SITE_LOOK.Degraded!;
+
+/** A site's checks by their everyday names. */
+const CHECK_LABELS: Record<string, string> = {
+  database: 'Database',
+  startup: 'Start-up',
+  jobs: 'Background jobs',
+  outbox: 'Email outbox',
+  storage: 'Storage',
+  'cadence-sync': 'Sync to CadenceE',
+  configuration: 'Settings',
+};
+const checkLabel = (name: string) => CHECK_LABELS[name] ?? name.replace(/[-_]+/g, ' ').replace(/^./, (c) => c.toUpperCase());
+
+/** One site: its light, its name and state, how fast it answered, and a dot per check. */
+function SiteTile({ site }: { site: SiteStatus }) {
+  const look = siteLook(site.status);
+  const portal = site.key === 'portal';
+  const problems = site.checks.filter((c) => c.status !== 'Healthy');
+  return (
+    <li className={cn('flex min-w-0 flex-col gap-3 rounded-xl bg-white p-4 ring-1 dark:bg-slate-900', look.ring)}>
+      <div className="flex items-center gap-3">
+        <span className="relative flex h-3 w-3 shrink-0" aria-hidden>
+          {site.status === 'Healthy' && <span className={cn('absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 motion-reduce:animate-none', look.dot)} />}
+          <span className={cn('relative inline-flex h-3 w-3 rounded-full', look.dot)} />
+        </span>
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600 dark:bg-white/5 dark:text-slate-300" aria-hidden>
+          {portal ? <Globe className="h-4 w-4" /> : <ServerCog className="h-4 w-4" />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-semibold text-slate-900 dark:text-white">{portal ? 'Member portal' : site.name}</p>
+          <p className="truncate text-xs text-slate-500">{portal ? site.name : 'CRM and its background jobs'}</p>
+        </div>
+        <div className="text-right">
+          <p className={cn('text-sm font-semibold', look.text)}>{look.label}</p>
+          {site.responseMs != null && <p className="text-[11px] tabular-nums text-slate-400">{site.responseMs} ms</p>}
+        </div>
+      </div>
+
+      {site.checks.length > 0 && (
+        <ul className="flex flex-wrap gap-1.5" aria-label={`${portal ? 'Member portal' : site.name} checks`}>
+          {site.checks.map((c) => (
+            <li
+              key={c.name}
+              title={c.description ?? undefined}
+              className="inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1 text-xs text-slate-700 ring-1 ring-slate-200 dark:bg-white/5 dark:text-slate-200 dark:ring-white/10"
+            >
+              <span aria-hidden className={cn('h-1.5 w-1.5 rounded-full', siteLook(c.status).dot)} />
+              {checkLabel(c.name)}
+              <span className="sr-only">: {siteLook(c.status).label}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {(site.error || problems.length > 0) && (
+        <ul className="space-y-1 text-xs text-slate-600 dark:text-slate-300">
+          {site.error && <li className="flex gap-1.5"><TriangleAlert className="mt-px h-3.5 w-3.5 shrink-0 text-rose-500" aria-hidden />{site.error}</li>}
+          {problems.map((c) => (
+            <li key={c.name} className="flex gap-1.5">
+              <TriangleAlert className={cn('mt-px h-3.5 w-3.5 shrink-0', c.status === 'Unhealthy' ? 'text-rose-500' : 'text-amber-500')} aria-hidden />
+              <span><strong className="font-medium">{checkLabel(c.name)}:</strong> {c.description ?? siteLook(c.status).label}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="mt-auto flex items-center justify-between gap-2 text-[11px] text-slate-400">
+        <span>Checked <When iso={site.checkedAtUtc} /></span>
+        <a href={site.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium text-slate-500 hover:text-orange-600 dark:text-slate-400">
+          Open /health <ExternalLink className="h-3 w-3" aria-hidden />
+        </a>
+      </div>
+    </li>
+  );
+}
+
+/** Live status: is each site up right now. Read again every 30 seconds. */
+function LiveStatus() {
+  const sites = useSitesStatus(!servesDemoData());
+  const list = sites.data?.sites ?? [];
+  const allUp = list.length > 0 && list.every((s) => s.status === 'Healthy');
+  return (
+    <section aria-labelledby="live-status-title" className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Activity className="h-4 w-4 text-orange-500" aria-hidden />
+        <h3 id="live-status-title" className="text-sm font-semibold text-slate-900 dark:text-white">Live status</h3>
+        {list.length > 0 && (
+          <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', allUp ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' : 'bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-200')}>
+            {allUp ? 'All systems operational' : 'Something needs a look'}
+          </span>
+        )}
+        <span className="ml-auto text-[11px] text-slate-400">Every 30 s{sites.isFetching ? ' · checking…' : ''}</span>
+      </div>
+      {sites.isPending ? (
+        <div className="grid gap-3 md:grid-cols-2" aria-busy="true">
+          {[0, 1].map((i) => <div key={i} className="h-32 animate-pulse rounded-xl bg-slate-100 dark:bg-white/5" />)}
+        </div>
+      ) : sites.isError ? (
+        <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-800 dark:bg-rose-500/10 dark:text-rose-200">
+          The live status could not be read. {reason(sites.error, '')}
+        </p>
+      ) : (
+        <ul className="grid gap-3 md:grid-cols-2">
+          {list.map((site) => <SiteTile key={site.key} site={site} />)}
+        </ul>
+      )}
+    </section>
+  );
 }
 
 function Verdict({ health, refreshing, onRefresh }: { health: SystemHealth; refreshing: boolean; onRefresh: () => void }) {
@@ -356,6 +474,7 @@ export function SystemHealthSection() {
   return (
     <div className="space-y-5 p-4 sm:p-6">
       {header}
+      <LiveStatus />
       <Verdict health={h} refreshing={query.isFetching} onRefresh={() => void query.refetch()} />
 
       <div className="grid gap-4 xl:grid-cols-2">

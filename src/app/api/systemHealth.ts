@@ -129,6 +129,39 @@ export interface SystemHealth {
   portal: PortalHealth;
 }
 
+/** One check of a site, as its /health names it. */
+export interface SiteCheck {
+  name: string;
+  /** "Healthy", "Degraded" or "Unhealthy". */
+  status: string;
+  description?: string | null;
+}
+
+/** A site's live status: CadenceE itself, or the workspace's member portal. */
+export interface SiteStatus {
+  key: 'cadence' | 'portal' | string;
+  name: string;
+  /** Its /health address. */
+  url: string;
+  /** "Healthy", "Degraded", "Unhealthy", or "Unreachable" when it did not answer. */
+  status: string;
+  responseMs?: number | null;
+  checkedAtUtc: string;
+  checks: SiteCheck[];
+  error?: string | null;
+}
+
+export interface SitesStatus {
+  checkedAtUtc: string;
+  sites: SiteStatus[];
+}
+
+/** The live status of CadenceE and the member portal; null in demo mode. */
+export async function getSitesStatus(req?: RequestOptions): Promise<SitesStatus | null> {
+  if (servesDemoData()) return null;
+  return authFetchJson<SitesStatus>('/api/system-health/sites', { signal: req?.signal });
+}
+
 /** The workspace's health now; null in demo mode, where nothing runs. */
 export async function getSystemHealth(req?: RequestOptions): Promise<SystemHealth | null> {
   if (servesDemoData()) return null;

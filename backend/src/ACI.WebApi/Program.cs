@@ -551,6 +551,12 @@ try
     builder.Services.AddHttpClient(ACI.Infrastructure.Services.WebhookTransport.ClientName,
             client => client.Timeout = TimeSpan.FromSeconds(10))
         .ConfigurePrimaryHttpMessageHandler(ACI.Infrastructure.Services.WebhookTransport.PublicOnlyHandler);
+    // Settings › System health's live status: CadenceE's own checks, and the member portal's
+    // /health, read from its public address only (as a webhook is posted).
+    builder.Services.AddHttpClient(ACI.WebApi.Monitoring.SiteStatus.ClientName,
+            client => client.Timeout = TimeSpan.FromSeconds(10))
+        .ConfigurePrimaryHttpMessageHandler(ACI.Infrastructure.Services.WebhookTransport.PublicOnlyHandler);
+    builder.Services.AddScoped<ACI.WebApi.Monitoring.ISiteStatus, ACI.WebApi.Monitoring.SiteStatus>();
     builder.Services.AddHostedService<ACI.WebApi.Services.OutboxDispatcherBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.LeadFollowUpBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.WeeklyDigestBackgroundService>();

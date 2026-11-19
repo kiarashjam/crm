@@ -100,7 +100,9 @@ beforeEach(() => {
   resent = [];
   retried = [];
   answer = () => HttpResponse.json(allGood());
+  sitesAnswer = () => HttpResponse.json(sitesUp());
   server.use(
+    http.get(`${BASE}/api/system-health/sites`, () => sitesAnswer()),
     http.get(`${BASE}/api/system-health`, () => {
       reads++;
       return answer();
@@ -120,9 +122,67 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
+function sitesUp() {
+  const now = new Date().toISOString();
+  return {
+    checkedAtUtc: now,
+    sites: [
+      {
+        key: 'cadence', name: 'CadenceE', url: 'https://api.cadencee.ai/health', status: 'Healthy', responseMs: 12, checkedAtUtc: now,
+        checks: [
+          { name: 'database', status: 'Healthy', description: null },
+          { name: 'jobs', status: 'Healthy', description: 'All 18 background jobs are running.' },
+          { name: 'outbox', status: 'Healthy', description: 'The outbox is keeping up.' },
+        ],
+      },
+      {
+        key: 'portal', name: 'pavillon46-api.azurewebsites.net', url: 'https://pavillon46-api.azurewebsites.net/health', status: 'Healthy',
+        responseMs: 90, checkedAtUtc: now,
+        checks: [{ name: 'storage', status: 'Healthy' }, { name: 'cadence-sync', status: 'Healthy' }, { name: 'configuration', status: 'Healthy' }],
+      },
+    ],
+  };
+}
+let sitesAnswer: () => Response = () => HttpResponse.json(sitesUp());
+
 const show = () => render(withQueries(<MemoryRouter><SystemHealthSection /></MemoryRouter>));
 
 describe('System health', () => {
+  it('shows the live status of CadenceE and the member portal, with a dot per check', async () => {
+    show();
+
+    const live = await screen.findByRole('region', { name: 'Live status' });
+    expect(await within(live).findByText('All systems operational')).toBeInTheDocument();
+    expect(within(live).getByText('CadenceE')).toBeInTheDocument();
+    expect(within(live).getByText('Member portal')).toBeInTheDocument();
+    expect(within(live).getByText('pavillon46-api.azurewebsites.net')).toBeInTheDocument();
+    expect(within(live).getAllByText('Operational')).toHaveLength(2);
+    expect(within(live).getByText('12 ms')).toBeInTheDocument();
+    const cadenceChecks = within(live).getByRole('list', { name: 'CadenceE checks' });
+    expect(within(cadenceChecks).getByText('Background jobs')).toBeInTheDocument();
+    expect(within(cadenceChecks).getByText('Email outbox')).toBeInTheDocument();
+    expect(within(within(live).getByRole('list', { name: 'Member portal checks' })).getByText('Sync to CadenceE')).toBeInTheDocument();
+    expect(within(live).getAllByRole('link', { name: /Open \/health/ })[1]).toHaveAttribute('href', 'https://pavillon46-api.azurewebsites.net/health');
+  });
+
+  it('says plainly when the portal is down or a check needs a look', async () => {
+    sitesAnswer = () => {
+      const body = sitesUp();
+      body.sites[0]!.status = 'Degraded';
+      body.sites[0]!.checks[2] = { name: 'outbox', status: 'Degraded', description: '2 emails queued over 30 min.' };
+      body.sites[1] = { ...body.sites[1]!, status: 'Unreachable', responseMs: null as unknown as number, checks: [], error: 'It could not be reached.' } as typeof body.sites[1];
+      return HttpResponse.json(body);
+    };
+    show();
+
+    const live = await screen.findByRole('region', { name: 'Live status' });
+    expect(await within(live).findByText('Something needs a look')).toBeInTheDocument();
+    expect(within(live).getByText('Degraded')).toBeInTheDocument();
+    expect(within(live).getByText('Unreachable')).toBeInTheDocument();
+    expect(within(live).getByText('It could not be reached.')).toBeInTheDocument();
+    expect(within(live).getByText('2 emails queued over 30 min.')).toBeInTheDocument();
+  });
+
   it('says all is good, with an empty state for each area and a green dot for each job', async () => {
     show();
 
