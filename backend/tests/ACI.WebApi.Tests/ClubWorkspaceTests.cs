@@ -53,6 +53,7 @@ public class ClubWorkspaceTests
     [InlineData("/api/hospitality/settings")]
     [InlineData("/api/automations")]
     [InlineData("/api/teams")]
+    [InlineData("/api/system-health")]
     public async Task WithoutAnOrganizationThereIsNoSharedBucket(string path)
     {
         // Without X-Organization-Id these tables used to read and write "no organization",

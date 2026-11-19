@@ -62,14 +62,20 @@ public class OnboardingController : ControllerBase
         return (await _onboarding.NewSecretAsync(org, userId, ct)).ToActionResult();
     }
 
-    /// <summary>Posts a signed <c>onboarding.ping</c> to the portal now, and says what it answered.</summary>
+    /// <summary>
+    /// Posts a signed <c>onboarding.ping</c> to the portal now, and says what it answered. The
+    /// answer is kept as the portal's last ping, as the daily one's is, for System health.
+    /// </summary>
     [HttpPost("settings/test")]
     [Requires(MemberPermissions.ManageSettings)]
     [EnableRateLimiting("composed-email")]
-    public async Task<ActionResult<OnboardingPingDto>> Test(CancellationToken ct)
+    public async Task<ActionResult<OnboardingPingDto>> Test([FromServices] IPortalPings pings, CancellationToken ct)
     {
         if (_currentUser.UserId is not { } userId || _currentUser.CurrentOrganizationId is not { } org) return Unauthorized();
-        return (await _onboarding.PingAsync(org, userId, ct)).ToActionResult();
+        var answer = await _onboarding.PingAsync(org, userId, ct);
+        if (answer.IsSuccess)
+            pings.Record(org, new PortalPingResult(answer.Value.Ok, DateTime.UtcNow, answer.Value.StatusCode, answer.Value.Ok ? null : answer.Value.Error));
+        return answer.ToActionResult();
     }
 
     /// <summary>The welcome email for someone, filled as it will be sent; the portal's own links are stand-ins.</summary>

@@ -1,3 +1,4 @@
+using ACI.Application.Interfaces;
 using ACI.Application.Services;
 
 namespace ACI.WebApi.Services;
@@ -25,17 +26,23 @@ public sealed class GiftCardExpiryBackgroundService : BackgroundService
     private static readonly TimeSpan FirstPass = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan Interval = TimeSpan.FromHours(1);
 
+    /// <summary>Its name in the job heartbeats (/health, the System health page).</summary>
+    public const string JobName = "gift-card-expiry";
+
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IJobHeartbeats _heartbeats;
     private readonly ILogger<GiftCardExpiryBackgroundService> _logger;
 
-    public GiftCardExpiryBackgroundService(IServiceScopeFactory scopeFactory, ILogger<GiftCardExpiryBackgroundService> logger)
+    public GiftCardExpiryBackgroundService(IServiceScopeFactory scopeFactory, IJobHeartbeats heartbeats, ILogger<GiftCardExpiryBackgroundService> logger)
     {
         _scopeFactory = scopeFactory;
+        _heartbeats = heartbeats;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        _heartbeats.Register(JobName, Interval);
         try
         {
             await Task.Delay(FirstPass, stoppingToken);
@@ -52,6 +59,7 @@ public sealed class GiftCardExpiryBackgroundService : BackgroundService
                 using var scope = _scopeFactory.CreateScope();
                 var expired = await scope.ServiceProvider.GetRequiredService<IClubLedger>().ExpireGiftCardsAsync(DateTime.UtcNow, stoppingToken);
                 if (expired > 0) _logger.LogInformation("Wrote off {Count} expired gift cards", expired);
+                _heartbeats.Beat(JobName);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -59,6 +67,7 @@ public sealed class GiftCardExpiryBackgroundService : BackgroundService
             }
             catch (Exception ex)
             {
+                _heartbeats.Failed(JobName, ex);
                 _logger.LogError(ex, "Error writing off expired gift cards");
             }
 

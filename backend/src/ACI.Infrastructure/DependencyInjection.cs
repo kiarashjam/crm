@@ -151,6 +151,12 @@ public static class DependencyInjection
         services.AddScoped<ISavedViewService, SavedViewService>();
         services.AddScoped<IRecordFlexQuery, RecordFlexQuery>();
         services.AddScoped<WeeklyDigestService>();
+        // System health: the page, the alerts' readings across workspaces, and the daily digest.
+        // The page reads the job heartbeats and the portal pings, singletons the API registers.
+        services.AddScoped<Services.Monitoring.SystemHealthService>();
+        services.AddScoped<ISystemHealth>(sp => sp.GetRequiredService<Services.Monitoring.SystemHealthService>());
+        services.AddScoped<IMonitoringReadings>(sp => sp.GetRequiredService<Services.Monitoring.SystemHealthService>());
+        services.AddScoped<IHealthDigest, Services.Monitoring.HealthDigestService>();
         services.AddScoped<IWebhookTransport, WebhookTransport>();
         
         // Application services

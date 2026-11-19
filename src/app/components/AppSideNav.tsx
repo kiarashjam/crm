@@ -19,6 +19,7 @@ import {
   FileUp,
   Gift,
   HeartHandshake,
+  HeartPulse,
   HelpCircle,
   History,
   Home,
@@ -208,6 +209,7 @@ const GROUPS: NavGroupDef[] = [
       { path: '/organizations', label: 'nav.workspaces', icon: ArrowRightLeft },
       { path: '/settings', label: 'nav.settings', icon: Settings },
       { path: '/settings?tab=claude', label: 'nav.claude', icon: Bot },
+      { path: '/settings?tab=health', label: 'nav.systemHealth', icon: HeartPulse, permission: PERMISSION.ManageSettings },
       { path: '/help', label: 'nav.help', icon: HelpCircle },
     ],
   },
@@ -226,7 +228,8 @@ function matchesPath(pathname: string, search: string, path: string): boolean {
   const currentTab = new URLSearchParams(search).get('tab');
 
   if (tab) return pathname === target && currentTab === tab;
-  if (pathname === target) return !(target === '/settings' && currentTab === 'claude');
+  // A Settings tab with its own entry lights that entry, not Settings'.
+  if (pathname === target) return !(target === '/settings' && (currentTab === 'claude' || currentTab === 'health'));
   if (SUB_PAGES.includes(pathname)) return false;
   return pathname.startsWith(`${target}/`);
 }

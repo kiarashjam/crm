@@ -1,0 +1,96 @@
+# Sets up, or brings up to date, the Azure monitoring of the CadenceE CRM API and the
+# Pavillon 46 backend: infra/monitoring/deploy.sh, which deploys
+# infra/monitoring/main.bicep and points both web apps at Application Insights.
+# The runbook, with what is monitored and what each alert asks you to do, is
+# docs/MONITORING.md.
+#
+# Run it by hand (Actions > "Monitoring — set up Azure monitoring" > Run workflow).
+# Safe to run again: it updates the same resources, and touches a web app's settings
+# only when they differ, as each change restarts the app. The first run restarts each
+# app; a later run with the same inputs restarts nothing.
+#
+# Uses the same Azure login as the deploy (AZURE_CLIENT_ID, AZURE_CLIENT_SECRET,
+# AZURE_SUBSCRIPTION_ID, AZURE_TENANT_ID) and the CRM web app name in
+# AZURE_WEBAPP_NAME. Optional:
+#   - secret MONITORING_TEAMS_WEBHOOK_URL: also post alerts to a Teams channel. Without
+#     it, alerts go by email only (and a Teams receiver from an earlier run is removed);
+#   - variable PAVILLON_WEBAPP_NAME: the Pavillon 46 web app, if not pavillon46-api;
+#   - variable MONITORING_RESOURCE_GROUP: where the monitoring resources go, if not in
+#     the CRM web app's resource group;
+#   - variables API_BASE_URL or VITE_API_URL: the CRM API's public address, tested at
+#     /health (else the web app's default host name).
+#
+# The repository is public, and so is this run's log. The alert email is read from the
+# event rather than passed as step env (which the log prints) and is masked, as are
+# the webhook URL, the Application Insights connection string and the SQL server name.
+name: Monitoring — set up Azure monitoring
+
+on:
+  workflow_dispatch:
+    inputs:
+      alert_email:
+        description: 'Email for alerts (the tech owner). Several: comma-separated.'
+        required: true
+      include_pavillon:
+        description: 'Also monitor the Pavillon 46 backend'
+        type: boolean
+        default: true
+      daily_cap_gb:
+        description: 'Daily ingestion cap of the Log Analytics workspace, in whole GB'
+        required: true
+        default: '1'
+      preview:
+        description: 'Preview only: show what would change (what-if) and change nothing'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: monitoring-setup
+  cancel-in-progress: false
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
+
+      # Whether the Teams secret is set is tested inside the script, NOT in an `if:`
+      # condition: the secrets context is not available to step-level `if`, and
+      # referencing it there makes the whole workflow file invalid. Unset, it is an
+      # empty string, and the action group gets no Teams receiver.
+      - name: Set up monitoring
+        env:
+          CRM_APP_NAME: ${{ secrets.AZURE_WEBAPP_NAME }}
+          TEAMS_WEBHOOK_URL: ${{ secrets.MONITORING_TEAMS_WEBHOOK_URL }}
+          PAVILLON_APP_NAME: ${{ vars.PAVILLON_WEBAPP_NAME || 'pavillon46-api' }}
+          MONITORING_RESOURCE_GROUP: ${{ vars.MONITORING_RESOURCE_GROUP }}
+          CRM_PUBLIC_URL: ${{ vars.API_BASE_URL || vars.VITE_API_URL }}
+          INCLUDE_PAVILLON: ${{ inputs.include_pavillon }}
+          DAILY_CAP_GB: ${{ inputs.daily_cap_gb }}
+          WHAT_IF: ${{ inputs.preview }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CRM_APP_NAME:-}" ]; then
+            echo "::error::The AZURE_WEBAPP_NAME secret is not set: it names the CRM web app."
+            exit 1
+          fi
+          # From the event, not step env, so the address is masked before anything prints it.
+          ALERT_EMAIL=$(jq -r '.inputs.alert_email // ""' "$GITHUB_EVENT_PATH")
+          case "$ALERT_EMAIL" in
+            *[[:cntrl:]]*) echo "::error::The alert email must be on one line."; exit 1 ;;
+          esac
+          [ -n "$ALERT_EMAIL" ] && echo "::add-mask::$ALERT_EMAIL"
+          if [ -z "$TEAMS_WEBHOOK_URL" ]; then
+            echo "MONITORING_TEAMS_WEBHOOK_URL is not set: alerts go by email only."
+          fi
+          export ALERT_EMAIL
+          bash infra/monitoring/deploy.sh

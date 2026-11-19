@@ -1,3 +1,4 @@
+using ACI.Application.Interfaces;
 using ACI.Application.Services;
 
 namespace ACI.WebApi.Services;
@@ -24,17 +25,23 @@ public sealed class ClubPosBackgroundService : BackgroundService
     private static readonly TimeSpan FirstPass = TimeSpan.FromMinutes(4);
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(1);
 
+    /// <summary>Its name in the job heartbeats (/health, the System health page).</summary>
+    public const string JobName = "club-pos";
+
     private readonly IServiceScopeFactory _scopes;
+    private readonly IJobHeartbeats _heartbeats;
     private readonly ILogger<ClubPosBackgroundService> _logger;
 
-    public ClubPosBackgroundService(IServiceScopeFactory scopes, ILogger<ClubPosBackgroundService> logger)
+    public ClubPosBackgroundService(IServiceScopeFactory scopes, IJobHeartbeats heartbeats, ILogger<ClubPosBackgroundService> logger)
     {
         _scopes = scopes;
+        _heartbeats = heartbeats;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        _heartbeats.Register(JobName, Interval);
         try
         {
             await Task.Delay(FirstPass, stoppingToken);
@@ -51,6 +58,7 @@ public sealed class ClubPosBackgroundService : BackgroundService
                 using var scope = _scopes.CreateScope();
                 var imported = await scope.ServiceProvider.GetRequiredService<IClubPos>().ImportDueAsync(DateTime.UtcNow, stoppingToken);
                 if (imported > 0) _logger.LogInformation("Imported {Count} closed ticket(s) from the POS", imported);
+                _heartbeats.Beat(JobName);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -58,6 +66,7 @@ public sealed class ClubPosBackgroundService : BackgroundService
             }
             catch (Exception ex)
             {
+                _heartbeats.Failed(JobName, ex);
                 _logger.LogError(ex, "Importing tickets from the POS failed");
             }
 

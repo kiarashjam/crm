@@ -16,31 +16,42 @@ using Microsoft.OpenApi.Models;
 using Serilog;
 using Serilog.Events;
 
-// Configure Serilog early for startup logging
-var logConfig = new LoggerConfiguration()
-    .MinimumLevel.Information()
-    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
-    .MinimumLevel.Override("Microsoft.EntityFrameworkCore", LogEventLevel.Warning)
-    .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
-    .Enrich.FromLogContext()
-    .Enrich.WithEnvironmentName()
-    .Enrich.WithMachineName()
-    .Enrich.WithThreadId()
-    .WriteTo.Console(
-        outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {SourceContext} {Message:lj}{NewLine}{Exception}");
-
-// Only add file logging in Development (Azure App Service doesn't allow local file writes)
+// Configure Serilog early for startup logging. With Application Insights configured, the host
+// makes the app's logger from the same settings plus that sink (see UseSerilog below).
 var environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production";
-if (environment == "Development")
-{
-    logConfig.WriteTo.File(
-        path: "logs/aci-.log",
-        rollingInterval: RollingInterval.Day,
-        retainedFileCountLimit: 30,
-        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {SourceContext} {Message:lj}{NewLine}{Exception}");
-}
+var startupLogger = ConfigureLogging(new LoggerConfiguration(), environment).CreateLogger();
+Log.Logger = startupLogger;
+// The logger this run made static and closes at the end: the start-up one, or the host's.
+Serilog.ILogger ownLogger = startupLogger;
 
-Log.Logger = logConfig.CreateLogger();
+static LoggerConfiguration ConfigureLogging(LoggerConfiguration logConfig, string environment)
+{
+    logConfig
+        .MinimumLevel.Information()
+        .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+        .MinimumLevel.Override("Microsoft.EntityFrameworkCore", LogEventLevel.Warning)
+        .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+        .Enrich.FromLogContext()
+        .Enrich.WithEnvironmentName()
+        .Enrich.WithMachineName()
+        .Enrich.WithThreadId()
+        // A contract's signing token (and the like) out of every event's request path, not only
+        // the request log's: see SecretPathLogEnricher.
+        .Enrich.With<ACI.WebApi.Monitoring.SecretPathLogEnricher>()
+        .WriteTo.Console(
+            outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {SourceContext} {Message:lj}{NewLine}{Exception}");
+
+    // Only add file logging in Development (Azure App Service doesn't allow local file writes)
+    if (environment == "Development")
+    {
+        logConfig.WriteTo.File(
+            path: "logs/aci-.log",
+            rollingInterval: RollingInterval.Day,
+            retainedFileCountLimit: 30,
+            outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {SourceContext} {Message:lj}{NewLine}{Exception}");
+    }
+    return logConfig;
+}
 
 try
 {
@@ -48,8 +59,27 @@ try
 
     var builder = WebApplication.CreateBuilder(args);
 
-    // Use Serilog for all logging
-    builder.Host.UseSerilog();
+    // Use Serilog for all logging. With Application Insights configured (APPLICATIONINSIGHTS_CONNECTION_STRING
+    // or ApplicationInsights:ConnectionString), Serilog also sends its traces and exceptions there,
+    // through the SDK's own TelemetryConfiguration, so they carry the request they belong to and
+    // pass the same redaction and sampling (ACI.WebApi.Monitoring.ApplicationInsights). Without it,
+    // nothing changes.
+    var applicationInsights = ACI.WebApi.Monitoring.ApplicationInsights.AddIfConfigured(builder.Services, builder.Configuration);
+    if (applicationInsights)
+    {
+        // The host's own logger, which it closes itself; it is made the static one once the app
+        // is built (below). Left to replace the static logger, the host closed whichever was
+        // static when it stopped: in a test process, another host's.
+        builder.Host.UseSerilog((context, services, logConfig) => ConfigureLogging(logConfig, environment)
+            .WriteTo.ApplicationInsights(
+                services.GetRequiredService<Microsoft.ApplicationInsights.Extensibility.TelemetryConfiguration>(),
+                TelemetryConverter.Traces),
+            preserveStaticLogger: true);
+    }
+    else
+    {
+        builder.Host.UseSerilog();
+    }
 
     // CORS Configuration
     var browserOrigins = builder.Configuration["Cors:AllowedOrigins"]?.Split(',', StringSplitOptions.RemoveEmptyEntries)
@@ -332,10 +362,24 @@ try
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
             }));
+        // Browsers reporting their crashes (ClientErrorsController), anonymous, by address: a page
+        // sends ten at most, so this is room for a few people behind one address, and a script
+        // posting in a loop fills no log.
+        options.AddPolicy(ACI.WebApi.Controllers.ClientErrorsController.RateLimitPolicy, context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            "client-errors:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = ACI.WebApi.Controllers.ClientErrorsController.PerMinute,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
     });
     builder.Services.AddResponseCompression(options => options.EnableForHttps = true);
     builder.Services.AddEndpointsApiExplorer();
-    builder.Services.AddProblemDetails();
+    // Every problem response's traceId is the W3C trace id Application Insights shows as the
+    // Operation ID (MVC's own would be the whole traceparent). GlobalExceptionHandler sets its own.
+    builder.Services.AddProblemDetails(options => options.CustomizeProblemDetails = context =>
+        context.ProblemDetails.Extensions["traceId"] = ACI.WebApi.Monitoring.TraceIds.Of(context.HttpContext));
 
     // Global Exception Handler
     builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
@@ -496,6 +540,9 @@ try
     builder.Services.AddScoped<ACI.WebApi.Assistant.AssistantTools>();
     builder.Services.AddScoped<ACI.WebApi.Assistant.AssistantChat>();
 
+    // Each background job's signs of life, for /health, the System health page and the alerts.
+    builder.Services.AddSingleton<ACI.Application.Interfaces.IJobHeartbeats, ACI.WebApi.Services.JobHeartbeats>();
+
     // Background services
     builder.Services.AddHostedService<ACI.WebApi.Services.TaskReminderBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.ContractReminderBackgroundService>();
@@ -520,6 +567,13 @@ try
     builder.Services.AddHostedService<ACI.WebApi.Services.AutomationRunnerBackgroundService>();
     // Each club's members' at-risk scores, once a day after its billing run, and the save actions.
     builder.Services.AddHostedService<ACI.WebApi.Services.ClubScoringBackgroundService>();
+
+    // System health: each workspace's last portal ping (daily, and "Test the connection"), the
+    // signals the Azure alert rules query (monitoring.alert …), and the daily digest at 08:00.
+    builder.Services.AddSingleton<ACI.Application.Interfaces.IPortalPings, ACI.WebApi.Services.PortalPings>();
+    builder.Services.AddHostedService<ACI.WebApi.Services.PortalPingBackgroundService>();
+    builder.Services.AddHostedService<ACI.WebApi.Services.MonitoringSignalsBackgroundService>();
+    builder.Services.AddHostedService<ACI.WebApi.Services.HealthDigestBackgroundService>();
 
     // HTTP Context accessor for current user service
     builder.Services.AddHttpContextAccessor();
@@ -636,15 +690,33 @@ try
         });
     builder.Services.AddAuthorization();
 
-    // Health Checks
+    // Health Checks: what /health answers (ACI.WebApi.Monitoring.HealthResponse).
     var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+    builder.Services.AddSingleton<ACI.WebApi.Monitoring.StartupState>();
     builder.Services.AddHealthChecks()
         .AddSqlServer(
             connectionString ?? "Server=(localdb)\\mssqllocaldb;Database=ACI;Trusted_Connection=True;",
             name: "database",
-            tags: ["db", "sql"]);
+            tags: ["db", "sql"])
+        // Whether start-up database initialisation worked (the dbError behind /db-status, below).
+        .AddCheck<ACI.WebApi.Monitoring.StartupHealthCheck>(ACI.WebApi.Monitoring.StartupHealthCheck.Name, tags: ["startup"])
+        // Whether each background job is still running, and its last run went well.
+        .AddCheck<ACI.WebApi.Monitoring.JobsHealthCheck>(ACI.WebApi.Monitoring.JobsHealthCheck.Name, tags: ["jobs"])
+        // Whether email leaves the outbox. A database it cannot read is the "database" check's to report.
+        .AddCheck<ACI.WebApi.Monitoring.OutboxHealthCheck>(ACI.WebApi.Monitoring.OutboxHealthCheck.Name,
+            failureStatus: Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Degraded,
+            tags: ["db", "outbox"], timeout: TimeSpan.FromSeconds(10));
 
     var app = builder.Build();
+
+    // With Application Insights, what Program logs itself (the database set-up below, a fatal
+    // error) goes there too, through the host's logger.
+    if (applicationInsights)
+    {
+        ownLogger = app.Services.GetRequiredService<Serilog.ILogger>();
+        Log.Logger = ownLogger;
+        startupLogger.Dispose();
+    }
 
     // The API's public address builds email-image links and the portal's callback. Unset
     // outside development, each request's own host stands in (see RequestPublicAddress).
@@ -697,8 +769,8 @@ try
     // (and stripped when forged) before the read-only role is resolved from it.
     app.UseMiddleware<ACI.WebApi.Middleware.ReadOnlyMemberMiddleware>();
 
-    // Health check endpoint
-    app.MapHealthChecks("/health");
+    // Health check endpoint: every check as JSON; 200 when Healthy or Degraded, 503 when Unhealthy.
+    app.MapHealthChecks("/health", ACI.WebApi.Monitoring.HealthResponse.Options());
     
     // Simple ping endpoint (no DB)
     app.MapGet("/ping", () => Results.Ok(new { status = "ok", time = DateTime.UtcNow }));
@@ -2520,6 +2592,8 @@ try
         catch (Exception dbEx)
         {
             dbError = dbEx.ToString();
+            // So /health says so too ("startup"), instead of answering 200 over it.
+            app.Services.GetRequiredService<ACI.WebApi.Monitoring.StartupState>().MarkDatabaseFailed(DateTime.UtcNow);
             Log.Error(dbEx, "Database migration failed (app will start but DB operations will fail): {ErrorMessage}", dbEx.Message);
             // Don't throw - allow app to start for debugging
         }
@@ -2819,7 +2893,10 @@ catch (Exception ex)
 }
 finally
 {
-    Log.CloseAndFlush();
+    // Only the logger this run made: in a test process, the static one may be another host's
+    // by now, and closing it silenced that host's log.
+    if (ReferenceEquals(Log.Logger, ownLogger)) Log.CloseAndFlush();
+    else startupLogger.Dispose();
 }
 
 // Expose Program class for integration testing with WebApplicationFactory

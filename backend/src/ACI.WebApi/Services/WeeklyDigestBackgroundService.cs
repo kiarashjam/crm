@@ -1,3 +1,4 @@
+using ACI.Application.Interfaces;
 using ACI.Infrastructure.Services;
 
 namespace ACI.WebApi.Services;
@@ -16,17 +17,23 @@ public sealed class WeeklyDigestBackgroundService : BackgroundService
     private static readonly TimeSpan FirstPass = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan Interval = TimeSpan.FromHours(1);
 
+    /// <summary>Its name in the job heartbeats (/health, the System health page).</summary>
+    public const string JobName = "weekly-digest";
+
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IJobHeartbeats _heartbeats;
     private readonly ILogger<WeeklyDigestBackgroundService> _logger;
 
-    public WeeklyDigestBackgroundService(IServiceScopeFactory scopeFactory, ILogger<WeeklyDigestBackgroundService> logger)
+    public WeeklyDigestBackgroundService(IServiceScopeFactory scopeFactory, IJobHeartbeats heartbeats, ILogger<WeeklyDigestBackgroundService> logger)
     {
         _scopeFactory = scopeFactory;
+        _heartbeats = heartbeats;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        _heartbeats.Register(JobName, Interval);
         try
         {
             await Task.Delay(FirstPass, stoppingToken);
@@ -43,6 +50,7 @@ public sealed class WeeklyDigestBackgroundService : BackgroundService
                 using var scope = _scopeFactory.CreateScope();
                 var sent = await scope.ServiceProvider.GetRequiredService<WeeklyDigestService>().SendDueAsync(DateTime.UtcNow, stoppingToken);
                 if (sent > 0) _logger.LogInformation("Sent {Count} weekly report digests", sent);
+                _heartbeats.Beat(JobName);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -50,6 +58,7 @@ public sealed class WeeklyDigestBackgroundService : BackgroundService
             }
             catch (Exception ex)
             {
+                _heartbeats.Failed(JobName, ex);
                 _logger.LogError(ex, "Error sending weekly report digests");
             }
 

@@ -143,19 +143,25 @@ public sealed class AutomationRunnerBackgroundService : BackgroundService
     /// <summary>Full batches worked through in one pass before waiting again, so a backlog clears but never spins.</summary>
     private const int MaxBatchesPerPass = 20;
 
+    /// <summary>Its name in the job heartbeats (/health, the System health page).</summary>
+    public const string JobName = "automations";
+
     private readonly AutomationRunner _runner;
     private readonly AutomationSignal _signal;
+    private readonly IJobHeartbeats _heartbeats;
     private readonly ILogger<AutomationRunnerBackgroundService> _logger;
 
-    public AutomationRunnerBackgroundService(AutomationRunner runner, AutomationSignal signal, ILogger<AutomationRunnerBackgroundService> logger)
+    public AutomationRunnerBackgroundService(AutomationRunner runner, AutomationSignal signal, IJobHeartbeats heartbeats, ILogger<AutomationRunnerBackgroundService> logger)
     {
         _runner = runner;
         _signal = signal;
+        _heartbeats = heartbeats;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        _heartbeats.Register(JobName, Interval);
         try
         {
             await _signal.WaitAsync(FirstPass, stoppingToken);
@@ -172,12 +178,17 @@ public sealed class AutomationRunnerBackgroundService : BackgroundService
             {
                 for (var batch = 0; batch < MaxBatchesPerPass; batch++)
                 {
-                    if (await _runner.RunDueAsync(stoppingToken) < AutomationRunner.BatchSize) break;
+                    var due = await _runner.RunDueAsync(stoppingToken);
+                    // Each batch, not only the pass: a backlog's pass of many batches is a
+                    // loop at work, not one that has stopped.
+                    _heartbeats.Beat(JobName);
+                    if (due < AutomationRunner.BatchSize) break;
                 }
                 if (DateTime.UtcNow - lastScan >= RenewalScanEvery)
                 {
                     lastScan = DateTime.UtcNow;
                     await _runner.ScanRenewalsAsync(stoppingToken);
+                    _heartbeats.Beat(JobName);
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -186,6 +197,7 @@ public sealed class AutomationRunnerBackgroundService : BackgroundService
             }
             catch (Exception ex)
             {
+                _heartbeats.Failed(JobName, ex);
                 _logger.LogError(ex, "Automation runner pass failed");
             }
 

@@ -21,17 +21,24 @@ public sealed class PersonContactBackfillBackgroundService : BackgroundService
     /// <summary>Leads looked at in one run, so one run is a bounded piece of work.</summary>
     public const int LeadsPerRun = 500;
 
+    /// <summary>Its name in the job heartbeats (/health, the System health page).</summary>
+    public const string JobName = "person-contact-backfill";
+
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IJobHeartbeats _heartbeats;
     private readonly ILogger<PersonContactBackfillBackgroundService> _logger;
 
-    public PersonContactBackfillBackgroundService(IServiceScopeFactory scopeFactory, ILogger<PersonContactBackfillBackgroundService> logger)
+    public PersonContactBackfillBackgroundService(IServiceScopeFactory scopeFactory, ILogger<PersonContactBackfillBackgroundService> logger, IJobHeartbeats? heartbeats = null)
     {
         _scopeFactory = scopeFactory;
+        // Tests make one to run a single pass by hand, with no registry to report to.
+        _heartbeats = heartbeats ?? new JobHeartbeats();
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        _heartbeats.Register(JobName, Interval);
         try
         {
             await Task.Delay(FirstPass, stoppingToken);
@@ -53,6 +60,7 @@ public sealed class PersonContactBackfillBackgroundService : BackgroundService
                     linked = await RunOnceAsync(stoppingToken);
                     if (linked > 0) _logger.LogInformation("Gave {Count} leads their person contact", linked);
                 } while (linked == LeadsPerRun && !stoppingToken.IsCancellationRequested);
+                _heartbeats.Beat(JobName);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -60,6 +68,7 @@ public sealed class PersonContactBackfillBackgroundService : BackgroundService
             }
             catch (Exception ex)
             {
+                _heartbeats.Failed(JobName, ex);
                 _logger.LogError(ex, "Error giving leads their person contacts");
             }
 

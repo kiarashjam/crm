@@ -62,6 +62,7 @@ export const nav = {
   'nav.workspaces': 'Workspaces',
   'nav.settings': 'Settings',
   'nav.claude': 'Claude',
+  'nav.systemHealth': 'System health',
   'nav.help': 'Help',
 
   'nav.openMenu': 'Open menu',

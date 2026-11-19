@@ -28,6 +28,7 @@ public class EndpointModuleTests
         ["JoinRequestsController"] = "joining the workspace",
         ["TeamsController"] = "the workspace's team",
         ["AuditController"] = "the workspace's history, of both modules",
+        ["SystemHealthController"] = "what has gone wrong in the workspace, in both modules, and the server's jobs",
         ["PrivacyController"] = "a person's export and erasure, which reach both modules: refusing one with a module off would leave the person in it",
         ["PublicPrivacyController"] = "the public privacy notice, which covers both modules",
         ["ContactsController"] = "contacts belong to both: members and applicants are linked to them",
@@ -64,6 +65,7 @@ public class EndpointModuleTests
         ["EmailTemplatesController"] = "the workspace's prepared emails, sent to leads and contacts of both modules",
         ["PublicEmailImagesController"] = "an image in an email already sent: mail apps fetch it every time the email is opened",
         ["PublicMemberPortalController"] = "members signing in to the member portal, who are not on the team; with the club off the service itself refuses (Module.Off)",
+        ["ClientErrorsController"] = "the browser reporting its own crashes, anonymous and from any page, of either module or neither",
     };
 
     private static IEnumerable<Type> Controllers() =>

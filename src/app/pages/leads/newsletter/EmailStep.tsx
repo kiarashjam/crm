@@ -2,9 +2,10 @@
 // server renders it for one of the leads, at a desktop's or a phone's width, with a test sent
 // to oneself.
 
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import {
-  CheckCircle2, Code2, KeyRound, Languages, Loader2, Mail, Monitor, Palette, PenLine, Send, Smartphone, TriangleAlert,
+  CalendarCheck, CheckCircle2, Code2, Feather, Heading1, Images, KeyRound, Languages, Loader2, Mail, Monitor, PenLine, Send,
+  Signature, Smartphone, TriangleAlert,
 } from 'lucide-react';
 import {
   sendNewsletterTest, type NewsletterEmailRequest, type NewsletterLanguage, type NewsletterPerson, type NewsletterPreview,
@@ -15,9 +16,11 @@ import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select';
+import { Switch } from '@/app/components/ui/switch';
 import { Textarea } from '@/app/components/ui/textarea';
 import { cn } from '@/app/components/ui/utils';
-import { LETTER_COLORS, safeColor, type Letter } from './letter';
+import { ImageSlot, useEmailImageLibrary } from './ImageSlot';
+import type { Letter, LetterImages } from './letter';
 import { PreviewFrame, ProblemNote, Segmented } from './parts';
 
 export type EmailMode = 'letter' | 'html';
@@ -27,15 +30,19 @@ const LANGUAGES: { id: NewsletterLanguage; label: string }[] = [
   { id: 'en', label: 'EN' },
 ];
 
-const MODES: { id: EmailMode; label: string; icon: typeof PenLine }[] = [
-  { id: 'letter', label: 'Letter', icon: PenLine },
-  { id: 'html', label: 'HTML', icon: Code2 },
+const MODES: { id: EmailMode; label: string; hint: string; icon: typeof PenLine }[] = [
+  { id: 'letter', label: "Founders' Letter", hint: 'The welcome letter’s design', icon: Feather },
+  { id: 'html', label: 'Your own HTML', hint: 'Start from the letter, edit the code', icon: Code2 },
 ];
+
+/** The letter's words, each in its own box. */
+type TextKey = 'kicker' | 'title' | 'accent' | 'heading' | 'message' | 'quote' | 'button' | 'duration' | 'place' | 'signoff' | 'signature';
+const TEXT_KEYS: TextKey[] = ['kicker', 'title', 'accent', 'heading', 'message', 'quote', 'button', 'duration', 'place', 'signoff', 'signature'];
 
 const SAMPLE = '__sample__';
 
 export function EmailStep({
-  setup, language, onLanguage, subject, onSubject, mode, onMode, letter, onLetter, html, onHtml,
+  setup, language, onLanguage, subject, onSubject, mode, onMode, letter, onLetter, welcomeImages, html, onHtml,
   recipients, sampleLeadId, onSample, preview, previewError, previewing, request, testBlocked, testTo,
 }: {
   setup: NewsletterSetup | null;
@@ -47,6 +54,8 @@ export function EmailStep({
   onMode: (next: EmailMode) => void;
   letter: Letter;
   onLetter: (next: Letter) => void;
+  /** The welcome letter's images, offered in each image's picker. */
+  welcomeImages?: LetterImages;
   /** The HTML of one's own, in HTML mode. */
   html: string;
   onHtml: (next: string) => void;
@@ -79,13 +88,35 @@ export function EmailStep({
   useEffect(() => { setTest(null); }, [requestKey]);
 
   const edit = (change: Partial<Letter>) => onLetter({ ...letter, ...change });
+  const editImages = (change: Partial<LetterImages>) => edit({ images: { ...letter.images, ...change } });
+  const setPhoto = (index: 0 | 1, src: string | null) => {
+    const photos = [letter.images.photos[0] ?? null, letter.images.photos[1] ?? null];
+    photos[index] = src;
+    editImages({ photos: photos.filter((p): p is string => Boolean(p)) });
+  };
+  const library = useEmailImageLibrary();
+  const suggestions = [welcomeImages?.cover, ...(welcomeImages?.photos ?? []), welcomeImages?.logo].filter((u): u is string => Boolean(u));
   const boxes: Record<string, { value: string; set: (value: string) => void }> = {
     [`${ids}-subject`]: { value: subject, set: onSubject },
-    [`${ids}-heading`]: { value: letter.heading, set: (heading) => edit({ heading }) },
-    [`${ids}-message`]: { value: letter.message, set: (message) => edit({ message }) },
-    [`${ids}-button`]: { value: letter.button, set: (button) => edit({ button }) },
-    [`${ids}-signoff`]: { value: letter.signoff, set: (signoff) => edit({ signoff }) },
     [`${ids}-html`]: { value: html, set: onHtml },
+  };
+  for (const key of TEXT_KEYS) boxes[`${ids}-${key}`] = { value: letter[key], set: (value) => edit({ [key]: value }) };
+
+  /** One of the letter's words: its label and its box, which field buttons add to. */
+  const text = (key: TextKey, label: string, o: { rows?: number; max?: number; className?: string; hint?: string } = {}) => {
+    const id = `${ids}-${key}`;
+    const common = { id, value: letter[key], onFocus: typingIn(id), 'aria-describedby': o.hint ? `${id}-hint` : undefined };
+    return (
+      <div className="min-w-0">
+        <Label htmlFor={id}>{label}</Label>
+        {o.rows ? (
+          <Textarea {...common} onChange={(e) => edit({ [key]: e.target.value })} rows={o.rows} className={cn('mt-1 leading-relaxed', o.className)} />
+        ) : (
+          <Input {...common} onChange={(e) => edit({ [key]: e.target.value })} maxLength={o.max ?? 200} className={cn('mt-1', o.className)} />
+        )}
+        {o.hint && <p id={`${id}-hint`} className="mt-1 text-[11px] text-slate-400">{o.hint}</p>}
+      </div>
+    );
   };
   const typingIn = (id: string) => () => { lastField.current = id; };
   const addField = (token: string) => {
@@ -119,7 +150,28 @@ export function EmailStep({
             <Languages className="h-3.5 w-3.5" aria-hidden /> <span className="sr-only">Language</span>
           </span>
           <Segmented label="Language" value={language} options={LANGUAGES} onChange={onLanguage} />
-          <Segmented className="ml-auto" label="How the email is written" value={mode} options={MODES} onChange={onMode} />
+        </div>
+
+        <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 dark:bg-white/5" role="radiogroup" aria-label="How the email is made">
+          {MODES.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              role="radio"
+              aria-checked={mode === m.id}
+              onClick={() => onMode(m.id)}
+              className={cn(
+                'flex min-w-0 items-center gap-2 rounded-lg px-3 py-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400',
+                mode === m.id ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200',
+              )}
+            >
+              <m.icon className={cn('h-4 w-4 shrink-0', mode === m.id && 'text-orange-500')} aria-hidden />
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-medium">{m.label}</span>
+                <span className="block truncate text-[11px] font-normal text-slate-400">{m.hint}</span>
+              </span>
+            </button>
+          ))}
         </div>
 
         <div>
@@ -136,77 +188,47 @@ export function EmailStep({
 
         {mode === 'letter' ? (
           <div className="space-y-3">
-            <div>
-              <Label htmlFor={`${ids}-heading`}>Greeting</Label>
-              <Input
-                id={`${ids}-heading`}
-                value={letter.heading}
-                onChange={(e) => edit({ heading: e.target.value })}
-                onFocus={typingIn(`${ids}-heading`)}
-                maxLength={200}
-                className="mt-1 font-serif text-base"
-              />
-            </div>
-            <div>
-              <div className="flex items-baseline justify-between gap-2">
-                <Label htmlFor={`${ids}-message`}>Message</Label>
-                <span className="text-[11px] text-slate-400" aria-hidden>**bold** · blank line: new paragraph</span>
+            <Section title="Heading" icon={Heading1}>
+              {text('kicker', 'Small heading', { max: 60, className: 'uppercase tracking-[0.18em] text-xs text-orange-700 dark:text-orange-300' })}
+              <div className="grid gap-3 sm:grid-cols-2">
+                {text('title', 'Title', { max: 80, className: 'font-serif text-base' })}
+                {text('accent', 'Then, in coral', { max: 80, className: 'font-serif text-base italic text-orange-700 dark:text-orange-300' })}
               </div>
-              <Textarea
-                id={`${ids}-message`}
-                value={letter.message}
-                onChange={(e) => edit({ message: e.target.value })}
-                onFocus={typingIn(`${ids}-message`)}
-                rows={6}
-                className="mt-1 min-h-[8rem] leading-relaxed"
-              />
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <Label htmlFor={`${ids}-button`}>Button</Label>
-                <Input
-                  id={`${ids}-button`}
-                  value={letter.button}
-                  onChange={(e) => edit({ button: e.target.value })}
-                  onFocus={typingIn(`${ids}-button`)}
-                  maxLength={80}
-                  className="mt-1"
-                />
+            </Section>
+
+            <Section title="Letter" icon={Feather} hint="**bold** · blank line: new paragraph">
+              {text('heading', 'Greeting', { className: 'font-serif text-base italic' })}
+              {text('message', 'Message', { rows: 6, className: 'min-h-[8rem]' })}
+              {text('quote', 'Highlighted line', { rows: 2, className: 'font-serif italic', hint: 'Set between two lavender lines; a second line is in lavender. Empty: left out.' })}
+            </Section>
+
+            <Section title="Booking box" icon={CalendarCheck} hint="With their code, RDV-XXXX">
+              {text('button', 'Button', { max: 80 })}
+              <div className="grid gap-3 sm:grid-cols-2">
+                {text('duration', 'Duration', { max: 60 })}
+                {text('place', 'Place', { max: 120 })}
               </div>
-              <div>
-                <p id={`${ids}-color`} className="flex items-center gap-1.5 text-sm font-medium text-slate-700 dark:text-slate-200">
-                  <Palette className="h-3.5 w-3.5 text-slate-400" aria-hidden /> Colour
-                </p>
-                <div className="mt-2 flex flex-wrap items-center gap-1.5" role="radiogroup" aria-labelledby={`${ids}-color`}>
-                  {LETTER_COLORS.map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      role="radio"
-                      aria-checked={safeColor(letter.color) === c}
-                      aria-label={c}
-                      onClick={() => edit({ color: c })}
-                      className={cn(
-                        'h-7 w-7 rounded-full ring-offset-2 transition hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 motion-reduce:transition-none dark:ring-offset-slate-900',
-                        safeColor(letter.color) === c ? 'ring-2 ring-slate-900 dark:ring-white' : 'ring-1 ring-black/10',
-                      )}
-                      style={{ background: c }}
-                    />
-                  ))}
-                </div>
+            </Section>
+
+            <Section title="Sign-off" icon={Signature}>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {text('signoff', 'Sign-off', { className: 'font-serif italic' })}
+                {text('signature', 'Signature', { className: 'font-serif text-base italic' })}
               </div>
-            </div>
-            <div>
-              <Label htmlFor={`${ids}-signoff`}>Sign-off</Label>
-              <Textarea
-                id={`${ids}-signoff`}
-                value={letter.signoff}
-                onChange={(e) => edit({ signoff: e.target.value })}
-                onFocus={typingIn(`${ids}-signoff`)}
-                rows={2}
-                className="mt-1 font-serif italic"
-              />
-            </div>
+            </Section>
+
+            <Section title="Images" icon={Images} hint="From your welcome letter">
+              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                <ImageSlot label="Cover" wide value={letter.images.cover} onChange={(cover) => editImages({ cover })} library={library} suggestions={suggestions} />
+                <ImageSlot label="Photo 1" value={letter.images.photos[0]} onChange={(src) => setPhoto(0, src)} library={library} suggestions={suggestions} />
+                <ImageSlot label="Photo 2" value={letter.images.photos[1]} onChange={(src) => setPhoto(1, src)} library={library} suggestions={suggestions} />
+                <ImageSlot label="Logo" wide dark value={letter.images.logo} onChange={(logo) => editImages({ logo })} library={library} suggestions={suggestions} />
+              </div>
+              <label className="flex items-center gap-2.5 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:bg-white/5 dark:text-slate-200">
+                <Switch checked={letter.steps} onCheckedChange={(steps) => edit({ steps })} aria-label="Show how it works" />
+                <span>Show <em>how it works</em>: choose a day, then a time, we welcome you</span>
+              </label>
+            </Section>
           </div>
         ) : (
           <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-950 shadow-sm">
@@ -342,5 +364,22 @@ function Envelope({ label, children }: { label: string; children: string }) {
       <span className="inline-block w-16 font-medium text-slate-400 dark:text-slate-500">{label}</span>
       {children}
     </p>
+  );
+}
+
+function Section({ title, icon: Icon, hint, children }: {
+  title: string;
+  icon: ComponentType<{ className?: string }>;
+  hint?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white/70 p-3.5 dark:border-white/10 dark:bg-white/[0.02]">
+      <h4 className="mb-2.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+        <Icon className="h-3.5 w-3.5 text-orange-500" aria-hidden /> {title}
+        {hint && <span className="ml-auto truncate pl-2 text-[11px] font-normal normal-case tracking-normal text-slate-400">{hint}</span>}
+      </h4>
+      <div className="space-y-3">{children}</div>
+    </section>
   );
 }

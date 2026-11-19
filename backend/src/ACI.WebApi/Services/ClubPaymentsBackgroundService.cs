@@ -1,3 +1,4 @@
+using ACI.Application.Interfaces;
 using ACI.Application.Services;
 
 namespace ACI.WebApi.Services;
@@ -25,17 +26,23 @@ public sealed class ClubPaymentsBackgroundService : BackgroundService
     private static readonly TimeSpan FirstPass = TimeSpan.FromMinutes(12);
     private static readonly TimeSpan Interval = TimeSpan.FromHours(1);
 
+    /// <summary>Its name in the job heartbeats (/health, the System health page).</summary>
+    public const string JobName = "club-payments";
+
     private readonly IServiceScopeFactory _scopes;
+    private readonly IJobHeartbeats _heartbeats;
     private readonly ILogger<ClubPaymentsBackgroundService> _logger;
 
-    public ClubPaymentsBackgroundService(IServiceScopeFactory scopes, ILogger<ClubPaymentsBackgroundService> logger)
+    public ClubPaymentsBackgroundService(IServiceScopeFactory scopes, IJobHeartbeats heartbeats, ILogger<ClubPaymentsBackgroundService> logger)
     {
         _scopes = scopes;
+        _heartbeats = heartbeats;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        _heartbeats.Register(JobName, Interval);
         try
         {
             await Task.Delay(FirstPass, stoppingToken);
@@ -52,6 +59,7 @@ public sealed class ClubPaymentsBackgroundService : BackgroundService
                 using var scope = _scopes.CreateScope();
                 var tried = await scope.ServiceProvider.GetRequiredService<IClubPayments>().CollectAutoPayAsync(DateTime.UtcNow, stoppingToken);
                 if (tried > 0) _logger.LogInformation("Charged dues to {Count} saved card(s)", tried);
+                _heartbeats.Beat(JobName);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -59,6 +67,7 @@ public sealed class ClubPaymentsBackgroundService : BackgroundService
             }
             catch (Exception ex)
             {
+                _heartbeats.Failed(JobName, ex);
                 _logger.LogError(ex, "Charging dues to saved cards failed");
             }
 

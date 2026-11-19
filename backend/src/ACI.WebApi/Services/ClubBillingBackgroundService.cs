@@ -1,3 +1,4 @@
+using ACI.Application.Interfaces;
 using ACI.Application.Services;
 
 namespace ACI.WebApi.Services;
@@ -26,17 +27,23 @@ public sealed class ClubBillingBackgroundService : BackgroundService
     private static readonly TimeSpan FirstPass = TimeSpan.FromMinutes(10);
     private static readonly TimeSpan Interval = TimeSpan.FromHours(1);
 
+    /// <summary>Its name in the job heartbeats (/health, the System health page).</summary>
+    public const string JobName = "club-billing";
+
     private readonly IServiceScopeFactory _scopes;
+    private readonly IJobHeartbeats _heartbeats;
     private readonly ILogger<ClubBillingBackgroundService> _logger;
 
-    public ClubBillingBackgroundService(IServiceScopeFactory scopes, ILogger<ClubBillingBackgroundService> logger)
+    public ClubBillingBackgroundService(IServiceScopeFactory scopes, IJobHeartbeats heartbeats, ILogger<ClubBillingBackgroundService> logger)
     {
         _scopes = scopes;
+        _heartbeats = heartbeats;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        _heartbeats.Register(JobName, Interval);
         try
         {
             await Task.Delay(FirstPass, stoppingToken);
@@ -55,6 +62,7 @@ public sealed class ClubBillingBackgroundService : BackgroundService
                 using var scope = _scopes.CreateScope();
                 var ran = await scope.ServiceProvider.GetRequiredService<IClubBilling>().RunScheduledAsync(DateTime.UtcNow, stoppingToken);
                 if (ran > 0) _logger.LogInformation("Ran the club billing for {Count} workspace(s)", ran);
+                _heartbeats.Beat(JobName);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -62,6 +70,7 @@ public sealed class ClubBillingBackgroundService : BackgroundService
             }
             catch (Exception ex)
             {
+                _heartbeats.Failed(JobName, ex);
                 _logger.LogError(ex, "The club billing run failed");
             }
 

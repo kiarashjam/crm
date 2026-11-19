@@ -14,13 +14,17 @@ import {
 } from '@/app/api/leadNewsletter';
 import { Button } from '@/app/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/app/components/ui/dialog';
+import { getOnboardingSettings } from '@/app/api/onboarding';
 import { getCurrentUser } from '@/app/lib/auth';
 import { IconTile } from '@/app/pages/settings/components/SettingsCard';
 import { AudienceStep, type NewsletterMember } from './AudienceStep';
 import { EmailStep, type EmailMode } from './EmailStep';
 import { SendStep, type SendPhase } from './SendStep';
 import { DEFAULT_FILTERS, chosenStatuses, leads, toAudienceRequest, type AudienceFilters } from './audience';
-import { buildLetterHtml, isLetterDefault, letterDefaults, subjectDefault, type Letter } from './letter';
+import {
+  NO_IMAGES, buildLetterHtml, imagesFromHtml, inLanguage, isLetterDefault, letterDefaults, siteOf, subjectDefault, type Letter,
+  type LetterImages,
+} from './letter';
 import { ProblemNote, StepIndicator, type StepInfo } from './parts';
 
 const STEPS: StepInfo[] = [
@@ -94,7 +98,8 @@ export function LeadNewsletterDialog({ open, onOpenChange, statuses, sources, me
   // server sends nothing more and answers with the first send.
   const sendId = useRef(newSendId());
 
-  const letterHtml = useMemo(() => buildLetterHtml(letter, language), [letter, language]);
+  const site = siteOf(setup?.bookingPageUrl);
+  const letterHtml = useMemo(() => buildLetterHtml(letter, language, site), [letter, language, site]);
   const emailHtml = mode === 'letter' ? letterHtml : ownHtml;
   const request = useMemo(() => toAudienceRequest(filters, statuses), [filters, statuses]);
   const requestKey = JSON.stringify(request);
@@ -111,7 +116,7 @@ export function LeadNewsletterDialog({ open, onOpenChange, statuses, sources, me
   /** Change the language; words still as they came are put in the other language too. */
   const switchLanguage = (next: NewsletterLanguage) => {
     if (next === language) return;
-    if (isLetterDefault(letter, language)) setLetter({ ...letterDefaults(next), color: letter.color });
+    if (isLetterDefault(letter, language)) setLetter(inLanguage(letter, next));
     if (subject === subjectDefault(language)) setSubject(subjectDefault(next));
     setLanguage(next);
   };
@@ -138,6 +143,23 @@ export function LeadNewsletterDialog({ open, onOpenChange, statuses, sources, me
       .catch((e: unknown) => { if (!controller.signal.aborted) setSetupError(message(e)); });
     return () => controller.abort();
   }, [open, setupTry]);
+
+  // The welcome letter's photos and logo, so the invitation is dressed as members' letters are.
+  // Read once; a workspace without them (or a person who may not read its settings) gets none.
+  const imagesAsked = useRef(false);
+  const [welcomeImages, setWelcomeImages] = useState<LetterImages>(NO_IMAGES);
+  useEffect(() => {
+    if (!open || imagesAsked.current) return;
+    imagesAsked.current = true;
+    getOnboardingSettings()
+      .then((s) => {
+        const found = imagesFromHtml(s.emailHtml);
+        if (!found.cover && !found.logo && !found.photos.length) return;
+        setWelcomeImages(found);
+        setLetter((now) => (now.images.cover || now.images.logo || now.images.photos.length ? now : { ...now, images: found }));
+      })
+      .catch(() => { /* No images: the letter stands without them. */ });
+  }, [open]);
 
   // The count, a moment after the filters stop changing.
   useEffect(() => {
@@ -250,7 +272,7 @@ export function LeadNewsletterDialog({ open, onOpenChange, statuses, sources, me
     setFilters(DEFAULT_FILTERS);
     setAudience(null);
     setAudienceError(null);
-    setLetter(letterDefaults(language));
+    setLetter((now) => letterDefaults(language, now.images));
     setSubject(subjectDefault(language));
     setMode('letter');
     setOwnHtml('');
@@ -341,6 +363,7 @@ export function LeadNewsletterDialog({ open, onOpenChange, statuses, sources, me
               onMode={chooseMode}
               letter={letter}
               onLetter={setLetter}
+              welcomeImages={welcomeImages}
               html={ownHtml}
               onHtml={setOwnHtml}
               recipients={audience?.recipients ?? []}

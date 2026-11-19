@@ -5,7 +5,7 @@ import {
   User, Palette, Bell, Shield,
   ChevronRight,
   Settings2, Sparkles,
-  Link2, Bot, MessageSquareHeart, MessagesSquare,
+  Link2, Bot, MessageSquareHeart, MessagesSquare, HeartPulse,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -62,11 +62,12 @@ import type { Pipeline, DealStage } from '@/app/api/types';
 import { BrandSection } from './settings/components/BrandSection';
 import { IntegrationsSection } from './settings/components/IntegrationsSection';
 import { WelcomeTab } from './settings/components/WelcomeTab';
+import { SystemHealthSection } from './settings/components/SystemHealthSection';
 import { ClaudeSection } from './McpSetup';
 import { AssistantSection } from './settings/components/AssistantSection';
 import PageHero from '@/app/components/PageHero';
 
-type SettingsTab = 'profile' | 'brand' | 'appearance' | 'notifications' | 'assistant' | 'integrations' | 'welcome' | 'claude' | 'organization' | 'pipelines' | 'customFields' | 'security' | 'account';
+type SettingsTab = 'profile' | 'brand' | 'appearance' | 'notifications' | 'assistant' | 'integrations' | 'welcome' | 'health' | 'claude' | 'organization' | 'pipelines' | 'customFields' | 'security' | 'account';
 
 /** The tabs of the Sales module, left out while the workspace has it turned off. */
 const SALES_TABS: readonly SettingsTab[] = ['pipelines'];
@@ -79,6 +80,7 @@ const TAB_CONFIG: { id: SettingsTab; label: string; icon: React.ElementType; des
   { id: 'assistant', label: 'Assistant', icon: MessagesSquare, description: 'The chat, morning briefs and the monthly AI limit' },
   { id: 'integrations', label: 'Integrations', icon: Link2, description: 'Inbound webhooks and URLs' },
   { id: 'welcome', label: 'Welcome & portal', icon: MessageSquareHeart, description: 'Your member portal, and handing new customers to one' },
+  { id: 'health', label: 'System health', icon: HeartPulse, description: 'What needs attention, and the background jobs' },
   { id: 'claude', label: 'Claude', icon: Bot, description: 'Read this organization in Claude' },
   { id: 'organization', label: 'Team', icon: Users, description: 'Organization and team members' },
   { id: 'pipelines', label: 'Pipelines', icon: Kanban, description: 'Sales pipeline stages' },
@@ -94,8 +96,12 @@ export default function Settings() {
   const { sales: salesOn, club: clubOn } = useModules();
   // Pipelines belong to Sales. Welcome & portal holds the club's member portal (Club) and the
   // welcome a deal's contact is handed over with (Sales): it shows while either is on.
+  // System health is for those who manage an organization's settings: it has nothing for anyone else.
+  const seesHealth = Boolean(currentOrg) && orgCan(currentOrg, PERMISSION.ManageSettings);
   const tabsShown = TAB_CONFIG.filter((tab) =>
-    tab.id === 'welcome' ? salesOn || clubOn : salesOn || !SALES_TABS.includes(tab.id));
+    tab.id === 'welcome' ? salesOn || clubOn
+    : tab.id === 'health' ? seesHealth
+    : salesOn || !SALES_TABS.includes(tab.id));
 
   // Tab state
   const tabFromUrl = searchParams.get('tab') as SettingsTab | null;
@@ -587,6 +593,12 @@ export default function Settings() {
         return <IntegrationsSection currentOrg={currentOrg} />;
       case 'welcome':
         return <WelcomeTab currentOrg={currentOrg} salesOn={salesOn} clubOn={clubOn} />;
+      case 'health':
+        return seesHealth ? <SystemHealthSection /> : (
+          <div className="p-6 text-sm text-slate-600">
+            System health is for those who manage this workspace&apos;s settings, in an organization.
+          </div>
+        );
       case 'claude':
         return <ClaudeSection />;
       case 'organization':
