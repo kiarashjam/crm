@@ -3,6 +3,7 @@ using ACI.Application.Interfaces;
 using ACI.Application.Services;
 using ACI.Domain.Common;
 using ACI.WebApi.Filters;
+using ACI.WebApi.Monitoring;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -25,11 +26,13 @@ namespace ACI.WebApi.Controllers;
 public class SystemHealthController : ControllerBase
 {
     private readonly ISystemHealth _health;
+    private readonly ISiteStatus _sites;
     private readonly ICurrentUserService _currentUser;
 
-    public SystemHealthController(ISystemHealth health, ICurrentUserService currentUser)
+    public SystemHealthController(ISystemHealth health, ISiteStatus sites, ICurrentUserService currentUser)
     {
         _health = health;
+        _sites = sites;
         _currentUser = currentUser;
     }
 
@@ -41,5 +44,18 @@ public class SystemHealthController : ControllerBase
         if (_currentUser.UserId == null || _currentUser.CurrentOrganizationId is not { } org) return Unauthorized();
         Response.Headers.CacheControl = "no-store";
         return Ok(await _health.SnapshotAsync(org, DateTime.UtcNow, ct));
+    }
+
+    /// <summary>
+    /// The live status of the sites the workspace depends on: CadenceE's own checks, and its
+    /// member portal's /health when one is set up (Settings › Welcome &amp; portal).
+    /// </summary>
+    [HttpGet("sites")]
+    [Requires(MemberPermissions.ManageSettings, What = "see the workspace's system health")]
+    public async Task<ActionResult<SitesStatusDto>> Sites(CancellationToken ct)
+    {
+        if (_currentUser.UserId == null || _currentUser.CurrentOrganizationId is not { } org) return Unauthorized();
+        Response.Headers.CacheControl = "no-store";
+        return Ok(await _sites.ReadAsync(org, ct));
     }
 }
