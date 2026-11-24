@@ -1826,6 +1826,139 @@ namespace ACI.Infrastructure.Migrations
                     b.ToTable("ClubEvents", (string)null);
                 });
 
+            modelBuilder.Entity("ACI.Domain.Entities.ClubEventInvitation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Answer")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<DateTime?>("AnsweredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("InvitedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .HasMaxLength(5)
+                        .HasColumnType("nvarchar(5)");
+
+                    b.Property<Guid>("MemberId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("MemberName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid?>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("OutboundMessageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("RegistrationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("RemindedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ReminderMessageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ReminderTokenHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<Guid>("SendId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReminderTokenHash")
+                        .IsUnique()
+                        .HasFilter("[ReminderTokenHash] IS NOT NULL");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("EventId", "MemberId")
+                        .IsUnique();
+
+                    b.HasIndex("OrganizationId", "MemberId");
+
+                    b.ToTable("ClubEventInvitations", (string)null);
+                });
+
+            modelBuilder.Entity("ACI.Domain.Entities.ClubEventInvitationSend", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AudienceJson")
+                        .IsRequired()
+                        .HasMaxLength(8000)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("LeftOut")
+                        .HasColumnType("int");
+
+                    b.Property<string>("LettersJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Recipients")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("SentAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventId");
+
+                    b.HasIndex("OrganizationId", "EventId", "CreatedAtUtc");
+
+                    b.ToTable("ClubEventInvitationSends", (string)null);
+                });
+
             modelBuilder.Entity("ACI.Domain.Entities.ClubEventRegistration", b =>
                 {
                     b.Property<Guid>("Id")
@@ -8994,6 +9127,24 @@ namespace ACI.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("ReversesDonationId")
                         .OnDelete(DeleteBehavior.NoAction);
+                });
+
+            modelBuilder.Entity("ACI.Domain.Entities.ClubEventInvitation", b =>
+                {
+                    b.HasOne("ACI.Domain.Entities.ClubEvent", null)
+                        .WithMany()
+                        .HasForeignKey("EventId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ACI.Domain.Entities.ClubEventInvitationSend", b =>
+                {
+                    b.HasOne("ACI.Domain.Entities.ClubEvent", null)
+                        .WithMany()
+                        .HasForeignKey("EventId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("ACI.Domain.Entities.ClubEventRegistration", b =>

@@ -503,6 +503,13 @@ public sealed class OrganizationCloner
                 i.TokenHash = ACI.Application.Common.PasswordResetCrypto.HashRawToken(
                     ACI.Application.Common.PasswordResetCrypto.CreateRawToken());
                 return "Pending invitations get their own link";
+            case ClubEventInvitation invitation:
+                // The reply link a member has answers in the original. The copy keeps who was
+                // invited and what they said, under hashes of tokens nobody has.
+                invitation.TokenHash = ACI.Application.Common.InvitationReplyToken.Hash(ACI.Application.Common.InvitationReplyToken.Create());
+                if (invitation.ReminderTokenHash != null)
+                    invitation.ReminderTokenHash = ACI.Application.Common.InvitationReplyToken.Hash(ACI.Application.Common.InvitationReplyToken.Create());
+                return "Event invitations keep their reply links with the original";
             case OutboundMessage m:
                 // The copy keeps the history, but an email or event still queued in the
                 // original goes out once, from the original. Replies and the mail service's

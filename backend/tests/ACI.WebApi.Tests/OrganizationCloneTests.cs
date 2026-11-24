@@ -254,6 +254,19 @@ public class OrganizationCloneTests
         db.AddRange(gala, court,
             new ClubEventRegistration { Id = Guid.NewGuid(), OrganizationId = org.Id, EventId = gala.Id, MemberId = member.Id, Name = "Ana Silva", Status = "Reserved", TicketPrice = 30, ChargeId = tabCharge.Id, RegisteredAtUtc = now, CreatedAtUtc = now, UpdatedAtUtc = now },
             new ClubReservation { Id = Guid.NewGuid(), OrganizationId = org.Id, ResourceId = court.Id, ResourceName = "Court", MemberId = member.Id, MemberName = "Ana Silva", StartAtUtc = now.AddDays(1), EndAtUtc = now.AddDays(1).AddHours(1), Status = "Confirmed", DepositAmount = 299, DepositChargeId = dues.Id, CreatedAtUtc = now, UpdatedAtUtc = now });
+        // The event's invitations: a send, and Ana's invitation with her reply link (only its
+        // hash), which the copy must not answer through.
+        var invitationSend = new ClubEventInvitationSend
+        {
+            Id = Guid.NewGuid(), OrganizationId = org.Id, EventId = gala.Id, AudienceJson = "{\"statuses\":[\"Active\"]}", LettersJson = "{}",
+            Status = ClubEventInvitationSendStatuses.Sent, Recipients = 1, CreatedByUserId = owner, CreatedAtUtc = now, SentAtUtc = now,
+        };
+        db.AddRange(invitationSend, new ClubEventInvitation
+        {
+            Id = Guid.NewGuid(), OrganizationId = org.Id, EventId = gala.Id, MemberId = member.Id, SendId = invitationSend.Id, MemberName = "Ana Silva",
+            Email = "ana@example.ch", Language = "en", TokenHash = ACI.Application.Common.InvitationReplyToken.Hash($"a-reply-link-token-{org.Id}"),
+            Answer = ClubEventInvitationAnswers.Coming, InvitedAtUtc = now, UpdatedAtUtc = now,
+        });
         // Money from outside: the Stripe and bank settings, a saved card the dues are charged
         // to, a charge of it still with Stripe and the event Stripe posted about it, a statement's
         // QR reference, and a bank file whose transfer paid in. The copy takes no money.
@@ -590,6 +603,24 @@ public class OrganizationCloneTests
         (await db.Contracts.IgnoreQueryFilters().SingleAsync(c => c.Id == deposit.ContractId)).OrganizationId.Should().Be(report.CopyId);
         (await db.ClubPaymentReferences.IgnoreQueryFilters().SingleAsync(r => r.Id == deposit.PaymentReferenceId)).ContractId.Should().Be(deposit.ContractId);
         (await db.ContractDeposits.IgnoreQueryFilters().SingleAsync(d => d.OrganizationId == original.Org)).Status.Should().Be(ContractDepositStatuses.Awaiting);
+    }
+
+    [Fact]
+    public async Task AMembersReplyLinkToAnEventInvitationAnswersInTheOriginalOnly()
+    {
+        var (connection, db, original, _, _) = await WorldAsync();
+        using var _c = connection;
+        await using var _d = db;
+
+        var report = await new OrganizationCloner(db).CloneAsync(original.Org, "Pavillon 46 v2");
+
+        var source = await db.ClubEventInvitations.IgnoreQueryFilters().SingleAsync(i => i.OrganizationId == original.Org);
+        var copied = await db.ClubEventInvitations.IgnoreQueryFilters().SingleAsync(i => i.OrganizationId == report.CopyId);
+        source.TokenHash.Should().Be(ACI.Application.Common.InvitationReplyToken.Hash($"a-reply-link-token-{original.Org}"), "the member's link still answers in the original");
+        copied.TokenHash.Should().NotBe(source.TokenHash, "a link answers for one workspace's invitation, never two");
+        (copied.Answer, copied.MemberName).Should().Be((source.Answer, source.MemberName), "the copy keeps who was invited and what they said");
+        (await db.ClubEventInvitationSends.IgnoreQueryFilters().SingleAsync(s => s.OrganizationId == report.CopyId)).Id.Should().Be(copied.SendId);
+        report.Adjustments.Keys.Should().Contain("Event invitations keep their reply links with the original");
     }
 
     [Fact]

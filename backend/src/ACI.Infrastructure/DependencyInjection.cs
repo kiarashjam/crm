@@ -86,6 +86,10 @@ public static class DependencyInjection
         services.AddScoped<IClubLedger, ClubLedgerService>();
         // Events and their guest lists, resources and their bookings; their money goes through the ledger.
         services.AddScoped<IClubEvents, ClubEventService>();
+        // Who a campaign or an event's invitations are for: one place both ask.
+        services.AddScoped<IMemberAudience, MemberAudienceService>();
+        // Invitations to an event, with each member's reply link, and the expected attendance.
+        services.AddScoped<IEventInvitations, EventInvitationService>();
         services.AddScoped<IClubReservations, ClubReservationService>();
         services.AddSingleton<ILedgerReadObserver, NoLedgerReadObserver>();
         // The club's price catalogue, and the billing that runs on the ledger.

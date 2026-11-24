@@ -264,6 +264,13 @@ public static class OutboundSources
     public const string Newsletter = "newsletter";
     /// <summary>A newsletter sent to the person who pressed "Send a test to me", marked as a test.</summary>
     public const string NewsletterTest = "newsletter_test";
+    /// <summary>
+    /// A member's invitation to an event, or its one reminder, with their own reply link;
+    /// <see cref="OutboundMessage.SourceId"/> is their invitation (ClubEventInvitation).
+    /// </summary>
+    public const string Invitation = "invitation";
+    /// <summary>An event's invitation sent to the person who pressed "Send a test to me", marked as a test, its reply link a sample.</summary>
+    public const string InvitationTest = "invitation_test";
 }
 
 /// <summary>

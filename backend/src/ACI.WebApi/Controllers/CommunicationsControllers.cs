@@ -37,13 +37,34 @@ public class CampaignsController : ControllerBase
         return Ok(await _campaigns.ListAsync(org, ct));
     }
 
-    /// <summary>Who a campaign for this segment and purpose would reach if it were sent now.</summary>
+    /// <summary>Who a campaign for these tiers, statuses and purpose would reach if it were sent now (the older, shorter form of the POST).</summary>
     [HttpGet("audience")]
-    public async Task<ActionResult<CampaignAudienceDto>> Audience(
+    public async Task<ActionResult<MemberAudienceDto>> Audience(
         [FromQuery] string[]? tiers, [FromQuery] string[]? statuses, [FromQuery] string? purpose, CancellationToken ct)
     {
         if (_currentUser.CurrentOrganizationId is not Guid org) return Unauthorized();
-        return (await _campaigns.AudienceAsync(org, new CampaignSegmentDto(tiers, statuses), purpose, ct)).ToActionResult();
+        return (await _campaigns.AudienceAsync(org, _currentUser.UserId, new MemberAudienceFilter { Tiers = tiers, Statuses = statuses }, purpose, ct)).ToActionResult();
+    }
+
+    /// <summary>
+    /// Who a campaign for this audience would reach if it were sent now (tiers, statuses, tags,
+    /// custom fields, a saved Members view and habits), and who it leaves out and why: the
+    /// counts the editor shows as the filters change. A read, sent as a POST for its body.
+    /// </summary>
+    [HttpPost("audience")]
+    [RequestSizeLimit(64 * 1024)]
+    public async Task<ActionResult<MemberAudienceDto>> AudienceOf([FromBody] CampaignAudienceRequest request, CancellationToken ct)
+    {
+        if (_currentUser.CurrentOrganizationId is not Guid org) return Unauthorized();
+        return (await _campaigns.AudienceAsync(org, _currentUser.UserId, request?.Segment, request?.Purpose, ct)).ToActionResult();
+    }
+
+    /// <summary>Who a saved campaign would reach if it were sent now, worked out as its send will be.</summary>
+    [HttpGet("{id:guid}/audience")]
+    public async Task<ActionResult<MemberAudienceDto>> CampaignAudience(Guid id, CancellationToken ct)
+    {
+        if (_currentUser.CurrentOrganizationId is not Guid org) return Unauthorized();
+        return (await _campaigns.CampaignAudienceAsync(org, id, ct)).ToActionResult();
     }
 
     [HttpGet("{id:guid}")]

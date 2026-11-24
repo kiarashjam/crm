@@ -7,9 +7,6 @@ using Microsoft.Extensions.Logging;
 
 namespace ACI.Application.Services;
 
-/// <summary>Which members a campaign is for: empty lists mean every tier, or every status.</summary>
-public sealed record CampaignSegmentDto(IReadOnlyList<string>? Tiers, IReadOnlyList<string>? Statuses);
-
 /// <summary>
 /// How a campaign's messages stand. Sent counts every message the mail server took,
 /// delivered and opened ones included, and Delivered counts opened ones: a funnel, not
@@ -17,21 +14,21 @@ public sealed record CampaignSegmentDto(IReadOnlyList<string>? Tiers, IReadOnlyL
 /// </summary>
 public sealed record CampaignTotalsDto(int Recipients, int Queued, int Sent, int Delivered, int Opened, int Bounced, int Suppressed, int Failed, int Skipped, int Cancelled = 0);
 
+/// <param name="Segment">Which members it is for (see <see cref="MemberAudienceFilter"/>): empty lists and filters left out choose everyone.</param>
 public sealed record CampaignDto(
     Guid Id, string Name, string Channel, string Category, string Purpose, string Subject, string Body,
-    CampaignSegmentDto Segment, string Status, DateTime CreatedAtUtc, DateTime? ScheduledAtUtc,
+    MemberAudienceFilter Segment, string Status, DateTime CreatedAtUtc, DateTime? ScheduledAtUtc,
     DateTime? SendingStartedAtUtc, DateTime? SentAtUtc, int RecipientCount, CampaignTotalsDto? Totals, Guid Version);
-
-/// <summary>
-/// Who a campaign would reach now: the members it is for, those with a usable address, those
-/// who agreed to marketing by email (for a marketing campaign), how many of those the outbox
-/// would still refuse (an address on the suppression list; for marketing, one a contact marked
-/// do not contact holds), and how many emails that makes.
-/// </summary>
-public sealed record CampaignAudienceDto(string Purpose, int Matching, int WithAddress, int Agreed, int WillReceive, int Suppressed = 0, int DoNotContact = 0);
 
 /// <summary>A campaign's test copy: where it went, and whether the mail server took it.</summary>
 public sealed record CampaignTestDto(Guid MessageId, string To, string Status);
+
+/// <summary>An audience to count for a campaign being written: who it is for, and what it is (marketing or service).</summary>
+public sealed class CampaignAudienceRequest
+{
+    public MemberAudienceFilter? Segment { get; set; }
+    public string? Purpose { get; set; }
+}
 
 /// <summary>A campaign to write, or the fields of one to change; on a change a field left out is kept and scheduledAtUtc sent as null unschedules it.</summary>
 public sealed class CampaignWriteRequest : IMergePatchRequest
@@ -42,7 +39,9 @@ public sealed class CampaignWriteRequest : IMergePatchRequest
     public string? Purpose { get; set; }
     public string? Subject { get; set; }
     public string? Body { get; set; }
-    public CampaignSegmentDto? Segment { get; set; }
+
+    /// <summary>Which members it is for. A saved view it names is kept as it reads now, so a campaign sent later keeps to it.</summary>
+    public MemberAudienceFilter? Segment { get; set; }
     public DateTime? ScheduledAtUtc { get; set; }
 
     /// <summary>The version the edit was made from; If-Match says the same.</summary>
@@ -61,8 +60,14 @@ public interface ICampaignService
     /// <summary>Every member the campaign was for, with where their message stands.</summary>
     Task<Result<IReadOnlyList<MemberMessageDto>>> RecipientsAsync(Guid organizationId, Guid id, CancellationToken ct = default);
 
-    /// <summary>Who a campaign for this segment and purpose would reach if it were sent now.</summary>
-    Task<Result<CampaignAudienceDto>> AudienceAsync(Guid organizationId, CampaignSegmentDto? segment, string? purpose, CancellationToken ct = default);
+    /// <summary>
+    /// Who a campaign for this segment and purpose would reach if it were sent now, and who it
+    /// leaves out and why. A saved view it names is read as <paramref name="userId"/> may see it.
+    /// </summary>
+    Task<Result<MemberAudienceDto>> AudienceAsync(Guid organizationId, Guid? userId, MemberAudienceFilter? segment, string? purpose, CancellationToken ct = default);
+
+    /// <summary>Who a saved campaign would reach if it were sent now: its segment as it was saved, counted as the send counts it.</summary>
+    Task<Result<MemberAudienceDto>> CampaignAudienceAsync(Guid organizationId, Guid id, CancellationToken ct = default);
 
     Task<Result<CampaignDto>> CreateAsync(Guid organizationId, Guid userId, CampaignWriteRequest request, CancellationToken ct = default);
     Task<Result<CampaignDto>> UpdateAsync(Guid organizationId, Guid id, Guid userId, CampaignWriteRequest request, CancellationToken ct = default);
@@ -105,6 +110,11 @@ public interface ICampaignService
 /// yes; the others are recorded as not sent, with the reason. Two members at one address get
 /// one email. A service campaign (the club closed on Monday) goes to everyone it is for.
 /// </para>
+/// <para>
+/// Who it is for is worked out by the member audience (<see cref="IMemberAudience"/>), the one
+/// place event invitations ask too: the counts staff see, and the members the send writes to,
+/// come from the same plan. A segment of tiers and statuses alone chooses the members it always did.
+/// </para>
 /// </remarks>
 public sealed class CampaignService : ICampaignService
 {
@@ -124,10 +134,14 @@ public sealed class CampaignService : ICampaignService
     /// <summary>How often, in members, a sender renews its claim and checks it was not stopped.</summary>
     private const int CheckEvery = 10;
 
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+    /// <summary>The segment as stored: a filter left out is not written, so one of tiers and statuses alone reads as it always did.</summary>
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
+    {
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+    };
 
     private readonly ICampaignRepository _campaigns;
-    private readonly IClubRepository _club;
+    private readonly IMemberAudience _audience;
     private readonly IConsentRepository _consent;
     private readonly IOutbox _outbox;
     private readonly IUserRepository _users;
@@ -137,7 +151,7 @@ public sealed class CampaignService : ICampaignService
 
     public CampaignService(
         ICampaignRepository campaigns,
-        IClubRepository club,
+        IMemberAudience audience,
         IConsentRepository consent,
         IOutbox outbox,
         IUserRepository users,
@@ -146,7 +160,7 @@ public sealed class CampaignService : ICampaignService
         ICampaignSignal? signal = null)
     {
         _campaigns = campaigns;
-        _club = club;
+        _audience = audience;
         _consent = consent;
         _outbox = outbox;
         _users = users;
@@ -179,31 +193,26 @@ public sealed class CampaignService : ICampaignService
         return Result.Success(await MemberMessageService.ToDtosAsync(_campaigns, rows.OrderBy(r => r.MemberName).ToList(), ct));
     }
 
-    public async Task<Result<CampaignAudienceDto>> AudienceAsync(Guid organizationId, CampaignSegmentDto? segment, string? purpose, CancellationToken ct = default)
+    public async Task<Result<MemberAudienceDto>> AudienceAsync(Guid organizationId, Guid? userId, MemberAudienceFilter? segment, string? purpose, CancellationToken ct = default)
     {
         var why = (purpose ?? ConsentPurposes.Marketing).Trim().ToLowerInvariant();
         if (!ConsentPurposes.All.Contains(why)) return PurposeInvalid;
-        var members = Matching(await _club.MembersAsync(organizationId, ct), Clean(segment));
-        var withAddress = members.Where(m => ValidationHelper.IsValidEmail((m.Email ?? "").Trim())).ToList();
-        var agreed = why == ConsentPurposes.Marketing
-            ? (await _consent.CurrentAsync(organizationId, ConsentSubjects.Member, withAddress.Select(m => m.Id).ToList(), ConsentChannels.Email, ConsentPurposes.Marketing, ct))
-                .Where(c => c.Granted).Select(c => c.SubjectId).ToHashSet()
-            : withAddress.Select(m => m.Id).ToHashSet();
-        // What the outbox would still refuse as it queues them (OutboxService.RefusalAsync): an
-        // address on the suppression list, whatever the purpose, and for marketing one a contact
-        // marked do not contact holds. Left out, the preview promised emails nobody would get.
-        var willing = withAddress.Where(m => agreed.Contains(m.Id)).ToList();
-        var unreachable = await _campaigns.UnreachableAsync(organizationId, willing.Select(m => m.Email).ToList(), ct);
-        var marketing = why == ConsentPurposes.Marketing;
-        var suppressed = willing.Count(m => unreachable.Suppressed.Contains(Normalize(m.Email)));
-        var doNotContact = marketing
-            ? willing.Count(m => !unreachable.Suppressed.Contains(Normalize(m.Email)) && unreachable.DoNotContact.Contains(Normalize(m.Email)))
-            : 0;
-        var reached = willing
-            .Select(m => Normalize(m.Email))
-            .Where(a => !unreachable.Suppressed.Contains(a) && !(marketing && unreachable.DoNotContact.Contains(a)))
-            .Distinct().Count();
-        return new CampaignAudienceDto(why, members.Count, withAddress.Count, agreed.Count, reached, suppressed, doNotContact);
+        // What the outbox would still refuse as it queues them (OutboxService.RefusalAsync) is
+        // counted too: an address on the suppression list, whatever the purpose, and for marketing
+        // one a contact marked do not contact holds. Left out, the preview promised emails nobody would get.
+        var plan = await _audience.PlanAsync(organizationId, new AudienceAsk(segment ?? new MemberAudienceFilter(), why, userId), ct);
+        if (plan.IsFailure) return plan.Error;
+        return MemberAudienceDto.Of(plan.Value);
+    }
+
+    public async Task<Result<MemberAudienceDto>> CampaignAudienceAsync(Guid organizationId, Guid id, CancellationToken ct = default)
+    {
+        var campaign = await _campaigns.ReadAsync(organizationId, id, ct);
+        if (campaign == null) return NotFound;
+        // As the send will work it out: the segment and the view as they were saved.
+        var plan = await _audience.PlanAsync(organizationId, new AudienceAsk(ReadSegment(campaign.Segment), campaign.Purpose, RequesterId: null), ct);
+        if (plan.IsFailure) return plan.Error;
+        return MemberAudienceDto.Of(plan.Value);
     }
 
     // ── Writing ───────────────────────────────────────────────────────────────
@@ -219,7 +228,9 @@ public sealed class CampaignService : ICampaignService
             CreatedByUserId = userId,
             UpdatedAtUtc = now,
         };
-        if (Apply(campaign, request, userId, now, creating: true) is { } invalid) return invalid;
+        var segment = await SegmentAsync(organizationId, userId, request.Segment, ct);
+        if (segment.IsFailure) return segment.Error;
+        if (Apply(campaign, request, segment.Value, userId, now, creating: true) is { } invalid) return invalid;
         await _campaigns.AddAsync(campaign, ct);
         return Dto(campaign, null);
     }
@@ -231,7 +242,9 @@ public sealed class CampaignService : ICampaignService
         if (!CampaignStatuses.IsEditable(campaign.Status)) return Locked;
         if (request.Version is Guid expected && expected != campaign.Version) return Changed;
         var now = DateTime.UtcNow;
-        if (Apply(campaign, request, userId, now, creating: false) is { } invalid) return invalid;
+        var segment = await SegmentAsync(organizationId, userId, request.Segment, ct);
+        if (segment.IsFailure) return segment.Error;
+        if (Apply(campaign, request, segment.Value, userId, now, creating: false) is { } invalid) return invalid;
         campaign.UpdatedAtUtc = now;
         try
         {
@@ -364,15 +377,21 @@ public sealed class CampaignService : ICampaignService
     private async Task SendClaimedAsync(Campaign campaign, CancellationToken ct)
     {
         var org = campaign.OrganizationId;
-        // Of two members at one address who may both have it, the one who joined first gets
-        // the email (greeted by name) and the other is recorded as sharing it: the same answer
-        // every time, and one staff can explain. In id order it was a coin toss.
-        var members = Matching(await _club.MembersAsync(org, ct), ReadSegment(campaign.Segment))
-            .OrderBy(m => m.JoinedAtUtc)
-            .ThenBy(m => m.LastName, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(m => m.FirstName, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(m => m.Id)
-            .ToList();
+        // The members it is for, from the audience as the campaign was saved (its view as it was
+        // then): every one its filters and statuses choose, each recorded below, sent or not. Of
+        // two members at one address who may both have it, the one who joined first gets the
+        // email (greeted by name) and the other is recorded as sharing it: the plan comes in that
+        // order, the same answer every time, and one staff can explain.
+        var plan = await _audience.PlanAsync(org, new AudienceAsk(ReadSegment(campaign.Segment), campaign.Purpose, RequesterId: null), ct);
+        if (plan.IsFailure)
+        {
+            // Taken up again it would fail the same way every minute, and finished it would say
+            // it went to nobody: stopped, it says plainly that it did not go.
+            await _campaigns.TryStopAsync(org, campaign.Id, null, DateTime.UtcNow, ct);
+            _logger.LogWarning("Campaign {CampaignId} was stopped: who it is for could not be worked out ({Reason})", campaign.Id, plan.Error.Description);
+            return;
+        }
+        var members = plan.Value.Matching.Select(m => m.Member).ToList();
         var already = await _campaigns.RecipientsOfAsync(campaign.Id, ct);
         var done = already.Select(r => r.MemberId).ToHashSet();
         // The addresses already emailed: a member taken up again after a stop does not get a second copy at one of them.
@@ -419,7 +438,8 @@ public sealed class CampaignService : ICampaignService
             // In this order: a member who may not have it does not take their address's one
             // email away from a member at the same address who may.
             (string Status, string Reason)? notSent =
-                !ValidationHelper.IsValidEmail(address) ? (MemberMessageStatuses.Skipped, "There is no valid email address on the member's record.")
+                member.ErasedAtUtc != null ? (MemberMessageStatuses.Skipped, "This member's details were erased, so nothing goes to them.")
+                : !ValidationHelper.IsValidEmail(address) ? (MemberMessageStatuses.Skipped, "There is no valid email address on the member's record.")
                 : marketing && Refusal(standing.GetValueOrDefault(member.Id)) is { } no ? (MemberMessageStatuses.Suppressed, no)
                 : !addresses.Add(Normalize(address)) ? (MemberMessageStatuses.Skipped, "Another member at this address gets this campaign.")
                 : null;
@@ -495,7 +515,7 @@ public sealed class CampaignService : ICampaignService
     /// Fills <paramref name="campaign"/> from the request: every field on a new campaign, the
     /// fields sent on a change. Null when it is valid; the refusal otherwise.
     /// </summary>
-    private static Error? Apply(Campaign campaign, CampaignWriteRequest request, Guid userId, DateTime now, bool creating)
+    private static Error? Apply(Campaign campaign, CampaignWriteRequest request, MemberAudienceFilter? segment, Guid userId, DateTime now, bool creating)
     {
         if (creating || request.Name != null)
         {
@@ -539,7 +559,7 @@ public sealed class CampaignService : ICampaignService
             campaign.Body = body;
         }
         if (creating || request.Segment != null || request.Clears(nameof(CampaignWriteRequest.Segment)))
-            campaign.Segment = JsonSerializer.Serialize(Clean(request.Segment), Json);
+            campaign.Segment = JsonSerializer.Serialize(MemberAudienceRules.Clean(segment), Json);
 
         if (request.ScheduledAtUtc is DateTime at)
         {
@@ -613,34 +633,32 @@ public sealed class CampaignService : ICampaignService
             : $"This member withdrew consent to marketing by email on {on}.";
     }
 
-    private static List<ClubMember> Matching(IReadOnlyList<ClubMember> members, CampaignSegmentDto segment) =>
-        members.Where(m =>
-                (segment.Tiers is not { Count: > 0 } tiers || tiers.Contains(m.Tier, StringComparer.OrdinalIgnoreCase))
-                && (segment.Statuses is not { Count: > 0 } statuses || statuses.Contains(m.Status, StringComparer.OrdinalIgnoreCase)))
-            .ToList();
-
-    /// <summary>The segment as kept: each list trimmed, without blanks or repeats, at most 20 entries.</summary>
-    private static CampaignSegmentDto Clean(CampaignSegmentDto? segment)
+    /// <summary>
+    /// The segment a request sent, ready to keep: refused when its habits cannot be read, and a
+    /// saved view it names looked up as the person may see it and kept as it reads now, so a
+    /// campaign sent later by the scheduler keeps to what they saw. Null when none was sent.
+    /// </summary>
+    private async Task<Result<MemberAudienceFilter?>> SegmentAsync(Guid organizationId, Guid userId, MemberAudienceFilter? sent, CancellationToken ct)
     {
-        static IReadOnlyList<string> List(IReadOnlyList<string>? values) => (values ?? [])
-            .Where(v => !string.IsNullOrWhiteSpace(v))
-            .Select(v => v.Trim().Length > 32 ? v.Trim()[..32] : v.Trim())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Take(20)
-            .ToList();
-        return new CampaignSegmentDto(List(segment?.Tiers), List(segment?.Statuses));
+        if (sent == null) return Result.Success<MemberAudienceFilter?>(null);
+        var segment = MemberAudienceRules.Clean(sent);
+        if (MemberAudienceRules.Problem(segment) is { } problem) return problem;
+        if (segment.ViewId is not Guid viewId) return segment with { View = null };
+        var view = await _audience.ViewAsync(organizationId, userId, viewId, ct);
+        if (view.IsFailure) return view.Error;
+        return segment with { View = view.Value };
     }
 
     /// <summary>The stored segment; one moved from an old document may hold more, which is left out.</summary>
-    private static CampaignSegmentDto ReadSegment(string? json)
+    private static MemberAudienceFilter ReadSegment(string? json)
     {
         try
         {
-            return Clean(JsonSerializer.Deserialize<CampaignSegmentDto>(string.IsNullOrWhiteSpace(json) ? "{}" : json, Json));
+            return MemberAudienceRules.Clean(JsonSerializer.Deserialize<MemberAudienceFilter>(string.IsNullOrWhiteSpace(json) ? "{}" : json, Json));
         }
         catch (JsonException)
         {
-            return Clean(null);
+            return MemberAudienceRules.Clean(null);
         }
     }
 

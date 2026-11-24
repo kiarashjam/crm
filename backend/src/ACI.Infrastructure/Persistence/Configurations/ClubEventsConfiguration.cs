@@ -57,6 +57,46 @@ internal sealed class ClubEventRegistrationConfiguration : IEntityTypeConfigurat
     }
 }
 
+internal sealed class ClubEventInvitationSendConfiguration : IEntityTypeConfiguration<ClubEventInvitationSend>
+{
+    public void Configure(EntityTypeBuilder<ClubEventInvitationSend> builder)
+    {
+        builder.ToTable("ClubEventInvitationSends");
+        // The id is the browser's, made when Send was pressed: it is the send's key, so the same
+        // press sent twice adds nothing.
+        builder.HasKey(e => e.Id);
+        builder.Property(e => e.Id).ValueGeneratedNever();
+        builder.Property(e => e.AudienceJson).HasMaxLength(8000).IsRequired();
+        builder.Property(e => e.LettersJson).IsRequired();
+        builder.Property(e => e.Status).HasMaxLength(16).IsRequired();
+        builder.HasOne<ClubEvent>().WithMany().HasForeignKey(e => e.EventId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasIndex(e => new { e.OrganizationId, e.EventId, e.CreatedAtUtc });
+    }
+}
+
+internal sealed class ClubEventInvitationConfiguration : IEntityTypeConfiguration<ClubEventInvitation>
+{
+    public void Configure(EntityTypeBuilder<ClubEventInvitation> builder)
+    {
+        builder.ToTable("ClubEventInvitations");
+        builder.HasKey(e => e.Id);
+        builder.Property(e => e.MemberName).HasMaxLength(200).IsRequired();
+        builder.Property(e => e.Email).HasMaxLength(320);
+        builder.Property(e => e.Language).HasMaxLength(5).IsRequired();
+        builder.Property(e => e.TokenHash).HasMaxLength(64).IsRequired();
+        builder.Property(e => e.ReminderTokenHash).HasMaxLength(64);
+        builder.Property(e => e.Answer).HasMaxLength(16).IsRequired();
+        builder.HasOne<ClubEvent>().WithMany().HasForeignKey(e => e.EventId).OnDelete(DeleteBehavior.Cascade);
+        // One invitation per member and event: a second send leaves out whoever has one, and two
+        // sends at the same moment cannot both invite the same member.
+        builder.HasIndex(e => new { e.EventId, e.MemberId }).IsUnique();
+        // A reply link is found by its token's hash alone, in any workspace.
+        builder.HasIndex(e => e.TokenHash).IsUnique();
+        builder.HasIndex(e => e.ReminderTokenHash).IsUnique().HasFilter("[ReminderTokenHash] IS NOT NULL");
+        builder.HasIndex(e => new { e.OrganizationId, e.MemberId });
+    }
+}
+
 internal sealed class ClubResourceConfiguration : IEntityTypeConfiguration<ClubResource>
 {
     public void Configure(EntityTypeBuilder<ClubResource> builder)
