@@ -228,7 +228,7 @@ public sealed class CampaignService : ICampaignService
             CreatedByUserId = userId,
             UpdatedAtUtc = now,
         };
-        var segment = await SegmentAsync(organizationId, userId, request.Segment, ct);
+        var segment = await SegmentAsync(organizationId, userId, request.Segment, stored: null, ct);
         if (segment.IsFailure) return segment.Error;
         if (Apply(campaign, request, segment.Value, userId, now, creating: true) is { } invalid) return invalid;
         await _campaigns.AddAsync(campaign, ct);
@@ -242,7 +242,7 @@ public sealed class CampaignService : ICampaignService
         if (!CampaignStatuses.IsEditable(campaign.Status)) return Locked;
         if (request.Version is Guid expected && expected != campaign.Version) return Changed;
         var now = DateTime.UtcNow;
-        var segment = await SegmentAsync(organizationId, userId, request.Segment, ct);
+        var segment = await SegmentAsync(organizationId, userId, request.Segment, ReadSegment(campaign.Segment), ct);
         if (segment.IsFailure) return segment.Error;
         if (Apply(campaign, request, segment.Value, userId, now, creating: false) is { } invalid) return invalid;
         campaign.UpdatedAtUtc = now;
@@ -638,15 +638,20 @@ public sealed class CampaignService : ICampaignService
     /// saved view it names looked up as the person may see it and kept as it reads now, so a
     /// campaign sent later by the scheduler keeps to what they saw. Null when none was sent.
     /// </summary>
-    private async Task<Result<MemberAudienceFilter?>> SegmentAsync(Guid organizationId, Guid userId, MemberAudienceFilter? sent, CancellationToken ct)
+    /// <param name="stored">The segment the campaign has now, when it is an edit.</param>
+    private async Task<Result<MemberAudienceFilter?>> SegmentAsync(Guid organizationId, Guid userId, MemberAudienceFilter? sent, MemberAudienceFilter? stored, CancellationToken ct)
     {
         if (sent == null) return Result.Success<MemberAudienceFilter?>(null);
         var segment = MemberAudienceRules.Clean(sent);
         if (MemberAudienceRules.Problem(segment) is { } problem) return problem;
         if (segment.ViewId is not Guid viewId) return segment with { View = null };
         var view = await _audience.ViewAsync(organizationId, userId, viewId, ct);
-        if (view.IsFailure) return view.Error;
-        return segment with { View = view.Value };
+        if (view.IsSuccess) return segment with { View = view.Value };
+        // The view the campaign was saved with, by a colleague whose own it is: kept as it was
+        // saved, so whoever edits the rest of the campaign is not refused for it. Choosing a view
+        // the person may not see is refused.
+        if (stored?.ViewId == viewId && stored.View != null) return segment with { View = stored.View };
+        return view.Error;
     }
 
     /// <summary>The stored segment; one moved from an old document may hold more, which is left out.</summary>

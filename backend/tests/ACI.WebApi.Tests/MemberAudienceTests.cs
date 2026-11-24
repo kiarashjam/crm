@@ -217,6 +217,20 @@ public class MemberAudienceTests
 
         await Json(await colleague.PutAsync($"/api/saved-views/{mine}", Body(new { shared = true })), "share the view");
         Reached(await CountAsync(club, new { viewId = mine })).Should().Equal("Anna", "Dario");
+
+        // A campaign saved with the owner's private view: a colleague may change the rest of it,
+        // and the view stays as it was saved, but may not choose that view for a campaign of their own.
+        var campaign = await Json(await club.Owner.PostAsync("/api/campaigns", Body(new
+        {
+            name = "Wine on Gold", purpose = "marketing", subject = "A tasting", body = "Come", segment = new { viewId = wineGold },
+        })), "a campaign with the owner's view");
+        var edited = await Json(await colleague.PutAsync($"/api/campaigns/{campaign.GetProperty("id").GetGuid()}", Body(new
+        {
+            subject = "A tasting on Friday", segment = new { viewId = wineGold }, version = campaign.GetProperty("version").GetGuid(),
+        })), "the colleague edits the subject");
+        edited.GetProperty("segment").GetProperty("view").GetProperty("name").GetString().Should().Be("Wine lovers on Gold");
+        (await colleague.PostAsync("/api/campaigns", Body(new { name = "Mine", purpose = "marketing", subject = "S", body = "B", segment = new { viewId = wineGold } })))
+            .StatusCode.Should().Be(HttpStatusCode.NotFound, "a view the person may not see is refused for a new campaign");
     }
 
     [Fact]
