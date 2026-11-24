@@ -101,7 +101,7 @@ public class EventInvitationTests
         (await app.Services.Read(db => db.OutboundMessages
                 .Where(m => m.MemberId == memberId && m.Source == OutboundSources.Invitation)
                 .OrderBy(m => m.CreatedAtUtc).Select(m => m.Body).ToList()))
-            .Select(body => ReplyLink.Match(body).Groups["token"].Value)
+            .Select(body => ReplyLink.Match(body ?? "").Groups["token"].Value)
             .ToList();
 
     private static async Task<string> LinkOfAsync(App app, Guid memberId) => (await LinksOfAsync(app, memberId)).Single();
@@ -496,6 +496,26 @@ public class EventInvitationTests
         expected.GetProperty("expected").GetDecimal().Should().Be(1.0m, "Anna always comes and Bruno never has");
         expected.GetProperty("clubRate").GetDecimal().Should().Be(0.5m);
         expected.GetProperty("membersWithHistory").GetInt32().Should().Be(2);
+    }
+
+    [Fact]
+    public async Task AMemberAlreadyOnTheEventsListIsLeftOut_AndNotInvited()
+    {
+        await using var app = new App();
+        var club = await ClubAsync(app);
+        var anna = await MemberAsync(club, "Anna");
+        var bruno = await MemberAsync(club, "Bruno");
+        var eventId = await EventAsync(club, capacity: 1);
+        await MemberAsync(club, "Clara");
+        // Anna has the seat, Bruno is waiting: both are on the list already.
+        await Json(await club.Owner.PostAsync($"/api/events/{eventId}/attendees", Body(new { memberId = anna, ticketTier = "Member" })), "Anna registered");
+        await Json(await club.Owner.PostAsync($"/api/events/{eventId}/attendees", Body(new { memberId = bruno, ticketTier = "Member" })), "Bruno waitlisted");
+
+        var audience = await Json(await club.Owner.PostAsync($"/api/events/{eventId}/invitations/audience", Body(new { })), "count");
+        audience.GetProperty("alreadyRegistered").GetInt32().Should().Be(2, "a seat and the waitlist are both on the list");
+        audience.GetProperty("willReceive").GetInt32().Should().Be(1);
+        await Json(await SendAsync(club, eventId, Guid.NewGuid()), "send");
+        (await app.Services.Read(db => db.ClubEventInvitations.Select(i => i.MemberName).ToList())).Should().Equal("Clara Keller");
     }
 
     [Fact]
