@@ -94,4 +94,5 @@ export const members: Translation<typeof en> = {
   'members.notesPlaceholder': 'Vorlieben, Allergien, Jahrestage …',
   'members.saving': 'Wird gespeichert',
   'members.saveChanges': 'Änderungen speichern',
+  'members.interestsHint': 'Um Mitglieder nach ihren Vorlieben auszuwählen, legen Sie unter <link>Einstellungen › Felder & Tags</link> ein Feld wie «Interessen» an (Mehrfachauswahl: Wein, Kunst, Golf, Wellness, Business) und füllen Sie es bei jedem Mitglied aus. Kampagnen und Einladungen zu Anlässen gehen dann nur an diese Mitglieder. Tags funktionieren ebenso.',
 };

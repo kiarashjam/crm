@@ -124,11 +124,16 @@ public class MemberAudienceTests
     public async Task InterestsTagsAndTiersChooseTheMembers_AndTogetherAllMustHold()
     {
         await using var app = new App();
-        var (club, _, _, _, _, vip) = await WorldAsync(app);
+        var (club, anna, _, _, _, vip) = await WorldAsync(app);
 
         Reached(await CountAsync(club, new { fields = new[] { "interests:any:Wine" } })).Should().Equal("Anna", "Clara");
         Reached(await CountAsync(club, new { fields = new[] { "interests:any:Art|Golf" } })).Should().Equal(new[] { "Bruno", "Clara" }, "a multiselect matches any of the options chosen");
         Reached(await CountAsync(club, new { tags = new[] { vip } })).Should().Equal("Anna", "Dario");
+        Reached(await CountAsync(club, new { notTags = new[] { vip } })).Should().Equal("Bruno", "Clara");
+        var founder = await Post(club.Owner, "/api/tags", new { name = "Founder" });
+        await Tag(club, anna, vip, founder);
+        Reached(await CountAsync(club, new { tags = new[] { vip, founder } })).Should().Equal(new[] { "Anna", "Dario" }, "any of the tags chosen");
+        Reached(await CountAsync(club, new { tags = new[] { vip, founder }, allTags = true })).Should().Equal(new[] { "Anna" }, "or all of them, as the Members list offers");
         Reached(await CountAsync(club, new { tiers = new[] { "Silver" } })).Should().Equal("Bruno");
         Reached(await CountAsync(club, new { fields = new[] { "interests:any:Wine" }, tags = new[] { vip } })).Should().Equal(new[] { "Anna" }, "every filter given must hold");
         Reached(await CountAsync(club, new { fields = new[] { "interests:any:Wine" }, tiers = new[] { "Gold" }, statuses = new[] { "Active" } })).Should().Equal("Anna", "Clara");

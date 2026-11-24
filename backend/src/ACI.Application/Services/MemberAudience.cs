@@ -25,8 +25,14 @@ public sealed record MemberAudienceFilter
     /// <summary>Only members in these statuses; none: every status. Members in others are counted as left out.</summary>
     public IReadOnlyList<string>? Statuses { get; init; }
 
-    /// <summary>Only members carrying any of these tags.</summary>
+    /// <summary>Only members carrying any of these tags (all of them with <see cref="AllTags"/>).</summary>
     public IReadOnlyList<Guid>? Tags { get; init; }
+
+    /// <summary>Members need every one of <see cref="Tags"/> rather than any, as the Members list's "all of these tags".</summary>
+    public bool? AllTags { get; init; }
+
+    /// <summary>Only members carrying none of these tags.</summary>
+    public IReadOnlyList<Guid>? NotTags { get; init; }
 
     /// <summary>Conditions on the members' custom fields, each "key:op[:value]" as the Members list writes them, all of which must hold.</summary>
     public IReadOnlyList<string>? Fields { get; init; }
@@ -224,6 +230,8 @@ public static class MemberAudienceRules
             Tiers = Words(filter?.Tiers),
             Statuses = Words(filter?.Statuses),
             Tags = Ids(filter?.Tags, MaxListEntries),
+            AllTags = filter?.AllTags == true && filter.Tags?.Distinct().Count(t => t != Guid.Empty) > 1 ? true : null,
+            NotTags = Ids(filter?.NotTags, MaxListEntries),
             Fields = fields.Count == 0 ? null : fields,
             ViewId = filter?.ViewId is Guid v && v != Guid.Empty ? v : null,
             View = filter?.ViewId is Guid w && w != Guid.Empty && filter.View?.Id == w ? filter.View : null,
@@ -250,6 +258,6 @@ public static class MemberAudienceRules
 
     /// <summary>Whether a filter narrows anything beyond tiers and statuses.</summary>
     public static bool UsesMore(MemberAudienceFilter filter) =>
-        filter.Tags is { Count: > 0 } || filter.Fields is { Count: > 0 } || filter.ViewId != null
+        filter.Tags is { Count: > 0 } || filter.NotTags is { Count: > 0 } || filter.Fields is { Count: > 0 } || filter.ViewId != null
         || filter.AttendedEventIds is { Count: > 0 } || filter.MinEvents != null || filter.MinVisits != null || filter.NotVisitedDays != null;
 }

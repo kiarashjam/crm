@@ -58,6 +58,7 @@ import { useClubMoney } from '@/app/hooks/useClubMoney';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { PERMISSION } from '@/app/api/organizations';
 import RegisterDialog, { errorText } from '@/app/pages/events/RegisterDialog';
+import { InvitationsPanel } from '@/app/pages/events/invitations/InvitationsPanel';
 import { currentDateLocale } from '@/app/i18n/current';
 
 const STATUS_BADGE: Record<EventStatus, string> = {
@@ -489,6 +490,9 @@ export default function EventDetail() {
               </WriteOnly>
             </div>
           )}
+
+          {/* Who was invited and what they answered, the one reminder, and the expected attendance. */}
+          <InvitationsPanel event={event} />
 
           {/* The list and the door, kept by whoever runs the club's members or the front desk. */}
           <div className="flex flex-wrap items-center justify-between gap-2 mb-3">

@@ -86,6 +86,8 @@ public sealed class MemberAudienceService : IMemberAudience
         var flex = new FlexFilter
         {
             Tags = filter.Tags ?? [],
+            AllTags = filter.AllTags == true,
+            NotTags = filter.NotTags ?? [],
             Fields = (filter.Fields ?? []).Select(FieldCondition.Parse).OfType<FieldCondition>().ToList(),
         };
         if (await _flex.MatchingAsync(RecordTypes.Member, flex, ct) is { } flexIds)

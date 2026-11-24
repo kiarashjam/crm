@@ -151,7 +151,7 @@ public sealed partial class EventInvitationService
             : ClubEventInvitationAnswers.None;
         var first = string.IsNullOrWhiteSpace(member.FirstName) ? $"{member.FirstName} {member.LastName}".Trim() : member.FirstName.Trim();
         return new InvitationPageDto(
-            club.Name?.Trim() ?? "", first, AppLanguages.ForMember(member.PreferredLanguage), club.Locale, club.Zone.Id,
+            club.Name?.Trim() ?? "", first, AppLanguages.ForMember(member.PreferredLanguage), club.Locale, club.ZoneName,
             ev.Name, ev.Description, ev.Location, ev.StartAtUtc, ev.EndAtUtc, ev.CoverEmoji, ev.MemberPrice, ev.Currency,
             answer, place, position);
     }

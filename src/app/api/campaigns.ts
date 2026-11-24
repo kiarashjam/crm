@@ -20,7 +20,8 @@ import { apiWithFallback, authFetch, authFetchJson, ensureOk, type RequestOption
 import { createMockStore, mockId } from './mockStore';
 import { addDemoCommunication, demoCommunications, type CommCategory, type Communication } from './communications';
 import { demoMarketingConsent } from './consent';
-import { getMembers, type MemberStatus, type MemberTier } from './members';
+import { getMembers } from './members';
+import { cleanAudience, usesMoreThanTiersAndStatuses, type MemberAudience, type MemberAudienceFilter } from './memberAudience';
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -49,10 +50,12 @@ export function isEditable(status: CampaignStatus): boolean {
   return status === 'Draft' || status === 'Scheduled';
 }
 
-export interface SegmentFilter {
-  tiers?: MemberTier[];
-  statuses?: MemberStatus[];
-}
+/**
+ * Who a campaign is for: the member audience campaigns and event invitations share (tiers,
+ * statuses, tags, custom fields, a saved Members view, habits). One saved before these
+ * filters existed holds only tiers and statuses, and reaches the members it always did.
+ */
+export type SegmentFilter = MemberAudienceFilter;
 
 /**
  * Where a campaign's messages stand. A funnel: sent counts every message the mail server
@@ -102,18 +105,8 @@ export interface CampaignInput {
   scheduledAtUtc?: string | null;
 }
 
-/** Who a campaign would reach if it were sent now. */
-export interface CampaignAudience {
-  purpose: CampaignPurpose;
-  matching: number;
-  withAddress: number;
-  agreed: number;
-  willReceive: number;
-  /** Of those who may have it, how many are at an address on the suppression list (bounced, complained, unsubscribed). */
-  suppressed?: number;
-  /** For marketing: how many are at an address a contact marked do not contact holds. */
-  doNotContact?: number;
-}
+/** Who a campaign would reach if it were sent now, and who it leaves out and why (see MemberAudience). */
+export type CampaignAudience = MemberAudience;
 
 export interface CampaignTestResult {
   messageId: string;
@@ -161,6 +154,17 @@ async function demoMembers(segment: SegmentFilter) {
     && (!segment.statuses?.length || segment.statuses.includes(m.status)));
 }
 
+/**
+ * Thrown in demo mode for an audience that narrows by tags, fields, a saved view or habits:
+ * those are worked out by the server, and a count that ignored them would be wrong.
+ */
+export class AudienceNeedsServerError extends Error {
+  constructor() {
+    super('Choosing members by tags, fields, saved views and habits needs the server: the demo only counts tiers and statuses.');
+    this.name = 'AudienceNeedsServerError';
+  }
+}
+
 function demoTotals(campaign: Campaign): CampaignTotals | null {
   if (campaign.status !== 'Sent') return null;
   const rows = demoCommunications().filter((c) => c.campaignId === campaign.id);
@@ -185,15 +189,31 @@ function withDemoTotals(campaign: Campaign): Campaign {
 }
 
 async function demoAudience(segment: SegmentFilter, purpose: CampaignPurpose): Promise<CampaignAudience> {
+  if (usesMoreThanTiersAndStatuses(segment)) throw new AudienceNeedsServerError();
+  const everyone = await getMembers();
+  const tiered = everyone.filter((m) => !segment.tiers?.length || segment.tiers.includes(m.tier));
   const members = await demoMembers(segment);
   const withAddress = members.filter((m) => /.+@.+\..+/.test(m.email ?? ''));
   const agreed = purpose === 'marketing' ? withAddress.filter((m) => demoMarketingConsent(m.id) === 'granted') : withAddress;
+  const willReceive = new Set(agreed.map((m) => m.email.trim().toLowerCase())).size;
   return {
     purpose,
+    chosen: tiered.length,
     matching: members.length,
     withAddress: withAddress.length,
     agreed: agreed.length,
-    willReceive: new Set(agreed.map((m) => m.email.trim().toLowerCase())).size,
+    willReceive,
+    suppressed: 0,
+    doNotContact: 0,
+    statusExcluded: tiered.length - members.length,
+    erased: 0,
+    noEmail: members.length - withAddress.length,
+    noConsent: withAddress.length - agreed.length,
+    alreadyRegistered: 0,
+    alreadyInvited: 0,
+    duplicates: agreed.length - willReceive,
+    recipients: [],
+    leftOut: [],
   };
 }
 
@@ -247,16 +267,23 @@ export async function getCampaignRecipients(id: string, req: RequestOptions = {}
   );
 }
 
-/** Who a campaign for this segment and purpose would reach if it were sent now. */
+/** Who a campaign for this segment and purpose would reach if it were sent now, and who it leaves out and why. */
 export async function getCampaignAudience(segment: SegmentFilter, purpose: CampaignPurpose, req: RequestOptions = {}): Promise<CampaignAudience> {
   return apiWithFallback(
-    () => {
-      const params = new URLSearchParams({ purpose });
-      for (const tier of segment.tiers ?? []) params.append('tiers', tier);
-      for (const status of segment.statuses ?? []) params.append('statuses', status);
-      return authFetchJson<CampaignAudience>(`/api/campaigns/audience?${params.toString()}`, { signal: req.signal });
-    },
+    () => authFetchJson<CampaignAudience>('/api/campaigns/audience', {
+      method: 'POST',
+      body: JSON.stringify({ segment: cleanAudience(segment), purpose }),
+      signal: req.signal,
+    }),
     () => demoAudience(segment, purpose),
+  );
+}
+
+/** Who a saved campaign would reach if it were sent now: its segment as saved, counted as its send will count it. */
+export async function getSavedCampaignAudience(campaign: Campaign, req: RequestOptions = {}): Promise<CampaignAudience> {
+  return apiWithFallback(
+    () => authFetchJson<CampaignAudience>(`/api/campaigns/${encodeURIComponent(campaign.id)}/audience`, { signal: req.signal }),
+    () => demoAudience(campaign.segment, campaign.purpose),
   );
 }
 

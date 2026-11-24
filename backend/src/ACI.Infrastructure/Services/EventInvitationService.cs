@@ -87,7 +87,7 @@ public sealed partial class EventInvitationService : IEventInvitations
         var sender = await _outreach.SenderAsync(organizationId, userId, ct);
         var club = await ClubAsync(organizationId, ct);
         var defaults = AppLanguages.All.ToDictionary(l => l, DefaultLetter);
-        return new InvitationSetupDto(defaults, InvitationTemplate.Fields, sender.WorkspaceName, sender.ReplyTo, club.Zone.Id,
+        return new InvitationSetupDto(defaults, InvitationTemplate.Fields, sender.WorkspaceName, sender.ReplyTo, club.ZoneName,
             ReplyPage() == null ? NoReplyPage : null, Closed(ev), MaxRecipients);
     }
 
@@ -586,14 +586,16 @@ public sealed partial class EventInvitationService : IEventInvitations
     // ── pieces ───────────────────────────────────────────────────────────────
 
     /// <summary>The workspace's name, region and time zone, as a letter and the reply page write dates and prices in.</summary>
-    private sealed record Club(string? Name, string? Locale, TimeZoneInfo Zone);
+    /// <param name="ZoneName">The time zone as the workspace keeps it (an IANA name, "Europe/Zurich"), which a browser can write times in.</param>
+    private sealed record Club(string? Name, string? Locale, TimeZoneInfo Zone, string ZoneName);
 
     private async Task<Club> ClubAsync(Guid organizationId, CancellationToken ct)
     {
         // Organizations are not filtered to a workspace (they are how a person finds theirs).
         var org = await _db.Organizations.AsNoTracking().Where(o => o.Id == organizationId)
             .Select(o => new { o.Name, o.Locale, o.TimeZone }).FirstOrDefaultAsync(ct);
-        return new Club(org?.Name, org?.Locale, RegionalSettings.ZoneOf(org?.TimeZone));
+        return new Club(org?.Name, org?.Locale, RegionalSettings.ZoneOf(org?.TimeZone),
+            string.IsNullOrWhiteSpace(org?.TimeZone) ? RegionalSettings.DefaultTimeZone : org.TimeZone.Trim());
     }
 
     private Task<ClubEvent?> EventAsync(Guid organizationId, Guid eventId, CancellationToken ct) =>
