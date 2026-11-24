@@ -497,4 +497,29 @@ public class EventInvitationTests
         expected.GetProperty("clubRate").GetDecimal().Should().Be(0.5m);
         expected.GetProperty("membersWithHistory").GetInt32().Should().Be(2);
     }
+
+    [Fact]
+    public async Task AMergeMovesTheDuplicatesInvitationsToTheMemberKept_AndADeletedMembersGo()
+    {
+        await using var app = new App();
+        var club = await ClubAsync(app);
+        var anna = await MemberAsync(club, "Anna");
+        var annaAgain = await MemberAsync(club, "Annette");
+        var bruno = await MemberAsync(club, "Bruno");
+        var both = await EventAsync(club, name: "Both invited");
+        await Json(await SendAsync(club, both, Guid.NewGuid()), "invite all three to the first");
+        await app.SeedAsync(db => db.ClubMembers.Single(m => m.Id == anna).Status = "Lapsed");
+        var onlyDuplicate = await EventAsync(club, name: "Only the duplicate");
+        await Json(await SendAsync(club, onlyDuplicate, Guid.NewGuid(), new { statuses = new[] { "Active" } }), "invite the active ones to the second");
+        var duplicatesLink = (await LinksOfAsync(app, annaAgain))[1];
+
+        (await club.Owner.PostAsync($"/api/members/{anna}/merge", Body(new { otherMemberId = annaAgain }))).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        var invited = await app.Services.Read(db => db.ClubEventInvitations.Where(i => i.MemberId == anna).Select(i => i.EventId).ToList());
+        invited.Should().BeEquivalentTo([both, onlyDuplicate], "one invitation per event: the kept member's for the first, the duplicate's for the second");
+        (await app.Services.Read(db => db.ClubEventInvitations.Count(i => i.MemberId == annaAgain))).Should().Be(0);
+        (await Json(await PageAsync(app.CreateClient(), duplicatesLink), "the duplicate's link answers for the member kept")).GetProperty("firstName").GetString().Should().Be("Anna");
+
+        (await club.Owner.DeleteAsync($"/api/members/{bruno}")).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await app.Services.Read(db => db.ClubEventInvitations.Count(i => i.MemberId == bruno))).Should().Be(0, "a deleted member is invited to nothing");
+    }
 }
