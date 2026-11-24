@@ -2323,6 +2323,9 @@ namespace ACI.Infrastructure.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<DateTime?>("LeadDetailsCopiedAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid?>("LeadId")
                         .HasColumnType("uniqueidentifier");
 

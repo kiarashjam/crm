@@ -153,6 +153,8 @@ public static class DependencyInjection
         services.AddScoped<WeeklyDigestService>();
         // The recap emails: who receives which, their figures, and the sending.
         services.AddScoped<IRecapEmails, Services.Recaps.RecapService>();
+        // A lead's tags and field values carried onto the club member made from it, once.
+        services.AddScoped<ILeadToMemberCopy, LeadToMemberCopyService>();
         // System health: the page, the alerts' readings across workspaces, and the daily digest.
         // The page reads the job heartbeats and the portal pings, singletons the API registers.
         services.AddScoped<Services.Monitoring.SystemHealthService>();
