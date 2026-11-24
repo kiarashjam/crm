@@ -173,6 +173,7 @@ export const PRESET_LABELS: Readonly<Record<string, string>> = {
   finance: 'Finance',
   front_desk: 'Front desk',
   read_only_accountant: 'Read-only accountant',
+  read_only: 'Read-only',
 };
 
 /** A permission as the Team page lists it. */

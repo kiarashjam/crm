@@ -95,10 +95,19 @@ public static class MemberPermissions
     public static readonly PermissionPreset ReadOnlyAccountant = new("read_only_accountant", "Read-only accountant",
         "Reads everything and exports lists. Changes nothing.", OrgMemberRole.Viewer,
         [ExportRecords]);
+    /// <summary>
+    /// Someone who should see the whole business and touch none of it: a founder or a board
+    /// member looking in. Every deal, private ones too (so they can also receive the recap
+    /// emails and the weekly report, which go to people who see all deals), and no export, so
+    /// nothing leaves the workspace through them.
+    /// </summary>
+    public static readonly PermissionPreset ReadOnly = new("read_only", "Read-only",
+        "Reads everything, every deal included. Changes nothing and exports nothing.", OrgMemberRole.Viewer,
+        [SeeAllDeals]);
 
     /// <summary>The presets, in the order the Team page offers them.</summary>
     public static readonly IReadOnlyList<PermissionPreset> Presets =
-        [Owner, Manager, SalesRep, MembershipDirector, Finance, FrontDeskPreset, ReadOnlyAccountant];
+        [Owner, Manager, SalesRep, MembershipDirector, Finance, FrontDeskPreset, ReadOnlyAccountant, ReadOnly];
 
     /// <summary>
     /// What a Member could do before permission sets: everything but the settings, the

@@ -86,6 +86,7 @@ describe('MemberPermissionsEditor', () => {
   it('pairs each preset with the role older clients read', () => {
     expect(roleForPreset('manager')).toBe(2);
     expect(roleForPreset('read_only_accountant')).toBe(3);
+    expect(roleForPreset('read_only')).toBe(3);
     expect(roleForPreset('front_desk')).toBe(1);
   });
 });
