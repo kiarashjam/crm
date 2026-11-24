@@ -137,6 +137,29 @@ public class ClubRetentionTests
     }
 
     [Fact]
+    public async Task EveryoneWhoSeesTheBoardReadsTheWeightsAndThresholds_ButOnlyThoseWhoManageTheSettingsChangeThem()
+    {
+        // "How is this score calculated?" on the renewals board and the member's page shows the
+        // club's own weights and thresholds, so whoever can see a score can read them.
+        using var factory = new CustomWebApplicationFactory();
+        var (owner, _, org) = await ClubAsync(factory);
+        await Json(await owner.PutAsync("/api/retention/settings", Body(new { visitWeight = 40, atRiskThreshold = 55, watchThreshold = 30 })), "the club sets its weights");
+        var founder = await JoinAsync(factory, owner, org, "miguel@pavillon46.ch", "read_only");
+        var desk = await JoinAsync(factory, owner, org, "desk@pavillon46.ch", "front_desk");
+
+        foreach (var (client, who) in new[] { (founder, "the read-only founder"), (desk, "the front desk") })
+        {
+            await Json(await client.GetAsync("/api/renewals"), $"{who} opens the renewals board");
+            var rules = await Json(await client.GetAsync("/api/retention/settings"), $"{who} reads how the score is weighed");
+            (rules.GetProperty("visitWeight").GetInt32(), rules.GetProperty("spendWeight").GetInt32(), rules.GetProperty("balanceWeight").GetInt32())
+                .Should().Be((40, 15, 25));
+            (rules.GetProperty("atRiskThreshold").GetInt32(), rules.GetProperty("watchThreshold").GetInt32()).Should().Be((55, 30));
+            (await client.PutAsync("/api/retention/settings", Body(new { visitWeight = 5 }))).StatusCode
+                .Should().Be(HttpStatusCode.Forbidden, $"{who} changes none of it");
+        }
+    }
+
+    [Fact]
     public async Task ConcernsCountInTheScore_UntilTheyAreResolved()
     {
         using var factory = new CustomWebApplicationFactory();

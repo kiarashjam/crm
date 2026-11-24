@@ -8,7 +8,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { ApiError } from '@/app/api/apiClient';
 import { PERMISSION, type Permission } from '@/app/api/organizations';
-import type { RenewalBoard, RenewalCard, RenewalStageChange } from '@/app/api/retention';
+import { DEFAULT_RETENTION_SETTINGS, type RenewalBoard, type RenewalCard, type RenewalStageChange } from '@/app/api/retention';
 import { withQueries } from '@/test/queryWrapper';
 
 vi.mock('@/app/components/AppHeader', () => ({ default: () => null }));
@@ -33,6 +33,7 @@ vi.mock('@/app/api/retention', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/app/api/retention')>()),
   getRenewalBoard: (query: unknown) => api.board(query),
   setRenewalStage: (card: RenewalCard, change: RenewalStageChange) => api.stage(card, change),
+  getRetentionSettings: async () => ({ ...DEFAULT_RETENTION_SETTINGS, visitWeight: 40, eventWeight: 25, atRiskThreshold: 55 }),
 }));
 
 const { default: Renewals } = await import('./Renewals');
@@ -117,6 +118,20 @@ describe('the renewals board', () => {
     expect(within(lapsed).getByRole('button', { name: /Contacted/ })).toBeInTheDocument();
     expect(within(lapsed).queryByRole('button', { name: /Renewed/ })).not.toBeInTheDocument();
     expect(within(screen.getByRole('region', { name: 'Upcoming' })).getByRole('button', { name: /Renewed/ })).toBeInTheDocument();
+  });
+
+  it("explains how the score on the cards is calculated, with the club's own weights, to whoever sees the board", async () => {
+    as([PERMISSION.FrontDesk]);
+    api.board.mockResolvedValue(board([ANNA]));
+    const user = userEvent.setup();
+    show();
+
+    await screen.findByRole('link', { name: 'Anna Keller' });
+    await user.click(screen.getByRole('button', { name: 'How is this score calculated?' }));
+
+    const list = await screen.findByRole('list', { name: 'The six signs and their weights' });
+    expect(within(list).getAllByRole('listitem')[0]).toHaveTextContent('32 of 100Visits.');
+    expect(screen.getByText(/worth watching/).closest('p')).toHaveTextContent('at risk from 55');
   });
 
   it('offers no moves to someone who may not manage members', async () => {
