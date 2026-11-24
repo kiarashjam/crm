@@ -162,6 +162,9 @@ public partial class AppDbContext : DbContext
     public DbSet<AiUsage> AiUsage => Set<AiUsage>();
     public DbSet<AssistantSettings> AssistantSettings => Set<AssistantSettings>();
     public DbSet<AssistantBrief> AssistantBriefs => Set<AssistantBrief>();
+    // The recap emails: who receives which, and each one taken for its period.
+    public DbSet<RecapSubscription> RecapSubscriptions => Set<RecapSubscription>();
+    public DbSet<RecapSend> RecapSends => Set<RecapSend>();
     // Keeping members and growing through them: the rules, each member's at-risk score, the
     // renewals board's records, referral bonuses, concerns recorded about members, and the
     // daily scoring runs.

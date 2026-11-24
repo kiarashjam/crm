@@ -162,6 +162,8 @@ public static class PersonDataInventory
         [typeof(AiUsage)] = "How many calls to the language model a workspace (or a staff member, outside any organization) made in a month, and their tokens.",
         [typeof(AssistantSettings)] = "Settings: the assistant's monthly limit and whether morning briefs go out.",
         [typeof(AssistantBrief)] = "When a staff member's morning brief went out, and how many things it listed. Its words are in the notification and the email it became, which an erasure handles.",
+        [typeof(RecapSubscription)] = "Settings: which staff members receive the recap emails, and how often.",
+        [typeof(RecapSend)] = "When a staff member's recap email for a period went out. Its words, which name nobody but the top referrers, are in the outbox message it became, which an erasure handles.",
         [typeof(ClubRetentionSettings)] = "Settings: how members' at-risk scores are worked out, the save actions, the referral bonus and the sponsor rule.",
         [typeof(ClubScoringRun)] = "What a scoring run found and did, in counts.",
         [typeof(ClubPrivateEventLine)] = "A private event's menu and services: what, how many and the price.",

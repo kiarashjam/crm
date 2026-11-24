@@ -404,6 +404,18 @@ public class OrganizationCloneTests
                 Items = 3, CreatedAtUtc = now, SentAtUtc = now,
             },
             new AiUsage { Id = Guid.NewGuid(), OrganizationId = org.Id, Month = new DateOnly(now.Year, now.Month, 1), Calls = 42, UpdatedAtUtc = now });
+        // The recap emails: who gets which (switched off in the copy, so it emails nobody beside the
+        // original), and a recap that went out.
+        db.AddRange(
+            new RecapSubscription
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, UserId = manager, DailySinceUtc = now, WeeklySinceUtc = now, CreatedAtUtc = now, UpdatedAtUtc = now,
+            },
+            new RecapSend
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, UserId = manager, Frequency = RecapFrequencies.Daily, PeriodStart = DateOnly.FromDateTime(now),
+                Status = RecapSendStatuses.Sent, CreatedAtUtc = now, SentAtUtc = now,
+            });
         // Keeping members and referrals: the rules (with the save email on, which the copy turns
         // off), the member's at-risk score with the task and email its save actions made, a
         // renewal staff marked contacted, a complaint, a scoring run, and a member she brought
@@ -749,6 +761,11 @@ public class OrganizationCloneTests
         (retention.SaveEmail, retention.SaveTask, retention.ReferralBonusPoints, retention.SponsorRule).Should().Be((false, true, 500, SponsorRules.Required));
         (await db.ClubRetentionSettings.IgnoreQueryFilters().SingleAsync(s => s.OrganizationId == original.Org)).SaveEmail.Should().BeTrue();
         report.Adjustments.Keys.Should().Contain("Members found at risk in the copy are not emailed from it");
+        // The same people again: the copy's recap emails start off, the original's carry on.
+        var recap = await db.RecapSubscriptions.IgnoreQueryFilters().SingleAsync(s => s.OrganizationId == report.CopyId);
+        (recap.DailySinceUtc, recap.WeeklySinceUtc, recap.MonthlySinceUtc).Should().Be(((DateTime?)null, (DateTime?)null, (DateTime?)null));
+        (await db.RecapSubscriptions.IgnoreQueryFilters().SingleAsync(s => s.OrganizationId == original.Org)).DailySinceUtc.Should().NotBeNull();
+        report.Adjustments.Keys.Should().Contain("Recap emails start off in the copy");
         (await db.OutreachEnrollments.IgnoreQueryFilters().Where(e => e.OrganizationId == report.CopyId).Select(e => e.Status).ToListAsync())
             .Should().BeEquivalentTo(["paused", "stopped"]);
         var contract = await db.Set<Contract>().IgnoreQueryFilters().SingleAsync(c => c.OrganizationId == report.CopyId);
