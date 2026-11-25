@@ -365,6 +365,39 @@ public class MemberAudienceTests
     }
 
     [Fact]
+    public async Task AConditionOnAFieldThatIsGoneIsRefused_AndAScheduledCampaignDoesNotWidenToEveryone()
+    {
+        await using var app = new App();
+        var (club, _, _, _, _, _) = await WorldAsync(app);
+        var interests = (await Json(await club.Owner.GetAsync("/api/custom-fields?entityType=member"), "the fields")).EnumerateArray()
+            .Single(f => f.GetProperty("key").GetString() == "interests").GetProperty("id").GetGuid();
+        var created = await Json(await club.Owner.PostAsync("/api/campaigns", Body(new
+        {
+            name = "Wine tasting", purpose = "marketing", subject = "A tasting", body = "Come taste.",
+            segment = new { fields = new[] { "interests:any:Wine" } }, scheduledAtUtc = DateTime.UtcNow.AddMinutes(10),
+        })), "schedule a campaign for those interested in wine");
+        var id = created.GetProperty("id").GetGuid();
+        var view = await Post(club.Owner, "/api/saved-views", new
+        {
+            list = "members", name = "Wine lovers", shared = false, query = new Dictionary<string, object> { ["field"] = new[] { "interests:any:Wine" } },
+        });
+
+        // Someone tidies the settings and deletes the field: the condition no longer narrows anything.
+        (await club.Owner.DeleteAsync($"/api/custom-fields/{interests}")).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var count = await AudienceAsync(club, new { fields = new[] { "interests:any:Wine" } });
+        count.StatusCode.Should().Be(HttpStatusCode.BadRequest, "a condition nothing can hold must not choose everyone");
+        (await count.Content.ReadAsStringAsync()).Should().Contain("Audience.FieldGone");
+        (await AudienceAsync(club, new { viewId = view })).StatusCode.Should().Be(HttpStatusCode.BadRequest, "nor a view's");
+
+        await app.SeedAsync(db => db.Campaigns.Single(c => c.Id == id).ScheduledAtUtc = DateTime.UtcNow.AddMinutes(-1));
+        await app.RunSchedulerAsync();
+        (await Json(await club.Owner.GetAsync($"/api/campaigns/{id}/recipients"), "recipients")).EnumerateArray()
+            .Should().BeEmpty("the campaign was for those interested in wine, not for every member");
+        (await app.Services.Read(db => db.OutboundMessages.Count(m => m.Source == OutboundSources.Campaign))).Should().Be(0);
+    }
+
+    [Fact]
     public async Task AnotherWorkspacesMembersAreNeverInTheAudience()
     {
         await using var app = new App();
@@ -374,7 +407,8 @@ public class MemberAudienceTests
 
         Reached(await CountAsync(other, new { })).Should().Equal("Zoe");
         Reached(await CountAsync(club, new { })).Should().NotContain("Zoe");
-        (await AudienceAsync(other, new { fields = new[] { "interests:any:Wine" } })).StatusCode.Should().Be(HttpStatusCode.OK);
-        Reached(await CountAsync(other, new { fields = new[] { "interests:any:Wine" } })).Should().Equal(new[] { "Zoe" }, "a field the workspace does not have narrows nothing, as on the Members list");
+        // Our "Interests" field is not theirs: a condition on it is refused there, rather than
+        // reading our field or choosing all of their members.
+        (await AudienceAsync(other, new { fields = new[] { "interests:any:Wine" } })).StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 }

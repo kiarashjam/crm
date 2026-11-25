@@ -73,6 +73,24 @@ public sealed class MemberAudienceService : IMemberAudience
             }
         }
 
+        // A condition on a field the workspace no longer has (deleted since the campaign or view
+        // was saved) would be skipped, as the Members list skips it, and an audience of "those
+        // interested in wine" would become every member. Refused instead, saying which.
+        var keys = (filter.Fields ?? []).Concat(view?.Fields ?? [])
+            .Select(FieldCondition.Parse).OfType<FieldCondition>().Select(c => c.Key).Distinct(StringComparer.Ordinal).ToList();
+        if (keys.Count > 0)
+        {
+            var known = await _db.CustomFieldDefinitions.AsNoTracking()
+                .Where(d => d.OrganizationId == organizationId && d.EntityType == RecordTypes.Member && keys.Contains(d.Key))
+                .Select(d => d.Key)
+                .ToListAsync(ct);
+            var gone = keys.Where(k => !known.Contains(k, StringComparer.Ordinal)).ToList();
+            if (gone.Count > 0)
+                return new Error("Audience.FieldGone",
+                    $"The audience has a condition on a member field that no longer exists ({string.Join(", ", gone)}), so it cannot say who is in it. "
+                    + "Take that condition out, or choose the field again.");
+        }
+
         var members = await _db.ClubMembers.AsNoTracking().Where(m => m.OrganizationId == organizationId).ToListAsync(ct);
         IEnumerable<ClubMember> chosen = members;
         if (filter.Tiers is { Count: > 0 } tiers)
