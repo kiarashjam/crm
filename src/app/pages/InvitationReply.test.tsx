@@ -120,6 +120,26 @@ describe('the reply page', () => {
     expect(await screen.findByText(/not taking replies here at the moment/)).toBeInTheDocument();
   });
 
+  it('an event taken back to a draft says replies are closed, not that it has started', async () => {
+    api.get.mockRejectedValueOnce(new InvitationPageError('closed', 409, 'Invitation.Closed.Conflict'));
+    show();
+    expect(await screen.findByRole('heading', { name: 'Replies are closed' })).toBeInTheDocument();
+    expect(screen.getByText('Replies to this invitation are closed.')).toBeInTheDocument();
+    expect(screen.queryByText(/has started/)).toBeNull();
+  });
+
+  it('an answer that met another change to the list at the same moment can be tried again', async () => {
+    api.answer.mockRejectedValueOnce(new InvitationPageError('busy', 409, 'ClubEvent.Changed.Conflict'));
+    show();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'I’ll come' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('That did not go through.');
+    expect(screen.queryByText(/has started/)).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'I’ll come' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('You have a seat.');
+  });
+
   it('a test invitation’s link says it is a sample, and asks the server nothing', async () => {
     show('sample');
     expect(await screen.findByRole('heading', { name: 'This is a sample link' })).toBeInTheDocument();

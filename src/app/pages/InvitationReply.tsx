@@ -20,14 +20,22 @@ import { dateLocaleFor, usePageLanguage, useT, type MessageKey } from '@/app/i18
  * It opens in the member's language (the one the club writes to them in), with the event's time
  * in the club's time zone and the price in the club's number format; the picker switches it.
  */
-type PageState = 'loading' | 'ready' | 'sample' | 'missing' | 'started' | 'cancelled' | 'off' | 'unreachable';
+type PageState = 'loading' | 'ready' | 'sample' | 'missing' | 'started' | 'cancelled' | 'closed' | 'off' | 'unreachable';
 
-/** What a refusal of the link means for the page. */
-function stateOf(err: unknown): PageState {
+/** The refusals that close the page for good: the link's own state, not one answer that did not go through. */
+const CLOSING: Record<string, PageState> = {
+  'Invitation.Started.Conflict': 'started',
+  'Invitation.Cancelled.Conflict': 'cancelled',
+  // The event was taken back to a draft: closed for now, which is not "it has started".
+  'Invitation.Closed.Conflict': 'closed',
+};
+
+/** What a refusal of the link means for the page; null when it closes nothing (an answer that met another change, say). */
+function stateOf(err: unknown): PageState | null {
   if (!(err instanceof InvitationPageError)) return 'unreachable';
   if (err.status === 404) return 'missing';
   if (err.status === 403) return 'off';
-  if (err.status === 409) return err.code === 'Invitation.Cancelled.Conflict' ? 'cancelled' : 'started';
+  if (err.status === 409) return (err.code && CLOSING[err.code]) || null;
   return 'unreachable';
 }
 
@@ -36,6 +44,7 @@ const TITLES: Partial<Record<PageState, [MessageKey, MessageKey]>> = {
   missing: ['invitation.missingTitle', 'invitation.missingText'],
   started: ['invitation.startedTitle', 'invitation.startedText'],
   cancelled: ['invitation.cancelledTitle', 'invitation.cancelledText'],
+  closed: ['invitation.startedTitle', 'invitation.errorClosed'],
   off: ['invitation.startedTitle', 'invitation.offText'],
 };
 
@@ -61,7 +70,7 @@ export default function InvitationReply() {
         setState('ready');
       })
       .catch((err: unknown) => {
-        if (!cancelled) setState(stateOf(err));
+        if (!cancelled) setState(stateOf(err) ?? 'unreachable');
       });
     return () => {
       cancelled = true;
@@ -77,7 +86,10 @@ export default function InvitationReply() {
       requestAnimationFrame(() => answerRef.current?.focus());
     } catch (err) {
       const status = err instanceof InvitationPageError ? err.status : 0;
-      if (status === 404 || status === 403 || status === 409) setState(stateOf(err));
+      // A refusal that closes the link replaces the page; anything else (another change to the
+      // list at the same moment, a dropped connection) leaves it, to be tried again.
+      const closing = status === 404 || status === 403 || status === 409 ? stateOf(err) : null;
+      if (closing) setState(closing);
       else setError(status === 429 ? t('invitation.errorTooMany') : t('invitation.errorNetwork'));
     } finally {
       setBusy(null);
