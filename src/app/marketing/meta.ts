@@ -321,7 +321,7 @@ export const SITE_STRINGS: Record<SiteLang, SiteStrings> = {
     relatedHeading: 'Related pages',
     learnMore: 'Learn more',
     builtIn: 'Built in Switzerland',
-    usedBy: "In daily use at Pavillon 46, a private members' club in La Croix-sur-Lutry, Vaud.",
+    usedBy: 'In daily use at Pavillon 46, a private members’ club in La Croix-sur-Lutry, Vaud.',
     footerTagline: 'The CRM that runs a whole club and its sales, built in Switzerland.',
     footerProduct: 'Product',
     footerSolutions: 'Solutions',
