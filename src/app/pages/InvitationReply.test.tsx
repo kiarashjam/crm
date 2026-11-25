@@ -154,4 +154,25 @@ describe('the reply page', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Too many attempts. Please try again in a minute.');
     expect(screen.queryByRole('status')).toBeNull();
   });
+
+  it('tells a member whose membership is not active why they cannot take a seat, and keeps the page', async () => {
+    api.answer.mockRejectedValue(new InvitationPageError('not active', 409, 'Invitation.NotActive.Conflict'));
+    show();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'I’ll come' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Your membership is not active at the moment');
+    expect(screen.getByRole('button', { name: 'I can’t come' })).toBeEnabled();
+  });
+
+  it('says how long before the start an answer can still change, and why a late “I can’t come” is refused', async () => {
+    api.get.mockResolvedValue({ ...PAGE, answer: 'coming', place: 'seat', cancelHours: 24 });
+    api.answer.mockRejectedValue(new InvitationPageError('too late', 409, 'Invitation.TooLate.Conflict'));
+    show();
+    expect(await screen.findByText('You can change your answer up to 24 hours before the event starts.')).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'I can’t come' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('up to 24 hours before the event starts. Please contact the club to cancel.');
+    expect(screen.getByRole('heading', { name: /Wine night/ })).toBeInTheDocument();
+  });
 });
+

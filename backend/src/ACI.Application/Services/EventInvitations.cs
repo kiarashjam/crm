@@ -177,12 +177,14 @@ public sealed record ExpectedAttendanceDto(
 /// <param name="TimeZone">The club's time zone, which the event's time is written in.</param>
 /// <param name="Answer">none, coming or declined.</param>
 /// <param name="Place">With "coming": seat or waitlist.</param>
+/// <param name="CancelHours">How many hours before the start the member can still cancel here (the club's cut-off).</param>
 public sealed record InvitationPageDto(
     string Club, string FirstName, string Language, string? Locale, string TimeZone,
     string EventName, string? Description, string? Location, DateTime StartAtUtc, DateTime EndAtUtc, string CoverEmoji,
     decimal MemberPrice, string Currency, string Answer,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Place,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? WaitlistPosition);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? WaitlistPosition,
+    int CancelHours);
 
 /// <summary>The member's answer on their reply page.</summary>
 public sealed class InvitationAnswerRequest

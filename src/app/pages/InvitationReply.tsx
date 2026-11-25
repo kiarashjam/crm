@@ -89,7 +89,11 @@ export default function InvitationReply() {
       // A refusal that closes the link replaces the page; anything else (another change to the
       // list at the same moment, a dropped connection) leaves it, to be tried again.
       const closing = status === 404 || status === 403 || status === 409 ? stateOf(err) : null;
+      const code = err instanceof InvitationPageError ? err.code : null;
       if (closing) setState(closing);
+      // Refusals of this one answer that say why, in the member's language; the page stays.
+      else if (code === 'Invitation.NotActive.Conflict') setError(t('invitation.errorNotActive'));
+      else if (code === 'Invitation.TooLate.Conflict') setError(t('invitation.errorTooLate', { count: page?.cancelHours ?? 24 }));
       else setError(status === 429 ? t('invitation.errorTooMany') : t('invitation.errorNetwork'));
     } finally {
       setBusy(null);
@@ -205,7 +209,9 @@ export default function InvitationReply() {
           {busy === 'declined' ? t('invitation.busy') : t('invitation.no')}
         </button>
       </div>
-      <p className="mt-3 text-xs text-slate-500">{t('invitation.changeUntil')}</p>
+      <p className="mt-3 text-xs text-slate-500">
+        {page.cancelHours ? t('invitation.changeUntilHours', { count: page.cancelHours }) : t('invitation.changeUntil')}
+      </p>
     </PublicPage>
   );
 }

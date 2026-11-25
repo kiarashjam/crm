@@ -621,4 +621,58 @@ public class EventInvitationTests
         (await club.Owner.DeleteAsync($"/api/members/{bruno}")).StatusCode.Should().Be(HttpStatusCode.NoContent);
         (await app.Services.Read(db => db.ClubEventInvitations.Count(i => i.MemberId == bruno))).Should().Be(0, "a deleted member is invited to nothing");
     }
+
+    [Fact]
+    public async Task AMemberWhoIsNoLongerActive_CannotTakeASeatFromAnOldLink_ButCanStillSayNo()
+    {
+        await using var app = new App();
+        var club = await ClubAsync(app);
+        var anna = await MemberAsync(club, "Anna");
+        var eventId = await EventAsync(club, memberPrice: 40);
+        await Json(await SendAsync(club, eventId, Guid.NewGuid()), "send");
+        var link = await LinkOfAsync(app, anna);
+        // Her membership lapses after the invitation went out.
+        await app.SeedAsync(db => db.ClubMembers.Single(m => m.Id == anna).Status = "Lapsed");
+        var visitor = app.CreateClient();
+
+        var body = await Refused(await AnswerAsync(visitor, link, "coming"), HttpStatusCode.Conflict, "Anna, lapsed: I'll come");
+        body.Should().Contain("Invitation.NotActive.Conflict", "signing up is for active members, as in the member portal");
+        (await AttendeesAsync(club, eventId)).Should().BeEmpty("nobody is put on the list, nor charged, by an old link");
+
+        (await Json(await AnswerAsync(visitor, link, "declined"), "Anna: I can't come")).GetProperty("answer").GetString().Should().Be("declined");
+    }
+
+    [Fact]
+    public async Task ICantComeFollowsTheClubsCancelCutOff_AndThePageSaysHowLong()
+    {
+        await using var app = new App();
+        var club = await ClubAsync(app);
+        var anna = await MemberAsync(club, "Anna");
+        var eventId = await EventAsync(club, memberPrice: 40);
+        await Json(await SendAsync(club, eventId, Guid.NewGuid()), "send");
+        var link = await LinkOfAsync(app, anna);
+        var visitor = app.CreateClient();
+        (await Json(await AnswerAsync(visitor, link, "coming"), "Anna: I'll come")).GetProperty("cancelHours").GetInt32()
+            .Should().Be(EventInvitationService.DefaultCancelHours, "a club that never set a cut-off has the member portal's default");
+
+        // Three hours before it starts: inside the default 24 hours, so she is asked to tell the club.
+        await app.SeedAsync(db =>
+        {
+            var ev = db.ClubEvents.Single(e => e.Id == eventId);
+            ev.StartAtUtc = DateTime.UtcNow.AddHours(3);
+            ev.EndAtUtc = ev.StartAtUtc.AddHours(3);
+        });
+        var body = await Refused(await AnswerAsync(visitor, link, "declined"), HttpStatusCode.Conflict, "Anna, three hours before: I can't come");
+        body.Should().Contain("Invitation.TooLate.Conflict");
+        var place = (await AttendeesAsync(club, eventId)).Single(a => a.GetProperty("memberId").GetGuid() == anna);
+        (place.GetProperty("status").GetString(), place.GetProperty("chargeState").GetString()).Should().Be(("Reserved", "charged"), "her seat and ticket stand");
+
+        // A club whose cut-off is two hours lets her cancel three hours before.
+        await app.SeedAsync(db => db.MemberPortalSettings.Add(new MemberPortalSettings
+        {
+            Id = Guid.NewGuid(), OrganizationId = club.Org, PortalKey = "k" + Guid.NewGuid().ToString("N"), MemberCancelHours = 2, UpdatedAtUtc = DateTime.UtcNow,
+        }));
+        var page = await Json(await AnswerAsync(visitor, link, "declined"), "Anna, with a two-hour cut-off: I can't come");
+        (page.GetProperty("answer").GetString(), page.GetProperty("cancelHours").GetInt32()).Should().Be(("declined", 2));
+    }
 }

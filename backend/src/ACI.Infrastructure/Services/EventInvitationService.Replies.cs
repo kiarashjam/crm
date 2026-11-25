@@ -59,6 +59,9 @@ public sealed partial class EventInvitationService
         if (said == ClubEventInvitationAnswers.Coming)
         {
             if (current != null) registrationId = current.Id;
+            // As the member portal does: signing up is for members whose membership is active. One who
+            // lapsed after the invitation went is not put on the list and charged by an old link.
+            else if (!IsActive(member)) return NotActive;
             else
             {
                 // Through the event's own rules, as staff adding them would: a seat while there is
@@ -74,6 +77,10 @@ public sealed partial class EventInvitationService
         }
         else if (current is { Status: RegistrationStatuses.Reserved or RegistrationStatuses.Waitlisted })
         {
+            // The club's cut-off for cancelling, as in the member portal: later, the member asks the club,
+            // so a seat (and its ticket) is not given back hours before the event without anyone knowing.
+            var cancelHours = await CancelHoursAsync(org, ct);
+            if (ev.StartAtUtc - TimeSpan.FromHours(cancelHours) <= DateTime.UtcNow) return TooLateToCancel(cancelHours);
             // As staff cancelling them: the ticket taken back, the seat to the first in line, who is told.
             var cancelled = await _events.SetStatusAsync(org, ev.Id, current.Id,
                 new RegistrationStatusRequest { Status = RegistrationStatuses.Cancelled, Reason = "Answered \"I can't come\" to their invitation" }, ct);
@@ -128,6 +135,23 @@ public sealed partial class EventInvitationService
         return (invitation, member, ev);
     }
 
+    private static readonly Error NotActive = new("Invitation.NotActive.Conflict",
+        "Your membership is not active at the moment, so signing up for events is closed. Please contact the club.");
+
+    private static Error TooLateToCancel(int hours) => new("Invitation.TooLate.Conflict",
+        $"Places can be cancelled here up to {hours} hour{(hours == 1 ? "" : "s")} before the event starts. Please contact the club to cancel.");
+
+    /// <summary>Signing up is open to members whose membership is active, as in the member portal.</summary>
+    private static bool IsActive(ClubMember m) => string.Equals(m.Status, "Active", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The club's cut-off for members cancelling a place themselves (the member portal's setting; 24 hours by default).</summary>
+    private async Task<int> CancelHoursAsync(Guid org, CancellationToken ct) =>
+        await _db.MemberPortalSettings.AsNoTracking().Where(s => s.OrganizationId == org)
+            .Select(s => (int?)s.MemberCancelHours).FirstOrDefaultAsync(ct) ?? DefaultCancelHours;
+
+    /// <summary>The cut-off a club that never set one has: the member portal's default.</summary>
+    public const int DefaultCancelHours = 24;
+
     private static readonly Error LinkNotFound = new("Invitation.NotFound",
         "This link is not valid. It may have been copied incompletely: please use the link in the invitation email.");
 
@@ -157,7 +181,7 @@ public sealed partial class EventInvitationService
         return new InvitationPageDto(
             club.Name?.Trim() ?? "", first, AppLanguages.ForMember(member.PreferredLanguage), club.Locale, club.ZoneName,
             ev.Name, ev.Description, ev.Location, ev.StartAtUtc, ev.EndAtUtc, ev.CoverEmoji, ev.MemberPrice, ev.Currency,
-            answer, place, position);
+            answer, place, position, await CancelHoursAsync(org, ct));
     }
 
     /// <summary>The member's place on the list that still holds: a seat, the waitlist, or checked in.</summary>

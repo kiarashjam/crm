@@ -233,6 +233,8 @@ export interface InvitationPage {
   /** With "coming": a seat, or the waitlist. */
   place?: 'seat' | 'waitlist' | (string & {}) | null;
   waitlistPosition?: number | null;
+  /** How many hours before the start the member can still cancel here (the club's cut-off); 0 is up to the start. */
+  cancelHours?: number;
 }
 
 export class InvitationPageError extends Error {
