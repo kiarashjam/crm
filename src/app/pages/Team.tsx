@@ -331,6 +331,8 @@ export default function Team() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteEmails, setInviteEmails] = useState<string[]>([]);
   const [inviting, setInviting] = useState(false);
+  // What an invitee may do once they accept: "member" keeps the old way (a Member).
+  const [invitePreset, setInvitePreset] = useState('member');
 
   // Remove member confirmation, and who takes over their open work ('' = the owner)
   const [removeMemberConfirm, setRemoveMemberConfirm] = useState<OrgMemberDto | null>(null);
@@ -459,7 +461,7 @@ export default function Team() {
 
     for (const email of emailsToInvite) {
       try {
-        const invite = await createInvite(currentOrgId, email);
+        const invite = await createInvite(currentOrgId, email, invitePreset === 'member' ? undefined : invitePreset);
         if (invite) {
           setPendingInvites(prev => [invite, ...prev]);
           successCount++;
@@ -481,6 +483,7 @@ export default function Team() {
     setInviteDialogOpen(false);
     setInviteEmail('');
     setInviteEmails([]);
+    setInvitePreset('member');
     setInviting(false);
   };
 
@@ -1015,6 +1018,11 @@ export default function Team() {
                         </div>
                         <div>
                           <p className="font-medium text-slate-700">{invite.email}</p>
+                          {invite.preset && (
+                            <p className="text-xs text-slate-500">
+                              Joins as {catalogue?.presets.find((p) => p.key === invite.preset)?.label ?? invite.preset}
+                            </p>
+                          )}
                           <p className="text-xs text-slate-500 flex items-center gap-1">
                             <Clock className="w-3 h-3" />
                             Sent {new Date(invite.createdAtUtc).toLocaleDateString(currentDateLocale())} · Expires {new Date(invite.expiresAtUtc).toLocaleDateString(currentDateLocale())}
@@ -1165,7 +1173,7 @@ export default function Team() {
             <div className="space-y-4">
               <div className="bg-violet-50 rounded-xl p-4 border border-violet-100">
                 <p className="text-sm text-violet-800">
-                  <strong>Tip:</strong> You can invite multiple people at once. They'll receive email invitations and join as <strong>Members</strong> by default.
+                  <strong>Tip:</strong> You can invite multiple people at once. They'll receive email invitations and join with what you choose below (<strong>Member</strong> unless you pick a preset).
                 </p>
               </div>
 
@@ -1200,6 +1208,30 @@ export default function Team() {
                 </div>
               </div>
 
+              {catalogue && (
+                <div>
+                  <Label htmlFor="invite-preset" className="text-sm font-medium text-slate-700">What they may do once they accept</Label>
+                  <Select value={invitePreset} onValueChange={setInvitePreset}>
+                    <SelectTrigger id="invite-preset" aria-label="Invite preset" className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="member">Member (as before)</SelectItem>
+                      {catalogue.presets.filter((p) => p.assignable).map((p) => (
+                        <SelectItem key={p.key} value={p.key} disabled={!isOwnerHere && !p.permissions.every((k) => mine.has(k))}>
+                          {p.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="mt-1.5 text-xs text-slate-500">
+                    {invitePreset === 'member'
+                      ? 'Works leads, deals and the club, deletes and exports, as invited members always could.'
+                      : catalogue.presets.find((p) => p.key === invitePreset)?.description}
+                  </p>
+                </div>
+              )}
+
               {/* Email chips */}
               {inviteEmails.length > 0 && (
                 <div className="flex flex-wrap gap-2">
@@ -1230,6 +1262,7 @@ export default function Team() {
                   setInviteDialogOpen(false);
                   setInviteEmail('');
                   setInviteEmails([]);
+                  setInvitePreset('member');
                 }}
                 className="flex-1 h-11"
               >

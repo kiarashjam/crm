@@ -254,6 +254,19 @@ public class OrganizationCloneTests
         db.AddRange(gala, court,
             new ClubEventRegistration { Id = Guid.NewGuid(), OrganizationId = org.Id, EventId = gala.Id, MemberId = member.Id, Name = "Ana Silva", Status = "Reserved", TicketPrice = 30, ChargeId = tabCharge.Id, RegisteredAtUtc = now, CreatedAtUtc = now, UpdatedAtUtc = now },
             new ClubReservation { Id = Guid.NewGuid(), OrganizationId = org.Id, ResourceId = court.Id, ResourceName = "Court", MemberId = member.Id, MemberName = "Ana Silva", StartAtUtc = now.AddDays(1), EndAtUtc = now.AddDays(1).AddHours(1), Status = "Confirmed", DepositAmount = 299, DepositChargeId = dues.Id, CreatedAtUtc = now, UpdatedAtUtc = now });
+        // The event's invitations: a send, and Ana's invitation with her reply link (only its
+        // hash), which the copy must not answer through.
+        var invitationSend = new ClubEventInvitationSend
+        {
+            Id = Guid.NewGuid(), OrganizationId = org.Id, EventId = gala.Id, AudienceJson = "{\"statuses\":[\"Active\"]}", LettersJson = "{}",
+            Status = ClubEventInvitationSendStatuses.Sent, Recipients = 1, CreatedByUserId = owner, CreatedAtUtc = now, SentAtUtc = now,
+        };
+        db.AddRange(invitationSend, new ClubEventInvitation
+        {
+            Id = Guid.NewGuid(), OrganizationId = org.Id, EventId = gala.Id, MemberId = member.Id, SendId = invitationSend.Id, MemberName = "Ana Silva",
+            Email = "ana@example.ch", Language = "en", TokenHash = ACI.Application.Common.InvitationReplyToken.Hash($"a-reply-link-token-{org.Id}"),
+            Answer = ClubEventInvitationAnswers.Coming, InvitedAtUtc = now, UpdatedAtUtc = now,
+        });
         // Money from outside: the Stripe and bank settings, a saved card the dues are charged
         // to, a charge of it still with Stripe and the event Stripe posted about it, a statement's
         // QR reference, and a bank file whose transfer paid in. The copy takes no money.
@@ -404,6 +417,18 @@ public class OrganizationCloneTests
                 Items = 3, CreatedAtUtc = now, SentAtUtc = now,
             },
             new AiUsage { Id = Guid.NewGuid(), OrganizationId = org.Id, Month = new DateOnly(now.Year, now.Month, 1), Calls = 42, UpdatedAtUtc = now });
+        // The recap emails: who gets which (switched off in the copy, so it emails nobody beside the
+        // original), and a recap that went out.
+        db.AddRange(
+            new RecapSubscription
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, UserId = manager, DailySinceUtc = now, WeeklySinceUtc = now, CreatedAtUtc = now, UpdatedAtUtc = now,
+            },
+            new RecapSend
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, UserId = manager, Frequency = RecapFrequencies.Daily, PeriodStart = DateOnly.FromDateTime(now),
+                Status = RecapSendStatuses.Sent, CreatedAtUtc = now, SentAtUtc = now,
+            });
         // Keeping members and referrals: the rules (with the save email on, which the copy turns
         // off), the member's at-risk score with the task and email its save actions made, a
         // renewal staff marked contacted, a complaint, a scoring run, and a member she brought
@@ -593,6 +618,24 @@ public class OrganizationCloneTests
     }
 
     [Fact]
+    public async Task AMembersReplyLinkToAnEventInvitationAnswersInTheOriginalOnly()
+    {
+        var (connection, db, original, _, _) = await WorldAsync();
+        using var _c = connection;
+        await using var _d = db;
+
+        var report = await new OrganizationCloner(db).CloneAsync(original.Org, "Pavillon 46 v2");
+
+        var source = await db.ClubEventInvitations.IgnoreQueryFilters().SingleAsync(i => i.OrganizationId == original.Org);
+        var copied = await db.ClubEventInvitations.IgnoreQueryFilters().SingleAsync(i => i.OrganizationId == report.CopyId);
+        source.TokenHash.Should().Be(ACI.Application.Common.InvitationReplyToken.Hash($"a-reply-link-token-{original.Org}"), "the member's link still answers in the original");
+        copied.TokenHash.Should().NotBe(source.TokenHash, "a link answers for one workspace's invitation, never two");
+        (copied.Answer, copied.MemberName).Should().Be((source.Answer, source.MemberName), "the copy keeps who was invited and what they said");
+        (await db.ClubEventInvitationSends.IgnoreQueryFilters().SingleAsync(s => s.OrganizationId == report.CopyId)).Id.Should().Be(copied.SendId);
+        report.Adjustments.Keys.Should().Contain("Event invitations keep their reply links with the original");
+    }
+
+    [Fact]
     public async Task TheCopyImportsNothingFromTheOriginalsPos()
     {
         var (connection, db, original, _, _) = await WorldAsync();
@@ -749,6 +792,11 @@ public class OrganizationCloneTests
         (retention.SaveEmail, retention.SaveTask, retention.ReferralBonusPoints, retention.SponsorRule).Should().Be((false, true, 500, SponsorRules.Required));
         (await db.ClubRetentionSettings.IgnoreQueryFilters().SingleAsync(s => s.OrganizationId == original.Org)).SaveEmail.Should().BeTrue();
         report.Adjustments.Keys.Should().Contain("Members found at risk in the copy are not emailed from it");
+        // The same people again: the copy's recap emails start off, the original's carry on.
+        var recap = await db.RecapSubscriptions.IgnoreQueryFilters().SingleAsync(s => s.OrganizationId == report.CopyId);
+        (recap.DailySinceUtc, recap.WeeklySinceUtc, recap.MonthlySinceUtc).Should().Be(((DateTime?)null, (DateTime?)null, (DateTime?)null));
+        (await db.RecapSubscriptions.IgnoreQueryFilters().SingleAsync(s => s.OrganizationId == original.Org)).DailySinceUtc.Should().NotBeNull();
+        report.Adjustments.Keys.Should().Contain("Recap emails start off in the copy");
         (await db.OutreachEnrollments.IgnoreQueryFilters().Where(e => e.OrganizationId == report.CopyId).Select(e => e.Status).ToListAsync())
             .Should().BeEquivalentTo(["paused", "stopped"]);
         var contract = await db.Set<Contract>().IgnoreQueryFilters().SingleAsync(c => c.OrganizationId == report.CopyId);

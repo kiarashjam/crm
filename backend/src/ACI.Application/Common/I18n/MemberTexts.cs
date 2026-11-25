@@ -175,6 +175,38 @@ public static partial class MemberTexts
             "Wir hoffen, Sie bald an einem anderen Anlass zu sehen.",
             "Nous espérons vous voir bientôt à un autre événement."),
 
+        // ── an event's invitation and its one reminder ─────────────────────────
+        // The letter staff start from and may change, in each language: written with its own
+        // placeholders ({{firstName}}, {{replyLink}}...), which staff see in the editor and the
+        // server fills for each member (InvitationTemplate), so these are read without arguments.
+        // Plain strings, not interpolated ones, so the double braces stay as they are.
+        ["invite.subject"] = new("You are invited: {{eventName}}", "Einladung: {{eventName}}", "Invitation" + Nb + ": {{eventName}}"),
+        ["invite.body"] = new(
+            "Dear {{firstName}},\n\nWe would be delighted to welcome you to {{eventName}}.\n\n"
+            + "When: {{eventDate}}\nWhere: {{eventPlace|at the club}}\nPrice for members: {{memberPrice}}\n\n"
+            + "Will you come? Answer in one click, and change your mind any time until the event starts:\n{{replyLink}}\n\n"
+            + "We look forward to seeing you.\n{{club}}",
+            "Guten Tag {{firstName}},\n\nWir freuen uns, Sie zu {{eventName}} begrüssen zu dürfen.\n\n"
+            + "Wann: {{eventDate}}\nWo: {{eventPlace|im Club}}\nPreis für Mitglieder: {{memberPrice}}\n\n"
+            + "Kommen Sie? Antworten Sie mit einem Klick. Bis zum Beginn können Sie Ihre Antwort jederzeit ändern:\n{{replyLink}}\n\n"
+            + "Wir freuen uns auf Sie.\n{{club}}",
+            "Bonjour {{firstName}},\n\nNous serions ravis de vous accueillir à {{eventName}}.\n\n"
+            + "Quand" + Nb + ": {{eventDate}}\nOù" + Nb + ": {{eventPlace|au club}}\nPrix pour les membres" + Nb + ": {{memberPrice}}\n\n"
+            + "Serez-vous des nôtres" + Nb + "? Répondez en un clic. Vous pouvez changer d’avis jusqu’au début de l’événement" + Nb + ":\n{{replyLink}}\n\n"
+            + "Au plaisir de vous accueillir.\n{{club}}"),
+        ["invite.reminderSubject"] = new("Reminder: {{eventName}}", "Erinnerung: {{eventName}}", "Rappel" + Nb + ": {{eventName}}"),
+        ["invite.reminderBody"] = new(
+            "Dear {{firstName}},\n\nA gentle reminder: you are invited to {{eventName}}, and we have not had your answer yet.\n\n"
+            + "When: {{eventDate}}\nWhere: {{eventPlace|at the club}}\nPrice for members: {{memberPrice}}\n\n"
+            + "Will you come? Answer in one click:\n{{replyLink}}\n\n{{club}}",
+            "Guten Tag {{firstName}},\n\nEine kurze Erinnerung: Sie sind zu {{eventName}} eingeladen, und wir haben Ihre Antwort noch nicht erhalten.\n\n"
+            + "Wann: {{eventDate}}\nWo: {{eventPlace|im Club}}\nPreis für Mitglieder: {{memberPrice}}\n\n"
+            + "Kommen Sie? Antworten Sie mit einem Klick:\n{{replyLink}}\n\n{{club}}",
+            "Bonjour {{firstName}},\n\nUn petit rappel" + Nb + ": vous êtes invité(e) à {{eventName}}, et nous n’avons pas encore reçu votre réponse.\n\n"
+            + "Quand" + Nb + ": {{eventDate}}\nOù" + Nb + ": {{eventPlace|au club}}\nPrix pour les membres" + Nb + ": {{memberPrice}}\n\n"
+            + "Serez-vous des nôtres" + Nb + "? Répondez en un clic" + Nb + ":\n{{replyLink}}\n\n{{club}}"),
+        ["invite.free"] = new("Free", "Kostenlos", "Gratuit"),
+
         // ── pay links ──────────────────────────────────────────────────────────
         ["payLink.subjectSetup"] = new("Save a card with {club}", "Karte bei {club} speichern", "Enregistrer une carte auprès de {club}"),
         ["payLink.subjectPay"] = new("Pay your account with {club}", "Ihr Konto bei {club} bezahlen", "Régler votre compte auprès de {club}"),

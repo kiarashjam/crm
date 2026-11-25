@@ -201,8 +201,11 @@ public sealed partial class ClubEventService : IClubEvents
         // would leave it pointing at nothing. Cancelling takes the tickets back and keeps it.
         if (registrations.Any(r => r.ChargeId != null || r.NoShowChargeId != null)) return DomainErrors.ClubEvent.HasMoney;
         // Its guest list goes with it: nothing shows a deleted event's attendees, so their
-        // names and emails would only stay in the table.
+        // names and emails would only stay in the table. So do its invitations and their reply
+        // links, which would answer for an event that is gone.
         _db.ClubEventRegistrations.RemoveRange(registrations);
+        _db.ClubEventInvitations.RemoveRange(await _db.ClubEventInvitations.Where(i => i.EventId == eventId && i.OrganizationId == organizationId).ToListAsync(ct));
+        _db.ClubEventInvitationSends.RemoveRange(await _db.ClubEventInvitationSends.Where(s => s.EventId == eventId && s.OrganizationId == organizationId).ToListAsync(ct));
         _db.ClubEvents.Remove(ev);
         try
         {

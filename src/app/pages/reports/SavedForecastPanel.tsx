@@ -21,6 +21,8 @@ import { savedForecastTable } from './reportCsv';
 import { addMonths, monthLabel, monthOf } from './reportFilters';
 import { useMoney } from '@/app/hooks/useMoney';
 import { currentDateLocale } from '@/app/i18n/current';
+import { useOrgOptional } from '@/app/contexts/OrgContext';
+import { isOrgViewer } from '@/app/api/organizations';
 
 const reason = (err: unknown, fallback: string) => (err instanceof Error && err.message ? err.message : fallback);
 
@@ -59,6 +61,7 @@ export function SavedForecastPanel() {
   // The month a save is for is the workspace's, as the server counts it: in a browser
   // behind the club's clock, the 1st there was still last month here.
   const money = useMoney();
+  const org = useOrgOptional();
   const { timeZone } = money;
   const csvSeparator = useCsvSeparator();
   const amount = (value: number, currency: string) => money.format(value, currency, 'never');
@@ -94,8 +97,11 @@ export function SavedForecastPanel() {
   useEffect(() => { load(); }, [load]);
 
   // A forecast is made before or during its month. A month already over is shown
-  // for its record, not saved again in hindsight.
-  const canSave = month >= thisMonth;
+  // for its record, not saved again in hindsight. A read-only member (the Read-only
+  // preset sees every deal, so reads the saves) changes nothing: the server refuses
+  // their save, so it is not offered.
+  const readOnly = isOrgViewer(org?.currentOrg ?? null);
+  const canSave = month >= thisMonth && !readOnly;
 
   const save = async () => {
     setSaving(true);

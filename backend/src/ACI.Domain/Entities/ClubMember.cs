@@ -52,6 +52,14 @@ public class ClubMember : Common.BaseEntity
     public Guid? LeadId { get; set; }
 
     /// <summary>
+    /// When the tags and custom field values of the lead they came from were copied onto them
+    /// (ILeadToMemberCopy); null until then. Set once, by whichever way of making the member
+    /// from the lead gets there first, so a retry or a second way copies nothing again, and a
+    /// tag or value staff took off since is not put back.
+    /// </summary>
+    public DateTime? LeadDetailsCopiedAtUtc { get; set; }
+
+    /// <summary>
     /// When the membership starts, if it is known. Null with <see cref="StartUndetermined"/>
     /// set means the start is still to be decided; null without it means nobody said.
     /// </summary>

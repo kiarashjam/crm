@@ -65,8 +65,11 @@ public sealed partial class ClubEventService
         }, ct);
         if (!changed.IsSuccess) return changed.Error;
         // The workspace's rules for someone put on the list (a seat, the waitlist or the door),
-        // once the change is committed and outside its attempts.
-        if (_automations != null && organizationId is Guid org && _user.UserId is Guid actor)
+        // once the change is committed and outside its attempts. A member who answered "I'll
+        // come" on their invitation's reply page is nobody on the team: the rules act as the
+        // workspace's owner, as they do for a member's own booking in the portal.
+        if (_automations != null && organizationId is Guid org
+            && (_user.UserId ?? await _db.Organizations.AsNoTracking().Where(o => o.Id == org).Select(o => (Guid?)o.OwnerUserId).FirstOrDefaultAsync(ct)) is Guid actor)
             await _automations.DispatchAsync(AutomationCatalog.EventRegistered, new AutomationEvent(
                 org, actor, added!.Id.ToString(), $"{added.Name}: {changed.Value.Event.Name}",
                 Email: added.Email, MemberId: added.MemberId, RecordId: added.Id), ct);

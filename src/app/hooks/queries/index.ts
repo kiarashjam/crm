@@ -15,3 +15,4 @@ export * from './corporate';
 export * from './flexData';
 export * from './systemHealth';
 export * from './siteAnalytics';
+export * from './recaps';

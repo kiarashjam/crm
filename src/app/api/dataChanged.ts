@@ -67,7 +67,16 @@ const NOT_RECORD_WRITES = [
   // The lead newsletter's count, preview and test to oneself are POSTs only because they carry
   // the filters or the email. Announced, each count typed in the dialog would re-read the leads.
   '/api/leads/newsletter/audience', '/api/leads/newsletter/preview', '/api/leads/newsletter/test',
+  // A campaign's count is a POST for its audience's filters, re-asked as they are typed.
+  '/api/campaigns/audience',
 ];
+
+/**
+ * Reads sent as POSTs for their body under a path that names a record, so no prefix finds
+ * them: an event's invitations counted, previewed and tested on oneself, as the dialog's
+ * filters and letter change.
+ */
+const NOT_RECORD_WRITE_ENDINGS = ['/invitations/audience', '/invitations/preview', '/invitations/test'];
 
 /** …except these, under an excluded prefix, which do change records. */
 const RECORD_WRITES_UNDER_EXCLUDED = ['/api/lead-ops/bulk'];
@@ -88,6 +97,7 @@ export function changesRecords(method: string | undefined, path: string): boolea
   if (m !== 'POST' && m !== 'PUT' && m !== 'PATCH' && m !== 'DELETE') return false;
   const lower = pathnameOf(path);
   if (RECORD_WRITES_UNDER_EXCLUDED.some((prefix) => lower.startsWith(prefix))) return true;
+  if (NOT_RECORD_WRITE_ENDINGS.some((ending) => lower.endsWith(ending))) return false;
   return !NOT_RECORD_WRITES.some((prefix) => lower.startsWith(prefix));
 }
 

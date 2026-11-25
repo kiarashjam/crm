@@ -57,6 +57,7 @@ public class EndpointModuleTests
         ["PublicContractsController"] = "someone outside signing a contract they were sent",
         ["PublicEmailController"] = "the mail service reporting deliveries and replies",
         ["PublicUnsubscribeController"] = "an unsubscribe link already sent, which must always work",
+        ["PublicInvitationsController"] = "a member's reply link to an event invitation already sent: answered with a reason; with the club off the service itself refuses (Module.Off)",
         ["PublicPaymentsController"] = "a pay link already sent and the payment provider's webhook: money coming in is never refused",
         ["PublicApplicationsController"] = "a public application form already on the club's website: the application is kept for the club",
         ["PublicOnboardingController"] = "a member portal reporting on a handoff already made: its report is kept, so the deal's timeline is right when Sales is on again",
@@ -68,6 +69,8 @@ public class EndpointModuleTests
         ["ClientErrorsController"] = "the browser reporting its own crashes, anonymous and from any page, of either module or neither",
         ["SiteAnalyticsController"] = "visits to cadencee.ai itself: the tracker posts anonymously from any page, and only platform admins read the figures, in no workspace",
         ["PlatformController"] = "the platform above every workspace: whether the caller is one of the people who run it",
+        ["RecapsController"] = "the recap emails hold both modules' figures, each part following its own module",
+        ["MyRecapsController"] = "the caller's own recap emails, which hold both modules' figures",
     };
 
     private static IEnumerable<Type> Controllers() =>
@@ -109,6 +112,7 @@ public class EndpointModuleTests
         { "RenewalsController", WorkspaceModules.Club }, { "ReferralsController", WorkspaceModules.Club },
         { "ClubClientAccountsController", WorkspaceModules.Club }, { "CorporateMembershipsController", WorkspaceModules.Club },
         { "MemberCorporateSeatController", WorkspaceModules.Club }, { "PrivateEventsController", WorkspaceModules.Club },
+        { "EventInvitationsController", WorkspaceModules.Club },
         { "LeadsController", WorkspaceModules.Sales }, { "DealsController", WorkspaceModules.Sales },
         { "PipelinesController", WorkspaceModules.Sales }, { "SequencesController", WorkspaceModules.Sales },
         { "ReportingController", WorkspaceModules.Sales }, { "ContractsController", WorkspaceModules.Sales },

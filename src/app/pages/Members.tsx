@@ -73,6 +73,7 @@ import { useRegional } from '@/app/hooks/useMoney';
 import { translate, useT, type I18nValue, type MessageKey } from '@/app/i18n';
 import { readFlexParams } from '@/app/api/flexFilters';
 import { FlexFilterBar } from '@/app/components/flex/FlexFilterBar';
+import { InterestsHint } from '@/app/components/audience/AudienceFilters';
 import { SavedViewsMenu } from '@/app/components/flex/SavedViewsMenu';
 import { BulkTagButton } from '@/app/components/flex/BulkTagDialog';
 import { useFlexColumns } from '@/app/components/flex/useFlexColumns';
@@ -528,6 +529,9 @@ export default function Members() {
             <FlexFilterBar entity="member" params={searchParams} onChange={(next) => setSearchParams(next)} />
             <BulkTagButton entityType="member" recordIds={filtered.map((m) => m.id)} what={`the ${filtered.length} shown`} />
           </div>
+          {/* Where a club keeps its members' interests and hobbies, said where people look for them. */}
+          <InterestsHint className="mb-4" />
+
 
           {/* List */}
           {loading ? (

@@ -228,7 +228,7 @@ public sealed class OrganizationService : IOrganizationService
     }
 
     private static readonly Error UnknownPreset = new(
-        "Organization.UnknownPreset", "That is not one of the presets. Pick Manager, Sales rep, Membership director, Finance, Front desk or Read-only accountant.");
+        "Organization.UnknownPreset", "That is not one of the presets. Pick Manager, Sales rep, Membership director, Finance, Front desk, Read-only accountant or Read-only.");
 
     private static readonly Error UnknownPermission = new(
         "Organization.UnknownPermission", "One of those is not a permission this version knows.");

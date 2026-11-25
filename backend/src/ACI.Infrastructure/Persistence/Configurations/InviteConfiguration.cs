@@ -13,6 +13,7 @@ internal sealed class InviteConfiguration : IEntityTypeConfiguration<Invite>
         builder.Property(e => e.Email).HasMaxLength(256).IsRequired();
         // The column kept its name when it started holding a hash instead of the token.
         builder.Property(e => e.TokenHash).HasColumnName("Token").HasMaxLength(128).IsRequired();
+        builder.Property(e => e.PermissionPreset).HasMaxLength(40);
         builder.HasOne(e => e.Organization).WithMany(o => o.Invites).HasForeignKey(e => e.OrganizationId);
         builder.HasIndex(e => new { e.OrganizationId, e.Email });
         builder.HasIndex(e => e.TokenHash).IsUnique();

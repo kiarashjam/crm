@@ -58,6 +58,7 @@ public class EndpointPermissionTests
         ["CustomFieldsController.GetValuesBatch"] = "reads only: the custom values of the records the caller can see",
         ["TagsController.RecordTagsBatch"] = "reads only: the tags of the records the caller can see",
         ["SavedViewsController.*"] = "the caller's own saved views and defaults; sharing one takes a permission that changes records (SavedViewService.MayShareAsync)",
+        ["MyRecapsController.*"] = "the caller's own recap emails; switching one on takes seeing all deals (RecapService)",
         // A member signed in to the member portal: no member of the team, so no permission of the
         // team's; the member's token reaches only their own records (MemberPortalService).
         ["MemberPortalController.*"] = "a member's own club account in the member portal, by their own session",

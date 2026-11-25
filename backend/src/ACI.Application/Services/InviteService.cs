@@ -51,8 +51,15 @@ public sealed class InviteService : IInviteService
             _logger.LogWarning("User {UserId} may not manage the members of organization {OrganizationId}", userId, organizationId);
             return Result.Failure<InviteDto>(DomainErrors.Permission.Missing(MemberPermissions.ManageMembers));
         }
-        // Accepting makes them a Member, with what Members could always do.
-        if (!await _organizationRepository.HoldsAllAsync(userId, organizationId, MemberPermissions.LegacyMember, ct))
+        // Accepting gives them the preset chosen, else what Members could always do; nobody
+        // invites someone to more than they can do themselves.
+        PermissionPreset? preset = null;
+        if (!string.IsNullOrWhiteSpace(request.Preset))
+        {
+            preset = MemberPermissions.FindPreset(request.Preset);
+            if (preset == null || preset == MemberPermissions.Owner) return Result.Failure<InviteDto>(UnknownPreset);
+        }
+        if (!await _organizationRepository.HoldsAllAsync(userId, organizationId, preset?.Permissions ?? MemberPermissions.LegacyMember, ct))
             return Result.Failure<InviteDto>(DomainErrors.Permission.MoreThanYourOwn);
 
         var email = (request.Email ?? string.Empty).Trim().ToLowerInvariant();
@@ -80,6 +87,7 @@ public sealed class InviteService : IInviteService
             TokenHash = PasswordResetCrypto.HashRawToken(rawToken),
             ExpiresAtUtc = DateTime.UtcNow.AddDays(7),
             CreatedAtUtc = DateTime.UtcNow,
+            PermissionPreset = preset?.Key,
         };
 
         // Mailed first, kept only once it is sent. The emailed link is the only way to
@@ -98,8 +106,11 @@ public sealed class InviteService : IInviteService
         await _inviteRepository.AddAsync(invite, ct);
 
         _logger.LogInformation("Invite {InviteId} created for email {Email} to organization {OrganizationId}", invite.Id, email, organizationId);
-        return Result.Success(new InviteDto(invite.Id, org.Id, org.Name, invite.Email, invite.ExpiresAtUtc, invite.CreatedAtUtc));
+        return Result.Success(new InviteDto(invite.Id, org.Id, org.Name, invite.Email, invite.ExpiresAtUtc, invite.CreatedAtUtc, invite.PermissionPreset));
     }
+
+    private static readonly Error UnknownPreset = new(
+        "Invite.UnknownPreset", "That is not one of the presets. Pick Manager, Sales rep, Membership director, Finance, Front desk, Read-only accountant or Read-only.");
 
     public async Task<Result<InviteDto>> ResendInviteAsync(Guid inviteId, Guid userId, CancellationToken ct = default)
     {
@@ -154,7 +165,7 @@ public sealed class InviteService : IInviteService
         await _inviteRepository.UpdateAsync(invite, ct);
 
         _logger.LogInformation("Invite {InviteId} re-sent to {Email}", inviteId, invite.Email);
-        return Result.Success(new InviteDto(invite.Id, org.Id, org.Name, invite.Email, invite.ExpiresAtUtc, invite.CreatedAtUtc));
+        return Result.Success(new InviteDto(invite.Id, org.Id, org.Name, invite.Email, invite.ExpiresAtUtc, invite.CreatedAtUtc, invite.PermissionPreset));
     }
 
     private static readonly Error EmailNotSent = new(
@@ -179,7 +190,7 @@ public sealed class InviteService : IInviteService
         }
 
         var list = await _inviteRepository.ListPendingByOrganizationIdAsync(organizationId, ct);
-        var dtos = list.Select(i => new InviteDto(i.Id, i.OrganizationId, org.Name, i.Email, i.ExpiresAtUtc, i.CreatedAtUtc)).ToList();
+        var dtos = list.Select(i => new InviteDto(i.Id, i.OrganizationId, org.Name, i.Email, i.ExpiresAtUtc, i.CreatedAtUtc, i.PermissionPreset)).ToList();
 
         _logger.LogInformation("Found {Count} pending invites for organization {OrganizationId}", dtos.Count, organizationId);
         return Result.Success<IReadOnlyList<InviteDto>>(dtos);
@@ -250,10 +261,15 @@ public sealed class InviteService : IInviteService
             _logger.LogInformation("Invite {InviteId} already claimed by user {UserId}; completing add-member step", invite.Id, userId);
         }
 
-        await _organizationRepository.AddMemberAsync(invite.OrganizationId, userId, OrgMemberRole.Member, ct);
+        // With the preset they were invited with (its role with it), else as a Member, as before presets.
+        if (MemberPermissions.FindPreset(invite.PermissionPreset) is { } joinsAs && joinsAs != MemberPermissions.Owner)
+            await _organizationRepository.AddMemberAsync(invite.OrganizationId, userId,
+                MemberPermissions.RoleFor(joinsAs, joinsAs.Permissions.ToHashSet(StringComparer.Ordinal)), joinsAs.Key, ct);
+        else
+            await _organizationRepository.AddMemberAsync(invite.OrganizationId, userId, OrgMemberRole.Member, ct);
 
         _logger.LogInformation("User {UserId} accepted invite {InviteId} to organization {OrganizationId}", userId, invite.Id, invite.OrganizationId);
-        return Result.Success(new InviteDto(invite.Id, invite.OrganizationId, invite.Organization.Name, invite.Email, invite.ExpiresAtUtc, invite.CreatedAtUtc));
+        return Result.Success(new InviteDto(invite.Id, invite.OrganizationId, invite.Organization.Name, invite.Email, invite.ExpiresAtUtc, invite.CreatedAtUtc, invite.PermissionPreset));
     }
 
     public async Task<Result<IReadOnlyList<InviteDto>>> ListMyPendingInvitesAsync(Guid userId, CancellationToken ct = default)
@@ -275,7 +291,7 @@ public sealed class InviteService : IInviteService
         }
 
         var list = await _inviteRepository.ListPendingByEmailAsync(email, ct);
-        var dtos = list.Select(i => new InviteDto(i.Id, i.OrganizationId, i.Organization.Name, i.Email, i.ExpiresAtUtc, i.CreatedAtUtc)).ToList();
+        var dtos = list.Select(i => new InviteDto(i.Id, i.OrganizationId, i.Organization.Name, i.Email, i.ExpiresAtUtc, i.CreatedAtUtc, i.PermissionPreset)).ToList();
 
         _logger.LogInformation("Found {Count} pending invites for user {UserId}", dtos.Count, userId);
         return Result.Success<IReadOnlyList<InviteDto>>(dtos);

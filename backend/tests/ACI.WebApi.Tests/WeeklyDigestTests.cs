@@ -163,6 +163,33 @@ public class WeeklyDigestTests
     }
 
     [Fact]
+    public async Task AReadOnlyFounderWhoSeesEveryDealGetsItButAReadOnlyAccountantDoesNot()
+    {
+        // The Read-only preset holds deals.all, so the founder looking in can have the report;
+        // the accountant's preset does not, and the report is the whole team's pipeline.
+        using var factory = new CustomWebApplicationFactory();
+        var (_, ownerId) = await SignInAsync(factory, "owner@example.ch");
+        var org = await CreateAsync(factory, ownerId, "Pavillon46");
+        var (_, founderId) = await SignInAsync(factory, "founder@example.ch");
+        var (_, accountantId) = await SignInAsync(factory, "books@example.ch");
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.OrganizationMembers.AddRange(
+                new OrganizationMember { OrganizationId = org, UserId = founderId, Role = OrgMemberRole.Viewer, PermissionPreset = "read_only", JoinedAtUtc = DateTime.UtcNow },
+                new OrganizationMember { OrganizationId = org, UserId = accountantId, Role = OrgMemberRole.Viewer, PermissionPreset = "read_only_accountant", JoinedAtUtc = DateTime.UtcNow });
+            await db.SaveChangesAsync();
+        }
+        await OptInAsync(factory.Services, founderId);
+        await OptInAsync(factory.Services, accountantId);
+        var outbox = new Outbox();
+
+        (await SendDueAsync(factory.Services, outbox, MondayMorning)).Should().Be(1);
+
+        outbox.Sent.Select(s => s.To).Should().Equal("founder@example.ch");
+    }
+
+    [Fact]
     public async Task AWorkspaceThatTurnedSalesOffIsLeftOutOfTheDigest()
     {
         // The digest is the Sales module's figures. With Sales turned off its Reports page and

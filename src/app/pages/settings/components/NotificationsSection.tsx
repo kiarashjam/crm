@@ -8,9 +8,11 @@ type ToggleSwitchProps = {
   description: string;
   /** Marks a switch whose delivery is not built yet. A switch that works says nothing. */
   comingSoon?: boolean;
+  /** While a change it saved at once is on its way. */
+  disabled?: boolean;
 };
 
-function ToggleSwitch({ checked, onChange, label, description, comingSoon = true }: ToggleSwitchProps) {
+export function ToggleSwitch({ checked, onChange, label, description, comingSoon = true, disabled = false }: ToggleSwitchProps) {
   return (
     <label className="flex items-center justify-between p-4 bg-slate-50 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors">
       <div className="flex-1">
@@ -29,8 +31,9 @@ function ToggleSwitch({ checked, onChange, label, description, comingSoon = true
         type="button"
         role="switch"
         aria-checked={checked}
+        disabled={disabled}
         onClick={() => onChange(!checked)}
-        className={`relative w-12 h-7 rounded-full transition-colors ${checked ? 'bg-orange-600' : 'bg-slate-300'}`}
+        className={`relative w-12 h-7 rounded-full transition-colors disabled:opacity-60 ${checked ? 'bg-orange-600' : 'bg-slate-300'}`}
       >
         <span className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${checked ? 'translate-x-5' : ''}`} />
       </button>
@@ -41,11 +44,14 @@ function ToggleSwitch({ checked, onChange, label, description, comingSoon = true
 export type NotificationsSectionProps = {
   settings: UserSettings;
   updateSettings: (updates: UpdateUserSettingsRequest) => void;
+  /** The workspace's recap emails for this person (MyRecapsCard), which save on their own. */
+  recaps?: React.ReactNode;
 };
 
 export function NotificationsSection({
   settings,
   updateSettings,
+  recaps,
 }: NotificationsSectionProps) {
   return (
     <div className="p-6 space-y-8">
@@ -57,7 +63,7 @@ export function NotificationsSection({
         <p className="text-slate-600 text-sm mt-1">Manage how you receive notifications</p>
         <div className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-amber-50 border border-amber-200 px-3 py-1.5 text-xs font-medium text-amber-700">
           <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-          Switches marked coming soon are saved, but nothing is sent for them yet. The morning brief and the weekly report digest are live.
+          Switches marked coming soon are saved, but nothing is sent for them yet. The morning brief, the weekly report digest and the recap emails are live.
         </div>
       </div>
 
@@ -147,6 +153,8 @@ export function NotificationsSection({
           description="Every Monday from 7:00 in your time zone (set under Profile), an email with last week's won, lost and new deals, the open pipeline, this month's forecast, leads and activity — for each workspace you own or manage."
         />
       </div>
+
+      {recaps}
 
       {/* In-App Notifications */}
       <div className="pt-6 border-t border-slate-200">

@@ -53,6 +53,19 @@ describe('which writes count as a record change', () => {
     expect(changesRecords('POST', '/api/leads/newsletter/send')).toBe(true);
     expect(resourcesChangedBy('POST', '/api/leads/newsletter/send')).toContain('leads');
   });
+
+  it("a campaign's count and an event invitation's count, preview and test do not, but sending and reminding do", () => {
+    expect(changesRecords('POST', '/api/campaigns/audience')).toBe(false);
+    expect(changesRecords('POST', '/api/campaigns')).toBe(true);
+    const event = '/api/events/2b1c0a52-8d0e-4f0e-9a51-0d7c1f8e4a10/invitations';
+    expect(changesRecords('POST', `${event}/audience`)).toBe(false);
+    expect(changesRecords('POST', `${event}/preview`)).toBe(false);
+    expect(changesRecords('POST', `${event}/test`)).toBe(false);
+    expect(changesRecords('POST', `${event}/send`)).toBe(true);
+    expect(changesRecords('POST', `${event}/remind`)).toBe(true);
+    // Sending writes each member's communications line, and an answer can take a seat: the event's own lists.
+    expect(resourcesChangedBy('POST', `${event}/send`)).toEqual(expect.arrayContaining(['events', 'communications']));
+  });
 });
 
 describe('what a write changes', () => {

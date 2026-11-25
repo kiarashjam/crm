@@ -382,7 +382,16 @@ public sealed class RetentionService : IRetention
     private async Task<int> CountMailAsync(Guid organizationId, DateTime cutoff, CancellationToken ct) =>
         await OldMail(organizationId, cutoff).CountAsync(ct)
         + await _db.SentMessages.CountAsync(m => m.OrganizationId == organizationId && m.SentAtUtc < cutoff && m.Body != PurgedText, ct)
-        + await _db.CopyHistoryItems.CountAsync(c => c.OrganizationId == organizationId && c.CreatedAtUtc < cutoff, ct);
+        + await _db.CopyHistoryItems.CountAsync(c => c.OrganizationId == organizationId && c.CreatedAtUtc < cutoff, ct)
+        + await OldInvitations(organizationId, cutoff).CountAsync(ct);
+
+    /// <summary>
+    /// Invitations to events that ended before the cutoff: who was invited and what they answered,
+    /// which serve nothing once the event is long past (whether they came is on its list).
+    /// </summary>
+    private IQueryable<ClubEventInvitation> OldInvitations(Guid organizationId, DateTime cutoff) =>
+        _db.ClubEventInvitations.Where(i => i.OrganizationId == organizationId
+            && _db.ClubEvents.Any(e => e.Id == i.EventId && e.EndAtUtc < cutoff));
 
     private async Task<int> PurgeMailAsync(Guid organizationId, DateTime cutoff, CancellationToken ct)
     {
@@ -417,8 +426,10 @@ public sealed class RetentionService : IRetention
         foreach (var x in await _db.MemberMessages.Where(x => x.OrganizationId == organizationId && x.CreatedAtUtc < cutoff && x.Preview != null)
                      .OrderBy(x => x.CreatedAtUtc).Take(RowsPerRun).ToListAsync(ct))
             x.Preview = null;
+        var invitations = await OldInvitations(organizationId, cutoff).OrderBy(i => i.InvitedAtUtc).Take(RowsPerRun).ToListAsync(ct);
+        _db.ClubEventInvitations.RemoveRange(invitations);
         await _db.SaveChangesAsync(ct);
-        return messages.Count + sent.Count + copies.Count;
+        return messages.Count + sent.Count + copies.Count + invitations.Count;
     }
 
     // ── Details around requests and the audit trail ─────────────────────────

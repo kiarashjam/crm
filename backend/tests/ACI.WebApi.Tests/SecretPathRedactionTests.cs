@@ -81,6 +81,20 @@ public class SecretPathRedactionTests
     }
 
     [Theory]
+    // An event invitation's reply link answers for the member it was sent to (registers them,
+    // a ticket on their account, or cancels their place) until the event starts; the page reads
+    // it with a GET and answers with a POST to the same address.
+    [InlineData("/api/public/invitations/SUPERSECRETTOKEN123abcXYZ", "/api/public/invitations/[redacted]")]
+    [InlineData("/API/Public/Invitations/SUPERSECRETTOKEN123abcXYZ", "/API/Public/Invitations/[redacted]")]
+    public void RemovesTheTokenFromInvitationReplyLinks(string path, string expected)
+    {
+        var redacted = SecretPathRedactionMiddleware.RedactPath(path);
+        redacted.Should().Be(expected);
+        redacted.Should().NotContain(Token);
+        SecretPathRedactionMiddleware.RedactPath("/api/public/invitations").Should().BeNull("no secret, nothing to hide");
+    }
+
+    [Theory]
     // The CRM's own routes carry ids, not credentials. Redacting them would throw
     // away the only thing that makes a log line useful.
     [InlineData("/api/contracts/3f9a21c0-0000-0000-0000-000000000000")]

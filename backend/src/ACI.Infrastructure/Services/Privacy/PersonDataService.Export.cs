@@ -184,6 +184,8 @@ public sealed partial class PersonDataService
             }]),
             new("club/events.json", "Events they registered for or brought guests to.", d.Registrations.Select(r => With(Row(r), "event",
                 d.Events.TryGetValue(r.EventId, out var e) ? new { e.Name, e.StartAtUtc, e.EndAtUtc, e.Location } : null)).ToList()),
+            new("club/event-invitations.json", "Invitations to the club's events they were sent, and what they answered.", d.Invitations.Select(i => With(Row(i), "event",
+                d.Events.TryGetValue(i.EventId, out var e) ? new { e.Name, e.StartAtUtc, e.EndAtUtc, e.Location } : null)).ToList()),
             new("club/reservations.json", "Tables and rooms they booked.", d.Reservations.Select(r => Row(r)).ToList()),
             new("club/visits.json", "Their visits to the club.", d.Visits.Select(v => Row(v)).ToList()),
             new("club/loyalty.json", "Loyalty points they earned and spent.", d.Loyalty.Select(e => Row(e)).ToList()),

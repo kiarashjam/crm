@@ -60,11 +60,15 @@ const SENDING: Campaign = {
   ...DRAFT, id: 'cmp-6', name: 'Wine evening', status: 'Sending', sendingStartedAtUtc: '2026-11-12T09:00:00Z', version: 'v6',
   totals: { ...NO_TOTALS, recipients: 2, queued: 2 },
 };
-const AUDIENCE: CampaignAudience = { purpose: 'marketing', matching: 5, withAddress: 4, agreed: 2, willReceive: 2 };
+const AUDIENCE: CampaignAudience = {
+  purpose: 'marketing', chosen: 5, matching: 5, withAddress: 4, agreed: 2, willReceive: 2, suppressed: 0, doNotContact: 0,
+  statusExcluded: 0, erased: 0, noEmail: 1, noConsent: 2, alreadyRegistered: 0, alreadyInvited: 0, duplicates: 0, recipients: [], leftOut: [],
+};
 
 const campaignsApi = {
   list: vi.fn<() => Promise<Campaign[]>>(),
   audience: vi.fn<(...args: unknown[]) => Promise<CampaignAudience>>(),
+  savedAudience: vi.fn<(...args: unknown[]) => Promise<CampaignAudience>>(),
   recipients: vi.fn<(id: string) => Promise<Communication[]>>(),
   create: vi.fn<(input: unknown) => Promise<Campaign>>(),
   send: vi.fn<(id: string, version?: string) => Promise<Campaign>>(),
@@ -75,6 +79,7 @@ vi.mock('@/app/api/campaigns', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/app/api/campaigns')>()),
   getCampaigns: () => campaignsApi.list(),
   getCampaignAudience: (...args: unknown[]) => campaignsApi.audience(...args),
+  getSavedCampaignAudience: (...args: unknown[]) => campaignsApi.savedAudience(...args),
   getCampaignRecipients: (id: string) => campaignsApi.recipients(id),
   createCampaign: (input: unknown) => campaignsApi.create(input),
   sendCampaign: (id: string, version?: string) => campaignsApi.send(id, version),
@@ -131,6 +136,7 @@ beforeEach(() => {
   consent.mockReset().mockResolvedValue({ memberId: 'm1', current: [], history: [] });
   campaignsApi.list.mockReset().mockResolvedValue([DRAFT, SCHEDULED, SENT, LOGGED, TEXTS]);
   campaignsApi.audience.mockReset().mockResolvedValue(AUDIENCE);
+  campaignsApi.savedAudience.mockReset().mockResolvedValue(AUDIENCE);
   campaignsApi.recipients.mockReset().mockResolvedValue([
     { ...DELIVERED, campaignId: 'cmp-3', subject: SENT.subject, status: 'opened' },
     { ...REFUSED, id: 'com-5', memberId: 'm2', memberName: 'Ana Weber', email: 'ana@example.ch', campaignId: 'cmp-3' },
@@ -171,8 +177,9 @@ describe('campaigns', () => {
 
     const dialog = await screen.findByRole('dialog');
     expect(await within(dialog).findByText(/It goes to/)).toHaveTextContent('It goes to 2 addresses.');
-    expect(within(dialog).getByText(/3 of the 5 members/)).toHaveTextContent(/no consent to marketing by email/);
-    expect(campaignsApi.audience).toHaveBeenCalledWith({ tiers: ['Platinum'] }, 'marketing', expect.anything());
+    expect(within(dialog).getByText(/3 of the 5 members/)).toHaveTextContent(/1 no email address, 2 no consent to marketing by email/);
+    // Counted as the send will count it: the campaign as it was saved, its segment and saved view.
+    expect(campaignsApi.savedAudience).toHaveBeenCalledWith(expect.objectContaining({ id: 'cmp-1', segment: { tiers: ['Platinum'] } }), expect.anything());
     expect(campaignsApi.send).not.toHaveBeenCalled();
 
     await user.click(within(dialog).getByRole('button', { name: 'Send now' }));
@@ -218,15 +225,16 @@ describe('campaigns', () => {
   });
 
   it('says who the outbox would still refuse among those who may have it', async () => {
-    campaignsApi.audience.mockResolvedValue({ ...AUDIENCE, agreed: 4, willReceive: 2, suppressed: 1, doNotContact: 1 });
+    campaignsApi.audience.mockResolvedValue({ ...AUDIENCE, agreed: 4, willReceive: 2, noConsent: 0, suppressed: 1, doNotContact: 1 });
     const user = userEvent.setup();
     show(<Campaigns />);
 
     await user.click(await screen.findByRole('button', { name: /New campaign/ }));
     const dialog = await screen.findByRole('dialog');
-    await waitFor(() => expect(within(dialog).getByText(/It would go to/)).toHaveTextContent(
-      /Left out: 1 at an address on the suppression list \(bounced, complained or unsubscribed\), 1 marked do not contact\. It would go to 2 addresses/,
-    ));
+    const reasons = await within(dialog).findByRole('list', { name: 'Left out, by reason' });
+    expect(reasons).toHaveTextContent('1 address unsubscribed, bounced or complained');
+    expect(reasons).toHaveTextContent('1 marked do not contact');
+    expect(within(dialog).getByTestId('audience-will-receive')).toHaveTextContent('2');
   });
 
   it('sends a test to the person who asked for it, and to no member', async () => {
@@ -285,7 +293,8 @@ describe('campaigns', () => {
     await user.click(await screen.findByRole('button', { name: /New campaign/ }));
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText(/SMS and push are not available/)).toBeInTheDocument();
-    await waitFor(() => expect(within(dialog).getByText(/It would go to/)).toHaveTextContent(/It would go to 2 addresses/));
+    await waitFor(() => expect(within(dialog).getByTestId('audience-will-receive')).toHaveTextContent('2'));
+    expect(within(dialog).getByText(/emails would go/)).toBeInTheDocument();
 
     await user.type(within(dialog).getByLabelText('Name'), 'Winter ball');
     await user.type(within(dialog).getByLabelText('Subject'), 'The winter ball');
