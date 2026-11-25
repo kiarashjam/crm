@@ -3,7 +3,6 @@ import {
   ArrowRight,
   Check,
   Sparkles,
-  Star,
   Mail,
   MessageSquare,
   FileText,
@@ -24,7 +23,6 @@ import {
   Database,
   UserPlus,
   Rocket,
-  Heart,
   Play,
   CheckCircle2,
   XCircle,
@@ -36,9 +34,18 @@ import {
   Flame,
   Crown,
   Server,
+  Gift,
 } from 'lucide-react';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { useState, useEffect } from 'react';
+import { usePageLanguage } from '@/app/i18n';
+import { MarketingHeader } from '@/app/marketing/components/MarketingHeader';
+import { MarketingFooter } from '@/app/marketing/components/MarketingFooter';
+import { CtaLink } from '@/app/marketing/components/CtaLink';
+import { LaunchOfferStrip, useLaunchOfferActive, useSignupLabel } from '@/app/marketing/components/LaunchOffer';
+import { LAUNCH_OFFER_COPY } from '@/app/lib/launchOffer';
+import { PageCard } from '@/app/marketing/components/PageCard';
+import { faqPageJsonLd, serializeJsonLd } from '@/app/marketing/jsonld';
+import { LANDING_PAGE_IDS, marketingPath, type MarketingPageId } from '@/app/marketing/routes';
 
 // Import extracted animation components and hooks
 import {
@@ -49,7 +56,6 @@ import {
   RippleButton,
   TiltCard,
   GradientText,
-  WaveText,
   FAQItemNew,
   BouncingDots,
   RotatingBorder,
@@ -59,96 +65,81 @@ import {
   ParticleExplosion,
   ChevronDown,
 } from './homepage/animations';
-import { BrandName } from '@/app/components/BrandName';
 
 // ============================================
 // MAIN COMPONENT
 // ============================================
 
-export default function Homepage() {
-  const [isHeaderScrolled, setIsHeaderScrolled] = useState(false);
-  const mousePosition = useMousePosition();
+/** The questions the home page answers; the same words feed its FAQPage structured data. */
+const HOME_FAQ: { q: string; a: string; icon: typeof Sparkles; color: string }[] = [
+  {
+    q: 'What is CadenceE?',
+    a: 'A CRM built in Switzerland that runs a whole club and its sales: leads followed through five phases, contracts with e-signature, members and households, events, tabs and billing, email, reports and an AI assistant, in one place.',
+    icon: Layers,
+    color: 'from-blue-500 to-cyan-500',
+  },
+  {
+    q: 'Who is CadenceE for?',
+    a: 'Private members’ clubs, restaurants, hotels and event venues, and sales teams that follow each lead to the deposit. Pavillon 46, a private members’ club in La Croix-sur-Lutry, Vaud, uses it every day.',
+    icon: Users,
+    color: 'from-violet-500 to-purple-600',
+  },
+  {
+    q: 'How does a lead become a member?',
+    a: 'The lead moves through outreach, meeting, contract, signature and deposit. The contract is signed online without an account, the deposit is paid by card or Swiss QR-bill, and one step turns the lead into an Active member with a welcome email and the member portal.',
+    icon: Target,
+    color: 'from-emerald-500 to-teal-600',
+  },
+  {
+    q: 'Which payment methods and accounting tools are supported?',
+    a: 'Members and clients pay by card, TWINT, SEPA or Swiss QR-bill. Bank files are matched against what is owed, and the accounting export goes to Bexio or Abacus.',
+    icon: FileText,
+    color: 'from-orange-500 to-amber-500',
+  },
+  {
+    q: 'Which languages does CadenceE speak?',
+    a: 'The whole app is available in English, French and German, and each person chooses their own. Prepared emails are available in French and English.',
+    icon: Globe,
+    color: 'from-cyan-500 to-blue-500',
+  },
+  {
+    q: 'Is my data secure?',
+    a: 'People sign in with a password, Google, Microsoft or a passkey and can add two-factor authentication. Roles and permissions decide who sees what, every change is written to an audit log, and requests to export or erase personal data are handled under the GDPR and the Swiss FADP.',
+    icon: Shield,
+    color: 'from-rose-500 to-pink-600',
+  },
+];
 
-  useEffect(() => {
-    const handleScroll = () => setIsHeaderScrolled(window.scrollY > 50);
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+/** The dot that trails the pointer: its own component, so moving the mouse re-renders only it. */
+function CursorFollower() {
+  const mousePosition = useMousePosition();
+  return (
+    <div
+      className="fixed w-6 h-6 rounded-full bg-orange-500/20 pointer-events-none z-50 mix-blend-multiply hidden lg:block"
+      style={{
+        left: mousePosition.x - 12,
+        top: mousePosition.y - 12,
+        transition: 'left 0.1s, top 0.1s',
+      }}
+      aria-hidden="true"
+    />
+  );
+}
+
+/** Below the first screen, the browser skips the layout and paint of a section until it nears the viewport. */
+const BELOW_FOLD = '[content-visibility:auto] [contain-intrinsic-size:auto_1000px]';
+
+export default function Homepage() {
+  usePageLanguage('en');
+  // The launch offer (free until 31 December 2026) shows only while it runs.
+  const offerActive = useLaunchOfferActive();
+  const signupLabel = useSignupLabel('en');
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 overflow-x-hidden">
-      {/* Cursor follower */}
-      <div 
-        className="fixed w-6 h-6 rounded-full bg-orange-500/20 pointer-events-none z-50 mix-blend-multiply hidden lg:block"
-        style={{
-          left: mousePosition.x - 12,
-          top: mousePosition.y - 12,
-          transition: 'left 0.1s, top 0.1s',
-        }}
-      />
+    <div className="min-h-screen bg-slate-50 text-slate-900 overflow-x-hidden">
+      <CursorFollower />
 
-      {/* Header */}
-      <header 
-        className={`w-full px-6 lg:px-12 py-4 flex justify-between items-center fixed top-0 left-0 right-0 z-50 transition-all duration-700 ${
-          isHeaderScrolled 
-            ? 'bg-white/80 backdrop-blur-xl border-b border-slate-200/50 shadow-lg shadow-slate-900/5' 
-            : 'bg-transparent'
-        }`}
-      >
-        <Link to="/" className="flex items-center gap-3 group">
-          <div className="relative">
-            {/* Outer pulse rings - always visible */}
-            <div className="absolute inset-[-8px] rounded-full border-2 border-orange-500/60" style={{ animation: 'pulse-ring 2s ease-out infinite' }} />
-            <div className="absolute inset-[-8px] rounded-full border-2 border-orange-500/40" style={{ animation: 'pulse-ring 2s ease-out 0.6s infinite' }} />
-            <div className="absolute inset-[-8px] rounded-full border-2 border-orange-500/20" style={{ animation: 'pulse-ring 2s ease-out 1.2s infinite' }} />
-            
-            {/* Logo icon */}
-            <div className="relative w-12 h-12 bg-gradient-to-br from-orange-600 via-amber-500 to-orange-600 rounded-2xl flex items-center justify-center shadow-xl shadow-orange-500/30 group-hover:shadow-orange-500/50 transition-all duration-500 group-hover:scale-110 group-hover:rotate-6">
-              <Sparkles className="w-6 h-6 text-white" />
-            </div>
-            
-            {/* Green status dot */}
-            <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white shadow-lg">
-              <div className="absolute inset-0 bg-emerald-400 rounded-full animate-ping opacity-75" />
-            </div>
-          </div>
-          <div>
-            <BrandName className="text-xl font-bold text-slate-900 block leading-none" />
-            <span className="text-[10px] font-semibold text-orange-700 uppercase tracking-wider">
-              <WaveText text="Cadence Engine" />
-            </span>
-          </div>
-        </Link>
-        
-        <nav className="hidden lg:flex items-center gap-1 bg-slate-100/80 backdrop-blur-sm rounded-full p-1.5">
-          {['Features', 'How it works', 'FAQ'].map((item, i) => (
-            <MagneticButton key={item}>
-              <a 
-                href={`#${item.toLowerCase().replace(' ', '-')}`} 
-                className="px-5 py-2 text-sm font-medium text-slate-600 hover:text-orange-600 hover:bg-white rounded-full transition-all duration-300 block"
-                style={{ animationDelay: `${i * 0.1}s` }}
-              >
-                {item}
-              </a>
-            </MagneticButton>
-          ))}
-        </nav>
-
-        <div className="flex items-center gap-3">
-          <Link to="/login" className="hidden sm:flex text-slate-700 hover:text-orange-600 font-semibold px-5 py-2.5 rounded-xl transition-all duration-300 hover:scale-105">
-            Sign In
-          </Link>
-          <MagneticButton>
-            <RippleButton
-              to="/login"
-              className="group bg-gradient-to-r from-orange-600 to-amber-500 text-white px-6 py-2.5 rounded-xl font-semibold shadow-lg shadow-orange-500/25 hover:shadow-xl hover:shadow-orange-500/40 flex items-center gap-2"
-            >
-              <span>Get Started</span>
-              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-            </RippleButton>
-          </MagneticButton>
-        </div>
-      </header>
+      <MarketingHeader lang="en" pageId="home" />
 
       <main id={MAIN_CONTENT_ID} className="w-full" tabIndex={-1}>
         {/* ==================== HERO SECTION ==================== */}
@@ -159,66 +150,80 @@ export default function Homepage() {
             <div className="grid lg:grid-cols-2 gap-12 lg:gap-20 items-center">
               {/* Left content */}
               <div className="text-center lg:text-left">
+                {/* The launch offer, while it runs */}
+                {offerActive && (
+                  <div className="mb-5" data-launch-offer="">
+                    <Link
+                      to={marketingPath('pricing', 'en')}
+                      data-track="nav-pricing"
+                      className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-emerald-600 to-teal-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-600/25 hover:shadow-xl transition-shadow"
+                    >
+                      <Gift className="w-4 h-4 shrink-0" aria-hidden="true" />
+                      {LAUNCH_OFFER_COPY.en.ribbon}
+                    </Link>
+                  </div>
+                )}
+
                 {/* Badge */}
-                <div className="inline-flex items-center gap-2 bg-white border border-orange-200 text-orange-700 px-5 py-2.5 rounded-full text-sm font-semibold mb-8 shadow-lg">
-                  <Crown className="w-5 h-5" />
-                  <span>#1 CRM for Growing Teams</span>
+                <div className="inline-flex items-center gap-2 bg-white border border-orange-200 text-orange-800 px-5 py-2.5 rounded-full text-sm font-semibold mb-8 shadow-lg">
+                  <Crown className="w-5 h-5" aria-hidden="true" />
+                  <span>Swiss CRM for private clubs and sales teams</span>
                 </div>
 
-                {/* Headline */}
+                {/* Headline: the page's one H1, with its main keywords */}
                 <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-slate-900 mb-6 leading-[1.05] tracking-tight">
-                  <span className="block">Sell smarter.</span>
-                  <span className="block">Close faster.</span>
+                  <span className="block">Run your club.</span>{' '}
+                  <span className="block">Close your sales.</span>{' '}
                   <span className="block">
-                    <GradientText>Grow endlessly.</GradientText>
+                    <GradientText>One Swiss CRM.</GradientText>
                   </span>
                 </h1>
 
                 {/* Subheadline */}
-                <p className="text-lg sm:text-xl text-slate-600 mb-10 max-w-xl mx-auto lg:mx-0 leading-relaxed">
-                  The all-in-one CRM that combines powerful pipeline management with{' '}
-                  <span className="text-orange-700 font-semibold">Intelligent Sales Writer</span>.
+                <p className="text-lg sm:text-xl text-slate-700 mb-10 max-w-xl mx-auto lg:mx-0 leading-relaxed">
+                  CadenceE is the CRM for{' '}
+                  <Link to={marketingPath('private-clubs', 'en')} data-track="nav-private-clubs" className="text-orange-700 font-semibold hover:underline underline-offset-4">private members’ clubs</Link>,{' '}
+                  <Link to={marketingPath('hospitality', 'en')} data-track="nav-hospitality" className="text-orange-700 font-semibold hover:underline underline-offset-4">hospitality</Link> and{' '}
+                  <Link to={marketingPath('sales', 'en')} data-track="nav-sales" className="text-orange-700 font-semibold hover:underline underline-offset-4">sales teams</Link>:
+                  leads followed to the deposit, contracts signed online, members, events, tabs and billing with QR-bill and TWINT, email and an AI assistant.
                 </p>
 
                 {/* CTA Buttons */}
                 <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start mb-12">
-                  <Link
-                    to="/login"
+                  <CtaLink
+                    kind="signup"
+                    lang="en"
                     className="group bg-slate-900 hover:bg-slate-800 text-white px-8 py-4 rounded-2xl font-semibold text-lg flex items-center justify-center gap-3 shadow-xl hover:shadow-2xl transition-all duration-200"
                   >
-                    <span>Start Free Trial</span>
-                    <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                  </Link>
-                  <Link
-                    to="/help"
+                    <span>{signupLabel}</span>
+                    <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" aria-hidden="true" />
+                  </CtaLink>
+                  <CtaLink
+                    kind="demo"
+                    lang="en"
                     className="group bg-white hover:bg-slate-50 text-slate-900 px-8 py-4 rounded-2xl font-semibold text-lg border-2 border-slate-200 hover:border-orange-300 flex items-center justify-center gap-3 shadow-lg transition-all duration-200"
                   >
-                    <Play className="w-5 h-5 text-orange-600" />
-                    Watch Demo
-                  </Link>
+                    <Play className="w-5 h-5 text-orange-600" aria-hidden="true" />
+                    Request a demo
+                  </CtaLink>
                 </div>
 
-                {/* Trust indicators */}
+                {/* Who uses it, and in which languages: only what is true */}
                 <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-6">
-                  <div className="flex -space-x-2">
-                    {[...Array(5)].map((_, i) => (
-                      <div 
-                        key={i} 
-                        className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-400 to-amber-500 border-2 border-white flex items-center justify-center text-white text-xs font-bold shadow-md"
+                  <div className="flex -space-x-2" aria-hidden="true">
+                    {['EN', 'FR', 'DE'].map((code) => (
+                      <div
+                        key={code}
+                        className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-500 to-amber-500 border-2 border-white flex items-center justify-center text-white text-xs font-bold shadow-md"
                       >
-                        {String.fromCharCode(65 + i)}
+                        {code}
                       </div>
                     ))}
                   </div>
-                  <div>
-                    <div className="flex items-center gap-1 mb-1">
-                      {[...Array(5)].map((_, i) => (
-                        <Star key={i} className="w-4 h-4 fill-amber-400 text-amber-400" />
-                      ))}
-                      <span className="text-sm font-bold text-slate-900 ml-1">4.9</span>
-                    </div>
-                    <p className="text-sm text-slate-500">
-                      Trusted by <span className="font-semibold text-orange-700">10,000+</span> sales teams
+                  <div className="text-center sm:text-left">
+                    <p className="text-sm font-semibold text-slate-900 mb-1">Built in Switzerland · English, French, German</p>
+                    <p className="text-sm text-slate-600">
+                      In daily use at <span className="font-semibold text-orange-800">Pavillon 46</span>, a private members’ club in La Croix-sur-Lutry, Vaud
                     </p>
                   </div>
                 </div>
@@ -455,7 +460,7 @@ export default function Homepage() {
                         />
                         <Lock className="w-3 h-3 text-emerald-500 relative" style={{ animation: 'pulse 1.5s ease-in-out infinite, icon-wiggle 6s ease-in-out infinite' }} />
                         <span className="relative">
-                          cadence.app/dashboard
+                          www.cadencee.ai/dashboard
                           <span 
                             className="absolute right-0 top-0 h-full w-0.5 bg-orange-500"
                             style={{ animation: 'pulse 1s ease-in-out infinite' }}
@@ -472,8 +477,8 @@ export default function Homepage() {
                       {[
                         { label: 'Active Leads', value: '2,847', icon: Users, color: 'blue', delay: 0, trend: '+12%' },
                         { label: 'Active Deals', value: '183', icon: Target, color: 'orange', delay: 0.1, trend: '+8%' },
-                        { label: 'Pipeline', value: '$1.2M', icon: TrendingUp, color: 'emerald', delay: 0.2, trend: '+23%' },
-                        { label: 'Won This Month', value: '47', icon: Award, color: 'violet', delay: 0.3, trend: '+15%' },
+                        { label: 'Pipeline', value: 'CHF 1.2M', icon: TrendingUp, color: 'emerald', delay: 0.2, trend: '+23%' },
+                        { label: 'Deposits Paid', value: '47', icon: Award, color: 'violet', delay: 0.3, trend: '+15%' },
                       ].map((stat) => (
                         <div 
                           key={stat.label}
@@ -533,7 +538,7 @@ export default function Homepage() {
                       />
                       
                       <div className="flex items-center justify-between mb-4 relative">
-                        <h4 
+                        <p 
                           className="font-semibold text-slate-900 flex items-center gap-2"
                           style={{ animation: 'subtle-sway 6s ease-in-out infinite' }}
                         >
@@ -541,24 +546,24 @@ export default function Homepage() {
                             className="w-4 h-4 text-orange-500" 
                             style={{ animation: 'pulse 2s ease-in-out infinite, icon-wiggle 5s ease-in-out infinite 1s' }}
                           />
-                          Pipeline Stages
-                        </h4>
+                          Lead Phases
+                        </p>
                         <span 
                           className="text-xs font-medium text-orange-700 bg-orange-50 px-2 py-1 rounded-full flex items-center gap-1"
                           style={{ animation: 'pulse 1.5s ease-in-out infinite, text-glow 2s ease-in-out infinite' }}
                         >
                           <TrendingUp className="w-3 h-3" />
-                          $1.2M Total
+                          CHF 1.2M Total
                         </span>
                       </div>
                       <div className="flex gap-2 relative">
-                        {['Qualification', 'Proposal', 'Negotiation', 'Won'].map((stage, i) => (
+                        {['Outreach', 'Meeting', 'Contract', 'Signature', 'Deposit'].map((stage, i) => (
                           <div key={stage} className="flex-1 group cursor-pointer">
                             <div className="relative h-3 mb-2">
                               <div className="absolute inset-0 rounded-full bg-slate-100" />
                               <div 
                                 className={`absolute inset-0 rounded-full origin-left ${
-                                  i === 3 ? 'bg-gradient-to-r from-emerald-400 to-emerald-500' : 'bg-gradient-to-r from-orange-300 to-amber-400'
+                                  i === 4 ? 'bg-gradient-to-r from-emerald-400 to-emerald-500' : 'bg-gradient-to-r from-orange-300 to-amber-400'
                                 } group-hover:shadow-lg transition-shadow`}
                                 style={{ 
                                   opacity: 1 - i * 0.15,
@@ -593,8 +598,8 @@ export default function Homepage() {
                         </div>
                         <div className="space-y-1.5">
                           {[
-                            { text: 'Sarah closed deal with TechFlow', time: '2m ago', color: 'emerald' },
-                            { text: 'New lead: Enterprise inquiry', time: '5m ago', color: 'blue' },
+                            { text: 'Sarah: contract signed, deposit paid', time: '2m ago', color: 'emerald' },
+                            { text: 'New lead from the website form', time: '5m ago', color: 'blue' },
                             { text: 'AI drafted 3 follow-up emails', time: '8m ago', color: 'orange' },
                           ].map((activity, i) => (
                             <div 
@@ -640,14 +645,14 @@ export default function Homepage() {
                         className="text-sm font-bold text-slate-900 flex items-center gap-1"
                         style={{ animation: 'text-glow 2s ease-in-out infinite' }}
                       >
-                        Deal Won! 
+                        Deposit Paid! 
                         <span style={{ animation: 'sparkle-spin 2s linear infinite' }}>🎉</span>
                       </p>
                       <p 
                         className="text-xs text-emerald-700 font-semibold"
                         style={{ animation: 'subtle-sway 3s ease-in-out infinite' }}
                       >
-                        +$48,500 • Acme Corp
+                        +CHF 4,800 • Membership
                       </p>
                     </div>
                     {/* Confetti particles */}
@@ -712,7 +717,7 @@ export default function Homepage() {
                 >
                   <div className="bg-gradient-to-r from-violet-500 to-purple-600 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-lg flex items-center gap-1">
                     <Zap className="w-3 h-3" style={{ animation: 'sparkle-spin 1s linear infinite' }} />
-                    Real-time Sync
+                    FR · DE · EN
                   </div>
                 </div>
 
@@ -761,29 +766,29 @@ export default function Homepage() {
         </section>
 
         {/* ==================== STATS SECTION ==================== */}
-        <section className="py-20 bg-gradient-to-r from-orange-600 via-amber-500 to-orange-600 relative">
+        <section className="py-20 bg-gradient-to-r from-orange-600 via-amber-500 to-orange-600 relative" aria-label="CadenceE in numbers">
           <div className="w-full max-w-[1600px] mx-auto px-6 lg:px-12">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8">
+            <ul className="grid grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8">
               {[
-                { value: '10K+', label: 'Active Users', icon: Users },
-                { value: '2M+', label: 'Deals Tracked', icon: Target },
-                { value: '500K+', label: 'Emails Generated', icon: Mail },
-                { value: '99.9%', label: 'Uptime', icon: Shield },
+                { value: '5', label: 'Lead phases, outreach to deposit', icon: Target },
+                { value: '3', label: 'Languages: EN, FR, DE', icon: Globe },
+                { value: '4', label: 'Ways to pay: card, TWINT, SEPA, QR-bill', icon: Mail },
+                { value: '2', label: 'Accounting exports: Bexio, Abacus', icon: Shield },
               ].map((stat) => (
-                <div key={stat.label} className="text-center text-white">
-                  <div className="w-14 h-14 rounded-xl bg-white/20 flex items-center justify-center mx-auto mb-4">
+                <li key={stat.label} className="text-center text-white">
+                  <div className="w-14 h-14 rounded-xl bg-white/20 flex items-center justify-center mx-auto mb-4" aria-hidden="true">
                     <stat.icon className="w-7 h-7 text-white" />
                   </div>
                   <div className="text-4xl lg:text-5xl font-bold mb-1">{stat.value}</div>
-                  <div className="text-white/80 font-medium">{stat.label}</div>
-                </div>
+                  <div className="text-white font-medium">{stat.label}</div>
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
         </section>
 
         {/* ==================== FEATURES SECTION ==================== */}
-        <section id="features" className="py-32 bg-slate-950 relative overflow-hidden">
+        <section id="features" className={`py-32 bg-slate-950 relative overflow-hidden ${BELOW_FOLD}`}>
           {/* Animated background */}
           <div className="absolute inset-0">
             {/* Gradient orbs */}
@@ -977,19 +982,22 @@ export default function Homepage() {
                 style={{ animation: 'glow-border 3s ease-in-out infinite' }}
               >
                 <Gem className="w-4 h-4" style={{ animation: 'icon-bounce 2s ease-in-out infinite' }} />
-                Powerful Features
+                CRM features
               </div>
               <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-6">
-                Everything you need to{' '}
-                <span 
+                Everything your club and sales team need,{' '}
+                <span
                   className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-amber-400 to-orange-400"
                   style={{ animation: 'counter-glow 3s ease-in-out infinite' }}
                 >
-                  dominate
+                  in one CRM
                 </span>
               </h2>
-              <p className="text-lg text-slate-500 max-w-2xl mx-auto">
-                A complete CRM toolkit designed to supercharge your sales process
+              <p className="text-lg text-slate-300 max-w-2xl mx-auto">
+                From the first enquiry to the monthly statement: leads, contracts, members, events, billing and email.{' '}
+                <Link to={marketingPath('features', 'en')} data-track="nav-features" className="font-semibold text-orange-300 underline underline-offset-4 hover:text-orange-200">
+                  See every feature
+                </Link>
               </p>
             </div>
 
@@ -1027,9 +1035,9 @@ export default function Homepage() {
                         >
                           <Kanban className="w-8 h-8 text-white" />
                         </div>
-                        <h3 className="text-3xl lg:text-4xl font-bold text-white mb-3">Visual Pipeline</h3>
+                        <h3 className="text-3xl lg:text-4xl font-bold text-white mb-3"><Link to={marketingPath('sales', 'en')} data-track="nav-sales" className="hover:text-orange-300 transition-colors">Five-Phase Lead Tracker</Link></h3>
                         <p className="text-white/80 text-lg max-w-md">
-                          Drag-and-drop Kanban board that makes managing deals effortless and intuitive.
+                          Outreach, meeting, contract, signature, deposit: every lead on a board you drag across, ending with money in the bank.
                         </p>
                       </div>
                       <div className="hidden lg:block">
@@ -1038,7 +1046,7 @@ export default function Homepage() {
                             className="text-4xl font-bold text-white mb-1"
                             style={{ animation: 'counter-glow 2s ease-in-out infinite' }}
                           >
-                            $428K
+                            CHF 428K
                           </div>
                           <div className="text-sm text-white/70">Pipeline value</div>
                         </div>
@@ -1048,11 +1056,11 @@ export default function Homepage() {
                     {/* Pipeline stages with animations */}
                     <div className="flex gap-3 mt-6">
                       {[
-                        { name: 'Qualification', count: 12, color: 'white' },
-                        { name: 'Proposal', count: 10, color: 'white' },
-                        { name: 'Negotiation', count: 8, color: 'white' },
-                        { name: 'Won', count: 8, color: 'emerald' },
-                        { name: 'Lost', count: 3, color: 'red' },
+                        { name: 'Outreach', count: 12, color: 'white' },
+                        { name: 'Meeting', count: 10, color: 'white' },
+                        { name: 'Contract', count: 8, color: 'white' },
+                        { name: 'Signature', count: 5, color: 'white' },
+                        { name: 'Deposit', count: 3, color: 'emerald' },
                       ].map((stage, i) => (
                         <div 
                           key={stage.name}
@@ -1063,7 +1071,7 @@ export default function Homepage() {
                           }`}
                           style={{ animationDelay: `${i * 100}ms` }}
                         >
-                          <div className="text-xs text-white/70 mb-1">{stage.name}</div>
+                          <div className="text-xs text-white/90 mb-1 truncate">{stage.name}</div>
                           <div 
                             className="text-xl font-bold text-white group-hover/stage:scale-110 transition-transform"
                             style={{ animation: `count-up 0.5s ease-out ${i * 0.1}s both` }}
@@ -1089,8 +1097,8 @@ export default function Homepage() {
                     >
                       <Users className="w-7 h-7 text-white" />
                     </div>
-                    <h3 className="text-xl font-bold text-white mb-2">Lead Management</h3>
-                    <p className="text-slate-500 mb-4 flex-1">Capture, score, nurture & convert leads to deals with ease.</p>
+                    <h3 className="text-xl font-bold text-white mb-2"><Link to={marketingPath('sales', 'en')} data-track="nav-sales" className="hover:text-orange-300 transition-colors">Lead Management</Link></h3>
+                    <p className="text-slate-300 mb-4 flex-1">Score and assign leads, block duplicates, record referrals and partners, import with a dry run.</p>
                     
                     {/* Mini visual */}
                     <div className="flex gap-2">
@@ -1124,12 +1132,12 @@ export default function Homepage() {
                       </div>
                       <span className="text-xs font-bold text-violet-400 bg-violet-500/10 px-2 py-1 rounded-full border border-violet-500/20">AI</span>
                     </div>
-                    <h3 className="text-xl font-bold text-white mb-2">Intelligent Sales Writer</h3>
-                    <p className="text-slate-500 mb-4 flex-1">5 copy types with adjustable tones and instant generation.</p>
+                    <h3 className="text-xl font-bold text-white mb-2"><Link to={marketingPath('ai', 'en')} data-track="nav-ai" className="hover:text-orange-300 transition-colors">AI Sales Writer</Link></h3>
+                    <p className="text-slate-300 mb-4 flex-1">Built on Claude: emails, follow-ups and notes in your tone, for you to review and send.</p>
                     
                     {/* Mini visual - typing animation */}
                     <div className="bg-slate-800/50 rounded-xl p-3 border border-slate-700/50">
-                      <div className="flex items-center gap-2 text-sm text-slate-500">
+                      <div className="flex items-center gap-2 text-sm text-slate-300">
                         <span>Generating</span>
                         <span className="flex gap-1">
                           <span className="w-1.5 h-1.5 rounded-full bg-violet-400" style={{ animation: 'bounce 0.6s ease-in-out infinite' }} />
@@ -1154,8 +1162,8 @@ export default function Homepage() {
                     >
                       <UserCircle className="w-7 h-7 text-white" />
                     </div>
-                    <h3 className="text-xl font-bold text-white mb-2">Contact Database</h3>
-                    <p className="text-slate-500 mb-4 flex-1">Complete interaction history at your fingertips.</p>
+                    <h3 className="text-xl font-bold text-white mb-2"><Link to={marketingPath('membership', 'en')} data-track="nav-membership" className="hover:text-orange-300 transition-colors">Members & Households</Link></h3>
+                    <p className="text-slate-300 mb-4 flex-1">Applications, renewals with at-risk scores, households and corporate memberships.</p>
                     
                     {/* Mini visual - avatars */}
                     <div className="flex -space-x-2">
@@ -1168,7 +1176,7 @@ export default function Homepage() {
                           {String.fromCharCode(65 + i)}
                         </div>
                       ))}
-                      <div className="w-8 h-8 rounded-full bg-slate-700 border-2 border-slate-800 flex items-center justify-center text-xs font-bold text-slate-500">
+                      <div className="w-8 h-8 rounded-full bg-slate-700 border-2 border-slate-800 flex items-center justify-center text-xs font-bold text-slate-200">
                         +99
                       </div>
                     </div>
@@ -1187,8 +1195,8 @@ export default function Homepage() {
                     >
                       <Building2 className="w-6 h-6 text-white" />
                     </div>
-                    <h3 className="text-lg font-bold text-white mb-1">Company Accounts</h3>
-                    <p className="text-slate-500 text-sm">Link contacts and deals to organizations.</p>
+                    <h3 className="text-lg font-bold text-white mb-1"><Link to={marketingPath('e-signature', 'en')} data-track="nav-e-signature" className="hover:text-orange-300 transition-colors">E-Signature Contracts</Link></h3>
+                    <p className="text-slate-300 text-sm">Signed online without an account, with the deposit at signing.</p>
                   </div>
                 </div>
               </div>
@@ -1204,8 +1212,8 @@ export default function Homepage() {
                     >
                       <CheckSquare className="w-6 h-6 text-white" />
                     </div>
-                    <h3 className="text-lg font-bold text-white mb-1">Task Management</h3>
-                    <p className="text-slate-500 text-sm">Link tasks to leads & deals for organized workflow.</p>
+                    <h3 className="text-lg font-bold text-white mb-1"><Link to={marketingPath('hospitality', 'en')} data-track="nav-hospitality" className="hover:text-orange-300 transition-colors">Events & Reservations</Link></h3>
+                    <p className="text-slate-300 text-sm">Waitlists, private-event hire, visits and check-ins.</p>
                   </div>
                 </div>
               </div>
@@ -1218,8 +1226,8 @@ export default function Homepage() {
                     <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center mb-4 shadow-lg shadow-cyan-500/25 group-hover:scale-110 group-hover:rotate-6 transition-all duration-300">
                       <Activity className="w-6 h-6 text-white" />
                     </div>
-                    <h3 className="text-lg font-bold text-white mb-1">Activity Tracking</h3>
-                    <p className="text-slate-500 text-sm">Log calls, meetings, emails & notes.</p>
+                    <h3 className="text-lg font-bold text-white mb-1"><Link to={marketingPath('hospitality', 'en')} data-track="nav-hospitality" className="hover:text-orange-300 transition-colors">Tabs & Lightspeed POS</Link></h3>
+                    <p className="text-slate-300 text-sm">Bar and restaurant tabs flow into house accounts.</p>
                   </div>
                 </div>
               </div>
@@ -1231,8 +1239,8 @@ export default function Homepage() {
                     <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center mb-4 shadow-lg shadow-pink-500/25 group-hover:scale-110 group-hover:rotate-6 transition-all duration-300">
                       <FileText className="w-6 h-6 text-white" />
                     </div>
-                    <h3 className="text-lg font-bold text-white mb-1">Templates Library</h3>
-                    <p className="text-slate-500 text-sm">Sales, Follow-up, Meetings & more.</p>
+                    <h3 className="text-lg font-bold text-white mb-1"><Link to={marketingPath('billing', 'en')} data-track="nav-billing" className="hover:text-orange-300 transition-colors">Swiss Payments</Link></h3>
+                    <p className="text-slate-300 text-sm">Card, TWINT, SEPA and QR-bill, matched with your bank file.</p>
                   </div>
                 </div>
               </div>
@@ -1244,8 +1252,8 @@ export default function Homepage() {
                     <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center mb-4 shadow-lg shadow-indigo-500/25 group-hover:scale-110 group-hover:rotate-6 transition-all duration-300">
                       <BarChart3 className="w-6 h-6 text-white" />
                     </div>
-                    <h3 className="text-lg font-bold text-white mb-1">Analytics Dashboard</h3>
-                    <p className="text-slate-500 text-sm">Pipeline value & performance stats.</p>
+                    <h3 className="text-lg font-bold text-white mb-1"><Link to={marketingPath('features', 'en')} data-track="nav-features" className="hover:text-orange-300 transition-colors">Reports & Forecast</Link></h3>
+                    <p className="text-slate-300 text-sm">Sales, membership and hospitality reports, with an audit log.</p>
                   </div>
                 </div>
               </div>
@@ -1261,15 +1269,15 @@ export default function Homepage() {
                       </div>
                       <span className="text-xs font-bold text-teal-400 bg-teal-500/10 px-2 py-1 rounded-full border border-teal-500/20">Teams</span>
                     </div>
-                    <h3 className="text-lg font-bold text-white mb-1">Organizations</h3>
-                    <p className="text-slate-500 text-sm mb-3 flex-1">Create teams, invite members & manage permissions.</p>
+                    <h3 className="text-lg font-bold text-white mb-1"><Link to={marketingPath('swiss', 'en')} data-track="nav-swiss" className="hover:text-orange-300 transition-colors">Roles & Workspaces</Link></h3>
+                    <p className="text-slate-300 text-sm mb-3 flex-1">Invite your team with roles and permissions; sign in with Google, Microsoft or a passkey.</p>
                     <div className="flex items-center gap-2">
                       <div className="flex -space-x-2">
                         {['bg-teal-500', 'bg-emerald-500', 'bg-cyan-500'].map((bg, i) => (
                           <div key={i} className={`w-7 h-7 rounded-full ${bg} border-2 border-slate-800`} />
                         ))}
                       </div>
-                      <span className="text-xs text-slate-500"><span className="text-teal-400 font-semibold">+5</span></span>
+                      <span className="text-xs text-slate-300"><span className="text-teal-300 font-semibold">+5</span></span>
                     </div>
                   </div>
                 </div>
@@ -1285,13 +1293,13 @@ export default function Homepage() {
                       </div>
                       <span className="text-xs font-bold text-fuchsia-400 bg-fuchsia-500/10 px-2 py-1 rounded-full border border-fuchsia-500/20">History</span>
                     </div>
-                    <h3 className="text-lg font-bold text-white mb-1">Copy History</h3>
-                    <p className="text-slate-500 text-sm mb-3 flex-1">Access, search & regenerate previous content.</p>
+                    <h3 className="text-lg font-bold text-white mb-1"><Link to={marketingPath('email', 'en')} data-track="nav-email" className="hover:text-orange-300 transition-colors">Email Automation</Link></h3>
+                    <p className="text-slate-300 text-sm mb-3 flex-1">One outbox, sequences, newsletters and campaigns with consent.</p>
                     <div className="space-y-1">
-                      {['Sales Email', 'Follow-up'].map((type) => (
+                      {['Sequence', 'Newsletter'].map((type) => (
                         <div key={type} className="flex items-center gap-2 text-xs">
                           <div className="w-1.5 h-1.5 rounded-full bg-fuchsia-400" />
-                          <span className="text-slate-500">{type}</span>
+                          <span className="text-slate-300">{type}</span>
                         </div>
                       ))}
                     </div>
@@ -1303,8 +1311,33 @@ export default function Homepage() {
           </div>
         </section>
 
+        {/* ==================== SOLUTIONS (internal links to every topic page) ==================== */}
+        <section className={`py-24 bg-slate-50 relative ${BELOW_FOLD}`} aria-labelledby="solutions-heading">
+          <div className="w-full max-w-[1600px] mx-auto px-6 lg:px-12">
+            <div className="max-w-3xl mb-12">
+              <p className="inline-flex items-center gap-2 bg-orange-100 text-orange-800 px-4 py-2 rounded-full text-sm font-semibold mb-6">
+                <Briefcase className="w-4 h-4" aria-hidden="true" />
+                Solutions
+              </p>
+              <h2 id="solutions-heading" className="text-4xl md:text-5xl font-bold text-slate-900 mb-5">
+                A CRM for clubs, hospitality and sales, <GradientText>built in Switzerland</GradientText>
+              </h2>
+              <p className="text-xl text-slate-700">
+                Each page explains one part of CadenceE in depth, with how it works and the questions people ask.
+                Also in <Link to={marketingPath('home', 'fr')} hrefLang="fr" lang="fr" data-track="nav-lang-fr" className="font-semibold text-orange-700 underline underline-offset-4">français</Link> and{' '}
+                <Link to={marketingPath('home', 'de')} hrefLang="de" lang="de" data-track="nav-lang-de" className="font-semibold text-orange-700 underline underline-offset-4">Deutsch</Link>.
+              </p>
+            </div>
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              {(['features', ...LANDING_PAGE_IDS] as MarketingPageId[]).map((id) => (
+                <PageCard key={id} id={id} lang="en" />
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* ==================== PROBLEM/SOLUTION ==================== */}
-        <section className="py-28 bg-white relative overflow-hidden">
+        <section className={`py-28 bg-white relative overflow-hidden ${BELOW_FOLD}`}>
           <AnimatedShapes />
           
           <div className="w-full max-w-[1600px] mx-auto px-6 lg:px-12 relative">
@@ -1316,10 +1349,10 @@ export default function Homepage() {
                 </div>
               </ParticleExplosion>
               <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold text-slate-900 mb-6">
-                Your sales stack is <GlitchText><GradientText>broken</GradientText></GlitchText>
+                Your club’s tools <GlitchText><GradientText>don’t talk</GradientText></GlitchText> to each other
               </h2>
               <p className="text-xl text-slate-600 max-w-3xl mx-auto">
-                Juggling spreadsheets, email clients, and disconnected tools kills productivity.
+                Enquiries in a spreadsheet, contracts in a word processor, members in one tool and bar tabs in another: every hand-over loses a lead or a payment.
               </p>
             </AnimatedSection>
 
@@ -1337,16 +1370,16 @@ export default function Homepage() {
                         </ShakeOnHover>
                         <div>
                           <h3 className="text-2xl font-bold text-slate-700">The Old Way</h3>
-                          <p className="text-slate-500">Fragmented & frustrating</p>
+                          <p className="text-slate-600">Fragmented and frustrating</p>
                         </div>
                       </div>
                       <ul className="space-y-5">
                         {[
-                          { text: 'Data scattered across 5+ different apps', icon: Layers },
-                          { text: 'Hours wasted on manual data entry', icon: Activity },
-                          { text: 'Writing every email from scratch', icon: FileText },
-                          { text: 'No real-time visibility into deals', icon: BarChart3 },
-                          { text: 'Constant context switching', icon: MousePointerClick },
+                          { text: 'Enquiries, contracts and members in different tools', icon: Layers },
+                          { text: 'Deposits chased by email after signing', icon: Activity },
+                          { text: 'Monthly statements put together by hand', icon: FileText },
+                          { text: 'No warning before a member decides to leave', icon: BarChart3 },
+                          { text: 'Every email written from scratch', icon: MousePointerClick },
                         ].map((item, i) => (
                           <li 
                             key={i} 
@@ -1398,16 +1431,16 @@ export default function Homepage() {
                         </ShakeOnHover>
                         <div>
                           <h3 className="text-2xl font-bold">The CadenceE Way</h3>
-                          <p className="text-white/80">Unified & powerful</p>
+                          <p className="text-white">One record, from enquiry to member</p>
                         </div>
                       </div>
                       <ul className="space-y-5 relative">
                         {[
-                          { text: 'Everything in one platform', icon: Layers },
-                          { text: 'Smart automation saves hours', icon: Zap },
-                          { text: 'AI writes copy in seconds', icon: Sparkles },
-                          { text: 'Real-time pipeline analytics', icon: BarChart3 },
-                          { text: 'Stay focused, close more', icon: Target },
+                          { text: 'Leads, contracts, members and billing in one CRM', icon: Layers },
+                          { text: 'Contracts signed online, deposit at signing', icon: Zap },
+                          { text: 'AI drafts your emails, you confirm', icon: Sparkles },
+                          { text: 'Tabs, dues and statements with QR-bill and TWINT', icon: BarChart3 },
+                          { text: 'At-risk renewals flagged in time', icon: Target },
                         ].map((item, i) => (
                           <li 
                             key={i} 
@@ -1430,7 +1463,7 @@ export default function Homepage() {
         </section>
 
         {/* ==================== AI SPOTLIGHT ==================== */}
-        <section className="py-28 bg-slate-900 relative overflow-hidden">
+        <section className={`py-28 bg-slate-900 relative overflow-hidden ${BELOW_FOLD}`}>
           <AnimatedShapes />
           
           <div className="w-full max-w-[1600px] mx-auto px-6 lg:px-12 relative">
@@ -1439,24 +1472,24 @@ export default function Homepage() {
                 <ParticleExplosion>
                   <div className="inline-flex items-center gap-2 bg-orange-500/20 text-orange-400 px-4 py-2 rounded-full text-sm font-semibold mb-6 backdrop-blur-sm border border-orange-500/30 cursor-pointer">
                     <Zap className="w-4 h-4 animate-pulse" />
-                    Intelligent Writer
+                    AI sales writer
                   </div>
                 </ParticleExplosion>
                 <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">
-                  Write sales copy in{' '}
+                  The AI sales writer drafts in{' '}
                   <GlitchText><span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-400">seconds</span></GlitchText>
                 </h2>
-                <p className="text-xl text-slate-500 mb-10">
-                  Stop staring at blank screens. Our AI understands your brand voice (Professional, Friendly, or Persuasive) and generates personalized content that converts.
+                <p className="text-xl text-slate-300 mb-10">
+                  Built on Claude. Pick the goal, the length and your brand voice (professional, friendly or persuasive); the writer drafts, and a person reviews before anything is sent. The <Link to={marketingPath('ai', 'en')} data-track="nav-ai" className="font-semibold text-orange-300 underline underline-offset-4">AI assistant</Link> works the same way: it proposes, you confirm.
                 </p>
 
                 <div className="space-y-5">
                   {[
-                    { icon: Mail, title: 'Sales Emails', desc: 'Cold outreach that gets responses' },
+                    { icon: Mail, title: 'Sales Emails', desc: 'First contact with a new lead' },
                     { icon: MessageSquare, title: 'Follow-ups', desc: 'Keep conversations moving' },
                     { icon: FileText, title: 'CRM Notes', desc: 'Document meetings instantly' },
                     { icon: Briefcase, title: 'Deal Messages', desc: 'Move stakeholders to action' },
-                    { icon: Activity, title: 'Workflow Messages', desc: 'Automate your sales process' },
+                    { icon: Activity, title: 'Workflow Messages', desc: 'For your sequences and automations' },
                   ].map((item, _i) => (
                     <div 
                       key={item.title} 
@@ -1468,8 +1501,8 @@ export default function Homepage() {
                         </div>
                       </ShakeOnHover>
                       <div>
-                        <h4 className="font-semibold text-white">{item.title}</h4>
-                        <p className="text-sm text-slate-500">{item.desc}</p>
+                        <h3 className="font-semibold text-white">{item.title}</h3>
+                        <p className="text-sm text-slate-300">{item.desc}</p>
                       </div>
                     </div>
                   ))}
@@ -1477,10 +1510,11 @@ export default function Homepage() {
 
                 <MagneticButton className="mt-10">
                   <RippleButton
-                    to="/login"
+                    to="/login?mode=register"
+                    track="cta-signup"
                     className="inline-flex items-center gap-2 bg-gradient-to-r from-orange-600 to-amber-500 text-white px-8 py-4 rounded-2xl font-semibold hover:shadow-xl hover:shadow-orange-500/25 group"
                   >
-                    Try Sales Writer Free
+                    Try the AI sales writer
                     <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                   </RippleButton>
                 </MagneticButton>
@@ -1495,9 +1529,9 @@ export default function Homepage() {
                           <Sparkles className="w-5 h-5 text-white animate-spin" style={{ animationDuration: '3s' }} />
                         </div>
                         <div>
-                          <h4 className="font-semibold text-white">Intelligent Sales Writer</h4>
-                          <p className="text-sm text-slate-500 flex items-center gap-1">
-                            Powered by AI <BouncingDots className="text-orange-400" />
+                          <p className="font-semibold text-white">AI Sales Writer</p>
+                          <p className="text-sm text-slate-400 flex items-center gap-1">
+                            Built on Claude <BouncingDots className="text-orange-400" />
                           </p>
                         </div>
                       </div>
@@ -1548,7 +1582,7 @@ export default function Homepage() {
         </section>
 
         {/* ==================== COPY WORKFLOW ==================== */}
-        <section className="py-28 bg-gradient-to-b from-slate-50 to-white relative overflow-hidden">
+        <section className={`py-28 bg-gradient-to-b from-slate-50 to-white relative overflow-hidden ${BELOW_FOLD}`}>
           <AnimatedShapes />
           
           {/* Additional animated background elements */}
@@ -1606,14 +1640,14 @@ export default function Homepage() {
                   style={{ animation: 'badge-bounce 3s ease-in-out infinite' }}
                 >
                   <Layers className="w-4 h-4" style={{ animation: 'icon-rotate 8s linear infinite' }} />
-                  Complete Copy Workflow
+                  Sales writer workflow
                 </div>
               </ParticleExplosion>
               <h2 className="text-4xl md:text-5xl font-bold text-slate-900 mb-6">
-                From idea to <GradientText>sent</GradientText> in clicks
+                Sales emails, from idea to <GradientText>sent</GradientText> in a few clicks
               </h2>
               <p className="text-xl text-slate-600 max-w-3xl mx-auto">
-                Generate, customize, save, and send — your complete sales copy toolkit
+                Draft, adjust, keep and send from the CRM’s outbox, on the lead or deal it belongs to
               </p>
             </AnimatedSection>
 
@@ -1811,7 +1845,7 @@ export default function Homepage() {
         </section>
 
         {/* ==================== HOW IT WORKS ==================== */}
-        <section id="how-it-works" className="py-28 bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 relative overflow-hidden">
+        <section id="how-it-works" className={`py-28 bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 relative overflow-hidden ${BELOW_FOLD}`}>
           {/* Animated background elements */}
           <div className="absolute inset-0">
             {[...Array(20)].map((_, i) => (
@@ -1846,14 +1880,14 @@ export default function Homepage() {
               <ParticleExplosion>
                 <div className="inline-flex items-center gap-2 bg-orange-500/20 text-orange-400 px-4 py-2 rounded-full text-sm font-semibold mb-6 backdrop-blur-sm border border-orange-500/30 cursor-pointer">
                   <Rocket className="w-4 h-4 animate-bounce" />
-                  Your Journey
+                  How it works
                 </div>
               </ParticleExplosion>
               <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-6">
-                From signup to <GradientText>success</GradientText>
+                How a club or sales team <GradientText>goes live</GradientText>
               </h2>
-              <p className="text-xl text-slate-500 max-w-2xl mx-auto">
-                Four simple steps to transform your sales process
+              <p className="text-xl text-slate-300 max-w-2xl mx-auto">
+                Four steps from a new workspace to leads, members and statements in one place
               </p>
             </AnimatedSection>
 
@@ -1880,10 +1914,10 @@ export default function Homepage() {
 
               <div className="grid grid-cols-4 gap-8 items-stretch">
                 {[
-                  { step: 1, icon: UserPlus, title: 'Create Account', desc: 'Sign up free in seconds. Create your organization or join an existing team.', color: 'from-orange-500 to-red-500' },
-                  { step: 2, icon: Settings, title: 'Set Brand Voice', desc: 'Configure your company name and choose your tone: Professional, Friendly, or Persuasive.', color: 'from-amber-500 to-orange-500' },
-                  { step: 3, icon: Database, title: 'Add Leads', desc: 'Import your leads, create contacts & companies. Log calls, meetings, and notes.', color: 'from-emerald-500 to-teal-500' },
-                  { step: 4, icon: Target, title: 'Convert & Close', desc: 'Convert qualified leads to deals. Track your pipeline and close more sales.', color: 'from-violet-500 to-purple-500' },
+                  { step: 1, icon: UserPlus, title: 'Create your workspace', desc: 'Sign up, name your workspace and invite colleagues with the roles they need.', color: 'from-orange-500 to-red-500' },
+                  { step: 2, icon: Settings, title: 'Set it up', desc: 'Add contract templates, payment methods (card, TWINT, SEPA, QR-bill) and your brand voice for the AI writer.', color: 'from-amber-500 to-orange-500' },
+                  { step: 3, icon: Database, title: 'Bring your data', desc: 'Import leads, contacts and members with a dry run first, and put the enquiry form on your website.', color: 'from-emerald-500 to-teal-500' },
+                  { step: 4, icon: Target, title: 'Sign, welcome, bill', desc: 'Leads sign online and pay the deposit, become members in one step, and get monthly statements.', color: 'from-violet-500 to-purple-500' },
                 ].map((item, i) => (
                   <AnimatedSection key={item.step} animation="fade-up" delay={i * 150} className="h-full">
                     <div className="relative flex flex-col items-center group h-full">
@@ -1913,7 +1947,7 @@ export default function Homepage() {
                         <div className={`absolute inset-0 rounded-2xl bg-gradient-to-br ${item.color} opacity-0 group-hover:opacity-10 transition-opacity duration-500 blur-xl`} />
                         
                         <h3 className="text-xl font-bold text-white mb-3 relative">{item.title}</h3>
-                        <p className="text-slate-500 text-sm leading-relaxed relative flex-1">{item.desc}</p>
+                        <p className="text-slate-300 text-sm leading-relaxed relative flex-1">{item.desc}</p>
                         
                         {/* Arrow indicator */}
                         {i < 3 && (
@@ -1935,10 +1969,10 @@ export default function Homepage() {
               
               <div className="space-y-12">
                 {[
-                  { step: 1, icon: UserPlus, title: 'Create Account', desc: 'Sign up free in seconds. Create your organization or join an existing team.', color: 'from-orange-500 to-red-500' },
-                  { step: 2, icon: Settings, title: 'Set Brand Voice', desc: 'Configure your company name and choose your tone: Professional, Friendly, or Persuasive.', color: 'from-amber-500 to-orange-500' },
-                  { step: 3, icon: Database, title: 'Add Leads', desc: 'Import your leads, create contacts & companies. Log calls, meetings, and notes.', color: 'from-emerald-500 to-teal-500' },
-                  { step: 4, icon: Target, title: 'Convert & Close', desc: 'Convert qualified leads to deals. Track your pipeline and close more sales.', color: 'from-violet-500 to-purple-500' },
+                  { step: 1, icon: UserPlus, title: 'Create your workspace', desc: 'Sign up, name your workspace and invite colleagues with the roles they need.', color: 'from-orange-500 to-red-500' },
+                  { step: 2, icon: Settings, title: 'Set it up', desc: 'Add contract templates, payment methods (card, TWINT, SEPA, QR-bill) and your brand voice for the AI writer.', color: 'from-amber-500 to-orange-500' },
+                  { step: 3, icon: Database, title: 'Bring your data', desc: 'Import leads, contacts and members with a dry run first, and put the enquiry form on your website.', color: 'from-emerald-500 to-teal-500' },
+                  { step: 4, icon: Target, title: 'Sign, welcome, bill', desc: 'Leads sign online and pay the deposit, become members in one step, and get monthly statements.', color: 'from-violet-500 to-purple-500' },
                 ].map((item, i) => (
                   <AnimatedSection key={item.step} animation="fade-right" delay={i * 100}>
                     <div className="relative flex gap-6 group">
@@ -1956,7 +1990,7 @@ export default function Homepage() {
                       {/* Content */}
                       <div className="flex-1 bg-white/5 backdrop-blur-xl rounded-2xl p-5 border border-white/10 hover:border-orange-500/30 transition-all duration-300">
                         <h3 className="text-lg font-bold text-white mb-2">{item.title}</h3>
-                        <p className="text-slate-500 text-sm">{item.desc}</p>
+                        <p className="text-slate-300 text-sm">{item.desc}</p>
                       </div>
                     </div>
                   </AnimatedSection>
@@ -1968,10 +2002,11 @@ export default function Homepage() {
             <AnimatedSection className="text-center mt-16" animation="fade-up" delay={600}>
               <MagneticButton>
                 <RippleButton
-                  to="/login"
+                  to="/login?mode=register"
+                  track="cta-signup"
                   className="inline-flex items-center gap-3 bg-gradient-to-r from-orange-600 to-amber-500 text-white px-10 py-5 rounded-2xl font-semibold text-lg shadow-2xl shadow-orange-500/30 hover:shadow-orange-500/50 group"
                 >
-                  <span>Start Your Journey</span>
+                  <span>{signupLabel}</span>
                   <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center group-hover:bg-white/30 group-hover:rotate-45 transition-all duration-300">
                     <ArrowRight className="w-5 h-5" />
                   </div>
@@ -1982,7 +2017,7 @@ export default function Homepage() {
         </section>
 
         {/* ==================== FAQ ==================== */}
-        <section id="faq" className="py-32 bg-white relative overflow-hidden">
+        <section id="faq" className={`py-32 bg-white relative overflow-hidden ${BELOW_FOLD}`}>
           {/* Background decoration */}
           <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-orange-50 to-transparent" />
           <div className="absolute bottom-0 left-0 w-96 h-96 bg-gradient-to-br from-amber-100 to-orange-100 rounded-full blur-3xl opacity-50 -translate-x-1/2 translate-y-1/2" />
@@ -1996,72 +2031,40 @@ export default function Homepage() {
                   FAQ
                 </div>
                 <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold text-slate-900 mb-6 leading-tight">
-                  Questions?<br />
+                  CRM questions?<br />
                   <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-600 to-amber-500">
                     Answers.
                   </span>
                 </h2>
-                <p className="text-lg text-slate-600 mb-8">
-                  Everything you need to know about CadenceE. Can't find what you're looking for?
+                <p className="text-lg text-slate-700 mb-8">
+                  What CadenceE does, who it is for, and how it handles payments, languages and data. Can't find what you're looking for?
                 </p>
-                <Link 
-                  to="/help" 
+                <CtaLink
+                  kind="contact"
+                  lang="en"
                   className="inline-flex items-center gap-2 text-orange-700 font-semibold hover:gap-3 transition-all"
                 >
                   Contact our team
-                  <ArrowRight className="w-4 h-4" />
-                </Link>
+                  <ArrowRight className="w-4 h-4" aria-hidden="true" />
+                </CtaLink>
               </div>
 
               {/* Right side - FAQ Items */}
               <div className="lg:col-span-3 space-y-4">
-                {[
-                  { 
-                    q: "What CRM features are included?", 
-                    a: "Full pipeline: Leads, Deals (Kanban), Contacts, Companies, Tasks (linked to leads/deals), and Activities (calls, meetings, emails, notes). Plus Intelligent Sales Writer!",
-                    icon: Layers,
-                    color: 'blue'
-                  },
-                  { 
-                    q: "How does the Intelligent Sales Writer work?", 
-                    a: "Choose from 5 content types, 6 goals, 3 brand tones, and 3 lengths. Adjust with one click — shorter, friendlier, or more persuasive. All saved to your history.",
-                    icon: Sparkles,
-                    color: 'violet'
-                  },
-                  { 
-                    q: "What copy types are available?", 
-                    a: "Sales Email, Follow-up, CRM Note, Deal Message, and Workflow Message. Use templates for quick starts.",
-                    icon: FileText,
-                    color: 'emerald'
-                  },
-                  { 
-                    q: "Can I convert leads to deals?", 
-                    a: "Yes! Convert qualified leads to deals with one click. All data transfers to your pipeline automatically.",
-                    icon: Target,
-                    color: 'orange'
-                  },
-                  { 
-                    q: "How do organizations work?", 
-                    a: "Create an org, invite team members, or join via invite link. Switch between organizations. All data is isolated per org.",
-                    icon: Users,
-                    color: 'cyan'
-                  },
-                  { 
-                    q: "Is my data secure?", 
-                    a: "Enterprise-grade: AES-256 encryption, JWT authentication, TOTP-based 2FA, complete data isolation per organization.",
-                    icon: Shield,
-                    color: 'rose'
-                  },
-                ].map((faq, i) => (
-                  <FAQItemNew key={i} question={faq.q} answer={faq.a} icon={faq.icon} color={faq.color} index={i} />
+                {HOME_FAQ.map((faq, i) => (
+                  <FAQItemNew key={faq.q} question={faq.q} answer={faq.a} icon={faq.icon} color={faq.color} index={i} />
                 ))}
+                <script
+                  type="application/ld+json"
+                  dangerouslySetInnerHTML={{ __html: serializeJsonLd(faqPageJsonLd(HOME_FAQ, 'en')) }}
+                />
               </div>
             </div>
           </div>
         </section>
 
         {/* ==================== SECURITY ==================== */}
-        <section className="py-32 bg-slate-950 relative overflow-hidden">
+        <section className={`py-32 bg-slate-950 relative overflow-hidden ${BELOW_FOLD}`}>
           {/* Security section animations */}
           <style>{`
             @keyframes security-pulse {
@@ -2153,16 +2156,16 @@ export default function Homepage() {
                 style={{ animation: 'badge-float 3s ease-in-out infinite' }}
               >
                 <Shield className="w-4 h-4" style={{ animation: 'lock-shake 2s ease-in-out infinite' }} />
-                Bank-Grade Security & Privacy
+                Security and privacy
               </div>
               <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-6">
-                Your data is{' '}
+                Your members’ data,{' '}
                 <span className="relative inline-block">
                   <span 
                     className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-cyan-400 to-emerald-400"
                     style={{ backgroundSize: '200% auto', animation: 'data-flow 3s linear infinite' }}
                   >
-                    fortress-protected
+                    kept private
                   </span>
                   <svg className="absolute -bottom-2 left-0 w-full" viewBox="0 0 200 8" fill="none">
                     <path d="M0 4C50 4 50 1 100 1C150 1 150 7 200 7" stroke="url(#security-underline)" strokeWidth="2" strokeLinecap="round" />
@@ -2176,8 +2179,8 @@ export default function Homepage() {
                   </svg>
                 </span>
               </h2>
-              <p className="text-lg text-slate-500 max-w-2xl mx-auto">
-                Enterprise-grade encryption, zero-trust architecture, and full compliance — security isn't a feature, it's our foundation.
+              <p className="text-lg text-slate-300 max-w-2xl mx-auto">
+                Passkeys and two-factor sign-in, roles and permissions, an audit log of every change, and privacy requests under the GDPR and the Swiss FADP.
               </p>
             </div>
 
@@ -2211,13 +2214,13 @@ export default function Homepage() {
                       </div>
                       <div className="flex items-center gap-2 bg-emerald-500/10 text-emerald-400 px-3 py-1.5 rounded-full text-xs font-semibold">
                         <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full" style={{ animation: 'pulse 1s ease-in-out infinite' }} />
-                        Always Protected
+                        Always recorded
                       </div>
                     </div>
                     
-                    <h3 className="text-2xl font-bold text-white mb-3">AES-256 End-to-End Encryption</h3>
-                    <p className="text-slate-500 mb-8 leading-relaxed">
-                      The same encryption standard used by banks and governments worldwide. Your data is encrypted at rest, in transit, and during processing — we can't read it even if we wanted to.
+                    <h3 className="text-2xl font-bold text-white mb-3">An Audit Log of Every Change</h3>
+                    <p className="text-slate-300 mb-8 leading-relaxed">
+                      Every change to a lead, member, contract or payment is recorded with who made it and when. The ledger is only ever reversed, never edited, so the history always adds up.
                     </p>
                     
                     {/* Visual representation */}
@@ -2229,7 +2232,7 @@ export default function Homepage() {
                             style={{ backgroundSize: '200% 100%', animation: 'data-flow 2s linear infinite' }}
                           />
                         </div>
-                        <span className="text-emerald-400 text-sm font-mono">256-bit</span>
+                        <span className="text-emerald-400 text-sm font-mono">audit log</span>
                       </div>
                       <div className="font-mono text-xs text-slate-500 break-all flex gap-1">
                         {[...Array(32)].map((_, i) => (
@@ -2242,9 +2245,9 @@ export default function Homepage() {
                           </span>
                         ))}
                       </div>
-                      <div className="mt-3 flex items-center gap-2 text-xs text-slate-500">
+                      <div className="mt-3 flex items-center gap-2 text-xs text-slate-300">
                         <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                        <span>Zero-knowledge architecture</span>
+                        <span>Ledger reversed, never edited</span>
                       </div>
                     </div>
                   </div>
@@ -2265,8 +2268,8 @@ export default function Homepage() {
                       <Shield className="w-6 h-6 text-white" style={{ animation: 'pulse 2s ease-in-out infinite' }} />
                     </div>
                     
-                    <h3 className="text-lg font-bold text-white mb-2">Multi-Factor Auth</h3>
-                    <p className="text-slate-500 text-sm mb-4">TOTP, SMS, or hardware keys — choose your security level.</p>
+                    <h3 className="text-lg font-bold text-white mb-2">Passkeys and Two-Factor</h3>
+                    <p className="text-slate-300 text-sm mb-4">Sign in with a passkey, Google or Microsoft, and add two-factor authentication.</p>
                     
                     {/* Mini visual - animated OTP */}
                     <div className="flex items-center gap-2">
@@ -2298,8 +2301,8 @@ export default function Homepage() {
                       <Database className="w-6 h-6 text-white" style={{ animation: 'pulse 2s ease-in-out infinite 0.5s' }} />
                     </div>
                     
-                    <h3 className="text-lg font-bold text-white mb-2">Tenant Isolation</h3>
-                    <p className="text-slate-500 text-sm mb-4">Complete data separation — your data never touches another org's.</p>
+                    <h3 className="text-lg font-bold text-white mb-2">Roles and Permissions</h3>
+                    <p className="text-slate-300 text-sm mb-4">Each colleague sees and changes what their role allows, in each of your workspaces.</p>
                     
                     {/* Mini visual - animated bars */}
                     <div className="flex items-center gap-2">
@@ -2329,8 +2332,8 @@ export default function Homepage() {
                       <Globe className="w-6 h-6 text-white" style={{ animation: 'icon-rotate 20s linear infinite' }} />
                     </div>
                     
-                    <h3 className="text-lg font-bold text-white mb-2">GDPR & CCPA Ready</h3>
-                    <p className="text-slate-500 text-sm mb-4">Full data export, deletion, and consent management built-in.</p>
+                    <h3 className="text-lg font-bold text-white mb-2">GDPR and Swiss FADP</h3>
+                    <p className="text-slate-300 text-sm mb-4">Export and erasure requests handled in the CRM, with consent and one-click unsubscribe.</p>
                     
                     {/* Mini visual - animated connection */}
                     <div className="flex items-center gap-3">
@@ -2359,8 +2362,8 @@ export default function Homepage() {
                   >
                     <CheckCircle2 className="w-7 h-7 text-emerald-400" style={{ animation: 'pulse 1.5s ease-in-out infinite' }} />
                   </div>
-                  <span className="text-white font-bold">SOC 2 Type II</span>
-                  <span className="text-slate-500 text-sm">Audited & Certified</span>
+                  <span className="text-white font-bold">System Health</span>
+                  <span className="text-slate-300 text-sm">The CRM checks its own database, jobs and email outbox</span>
                   <div className="mt-2 flex items-center gap-1">
                     {[...Array(3)].map((_, i) => (
                       <div 
@@ -2375,12 +2378,12 @@ export default function Homepage() {
             </div>
             
             {/* Trust indicators */}
-            <div className="mt-12 flex flex-wrap justify-center items-center gap-8 text-slate-500 text-sm">
+            <div className="mt-12 flex flex-wrap justify-center items-center gap-8 text-slate-300 text-sm">
               {[
-                { icon: Lock, text: '99.99% Uptime SLA' },
-                { icon: Shield, text: 'Daily Backups' },
-                { icon: Globe, text: 'EU & US Data Centers' },
-                { icon: CheckCircle2, text: '24/7 Monitoring' },
+                { icon: Lock, text: 'Passkey sign-in' },
+                { icon: Shield, text: 'Two-factor authentication' },
+                { icon: Globe, text: 'GDPR and FADP requests' },
+                { icon: CheckCircle2, text: 'Audit log' },
               ].map((item, i) => (
                 <div 
                   key={item.text}
@@ -2396,7 +2399,7 @@ export default function Homepage() {
         </section>
 
         {/* ==================== FINAL CTA ==================== */}
-        <section className="py-28 relative overflow-hidden">
+        <section className={`py-28 relative overflow-hidden ${BELOW_FOLD}`}>
           <div 
             className="absolute inset-0 bg-gradient-to-br from-orange-600 via-amber-500 to-orange-600 bg-[length:300%_300%]"
             style={{ animation: 'gradient-flow 8s ease infinite' }}
@@ -2419,112 +2422,50 @@ export default function Homepage() {
           <div className="w-full max-w-5xl mx-auto px-6 lg:px-12 text-center relative">
             <AnimatedSection>
               <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-6">
-                Ready to <GlitchText>transform</GlitchText> your sales?
+                Run your club and your sales <GlitchText>from one CRM</GlitchText>
               </h2>
-              <p className="text-xl text-white/90 mb-10 max-w-2xl mx-auto">
-                Join <span className="font-bold">10,000+</span> sales teams using CadenceE to close more deals, faster.
+              <p className="text-xl text-white mb-10 max-w-2xl mx-auto">
+                Create a workspace for your club or sales team, or ask for a demo from the team that built CadenceE with Pavillon 46.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <MagneticButton>
                   <RippleButton
-                    to="/login"
-                    className="group bg-white text-orange-700 px-10 py-5 rounded-2xl font-bold text-lg flex items-center justify-center gap-3 shadow-2xl hover:scale-105 transition-all duration-300"
+                    to="/login?mode=register"
+                    track="cta-signup"
+                    className="group bg-white text-orange-800 px-10 py-5 rounded-2xl font-bold text-lg flex items-center justify-center gap-3 shadow-2xl hover:scale-105 transition-all duration-300"
                   >
-                    Get Started Free
+                    {signupLabel}
                     <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center group-hover:bg-orange-500 group-hover:text-white group-hover:rotate-45 transition-all duration-300">
                       <ArrowRight className="w-4 h-4" />
                     </div>
                   </RippleButton>
                 </MagneticButton>
                 <MagneticButton>
-                  <Link
-                    to="/help"
-                    className="bg-white/10 backdrop-blur-sm border-2 border-white/30 text-white px-10 py-5 rounded-2xl font-bold text-lg flex items-center justify-center gap-2 hover:bg-white/20 hover:scale-105 transition-all duration-300"
+                  <CtaLink
+                    kind="demo"
+                    lang="en"
+                    className="bg-slate-900/20 backdrop-blur-sm border-2 border-white/60 text-white px-10 py-5 rounded-2xl font-bold text-lg flex items-center justify-center gap-2 hover:bg-slate-900/30 hover:scale-105 transition-all duration-300"
                   >
-                    See How It Works
-                  </Link>
+                    Request a demo
+                  </CtaLink>
                 </MagneticButton>
               </div>
-              <div className="flex flex-wrap items-center justify-center gap-6 mt-10 text-white/80 text-sm">
-                {['Free forever plan', '2-minute setup', 'No credit card'].map((item) => (
+              <div className="flex flex-wrap items-center justify-center gap-6 mt-10 text-white text-sm">
+                {['Built in Switzerland', 'QR-bill and TWINT', 'English, French and German'].map((item) => (
                   <div key={item} className="flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4" />
                     {item}
                   </div>
                 ))}
               </div>
+              <LaunchOfferStrip lang="en" tone="onColor" />
             </AnimatedSection>
           </div>
         </section>
       </main>
 
       {/* ==================== FOOTER ==================== */}
-      <footer className="bg-slate-900 text-slate-500 py-20">
-        <div className="w-full max-w-[1600px] mx-auto px-6 lg:px-12">
-          <div className="grid md:grid-cols-6 gap-8 mb-16">
-            <div className="md:col-span-2">
-              <Link to="/" className="flex items-center gap-3 mb-6 group">
-                <div className="w-12 h-12 bg-gradient-to-br from-orange-600 to-amber-500 rounded-2xl flex items-center justify-center shadow-lg">
-                  <Sparkles className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <BrandName className="text-xl font-bold text-white block" />
-                  <span className="text-[10px] font-semibold text-orange-500 uppercase tracking-wider">
-                    <WaveText text="Cadence Engine" />
-                  </span>
-                </div>
-              </Link>
-              <p className="text-slate-500 mb-6 max-w-xs">
-                The all-in-one CRM combining pipeline management with Intelligent Sales Writer.
-              </p>
-              <div className="flex gap-3">
-                {['T', 'L', 'G'].map((letter, i) => (
-                  <MagneticButton key={letter}>
-                    <a 
-                      href="#" 
-                      className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center text-slate-500 hover:bg-orange-600 hover:text-white hover:scale-110 hover:rotate-6 transition-all duration-300"
-                      style={{ transitionDelay: `${i * 50}ms` }}
-                    >
-                      {letter}
-                    </a>
-                  </MagneticButton>
-                ))}
-              </div>
-            </div>
-
-            {[
-              { title: 'Product', links: ['Dashboard', 'Leads', 'Pipeline', 'Contacts', 'Companies'] },
-              { title: 'Resources', links: ['How It Works', 'Templates', 'History', 'Settings'] },
-              { title: 'Company', links: ['About', 'Blog', 'Careers', 'Contact'] },
-              { title: 'Legal', links: ['Privacy', 'Terms', 'Security'] },
-            ].map((section, si) => (
-              <nav key={section.title}>
-                <h3 className="font-semibold text-white mb-4">{section.title}</h3>
-                <ul className="space-y-3">
-                  {section.links.map((link, li) => (
-                    <li key={link}>
-                      <Link 
-                        to={`/${link.toLowerCase().replace(' ', '-')}`} 
-                        className="hover:text-white hover:translate-x-2 transition-all duration-300 inline-block"
-                        style={{ transitionDelay: `${(si * 4 + li) * 20}ms` }}
-                      >
-                        {link}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </nav>
-            ))}
-          </div>
-
-          <div className="border-t border-slate-800 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
-            <p>&copy; 2026 CadenceE. All rights reserved.</p>
-            <p className="flex items-center gap-2 text-sm">
-              Made with <Heart className="w-4 h-4 text-red-500 animate-pulse" /> for sales teams everywhere
-            </p>
-          </div>
-        </div>
-      </footer>
+      <MarketingFooter lang="en" pageId="home" />
 
       {/* Global styles */}
       <style>{`
