@@ -13,6 +13,7 @@ import {
   Building2,
   CheckSquare,
   Activity,
+  BarChart3,
 } from 'lucide-react';
 import { getCurrentUser } from '@/app/lib/auth';
 import { useSignOut } from '@/app/lib/useSignOut';
@@ -40,6 +41,7 @@ import { NextActions } from '@/app/salesAgent/NextActions';
 import { useMoney } from '@/app/hooks/useMoney';
 import { BrandName } from '@/app/components/BrandName';
 import { useT } from '@/app/i18n';
+import { useIsPlatformAdmin } from '@/app/hooks/queries/siteAnalytics';
 
 // HP-9: Global search bar component
 function GlobalSearchBar() {
@@ -321,6 +323,8 @@ export default function AppHeader() {
   const user = getCurrentUser();
   const org = useOrgOptional();
   const { t } = useT();
+  // CadenceE's own platform admins see the site's analytics; the server says who they are.
+  const platformAdmin = useIsPlatformAdmin();
 
   const handleLogout = useSignOut();
 
@@ -422,6 +426,14 @@ export default function AppHeader() {
                     {t('nav.settings')}
                   </Link>
                 </DropdownMenuItem>
+                {platformAdmin && (
+                  <DropdownMenuItem asChild>
+                    <Link to="/admin/analytics" className="flex cursor-pointer items-center gap-2 rounded-lg dark:text-slate-200 dark:hover:bg-slate-700">
+                      <BarChart3 className="h-4 w-4" />
+                      {t('header.siteAnalytics')}
+                    </Link>
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator className="bg-slate-100 dark:bg-slate-700" />
                 <DropdownMenuItem
                   onClick={handleLogout}

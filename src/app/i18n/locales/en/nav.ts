@@ -87,4 +87,5 @@ export const nav = {
   'header.account': 'Account',
   'header.switchOrg': '{org} — Switch org',
   'header.signOut': 'Sign out',
+  'header.siteAnalytics': 'Site analytics',
 } satisfies Record<string, Message>;
