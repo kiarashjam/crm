@@ -6,23 +6,26 @@ import RequireAuth from '@/app/components/RequireAuth';
 import { WorkspaceOutlet } from '@/app/components/WorkspaceOutlet';
 import { ErrorBoundary } from '@/app/components/ErrorBoundary';
 import { PageLoader } from '@/app/components/PageLoader';
-import PageHelp from '@/app/components/PageHelp';
 import { QueryProvider, WorkspaceCacheGuard } from '@/app/providers';
 import { OrgProvider, useOrgOptional } from '@/app/contexts/OrgContext';
 import { ThemeProvider } from '@/app/contexts/ThemeContext';
 import { servesDemoData } from '@/app/api/apiClient';
 import { PageLoadingProvider } from '@/app/components/LoadingOverlay';
 import { RouteProgress } from '@/app/components/motion/RouteProgress';
-import { ModuleOutlet, SalesHome } from '@/app/components/ModuleOff';
 import { I18nProvider } from '@/app/i18n';
 import { EmailComposerProvider } from '@/app/components/email/EmailComposerProvider';
 import { LanguageNotice } from '@/app/i18n/LanguageNotice';
 
-// Eager-loaded pages (critical path)
-import Homepage from '@/app/pages/Homepage';
-import Login from '@/app/pages/Login';
-import ForgotPassword from '@/app/pages/ForgotPassword';
-import ResetPassword from '@/app/pages/ResetPassword';
+// The public pages: their own chunks, fetched before the first render when the address is
+// one of them (main.tsx), so they never wait behind a loading screen.
+import { Homepage, Login, ForgotPassword, ResetPassword, LinkPrefetch, marketingRoutes } from '@/app/publicRoutes';
+import { SeoHead } from '@/app/marketing/SeoHead';
+import { NotFound } from '@/app/marketing/NotFound';
+
+// What only signed-in pages use: out of the main bundle, so the public pages load less.
+const PageHelp = lazy(() => import('@/app/components/PageHelp'));
+const ModuleOutlet = lazy(() => import('@/app/components/ModuleOff').then((m) => ({ default: m.ModuleOutlet })));
+const SalesHome = lazy(() => import('@/app/components/ModuleOff').then((m) => ({ default: m.SalesHome })));
 
 // Lazy-loaded pages (code splitting)
 const Organizations = lazy(() => import('@/app/pages/Organizations'));
@@ -105,7 +108,9 @@ function ProtectedLayout() {
       <Suspense fallback={<PageLoader />}>
         <Outlet />
       </Suspense>
-      <PageHelp />
+      <Suspense fallback={null}>
+        <PageHelp />
+      </Suspense>
     </RequireAuth>
   );
 }
@@ -136,13 +141,18 @@ export default function App() {
               <EmailComposerProvider>
               <WorkspaceCacheGuard />
               <SkipLink />
+              {/* Title, description, canonical, robots, hreflang and structured data per route. */}
+              <SeoHead />
+              <LinkPrefetch />
               <Toaster position="top-center" richColors closeButton />
               <Routes>
-                {/* Public routes - eager loaded */}
-                <Route path="/" element={<Homepage />} />
-                <Route path="/login" element={<Login />} />
-                <Route path="/forgot-password" element={<ForgotPassword />} />
-                <Route path="/reset-password" element={<ResetPassword />} />
+                {/* Public routes - preloaded before the first render (publicRoutes.tsx) */}
+                <Route path="/" element={<Suspense fallback={<PageLoader />}><Homepage /></Suspense>} />
+                <Route path="/login" element={<Suspense fallback={<PageLoader />}><Login /></Suspense>} />
+                <Route path="/forgot-password" element={<Suspense fallback={<PageLoader />}><ForgotPassword /></Suspense>} />
+                <Route path="/reset-password" element={<Suspense fallback={<PageLoader />}><ResetPassword /></Suspense>} />
+                {/* The marketing site: /features, /crm-for-private-clubs, /fr/…, /de/… (marketing/routes.ts) */}
+                {marketingRoutes()}
                 {/* Where single sign-on lands with its one-time code: not signed in yet. */}
                 <Route path="/auth/sso" element={
                   <Suspense fallback={<PageLoader />}>
@@ -295,8 +305,9 @@ export default function App() {
                   </Route>
                 </Route>
                 
-                {/* Catch-all redirect */}
-                <Route path="*" element={<Navigate to="/" replace />} />
+                {/* No such page: say so (noindex), rather than send everything to the home page.
+                    The server answers these addresses with a real 404 (staticwebapp.config.json). */}
+                <Route path="*" element={<NotFound />} />
               </Routes>
               </EmailComposerProvider>
               </I18nProvider>

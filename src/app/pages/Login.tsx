@@ -57,7 +57,9 @@ export default function Login() {
   // the other ways in below read) and this browser can use one.
   const signInOptions = useQuery({ queryKey: ['sign-in-options'], queryFn: getSignInOptions, staleTime: 5 * 60_000, retry: 1 });
   const passkeyInsteadOfCode = Boolean(signInOptions.data?.passkeys) && passkeysSupported();
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  // "Create your workspace" on the public site links here with ?mode=register.
+  const [mode, setMode] = useState<'login' | 'register'>(() =>
+    new URLSearchParams(location.search).get('mode') === 'register' ? 'register' : 'login');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
