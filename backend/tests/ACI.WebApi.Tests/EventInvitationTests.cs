@@ -365,6 +365,32 @@ public class EventInvitationTests
     }
 
     [Fact]
+    public async Task OnlyThoseWhoManageMembersInviteAndRemind_TheFrontDeskReadsTheList()
+    {
+        await using var app = new App();
+        var club = await ClubAsync(app);
+        await MemberAsync(club, "Anna");
+        var eventId = await EventAsync(club);
+        await Json(await SendAsync(club, eventId, Guid.NewGuid()), "the owner invites");
+        var (desk, deskId) = await SignInAsync(app, "desk@pavillon46.ch");
+        await AddMemberAsync(app, club.Org, deskId, ACI.Domain.Enums.OrgMemberRole.Member);
+        await Json(await club.Owner.PutAsync($"/api/organizations/{club.Org}/members/{deskId}/permissions", Body(new { preset = "front_desk" })), "a front desk colleague");
+        desk.In(club.Org);
+
+        (await Json(await desk.GetAsync($"/api/events/{eventId}/invitations"), "the desk reads who was invited")).GetProperty("invitations").GetArrayLength().Should().Be(1);
+        foreach (var (what, call) in new (string, Func<Task<HttpResponseMessage>>)[]
+        {
+            ("count", () => desk.PostAsync($"/api/events/{eventId}/invitations/audience", Body(new { }))),
+            ("preview", () => desk.PostAsync($"/api/events/{eventId}/invitations/preview", Body(new { }))),
+            ("test", () => desk.PostAsync($"/api/events/{eventId}/invitations/test", Body(new { }))),
+            ("send", () => desk.PostAsync($"/api/events/{eventId}/invitations/send", Body(new { sendId = Guid.NewGuid(), audience = new { } }))),
+            ("remind", () => desk.PostAsync($"/api/events/{eventId}/invitations/remind", null)),
+        })
+            (await Refused(await call(), HttpStatusCode.Forbidden, $"the desk's {what}")).Should().Contain("Permission.Required");
+        (await app.Services.Read(db => db.ClubEventInvitations.Count(i => i.RemindedAtUtc != null))).Should().Be(0);
+    }
+
+    [Fact]
     public async Task TheReplyPageRefusesWhileTheClubModuleIsOff()
     {
         await using var app = new App();
