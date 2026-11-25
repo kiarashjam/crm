@@ -186,7 +186,7 @@ public partial class AppDbContext : DbContext
     // the secret the daily salts come from, and the days the daily email has gone for.
     public DbSet<SiteEvent> SiteEvents => Set<SiteEvent>();
     public DbSet<SiteBotHit> SiteBotHits => Set<SiteBotHit>();
-    public DbSet<SiteAnalyticsSecret> SiteAnalyticsSecrets => Set<SiteAnalyticsSecret>();
+    public DbSet<SiteAnalyticsSalt> SiteAnalyticsSalts => Set<SiteAnalyticsSalt>();
     public DbSet<SiteAnalyticsDigest> SiteAnalyticsDigests => Set<SiteAnalyticsDigest>();
 
     /// <summary>

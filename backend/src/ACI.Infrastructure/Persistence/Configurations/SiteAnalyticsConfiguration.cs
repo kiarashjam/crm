@@ -19,13 +19,10 @@ internal sealed class SiteEventConfiguration : IEntityTypeConfiguration<SiteEven
         builder.Property(e => e.Type).HasMaxLength(16).IsUnicode(false).IsRequired();
         builder.Property(e => e.Name).HasMaxLength(64);
         builder.Property(e => e.Path).HasMaxLength(300).IsRequired();
-        builder.Property(e => e.Title).HasMaxLength(200);
         builder.Property(e => e.ReferrerHost).HasMaxLength(253);
-        builder.Property(e => e.UtmSource).HasMaxLength(100);
-        builder.Property(e => e.UtmMedium).HasMaxLength(100);
-        builder.Property(e => e.UtmCampaign).HasMaxLength(100);
-        builder.Property(e => e.UtmTerm).HasMaxLength(100);
-        builder.Property(e => e.UtmContent).HasMaxLength(100);
+        builder.Property(e => e.UtmSource).HasMaxLength(64).IsUnicode(false);
+        builder.Property(e => e.UtmMedium).HasMaxLength(64).IsUnicode(false);
+        builder.Property(e => e.UtmCampaign).HasMaxLength(64).IsUnicode(false);
         builder.Property(e => e.Source).HasMaxLength(100).IsRequired();
         builder.Property(e => e.VisitorHash).HasMaxLength(32).IsUnicode(false).IsRequired();
         builder.Property(e => e.SessionKey).HasMaxLength(32).IsUnicode(false).IsRequired();
@@ -33,7 +30,6 @@ internal sealed class SiteEventConfiguration : IEntityTypeConfiguration<SiteEven
         builder.Property(e => e.Browser).HasMaxLength(32).IsRequired();
         builder.Property(e => e.Os).HasMaxLength(32).IsRequired();
         builder.Property(e => e.Language).HasMaxLength(8).IsUnicode(false);
-        builder.Property(e => e.ScreenBucket).HasMaxLength(16).IsUnicode(false);
 
         // A range of days: the daily series, the top lists, the email, the clean-up.
         builder.HasIndex(e => new { e.Day, e.Type });
@@ -55,15 +51,15 @@ internal sealed class SiteBotHitConfiguration : IEntityTypeConfiguration<SiteBot
     }
 }
 
-internal sealed class SiteAnalyticsSecretConfiguration : IEntityTypeConfiguration<SiteAnalyticsSecret>
+internal sealed class SiteAnalyticsSaltConfiguration : IEntityTypeConfiguration<SiteAnalyticsSalt>
 {
-    public void Configure(EntityTypeBuilder<SiteAnalyticsSecret> builder)
+    public void Configure(EntityTypeBuilder<SiteAnalyticsSalt> builder)
     {
-        builder.ToTable("SiteAnalyticsSecrets");
-        // Always 1: the key is the guard against two servers each keeping a secret of their own.
-        builder.HasKey(e => e.Id);
-        builder.Property(e => e.Id).ValueGeneratedNever();
-        builder.Property(e => e.ProtectedSecret).HasMaxLength(1000).IsRequired();
+        builder.ToTable("SiteAnalyticsSalts");
+        // The day is the key: the guard against two servers each making a salt of their own for it.
+        builder.HasKey(e => e.Day);
+        builder.Property(e => e.Day).ValueGeneratedNever();
+        builder.Property(e => e.ProtectedSalt).HasMaxLength(1000).IsRequired();
     }
 }
 

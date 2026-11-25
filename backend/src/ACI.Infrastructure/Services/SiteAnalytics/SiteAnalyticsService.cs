@@ -31,14 +31,25 @@ public sealed class SiteAnalyticsService : ISiteAnalytics
 
     private readonly AppDbContext _db;
     private readonly SiteAnalyticsKeys _keys;
+    private readonly SiteEventBudget _budget;
     private readonly ILogger<SiteAnalyticsService> _logger;
 
-    public SiteAnalyticsService(AppDbContext db, SiteAnalyticsKeys keys, ILogger<SiteAnalyticsService> logger)
+    public SiteAnalyticsService(AppDbContext db, SiteAnalyticsKeys keys, SiteEventBudget budget, ILogger<SiteAnalyticsService> logger)
     {
         _db = db;
         _keys = keys;
+        _budget = budget;
         _logger = logger;
     }
+
+    /// <summary>
+    /// Whether an event may be kept: signed out, anything checked; signed in, a sign-up event
+    /// alone. The app's own use is not recorded, nor a sign-in, whatever a client sends.
+    /// </summary>
+    public static bool Keeps(SiteEventInput e) =>
+        e.Type == SiteEventTypes.Event
+            ? e.Name != null && SiteAnalyticsRules.EventNames.Contains(e.Name)
+            : !e.SignedIn;
 
     // ── Writing ──────────────────────────────────────────────────────────────
 
@@ -51,11 +62,18 @@ public sealed class SiteAnalyticsService : ISiteAnalytics
             return;
         }
 
-        var rows = new List<SiteEvent>(events.Count);
-        for (var i = 0; i < events.Count; i++)
+        var kept = events.Where(Keeps).ToList();
+        var (granted, firstRefusal) = _budget.Take(kept.Count, nowUtc);
+        if (firstRefusal)
+            _logger.LogWarning("Site analytics: this server has stored its {Cap} events of the day; more are dropped until tomorrow (Zurich)", _budget.Cap);
+        if (granted == 0) return;
+        if (granted < kept.Count) kept = kept.Take(granted).ToList();
+
+        var rows = new List<SiteEvent>(kept.Count);
+        for (var i = 0; i < kept.Count; i++)
         {
-            var e = events[i];
-            var at = WhenOf(e.AtUtc, nowUtc, i, events.Count);
+            var e = kept[i];
+            var at = WhenOf(e.AtUtc, nowUtc, i, kept.Count);
             var day = SiteAnalyticsRules.DayOf(at);
             rows.Add(new SiteEvent
             {
@@ -64,13 +82,10 @@ public sealed class SiteAnalyticsService : ISiteAnalytics
                 Type = e.Type,
                 Name = e.Name,
                 Path = e.Path,
-                Title = e.Title,
                 ReferrerHost = e.ReferrerHost,
                 UtmSource = e.UtmSource,
                 UtmMedium = e.UtmMedium,
                 UtmCampaign = e.UtmCampaign,
-                UtmTerm = e.UtmTerm,
-                UtmContent = e.UtmContent,
                 Source = e.Source,
                 VisitorHash = await _keys.VisitorAsync(day, visit.Address, visit.UserAgent, ct),
                 SessionKey = await _keys.SessionAsync(day, e.SessionId, ct),
@@ -78,7 +93,6 @@ public sealed class SiteAnalyticsService : ISiteAnalytics
                 Browser = visit.Browser,
                 Os = visit.Os,
                 Language = e.Language ?? visit.Language,
-                ScreenBucket = e.ScreenBucket,
                 SignedIn = e.SignedIn,
             });
         }
@@ -132,14 +146,21 @@ public sealed class SiteAnalyticsService : ISiteAnalytics
 
     public async Task<int> PurgeAsync(DateTime nowUtc, CancellationToken ct = default)
     {
-        var cutoff = SiteAnalyticsRules.DayOf(nowUtc).AddDays(-SiteAnalyticsRules.RetentionDays);
+        var today = SiteAnalyticsRules.DayOf(nowUtc);
+        var cutoff = today.AddDays(-SiteAnalyticsRules.RetentionDays);
+        // Today's salt and yesterday's (an event a few minutes before midnight arrives after it)
+        // are kept; an older one is destroyed first, before anything else can fail.
+        var yesterday = today.AddDays(-1);
+        _keys.Forget(yesterday);
         if (_db.Database.IsRelational())
         {
+            await _db.SiteAnalyticsSalts.Where(s => s.Day < yesterday).ExecuteDeleteAsync(ct);
             var events = await _db.SiteEvents.Where(e => e.Day < cutoff).ExecuteDeleteAsync(ct);
             await _db.SiteBotHits.Where(h => h.Day < cutoff).ExecuteDeleteAsync(ct);
             await _db.SiteAnalyticsDigests.Where(d => d.Day < cutoff).ExecuteDeleteAsync(ct);
             return events;
         }
+        _db.SiteAnalyticsSalts.RemoveRange(await _db.SiteAnalyticsSalts.AsTracking().Where(s => s.Day < yesterday).ToListAsync(ct));
         var old = await _db.SiteEvents.AsTracking().Where(e => e.Day < cutoff).ToListAsync(ct);
         _db.SiteEvents.RemoveRange(old);
         _db.SiteBotHits.RemoveRange(await _db.SiteBotHits.AsTracking().Where(h => h.Day < cutoff).ToListAsync(ct));
@@ -279,11 +300,11 @@ public sealed class SiteAnalyticsService : ISiteAnalytics
     public async Task<IReadOnlyList<SiteSessionDto>> SessionsAsync(DateOnly day, int limit, SiteAudience audience, CancellationToken ct = default)
     {
         limit = Math.Clamp(limit, 1, SiteAnalyticsRules.MaxSessions);
-        // The audience picks the sessions; each is then shown whole, signed in or not.
+        // The audience picks the sessions, and the steps shown of each are the audience's too.
         var keys = (await SiteAnalyticsQueries.LatestSessions(_db, day, limit, audience).ToListAsync(ct)).Select(s => s.Key).ToList();
         if (keys.Count == 0) return [];
 
-        var bySession = (await SiteAnalyticsQueries.Steps(_db, day, keys).ToListAsync(ct))
+        var bySession = (await SiteAnalyticsQueries.Steps(_db, day, keys, audience).ToListAsync(ct))
             .GroupBy(e => e.SessionKey)
             .ToDictionary(g => g.Key, g => g.ToList());
 

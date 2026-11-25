@@ -32,10 +32,9 @@ public sealed class SiteAnalyticsSettings
     public bool Enabled { get; set; } = true;
 
     /// <summary>
-    /// The secret each day's salt is made from (HMAC of the day with it). Empty: one is
-    /// generated once and kept in the database, protected with the server's data-protection
-    /// keys. Set it (SiteAnalytics__Secret, 32 or more random characters) to keep it
-    /// out of the database altogether. Changing it mid-day counts that day's visitors twice.
+    /// The most events one server stores in a Zurich day; past it, posts are answered and
+    /// dropped until the next day, and a warning is logged once. Bounds what a flood the rate
+    /// limits let through can add to the table.
     /// </summary>
-    public string Secret { get; set; } = "";
+    public int DailyEventCap { get; set; } = 200_000;
 }

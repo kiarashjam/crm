@@ -78,7 +78,7 @@ public sealed class OrganizationCloner
         [typeof(AiUsage)] = "The original's calls to the language model, held against its monthly limit; the copy has made none.",
         [typeof(SiteEvent)] = "The platform's own site analytics, which belong to no organization.",
         [typeof(SiteBotHit)] = "The platform's own site analytics, which belong to no organization.",
-        [typeof(SiteAnalyticsSecret)] = "The platform's own site analytics, which belong to no organization.",
+        [typeof(SiteAnalyticsSalt)] = "The platform's own site analytics, which belong to no organization.",
         [typeof(SiteAnalyticsDigest)] = "The platform's own site analytics, which belong to no organization.",
     };
 

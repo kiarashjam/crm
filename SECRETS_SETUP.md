@@ -315,9 +315,10 @@ Web App (merging, like the email step) and does nothing while the secret is abse
 addresses live only in the secret: never put them in the repository, which is public. To
 check, sign in as one of them: `GET /api/platform/me` answers `{ "isPlatformAdmin": true }`.
 
-Optionally set `SiteAnalytics__Secret` (32 or more random characters) in the Web App: the daily
-visitor hashes are then made from it instead of a secret generated once and kept in the
-database. `SiteAnalytics__Enabled=false` stops recording visits.
+The analytics need no secret: each day's visitor hashes use a random salt made that day, kept
+in the database and destroyed the day after. `SiteAnalytics__Enabled=false` stops recording
+visits; `SiteAnalytics__DailyEventCap` (200000 by default) is the most events one server
+stores in a day.
 
 ### Local development
 

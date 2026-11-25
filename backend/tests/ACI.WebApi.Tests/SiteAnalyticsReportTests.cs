@@ -302,7 +302,7 @@ public class SiteAnalyticsReportTests
     }
 
     [Fact]
-    public async Task Live_and_the_journeys_follow_the_audience_and_a_journey_is_shown_whole()
+    public async Task Live_and_the_journeys_follow_the_audience_down_to_each_step()
     {
         await using var app = new AnalyticsApp();
         var admin = await AdminAsync(app);
@@ -311,7 +311,7 @@ public class SiteAnalyticsReportTests
             Event(now.AddMinutes(-1), "v1", "s1", path: "/pricing"),
             Event(now.AddMinutes(-2), "v9", "s9", path: "/deals", signedIn: true),
             Event(now.AddSeconds(-90), "v3", "s3", path: "/login"),
-            Event(now.AddSeconds(-30), "v3", "s3", SiteEventTypes.Event, "/login", "login", signedIn: true),
+            Event(now.AddSeconds(-30), "v3", "s3", SiteEventTypes.Event, "/login", "signup_completed", signedIn: true),
             Event(now.AddSeconds(-20), "v3", "s3", path: "/dashboard", signedIn: true));
 
         var visitors = await ReadAsync<SiteLiveDto>(await admin.GetAsync("/api/site-analytics/live"));
@@ -328,7 +328,8 @@ public class SiteAnalyticsReportTests
         var everyone = await ReadAsync<SiteLiveDto>(await admin.GetAsync("/api/site-analytics/live?audience=everyone"));
         (everyone.VisitorsNow, everyone.SessionsNow, everyone.Recent.Count).Should().Be((3, 3, 5));
 
-        // The journeys of a day: the audience picks the visits, each is shown with all its steps.
+        // The journeys of a day: the audience picks the visits, and the steps shown of each. (A
+        // signed-in page view can no longer be posted; these are seeded as stored rows.)
         var day = new DateOnly(2026, 11, 3);
         var morning = NoonOf(day, -180);
         await app.SeedAsync(
@@ -342,12 +343,12 @@ public class SiteAnalyticsReportTests
 
         var websites = await JourneysAsync("");
         websites.Select(s => s.Steps[0].Path).Should().Equal("/pricing", "/");
-        websites[1].Steps.Select(s => s.Path).Should().Equal("/", "/login", "/dashboard");
-        websites[1].Should().BeEquivalentTo(new { SignedIn = true, Converted = true, PageViews = 2, DurationSeconds = 90 });
+        websites[1].Steps.Select(s => s.Path).Should().Equal(["/", "/login"], "the signed-in page view is no step of the website's visit");
+        websites[1].Should().BeEquivalentTo(new { SignedIn = true, Converted = true, PageViews = 1, DurationSeconds = 60 });
 
         var apps = await JourneysAsync("&audience=signed-in");
-        apps.Select(s => s.Steps[0].Path).Should().Equal("/deals", "/");
-        apps[1].Steps.Should().HaveCount(3, "the visit is shown whole, from its first page signed out");
+        apps.Select(s => s.Steps[0].Path).Should().Equal("/deals", "/login");
+        apps[1].Steps.Select(s => s.Path).Should().Equal(["/login", "/dashboard"], "nothing done signed out is a step of the signed-in");
 
         (await JourneysAsync("&audience=everyone")).Select(s => s.Steps[0].Path).Should().Equal("/deals", "/pricing", "/");
     }
@@ -403,7 +404,9 @@ public class SiteAnalyticsReportTests
         }
         var ingest = actions.Single(a => a.Name == "Events");
         ingest.GetCustomAttribute<AllowAnonymousAttribute>().Should().NotBeNull();
-        ingest.GetCustomAttribute<EnableRateLimitingAttribute>()!.PolicyName.Should().Be(SiteAnalyticsController.RateLimitPolicy);
+        // Its limits are the app's global limiter (SiteAnalyticsController.Limiter), per address
+        // then everyone's, chained: an endpoint policy is one limiter and would not chain.
+        ingest.GetCustomAttribute<EnableRateLimitingAttribute>().Should().BeNull();
         ingest.GetCustomAttribute<RequestSizeLimitAttribute>().Should().NotBeNull();
     }
 
@@ -426,6 +429,7 @@ public class SiteAnalyticsReportTests
                 ["Since"] = SiteAnalyticsQueries.Since(db, DateTime.UtcNow, 10, audience).ToQueryString(),
                 ["Latest"] = SiteAnalyticsQueries.Latest(db, 30, audience).ToQueryString(),
                 ["LatestSessions"] = SiteAnalyticsQueries.LatestSessions(db, day, 50, audience).ToQueryString(),
+                ["Steps"] = SiteAnalyticsQueries.Steps(db, day, ["a", "b"], audience).ToQueryString(),
             };
             queries["Daily"].Should().Contain("COUNT(DISTINCT").And.Contain("GROUP BY");
             queries["Sessions"].Should().Contain("MAX(");
@@ -436,19 +440,18 @@ public class SiteAnalyticsReportTests
             queries["Since"].Should().Contain("ORDER BY");
             queries["Latest"].Should().Contain("ORDER BY");
             queries["LatestSessions"].Should().Contain("GROUP BY");
+            queries["Steps"].Should().Contain("ORDER BY");
             foreach (var (name, sql) in queries)
             {
-                // The audience is a WHERE clause in SQL, never a filter in memory.
-                if (audience == SiteAudience.Everyone) sql.Should().NotContain("[SignedIn]", $"{name} for everyone");
-                else sql.Should().Contain("[SignedIn]", $"{name} for {audience}");
-                if (audience == SiteAudience.Visitors) sql.Should().Contain("= 'event'", $"{name} keeps every custom event for the website's visitors");
+                // The audience is a WHERE clause in SQL, never a filter in memory (Steps selects the column too).
+                var filter = sql[sql.IndexOf("FROM", StringComparison.Ordinal)..];
+                if (audience == SiteAudience.Everyone) filter.Should().NotContain("[SignedIn]", $"{name} for everyone");
+                else filter.Should().Contain("[SignedIn]", $"{name} for {audience}");
+                if (audience == SiteAudience.Visitors) filter.Should().Contain("= 'event'", $"{name} keeps every sign-up event for the website's visitors");
             }
         }
-        // A journey is shown whole, whatever the audience that picked it.
-        SiteAnalyticsQueries.Steps(db, day, ["a", "b"]).ToQueryString().Should().Contain("ORDER BY");
-
         // The site analytics are in no workspace: no workspace filter is on their tables.
-        foreach (var type in new[] { typeof(SiteEvent), typeof(SiteBotHit), typeof(SiteAnalyticsSecret), typeof(SiteAnalyticsDigest) })
+        foreach (var type in new[] { typeof(SiteEvent), typeof(SiteBotHit), typeof(SiteAnalyticsSalt), typeof(SiteAnalyticsDigest) })
         {
             var entity = db.Model.FindEntityType(type)!;
             entity.GetQueryFilter().Should().BeNull(type.Name);

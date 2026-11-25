@@ -1,4 +1,5 @@
 using System.Net;
+using ACI.Application.Services;
 using ACI.WebApi.Controllers;
 using ACI.WebApi.SiteAnalytics;
 using Microsoft.AspNetCore.Http;
@@ -131,6 +132,9 @@ public class SiteTrafficTests
     public void A_source_is_the_utm_source_else_the_kind_of_site_that_referred_it(string? utmSource, string? referrer, string source)
     {
         SiteTraffic.ClassifySource(utmSource, referrer).Should().Be(source);
+        // What a referrer is classified as is a kind the daily email names as it is, or a host.
+        if (utmSource == null)
+            (SiteAnalyticsRules.SourceKinds.Contains(source) || SiteAnalyticsRules.IsHostName(source)).Should().BeTrue(source);
     }
 
     [Theory]
@@ -196,19 +200,6 @@ public class SiteTrafficTests
     }
 
     [Theory]
-    [InlineData(390, "<576")]
-    [InlineData(768, "768-991")]
-    [InlineData(1440, "1440-1919")]
-    [InlineData(2560, "1920+")]
-    [InlineData(0, null)]
-    [InlineData(-5, null)]
-    [InlineData(99_999, null)]
-    public void A_screen_is_a_coarse_band(int width, string? bucket)
-    {
-        SiteTraffic.ScreenBucket(width).Should().Be(bucket);
-    }
-
-    [Theory]
     [InlineData("CTA Signup", "cta-signup")]
     [InlineData("signup_completed", "signup_completed")]
     [InlineData("  <script>x</script> ", "scriptxscript")]
@@ -220,11 +211,97 @@ public class SiteTrafficTests
 
     [Theory]
     [InlineData("Spring Launch", "spring launch")]
+    [InlineData("  Spring\n\tLaunch  ", "spring launch")]
+    [InlineData("LinkedIn", "linkedin")]
+    [InlineData("newsletter_2026-11", "newsletter_2026-11")]
+    [InlineData("black-friday-2026", "black-friday-2026")]
+    [InlineData("google+ads", "google+ads")]
+    [InlineData("v1.2", "v1.2")]
+    [InlineData("Été à Zürich", "ete a zurich")]
+    [InlineData("<script>alert(1)</script>", "scriptalert1script")]
+    [InlineData("Launch Week! (DE)", "launch week de")]
+    [InlineData("Visit evil.com/x?y=1", "visit evil.comxy1")]
+    [InlineData("Spring\u202eLaunch\u200b", "springlaunch")]
+    // Someone's address, or what is shaped like an id or a token, whole or in part: none at all.
     [InlineData("jane@example.ch", null)]
+    [InlineData("jane%40example.ch", null)]
+    [InlineData("3fa85f64-5717-4562-b3fc-2c963f66afa6", null)]
+    [InlineData("newsletter 3fa85f64-5717-4562-b3fc-2c963f66afa6", null)]
+    [InlineData("newsletter_3fa85f64-5717-4562-b3fc-2c963f66afa6", null)]
+    [InlineData("1234", null)]
+    [InlineData("subscriber_483920", null)]
+    [InlineData("0791234567", null)]
+    [InlineData("deadbeefdeadbeef00", null)]
+    [InlineData("kZ9xQ2hhbmdlTWVQbGVhc2UxMjM0NTY3ODkw", null)]
+    [InlineData("campaign kZ9xQ2hhbmdlTWVQbGVhc2UxMjM0NTY3ODkw", null)]
+    [InlineData("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U", null)]
     [InlineData("   ", null)]
-    public void A_utm_value_is_one_lower_case_line_and_never_an_address(string raw, string? value)
+    [InlineData("!!!", null)]
+    public void A_utm_value_is_one_plain_lower_case_line_and_never_an_address_an_id_or_a_token(string raw, string? value)
     {
         SiteTraffic.Utm(raw).Should().Be(value);
+    }
+
+    [Fact]
+    public void A_utm_value_is_held_to_its_limit()
+    {
+        SiteTraffic.Utm(string.Join(' ', Enumerable.Repeat("spring", 40)))!.Length.Should().BeLessThanOrEqualTo(SiteTraffic.MaxUtm);
+        SiteTraffic.Utm(string.Join(' ', Enumerable.Repeat("spring", 40)))!.Should().NotEndWith(" ");
+        SiteTraffic.MaxUtm.Should().Be(64);
+    }
+
+    [Theory]
+    [InlineData("/sign/:token", true)]
+    [InlineData("/sign", true)]
+    [InlineData("/SIGN/:token/pdf", true)]
+    [InlineData("/%73ign/abc", true)]
+    [InlineData("/pay/:token/done", true)]
+    [InlineData("/unsubscribe/:token", true)]
+    [InlineData("/capture/:token", true)]
+    [InlineData("/apply/:token", true)]
+    [InlineData("/member-portal/:key/sign-in", true)]
+    [InlineData("/", false)]
+    [InlineData("/pricing", false)]
+    [InlineData("/signup-guide", false)]
+    [InlineData("/blog/sign", false)]
+    [InlineData("/api/public/contracts/:token/sign", false)]
+    public void A_customers_page_is_never_tracked(string path, bool untracked)
+    {
+        SiteTraffic.IsUntracked(path).Should().Be(untracked);
+    }
+
+    [Fact]
+    public void Every_route_whose_segment_is_a_secret_is_untracked()
+    {
+        SiteTraffic.UntrackedRoots.Should().BeEquivalentTo(["sign", "pay", "unsubscribe", "capture", "apply", "member-portal"]);
+        SiteTraffic.RouteTemplates.Keys.Should().OnlyContain(k => SiteTraffic.UntrackedRoots.Contains(k));
+    }
+
+    [Theory]
+    [InlineData("plain", "plain")]
+    [InlineData("a\u0000b\u0007c", "abc")]
+    [InlineData("line\nbreak\ttab", "line break tab")]
+    [InlineData("right\u202eto\u2066left\u200b\ufeff", "righttoleft")]
+    [InlineData("soft\u00adhyphen", "softhyphen")]
+    [InlineData("émoji 😀 kept", "émoji 😀 kept")]
+    public void Control_and_format_characters_are_stripped(string raw, string printable)
+    {
+        SiteTraffic.Printable(raw).Should().Be(printable);
+    }
+
+    [Fact]
+    public void Text_is_cut_between_code_points()
+    {
+        const string text = "ab😀😀";
+        SiteTraffic.Cut(text, 10).Should().Be(text);
+        SiteTraffic.Cut(text, 4).Should().Be("ab😀");
+        SiteTraffic.Cut(text, 3).Should().Be("ab", "half of the emoji is not kept");
+        SiteTraffic.Cut(text, 2).Should().Be("ab");
+        // A path whose limit falls inside an emoji keeps none of it.
+        var segment = new string('w', 79);
+        var path = $"/{segment}/{segment}/{segment}/{new string('w', 58)}😀{new string('x', 10)}";
+        char.IsHighSurrogate(path[SiteTraffic.MaxPath - 1]).Should().BeTrue();
+        SiteTraffic.TemplatePath(path).Should().Be(path[..(SiteTraffic.MaxPath - 1)]);
     }
 
     [Theory]

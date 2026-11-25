@@ -1,9 +1,9 @@
 namespace ACI.Domain.Entities;
 
 /// <summary>
-/// One thing a visitor did on the public site or in the app (cadencee.ai): a page they opened,
-/// a tracked button or outbound link they clicked, or an event the app reported (a sign-up).
-/// First-party and cookieless; written by POST /api/site-analytics/events.
+/// One thing a visitor did on the public site (cadencee.ai): a page they opened, a tracked
+/// button or outbound link they clicked, or a step of the sign-up the app reported. First-party
+/// and cookieless; written by POST /api/site-analytics/events.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -11,11 +11,12 @@ namespace ACI.Domain.Entities;
 /// only platform admins read it (SiteAnalyticsController).
 /// </para>
 /// <para>
-/// Nothing here names a person. The visitor is a hash of the day's salt, the address and the
-/// browser, so the same person is a different visitor tomorrow; the session is a hash of a
-/// random id the tab keeps until it closes. The path is the route's template (/leads/:id) with
-/// no query string and no token; the referrer is a host name; a signed-in visitor is only
-/// "signed in". Rows are deleted 400 days after their day (SiteAnalyticsDigestService).
+/// Nothing here names a person. The visitor is a hash of the day's random salt, the shortened
+/// address and the browser, so the same person is a different visitor tomorrow and, once the
+/// salt is destroyed, cannot be found again; the session is a hash of a random id the tab keeps
+/// until it closes, with the same salt. The path is the route's template (/leads/:id) with no
+/// query string and no token; the referrer is a host name. Signed in, only the sign-up events
+/// are kept, as "signed in". Rows are deleted 400 days after their day (SiteAnalyticsDigestService).
 /// </para>
 /// </remarks>
 public class SiteEvent
@@ -37,17 +38,13 @@ public class SiteEvent
     /// <summary>The page, as its route's template; for an outbound click, the host it led to.</summary>
     public string Path { get; set; } = "/";
 
-    /// <summary>The page's title, on public pages only (the app's pages carry record names in theirs).</summary>
-    public string? Title { get; set; }
-
     /// <summary>The host of the site the visit came from; null when it came from nowhere or from this site.</summary>
     public string? ReferrerHost { get; set; }
 
+    /// <summary>The link's utm_source, medium and campaign: lower case, plain characters, never an id, a token or an address.</summary>
     public string? UtmSource { get; set; }
     public string? UtmMedium { get; set; }
     public string? UtmCampaign { get; set; }
-    public string? UtmTerm { get; set; }
-    public string? UtmContent { get; set; }
 
     /// <summary>
     /// Where the visit came from: utm_source when the link had one, else the referrer's kind
@@ -56,7 +53,7 @@ public class SiteEvent
     /// </summary>
     public string Source { get; set; } = "direct";
 
-    /// <summary>A hash of the day's salt, the address and the browser: counts a visitor once a day, never follows them to the next.</summary>
+    /// <summary>A hash of the shortened address (IPv4 /24, IPv6 /48) and the browser with the day's random salt: counts a visitor once a day, never follows them to the next.</summary>
     public string VisitorHash { get; set; } = string.Empty;
 
     /// <summary>A hash of the tab's random session id with the day's salt: groups one visit's events. The id itself is not kept.</summary>
@@ -74,10 +71,7 @@ public class SiteEvent
     /// <summary>The browser's language, its primary tag only ("de", "fr").</summary>
     public string? Language { get; set; }
 
-    /// <summary>The screen's width, in a coarse band ("1440-1919").</summary>
-    public string? ScreenBucket { get; set; }
-
-    /// <summary>Whether someone was signed in to the app. Never who.</summary>
+    /// <summary>Whether someone was signed in to the app, never who: only a sign-up event is kept signed in.</summary>
     public bool SignedIn { get; set; }
 }
 
@@ -107,15 +101,18 @@ public class SiteBotHit
 }
 
 /// <summary>
-/// The secret the daily salts of site analytics are made from, generated once (when the
-/// configuration sets none) and kept protected. One row, Id 1.
+/// One Zurich day's salt for the site analytics' hashes: 32 random bytes, made by whichever
+/// server needs it first (the day is the key, so every server uses the same), kept protected,
+/// and deleted once the day is over and the next one too. Nothing it was used on can be
+/// recomputed after that: there is no secret it could be made again from.
 /// </summary>
-public class SiteAnalyticsSecret
+public class SiteAnalyticsSalt
 {
-    public int Id { get; set; }
+    /// <summary>The day it salts (Europe/Zurich).</summary>
+    public DateOnly Day { get; set; }
 
-    /// <summary>The random secret, protected with the server's data-protection keys.</summary>
-    public string ProtectedSecret { get; set; } = string.Empty;
+    /// <summary>The random salt, protected with the server's data-protection keys.</summary>
+    public string ProtectedSalt { get; set; } = string.Empty;
 
     public DateTime CreatedAtUtc { get; set; }
 }

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 using ACI.Application.Common;
 
 namespace ACI.Application.Services;
@@ -9,10 +10,10 @@ namespace ACI.Application.Services;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Every figure counts by calendar day in Europe/Zurich. A visitor is a hash of that day's salt,
-/// the address and the browser, so "visitors" over several days is the distinct visitors of
-/// each day, summed: the same person on two days is two visitors, and nobody can be followed
-/// from one day to the next.
+/// Every figure counts by calendar day in Europe/Zurich. A visitor is a hash of the shortened
+/// address and the browser with that day's random salt, so "visitors" over several days is the
+/// distinct visitors of each day, summed: the same person on two days is two visitors, and
+/// nobody can be followed from one day to the next. A day's salt is destroyed the day after.
 /// </para>
 /// <para>
 /// Reads aggregate in SQL (counts per day, per page, per session), and only the per-session
@@ -25,7 +26,8 @@ public interface ISiteAnalytics
 {
     /// <summary>
     /// Records what one request posted: its events, each already checked and clipped, or, for a
-    /// robot, one more count of its hits. One insert for the lot.
+    /// robot, one more count of its hits. One insert for the lot. A signed-in event that is not
+    /// a sign-up event is dropped, whoever sent it.
     /// </summary>
     Task IngestAsync(SiteVisit visit, IReadOnlyList<SiteEventInput> events, DateTime nowUtc, CancellationToken ct = default);
 
@@ -40,12 +42,15 @@ public interface ISiteAnalytics
     Task<SiteLiveDto> LiveAsync(DateTime nowUtc, SiteAudience audience, CancellationToken ct = default);
 
     /// <summary>
-    /// The day's latest sessions of <paramref name="audience"/>, newest first, each with all its
-    /// steps: a visit that signed in shows its whole journey, signed in or not.
+    /// The day's latest sessions of <paramref name="audience"/>, newest first, each with its
+    /// steps of the same audience.
     /// </summary>
     Task<IReadOnlyList<SiteSessionDto>> SessionsAsync(DateOnly day, int limit, SiteAudience audience, CancellationToken ct = default);
 
-    /// <summary>Deletes what is older than <see cref="SiteAnalyticsRules.RetentionDays"/> days. Returns the events deleted.</summary>
+    /// <summary>
+    /// Deletes what is older than <see cref="SiteAnalyticsRules.RetentionDays"/> days, and every
+    /// salt older than yesterday's. Returns the events deleted.
+    /// </summary>
     Task<int> PurgeAsync(DateTime nowUtc, CancellationToken ct = default);
 }
 
@@ -76,20 +81,21 @@ public interface IPlatformAdmins
 }
 
 /// <summary>
-/// Whose events the figures count. The website and the app are one origin, so the tracker sees
-/// both the people reading www.cadencee.ai and the people working in the CRM signed in, the
-/// owner among them. The dashboard and the daily email show <see cref="Visitors"/> unless asked.
+/// Whose events the figures count. The website and the app are one origin, but signed in the
+/// tracker sends only the sign-up events, and the server keeps nothing else signed in: the
+/// app's own use is not recorded. The dashboard and the daily email show <see cref="Visitors"/>
+/// unless asked.
 /// </summary>
 public enum SiteAudience
 {
     /// <summary>
-    /// The website's visitors: what was done signed out, and every custom event
-    /// (signup_started, signup_completed, login) however it was sent, since a conversion is
-    /// often recorded just after signing in and still belongs to the website.
+    /// The website's visitors: what was done signed out, and every sign-up event
+    /// (signup_started, signup_completed) however it was sent, since a conversion is often
+    /// recorded just after signing in and still belongs to the website.
     /// </summary>
     Visitors = 0,
 
-    /// <summary>People signed in to the app: what was done signed in.</summary>
+    /// <summary>What was sent signed in: the sign-up events recorded just after signing in.</summary>
     SignedIn = 1,
 
     /// <summary>Every event, signed in or not.</summary>
@@ -128,7 +134,7 @@ public static class SiteAudiences
 }
 
 /// <summary>The request the events came in: what is known of the browser, never kept as such.</summary>
-/// <param name="Address">The caller's IP address: hashed with the day's salt, never stored.</param>
+/// <param name="Address">The caller's IP address: shortened (IPv4 /24, IPv6 /48), hashed with the day's salt, never stored.</param>
 /// <param name="UserAgent">Hashed with the address, and read for the families below; never stored.</param>
 /// <param name="Bot">The robot it is, when the user agent says so: its events are counted, not recorded.</param>
 /// <param name="Language">The primary tag of Accept-Language, for an event that sends none.</param>
@@ -147,13 +153,10 @@ public sealed record SiteEventInput
     public required string Type { get; init; }
     public string? Name { get; init; }
     public required string Path { get; init; }
-    public string? Title { get; init; }
     public string? ReferrerHost { get; init; }
     public string? UtmSource { get; init; }
     public string? UtmMedium { get; init; }
     public string? UtmCampaign { get; init; }
-    public string? UtmTerm { get; init; }
-    public string? UtmContent { get; init; }
     public required string Source { get; init; }
 
     /// <summary>The tab's random session id: hashed with the day's salt, never stored.</summary>
@@ -162,7 +165,6 @@ public sealed record SiteEventInput
     /// <summary>When the browser says it happened; taken only within a few minutes of the server's clock.</summary>
     public DateTime? AtUtc { get; init; }
 
-    public string? ScreenBucket { get; init; }
     public string? Language { get; init; }
     public bool SignedIn { get; init; }
 }
@@ -201,8 +203,27 @@ public static class SiteAnalyticsRules
     /// <summary>Steps of one session the journeys view lists; its counts cover them all.</summary>
     public const int MaxSteps = 100;
 
+    /// <summary>The event the app reports when someone opens the sign-up form.</summary>
+    public const string SignupStarted = "signup_started";
+
     /// <summary>The event the app reports when an account has been made.</summary>
     public const string SignupCompleted = "signup_completed";
+
+    /// <summary>
+    /// The events the app may report: the sign-up funnel's, and nothing else. A sign-in is not
+    /// one: it is not the website's growth, and its moment would match the account's last
+    /// sign-in. Any other event is dropped as it arrives.
+    /// </summary>
+    public static readonly IReadOnlySet<string> EventNames = new HashSet<string>(StringComparer.Ordinal) { SignupStarted, SignupCompleted };
+
+    /// <summary>
+    /// What a referring site is classified as (SiteTraffic.ClassifySource): the only sources,
+    /// beside a valid host name, the daily email names as they are.
+    /// </summary>
+    public static readonly IReadOnlySet<string> SourceKinds = new HashSet<string>(StringComparer.Ordinal)
+    {
+        Direct, "google", "bing", "duckduckgo", "linkedin", "facebook", "instagram", "x", "ai", "email",
+    };
 
     /// <summary>A click on a link to another site; its path is that site's host.</summary>
     public const string Outbound = "outbound";
@@ -212,6 +233,12 @@ public static class SiteAnalyticsRules
 
     /// <summary>Where the dashboard lives in the app.</summary>
     public const string DashboardPath = "/admin/analytics";
+
+    private static readonly Regex HostNamePattern = new(
+        "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+\\z", RegexOptions.CultureInvariant);
+
+    /// <summary>Whether <paramref name="value"/> is a host name in lower case: labels of a-z, 0-9 and inner hyphens, two or more, at most 253 characters.</summary>
+    public static bool IsHostName(string? value) => value is { Length: > 0 and <= 253 } && HostNamePattern.IsMatch(value);
 
     public static TimeZoneInfo Zone => RegionalSettings.ZoneOf(TimeZone);
 

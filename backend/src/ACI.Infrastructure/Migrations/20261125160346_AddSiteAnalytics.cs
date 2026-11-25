@@ -25,16 +25,16 @@ namespace ACI.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "SiteAnalyticsSecrets",
+                name: "SiteAnalyticsSalts",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "int", nullable: false),
-                    ProtectedSecret = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: false),
+                    Day = table.Column<DateOnly>(type: "date", nullable: false),
+                    ProtectedSalt = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: false),
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_SiteAnalyticsSecrets", x => x.Id);
+                    table.PrimaryKey("PK_SiteAnalyticsSalts", x => x.Day);
                 });
 
             migrationBuilder.CreateTable(
@@ -61,13 +61,10 @@ namespace ACI.Infrastructure.Migrations
                     Type = table.Column<string>(type: "varchar(16)", unicode: false, maxLength: 16, nullable: false),
                     Name = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: true),
                     Path = table.Column<string>(type: "nvarchar(300)", maxLength: 300, nullable: false),
-                    Title = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
                     ReferrerHost = table.Column<string>(type: "nvarchar(253)", maxLength: 253, nullable: true),
-                    UtmSource = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
-                    UtmMedium = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
-                    UtmCampaign = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
-                    UtmTerm = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
-                    UtmContent = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
+                    UtmSource = table.Column<string>(type: "varchar(64)", unicode: false, maxLength: 64, nullable: true),
+                    UtmMedium = table.Column<string>(type: "varchar(64)", unicode: false, maxLength: 64, nullable: true),
+                    UtmCampaign = table.Column<string>(type: "varchar(64)", unicode: false, maxLength: 64, nullable: true),
                     Source = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
                     VisitorHash = table.Column<string>(type: "varchar(32)", unicode: false, maxLength: 32, nullable: false),
                     SessionKey = table.Column<string>(type: "varchar(32)", unicode: false, maxLength: 32, nullable: false),
@@ -75,7 +72,6 @@ namespace ACI.Infrastructure.Migrations
                     Browser = table.Column<string>(type: "nvarchar(32)", maxLength: 32, nullable: false),
                     Os = table.Column<string>(type: "nvarchar(32)", maxLength: 32, nullable: false),
                     Language = table.Column<string>(type: "varchar(8)", unicode: false, maxLength: 8, nullable: true),
-                    ScreenBucket = table.Column<string>(type: "varchar(16)", unicode: false, maxLength: 16, nullable: true),
                     SignedIn = table.Column<bool>(type: "bit", nullable: false)
                 },
                 constraints: table =>
@@ -106,7 +102,7 @@ namespace ACI.Infrastructure.Migrations
                 name: "SiteAnalyticsDigests");
 
             migrationBuilder.DropTable(
-                name: "SiteAnalyticsSecrets");
+                name: "SiteAnalyticsSalts");
 
             migrationBuilder.DropTable(
                 name: "SiteBotHits");

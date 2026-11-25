@@ -373,18 +373,13 @@ try
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
             }));
-        // The site analytics' tracker (SiteAnalyticsController), anonymous, by address: a tab posts
-        // every five seconds at most, so this is room for several visitors behind one address, and
-        // a script posting in a loop is held to two a second. The address is the proxy's forwarded
-        // one when the connection comes from a private network (SiteTraffic.ClientAddress).
-        options.AddPolicy(ACI.WebApi.Controllers.SiteAnalyticsController.RateLimitPolicy, context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
-            "site-analytics:" + ACI.WebApi.SiteAnalytics.SiteTraffic.ClientAddress(context),
-            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
-            {
-                PermitLimit = ACI.WebApi.Controllers.SiteAnalyticsController.PerMinute,
-                Window = TimeSpan.FromMinutes(1),
-                QueueLimit = 0,
-            }));
+        // The site analytics' tracker (SiteAnalyticsController.Events), anonymous: 30 posts a minute
+        // from one address (a tab posts every five seconds at most), then 600 a minute from everyone
+        // together, chained so an address over its own limit takes nothing from everyone's. The
+        // address is the proxy's forwarded one when the connection comes from a private network
+        // (SiteTraffic.ClientAddress). The global limiter, as an endpoint policy cannot chain two
+        // limiters; it lets every other request through.
+        options.GlobalLimiter = ACI.WebApi.Controllers.SiteAnalyticsController.Limiter();
     });
     builder.Services.AddResponseCompression(options => options.EnableForHttps = true);
     builder.Services.AddEndpointsApiExplorer();

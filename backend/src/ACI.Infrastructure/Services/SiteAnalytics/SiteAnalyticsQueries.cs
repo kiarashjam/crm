@@ -77,9 +77,9 @@ public static class SiteAnalyticsQueries
     }
 
     /// <summary>
-    /// The events of <paramref name="audience"/>: signed out, plus every custom event, for the
+    /// The events of <paramref name="audience"/>: signed out, plus every sign-up event, for the
     /// website's visitors (a sign-up recorded just after signing in is still the website's);
-    /// signed in, for the app's users; all of them for everyone.
+    /// signed in (the sign-up events sent signed in), for the signed-in; all of them for everyone.
     /// </summary>
     private static IQueryable<SiteEvent> Of(this IQueryable<SiteEvent> events, SiteAudience audience) => audience switch
     {
@@ -255,12 +255,13 @@ public static class SiteAnalyticsQueries
     }
 
     /// <summary>
-    /// Every event of these sessions on the day, in the order they happened, whatever the
-    /// audience that chose them: a visit is shown whole.
+    /// The events of <paramref name="audience"/> of these sessions on the day, in the order they
+    /// happened: the same events as chose the sessions (<see cref="LatestSessions"/>).
     /// </summary>
-    public static IQueryable<StepRow> Steps(AppDbContext db, DateOnly day, IReadOnlyCollection<string> keys) =>
+    public static IQueryable<StepRow> Steps(AppDbContext db, DateOnly day, IReadOnlyCollection<string> keys, SiteAudience audience) =>
         db.SiteEvents.AsNoTracking()
             .Where(e => e.Day == day && keys.Contains(e.SessionKey))
+            .Of(audience)
             .OrderBy(e => e.OccurredAtUtc).ThenBy(e => e.Id)
             .Select(e => new StepRow
             {

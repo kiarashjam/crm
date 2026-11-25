@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using ACI.Application.Services;
@@ -27,16 +28,23 @@ namespace ACI.WebApi.SiteAnalytics;
 /// path is whatever the caller says.
 /// </para>
 /// <para>
-/// A referrer keeps its host alone (its path can carry a search, an email, a token). A title is
-/// kept on public pages only: the app's own pages put the open record's name in it.
+/// A referrer keeps its host alone (its path can carry a search, an email, a token). A utm value
+/// is lower case and plain, and none at all when it looks like an id, a token or an address. No
+/// page title and no screen size are kept, nor utm_term or utm_content.
+/// </para>
+/// <para>
+/// A customer's pages (signing, paying, unsubscribing, a capture or application form, a club's
+/// member portal: <see cref="UntrackedRoots"/>) are never kept, whatever a client posts. Signed
+/// in, only a sign-up event is kept (SiteAnalyticsRules.EventNames), and never a sign-in. Every
+/// text is stripped of control and format characters and cut between code points, and one
+/// event that cannot be read costs that event alone, never the rest of its post.
 /// </para>
 /// </remarks>
 public static partial class SiteTraffic
 {
     public const int MaxPath = 300;
-    public const int MaxTitle = 200;
     public const int MaxName = 64;
-    public const int MaxUtm = 100;
+    public const int MaxUtm = 64;
     public const int MaxHost = 253;
 
     /// <summary>A segment longer than this is not a word anyone reads: a token.</summary>
@@ -63,6 +71,16 @@ public static partial class SiteTraffic
         ["member-portal"] = ":key",
     };
 
+    /// <summary>
+    /// The first segments of the pages never recorded: a club's customers open them from a link
+    /// or a form (signing a contract, paying, unsubscribing, a capture or application form, the
+    /// member portal), so they are no part of the website's visits. The tracker leaves them out
+    /// too; a stale or hostile client's posts of them are dropped here.
+    /// </summary>
+    public static readonly IReadOnlySet<string> UntrackedRoots = new HashSet<string>(
+        ["sign", "pay", "unsubscribe", "capture", "apply", "member-portal", .. RouteTemplates.Keys],
+        StringComparer.OrdinalIgnoreCase);
+
     [GeneratedRegex("^:[a-z]{1,16}$")]
     private static partial Regex TemplateSegment();
 
@@ -78,11 +96,19 @@ public static partial class SiteTraffic
     [GeneratedRegex("^[A-Za-z0-9_-]{8,64}$")]
     private static partial Regex SessionId();
 
-    [GeneratedRegex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$")]
-    private static partial Regex HostName();
-
     [GeneratedRegex("[^a-z0-9_.:-]+")]
     private static partial Regex NameNoise();
+
+    [GeneratedRegex("[^a-z0-9 _.+-]+")]
+    private static partial Regex UtmNoise();
+
+    /// <summary>What parts a utm value's words: spaces and the punctuation a tag is written with, never a GUID's hyphen.</summary>
+    [GeneratedRegex("[\\s_.+/:;,=|]+")]
+    private static partial Regex UtmWordBreak();
+
+    /// <summary>A number long enough to be someone's: a subscriber, an order, a phone.</summary>
+    [GeneratedRegex("^[0-9]{6,}$")]
+    private static partial Regex IdNumber();
 
     [GeneratedRegex("\\s+")]
     private static partial Regex Whitespace();
@@ -112,8 +138,17 @@ public static partial class SiteTraffic
         {
             parts.Add(i == 1 && RouteTemplates.TryGetValue(segments[0], out var template) ? template : Segment(segments[i]));
         }
-        var path = "/" + string.Join('/', parts);
-        return path.Length <= MaxPath ? path : path[..MaxPath];
+        return Cut("/" + string.Join('/', parts), MaxPath);
+    }
+
+    /// <summary>
+    /// Whether a page is one never recorded: its first segment is a customer's page
+    /// (<see cref="UntrackedRoots"/>), whatever its case or encoding.
+    /// </summary>
+    public static bool IsUntracked(string path)
+    {
+        var first = path.Split('/', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        return first != null && (UntrackedRoots.Contains(first) || UntrackedRoots.Contains(Decode(first).Trim()));
     }
 
     private static string Segment(string segment)
@@ -172,7 +207,7 @@ public static partial class SiteTraffic
         }
         host = host.Trim().TrimEnd('.').ToLowerInvariant();
         if (host.StartsWith("www.", StringComparison.Ordinal)) host = host[4..];
-        return host.Length is > 0 and <= MaxHost && HostName().IsMatch(host) ? host : null;
+        return SiteAnalyticsRules.IsHostName(host) ? host : null;
     }
 
     /// <summary>
@@ -325,19 +360,6 @@ public static partial class SiteTraffic
         return primary.Length is >= 2 and <= 3 && primary.All(char.IsAsciiLetterLower) ? primary : null;
     }
 
-    /// <summary>The screen's width in a coarse band, or null when there is no sensible width.</summary>
-    public static string? ScreenBucket(int? width) => width switch
-    {
-        null or <= 0 or > 20_000 => null,
-        < 576 => "<576",
-        < 768 => "576-767",
-        < 992 => "768-991",
-        < 1200 => "992-1199",
-        < 1440 => "1200-1439",
-        < 1920 => "1440-1919",
-        _ => "1920+",
-    };
-
     // ── Fields ───────────────────────────────────────────────────────────────
 
     /// <summary>A click's or an event's name: lower case, a word of letters, digits and _ . : -, at most 64.</summary>
@@ -350,28 +372,73 @@ public static partial class SiteTraffic
         return name.Length == 0 ? null : name;
     }
 
-    /// <summary>A utm value: one line, lower case, at most 100; none that holds an email address.</summary>
+    /// <summary>
+    /// A utm value (source, medium or campaign): lower case, accents dropped, only letters a-z,
+    /// digits, spaces and _ . + -, at most <see cref="MaxUtm"/>. None at all when it holds an @, or
+    /// when it, or a word of it, looks like an id or a token (a GUID, a long number, a long hex
+    /// string, a token's characters): a link made for one person is not counted as theirs.
+    /// </summary>
     public static string? Utm(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return null;
-        var value = Whitespace().Replace(Bound(raw.Trim()), " ").ToLowerInvariant();
-        if (value.Contains('@')) return null;
-        return value.Length <= MaxUtm ? value : value[..MaxUtm];
+        var value = Whitespace().Replace(Printable(Decode(Bound(raw))).Trim(), " ");
+        if (value.Contains('@') || NamesSomeone(value)) return null;
+        var plain = UtmNoise().Replace(WithoutAccents(value).ToLowerInvariant(), "");
+        plain = Whitespace().Replace(plain, " ").Trim();
+        if (plain.Length > MaxUtm) plain = plain[..MaxUtm].TrimEnd();
+        return plain.Length == 0 || NamesSomeone(plain) ? null : plain;
+    }
+
+    /// <summary>Whether a utm value, or any word of it, looks like an id or a token.</summary>
+    private static bool NamesSomeone(string value)
+    {
+        if (IsId(value)) return true;
+        foreach (var word in UtmWordBreak().Split(value))
+            if (word.Length > 0 && (IsId(word) || IdNumber().IsMatch(word))) return true;
+        return false;
+
+        static bool IsId(string text) =>
+            Guid.TryParse(text, out _) || LongNumber().IsMatch(text) || LongHex().IsMatch(text) || LooksLikeToken(text);
+    }
+
+    private static string WithoutAccents(string value)
+    {
+        var decomposed = value.Normalize(NormalizationForm.FormD);
+        var kept = new StringBuilder(decomposed.Length);
+        foreach (var c in decomposed)
+            if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark) kept.Append(c);
+        return kept.ToString();
     }
 
     /// <summary>
-    /// A page's title, on a public page only: not when someone is signed in (the app puts the
-    /// open record's name in it), not on a templated path, never with an email address.
+    /// The text without control (Cc) or format (Cf) characters: no line breaks, no invisible or
+    /// direction-changing marks. A control that is a space (a tab, a line break) becomes one.
     /// </summary>
-    public static string? Title(string? raw, bool signedIn, string path)
+    public static string Printable(string text)
     {
-        if (signedIn || path.Contains(':') || string.IsNullOrWhiteSpace(raw)) return null;
-        var value = Whitespace().Replace(Bound(raw.Trim()), " ");
-        if (value.Contains('@')) return null;
-        return value.Length <= MaxTitle ? value : value[..MaxTitle];
+        StringBuilder? kept = null;
+        for (var i = 0; i < text.Length; i++)
+        {
+            var c = text[i];
+            if (char.GetUnicodeCategory(c) is UnicodeCategory.Control or UnicodeCategory.Format)
+            {
+                kept ??= new StringBuilder(text, 0, i, text.Length);
+                if (char.IsWhiteSpace(c)) kept.Append(' ');
+                continue;
+            }
+            kept?.Append(c);
+        }
+        return kept?.ToString() ?? text;
     }
 
-    private static string Bound(string value) => value.Length <= MaxRaw ? value : value[..MaxRaw];
+    /// <summary>At most <paramref name="max"/> UTF-16 units, cut between code points: never half of a surrogate pair.</summary>
+    public static string Cut(string value, int max)
+    {
+        if (value.Length <= max) return value;
+        return value[..(char.IsHighSurrogate(value[max - 1]) ? max - 1 : max)];
+    }
+
+    private static string Bound(string value) => Cut(value, MaxRaw);
 
     // ── The request ──────────────────────────────────────────────────────────
 
@@ -437,7 +504,8 @@ public static partial class SiteTraffic
 
     /// <summary>
     /// The events of a posted body, <c>{ events: [...] }</c>, each checked and clipped; at most
-    /// <paramref name="max"/>, and none of those that are not events. Never throws: junk gives none.
+    /// <paramref name="max"/>, and none of those that are not events. Never throws: junk gives
+    /// none, and an event that cannot be read is left out alone.
     /// </summary>
     public static IReadOnlyList<SiteEventInput> Read(byte[] body, string? ownHost, int max)
     {
@@ -461,7 +529,15 @@ public static partial class SiteTraffic
             foreach (var item in list.EnumerateArray())
             {
                 if (seen++ >= max) break;
-                if (item.ValueKind == JsonValueKind.Object && ReadEvent(item, ownHost) is { } e) events.Add(e);
+                if (item.ValueKind != JsonValueKind.Object) continue;
+                try
+                {
+                    if (ReadEvent(item, ownHost) is { } e) events.Add(e);
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or FormatException or ArgumentException or OverflowException)
+                {
+                    // This event alone is junk; the rest of the post is kept.
+                }
             }
             return events;
         }
@@ -474,45 +550,38 @@ public static partial class SiteTraffic
         var sessionId = Text(item, "sessionId");
         if (sessionId == null || !SessionId().IsMatch(sessionId)) return null;
 
+        // Signed in, the app's own use is not recorded: a sign-up event alone is kept.
+        var signedIn = item.TryGetProperty("signedIn", out var flag) && flag.ValueKind == JsonValueKind.True;
+        if (signedIn && type != SiteEventTypes.Event) return null;
+
         var name = type == SiteEventTypes.PageView ? null : EventName(Text(item, "name"));
         if (type != SiteEventTypes.PageView && name == null) return null;
-        var path = type == SiteEventTypes.Click && name == SiteAnalyticsRules.Outbound
-            ? Host(Text(item, "path"))
-            : TemplatePath(Text(item, "path"));
-        if (path == null) return null;
+        if (type == SiteEventTypes.Event && !SiteAnalyticsRules.EventNames.Contains(name!)) return null;
+        var outbound = type == SiteEventTypes.Click && name == SiteAnalyticsRules.Outbound;
+        var path = outbound ? Host(Text(item, "path")) : TemplatePath(Text(item, "path"));
+        if (path == null || (!outbound && IsUntracked(path))) return null;
 
-        var signedIn = item.TryGetProperty("signedIn", out var flag) && flag.ValueKind == JsonValueKind.True;
         var referrer = ReferrerHost(Text(item, "referrer"), ownHost);
-        string? utmSource = null, utmMedium = null, utmCampaign = null, utmTerm = null, utmContent = null;
+        string? utmSource = null, utmMedium = null, utmCampaign = null;
         if (item.TryGetProperty("utm", out var utm) && utm.ValueKind == JsonValueKind.Object)
         {
             utmSource = Utm(Text(utm, "source"));
             utmMedium = Utm(Text(utm, "medium"));
             utmCampaign = Utm(Text(utm, "campaign"));
-            utmTerm = Utm(Text(utm, "term"));
-            utmContent = Utm(Text(utm, "content"));
         }
-        int? width = null;
-        if (item.TryGetProperty("screen", out var screen) && screen.ValueKind == JsonValueKind.Object
-            && screen.TryGetProperty("w", out var w) && w.ValueKind == JsonValueKind.Number && w.TryGetInt32(out var px))
-            width = px;
 
         return new SiteEventInput
         {
             Type = type!,
             Name = name,
             Path = path,
-            Title = type == SiteEventTypes.PageView ? Title(Text(item, "title"), signedIn, path) : null,
             ReferrerHost = referrer,
             UtmSource = utmSource,
             UtmMedium = utmMedium,
             UtmCampaign = utmCampaign,
-            UtmTerm = utmTerm,
-            UtmContent = utmContent,
             Source = ClassifySource(utmSource, referrer),
             SessionId = sessionId,
             AtUtc = When(item),
-            ScreenBucket = ScreenBucket(width),
             Language = Language(Text(item, "lang")),
             SignedIn = signedIn,
         };
@@ -523,19 +592,32 @@ public static partial class SiteTraffic
     {
         if (!item.TryGetProperty("at", out var at)) return null;
         if (at.ValueKind == JsonValueKind.String
-            && DateTimeOffset.TryParse(at.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed))
+            && DateTimeOffset.TryParse(Text(item, "at"), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed))
             return parsed.UtcDateTime;
         if (at.ValueKind == JsonValueKind.Number && at.TryGetInt64(out var ms) && ms > 0 && ms < 253_402_300_799_000)
             return DateTimeOffset.FromUnixTimeMilliseconds(ms).UtcDateTime;
         return null;
     }
 
-    /// <summary>A string property, trimmed and cut to a bound; null when absent or not a string.</summary>
+    /// <summary>
+    /// A string property, cut to a bound, without control or format characters, and trimmed;
+    /// null when absent, not a string, or not text (a lone surrogate, "\ud800", which JSON can
+    /// carry and a .NET string cannot be read from).
+    /// </summary>
     private static string? Text(JsonElement item, string name)
     {
         if (!item.TryGetProperty(name, out var value) || value.ValueKind != JsonValueKind.String) return null;
-        var text = value.GetString();
+        string? text;
+        try
+        {
+            text = value.GetString();
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
         if (string.IsNullOrWhiteSpace(text)) return null;
-        return Bound(text.Trim());
+        text = Printable(Bound(text)).Trim();
+        return text.Length == 0 ? null : text;
     }
 }

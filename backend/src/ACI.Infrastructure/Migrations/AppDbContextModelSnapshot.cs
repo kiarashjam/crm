@@ -8347,22 +8347,22 @@ namespace ACI.Infrastructure.Migrations
                     b.ToTable("SiteAnalyticsDigests", (string)null);
                 });
 
-            modelBuilder.Entity("ACI.Domain.Entities.SiteAnalyticsSecret", b =>
+            modelBuilder.Entity("ACI.Domain.Entities.SiteAnalyticsSalt", b =>
                 {
-                    b.Property<int>("Id")
-                        .HasColumnType("int");
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date");
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("ProtectedSecret")
+                    b.Property<string>("ProtectedSalt")
                         .IsRequired()
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
 
-                    b.HasKey("Id");
+                    b.HasKey("Day");
 
-                    b.ToTable("SiteAnalyticsSecrets", (string)null);
+                    b.ToTable("SiteAnalyticsSalts", (string)null);
                 });
 
             modelBuilder.Entity("ACI.Domain.Entities.SiteBotHit", b =>
@@ -8431,11 +8431,6 @@ namespace ACI.Infrastructure.Migrations
                         .HasMaxLength(253)
                         .HasColumnType("nvarchar(253)");
 
-                    b.Property<string>("ScreenBucket")
-                        .HasMaxLength(16)
-                        .IsUnicode(false)
-                        .HasColumnType("varchar(16)");
-
                     b.Property<string>("SessionKey")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -8450,10 +8445,6 @@ namespace ACI.Infrastructure.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
-                    b.Property<string>("Title")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(16)
@@ -8461,24 +8452,19 @@ namespace ACI.Infrastructure.Migrations
                         .HasColumnType("varchar(16)");
 
                     b.Property<string>("UtmCampaign")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("UtmContent")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)");
 
                     b.Property<string>("UtmMedium")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)");
 
                     b.Property<string>("UtmSource")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("UtmTerm")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)");
 
                     b.Property<string>("VisitorHash")
                         .IsRequired()

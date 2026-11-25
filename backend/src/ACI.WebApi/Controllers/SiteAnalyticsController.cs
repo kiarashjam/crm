@@ -1,10 +1,11 @@
+using System.Threading.RateLimiting;
 using ACI.Application.Configuration;
 using ACI.Application.Services;
 using ACI.WebApi.Filters;
 using ACI.WebApi.SiteAnalytics;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.Extensions.Options;
 
 namespace ACI.WebApi.Controllers;
@@ -16,12 +17,15 @@ namespace ACI.WebApi.Controllers;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The ingest is anonymous, so it is rate limited by address (<see cref="PerMinute"/> a minute),
-/// held to <see cref="MaxBodyBytes"/>, takes at most <see cref="MaxEvents"/> events a post, and
-/// checks and clips every field (SiteTraffic): a path is its route's template with no query
-/// string and no token, a referrer its host, a signed-in visitor only "signed in". Robots are
-/// counted and dropped. Whatever is posted, it answers 204: the tracker never waits for it,
-/// and a visitor's page never fails because of it.
+/// The ingest is anonymous, so it is rate limited by address (<see cref="PerMinute"/> a minute)
+/// and for everyone together (<see cref="EveryonePerMinute"/>), held to <see cref="MaxBodyBytes"/>,
+/// takes at most <see cref="MaxEvents"/> events a post, stores at most SiteAnalytics:DailyEventCap
+/// events a day per server, and checks and clips every field (SiteTraffic): a path is its
+/// route's template with no query string and no token, a referrer its host; a customer's page
+/// is never kept, and signed in only a sign-up event is, as "signed in". Robots are counted and
+/// dropped. A browser that sends Do Not Track or Global Privacy Control is not read at all.
+/// Whatever is posted, it answers 204: the tracker never waits for it, and a visitor's page
+/// never fails because of it.
 /// </para>
 /// <para>
 /// The body is read here rather than bound: navigator.sendBeacon posts text/plain, which a
@@ -33,10 +37,11 @@ namespace ACI.WebApi.Controllers;
 [Produces("application/json")]
 public sealed class SiteAnalyticsController : ControllerBase
 {
-    public const string RateLimitPolicy = "site-analytics";
+    /// <summary>Posts one address may make in a minute: a tab posts every five seconds at most, so this is room for two tabs and their beacons as they leave.</summary>
+    public const int PerMinute = 30;
 
-    /// <summary>Posts one address may make in a minute: a tab posts every five seconds at most, so this is room for several people behind one address.</summary>
-    public const int PerMinute = 120;
+    /// <summary>Posts everyone together may make in a minute: many addresses at once still fill the table by a bounded amount.</summary>
+    public const int EveryonePerMinute = 600;
 
     /// <summary>The largest body taken.</summary>
     public const int MaxBodyBytes = 32 * 1024;
@@ -56,17 +61,20 @@ public sealed class SiteAnalyticsController : ControllerBase
     }
 
     /// <summary>
-    /// <c>{ events: [{ type, name?, path, title?, referrer?, utm?: { source, medium, campaign, term, content },
-    /// sessionId, at?, screen?: { w, h }, lang?, signedIn? }] }</c>, as JSON in any content type.
-    /// 204 whatever it holds; 413 over 32 KB; 429 past <see cref="PerMinute"/> a minute from one address.
+    /// <c>{ events: [{ type, name?, path, referrer?, utm?: { source, medium, campaign }, sessionId,
+    /// at?, lang?, signedIn? }] }</c>, as JSON in any content type. 204 whatever it holds, and
+    /// without reading it when the browser sends <c>Sec-GPC: 1</c> or <c>DNT: 1</c>; 413 over
+    /// 32 KB; 429 past <see cref="PerMinute"/> a minute from one address, or
+    /// <see cref="EveryonePerMinute"/> from everyone (<see cref="Limiter"/>).
     /// </summary>
     [HttpPost("events")]
     [AllowAnonymous]
-    [EnableRateLimiting(RateLimitPolicy)]
     [RequestSizeLimit(MaxBodyBytes)]
     public async Task<IActionResult> Events(CancellationToken ct)
     {
         Response.Headers.CacheControl = "no-store";
+        // The browser asks not to be tracked: nothing is read, nothing kept.
+        if (AsksNotToBeTracked(Request)) return NoContent();
         if (Request.ContentLength > MaxBodyBytes) return TooLarge();
 
         byte[]? body;
@@ -137,7 +145,7 @@ public sealed class SiteAnalyticsController : ControllerBase
     /// <summary>
     /// The latest sessions of <paramref name="day"/> (yyyy-MM-dd, Zurich; today by default) with
     /// events of the audience (as for the summary), newest first, at most
-    /// <paramref name="limit"/> (50 by default, 200 at most), each with all its steps.
+    /// <paramref name="limit"/> (50 by default, 200 at most), each with its steps of the audience.
     /// </summary>
     [HttpGet("sessions")]
     [Authorize]
@@ -154,6 +162,39 @@ public sealed class SiteAnalyticsController : ControllerBase
             who,
             ct));
     }
+
+    /// <summary>Whether the request carries Global Privacy Control (<c>Sec-GPC: 1</c>) or Do Not Track (<c>DNT: 1</c>).</summary>
+    public static bool AsksNotToBeTracked(HttpRequest request) =>
+        request.Headers["Sec-GPC"].ToString().Trim() == "1" || request.Headers["DNT"].ToString().Trim() == "1";
+
+    /// <summary>
+    /// The tracker's rate limits, chained: first the caller's address (<paramref name="perAddress"/>
+    /// a minute, SiteTraffic.ClientAddress), then everyone's together (<paramref name="everyone"/> a
+    /// minute), so an address over its own limit takes nothing from everyone's. It is the app's
+    /// global limiter (Program.cs), as an endpoint's policy is one limiter and cannot chain; every
+    /// request but the tracker's post goes through it unlimited.
+    /// </summary>
+    public static PartitionedRateLimiter<HttpContext> Limiter(int perAddress = PerMinute, int everyone = EveryonePerMinute) =>
+        PartitionedRateLimiter.CreateChained(
+            PartitionedRateLimiter.Create<HttpContext, string>(context => IsIngest(context)
+                ? RateLimitPartition.GetFixedWindowLimiter("site-analytics:" + SiteTraffic.ClientAddress(context), _ => PerMinuteWindow(perAddress))
+                : RateLimitPartition.GetNoLimiter(string.Empty)),
+            PartitionedRateLimiter.Create<HttpContext, string>(context => IsIngest(context)
+                ? RateLimitPartition.GetFixedWindowLimiter("site-analytics", _ => PerMinuteWindow(everyone))
+                : RateLimitPartition.GetNoLimiter(string.Empty)));
+
+    /// <summary>Whether the request is routed to the tracker's post (<see cref="Events"/>).</summary>
+    public static bool IsIngest(HttpContext context) =>
+        context.GetEndpoint()?.Metadata.GetMetadata<ControllerActionDescriptor>() is { } action
+        && action.ControllerTypeInfo.AsType() == typeof(SiteAnalyticsController)
+        && action.ActionName == nameof(Events);
+
+    private static FixedWindowRateLimiterOptions PerMinuteWindow(int permits) => new()
+    {
+        PermitLimit = permits,
+        Window = TimeSpan.FromMinutes(1),
+        QueueLimit = 0,
+    };
 
     private ObjectResult Refused(string detail) => Problem(statusCode: StatusCodes.Status400BadRequest, title: "Not a period", detail: detail);
 

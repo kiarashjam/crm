@@ -158,10 +158,12 @@ public static class DependencyInjection
         services.AddScoped<IMonitoringReadings>(sp => sp.GetRequiredService<Services.Monitoring.SystemHealthService>());
         services.AddScoped<IHealthDigest, Services.Monitoring.HealthDigestService>();
         // The site analytics of cadencee.ai itself, its daily email, and the platform's admins
-        // who may read them (Platform:AdminEmails). The salts are kept per process.
+        // who may read them (Platform:AdminEmails). A day's random salt is shared through the
+        // database and kept in memory once read; the day's cap on stored events is per process.
         services.Configure<PlatformSettings>(configuration.GetSection(PlatformSettings.SectionName));
         services.Configure<SiteAnalyticsSettings>(configuration.GetSection(SiteAnalyticsSettings.SectionName));
         services.AddSingleton<Services.SiteAnalytics.SiteAnalyticsKeys>();
+        services.AddSingleton<Services.SiteAnalytics.SiteEventBudget>();
         services.AddScoped<ISiteAnalytics, Services.SiteAnalytics.SiteAnalyticsService>();
         services.AddScoped<ISiteAnalyticsDigest, Services.SiteAnalytics.SiteAnalyticsDigestService>();
         services.AddScoped<IPlatformAdmins, Services.SiteAnalytics.PlatformAdmins>();

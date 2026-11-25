@@ -166,9 +166,9 @@ public static class PersonDataInventory
         [typeof(ClubScoringRun)] = "What a scoring run found and did, in counts.",
         [typeof(ClubPrivateEventLine)] = "A private event's menu and services: what, how many and the price.",
         // The platform's own site analytics, not a workspace's records about anyone.
-        [typeof(SiteEvent)] = "Visits to cadencee.ai: pages as route templates, clicks, device and browser families, a referring host. The visitor is a hash that changes every day, so no row can be found from a name, an address or an account; deleted after 400 days.",
+        [typeof(SiteEvent)] = "Visits to cadencee.ai: pages as route templates, clicks, device and browser families, a referring host. The visitor is a hash with a random salt of the day, destroyed the day after, so no row can be found from a name, an address or an account; nothing of the app's signed-in use but sign-ups; deleted after 400 days.",
         [typeof(SiteBotHit)] = "Robots' requests to cadencee.ai, counted per robot and day.",
-        [typeof(SiteAnalyticsSecret)] = "The random secret the site analytics' daily salts are made from.",
+        [typeof(SiteAnalyticsSalt)] = "Today's and yesterday's random salts of the site analytics' hashes; older ones are deleted.",
         [typeof(SiteAnalyticsDigest)] = "The days the site analytics email went, and to how many admins.",
     };
 }
