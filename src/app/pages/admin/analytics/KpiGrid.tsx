@@ -25,7 +25,7 @@ interface KpiDef {
 const KPIS: KpiDef[] = [
   {
     key: 'visitors', label: 'Visitors', icon: Users, line: ['#ea580c', '#fb923c'], daily: (d) => d.visitors,
-    tile: 'bg-orange-50 text-orange-600 dark:bg-orange-500/10 dark:text-orange-300', hint: 'different people, counted once a day',
+    tile: 'bg-orange-50 text-orange-600 dark:bg-orange-500/10 dark:text-orange-300', hint: 'people, counted once a day',
   },
   {
     key: 'sessions', label: 'Visits', icon: MousePointerClick, line: ['#db2777', '#f472b6'], daily: (d) => d.sessions,
