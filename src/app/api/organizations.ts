@@ -226,6 +226,8 @@ export interface InviteDto {
   email: string;
   expiresAtUtc: string;
   createdAtUtc: string;
+  /** The preset the person joins with once they accept; absent when they join as a Member. */
+  preset?: string | null;
 }
 
 export interface JoinRequestDto {
@@ -343,10 +345,11 @@ export async function acceptInvite(token: string): Promise<InviteDto | null> {
   return invite ?? null;
 }
 
-export async function createInvite(organizationId: string, email: string): Promise<InviteDto | null> {
+/** Invites someone by email; with a preset, they join with it (and its role) once they accept. */
+export async function createInvite(organizationId: string, email: string, preset?: string): Promise<InviteDto | null> {
   const invite = await authFetchJson<InviteDto>(`/api/invites/${organizationId}`, {
     method: 'POST',
-    body: JSON.stringify({ email: email.trim().toLowerCase() }),
+    body: JSON.stringify(preset ? { email: email.trim().toLowerCase(), preset } : { email: email.trim().toLowerCase() }),
   });
   return invite ?? null;
 }

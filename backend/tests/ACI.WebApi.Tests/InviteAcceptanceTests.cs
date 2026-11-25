@@ -1,13 +1,16 @@
+using ACI.Application.Common;
 using ACI.Application.Configuration;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using ACI.Application.Services;
+using ACI.Domain.Common;
 using ACI.Domain.Entities;
 using ACI.Domain.Enums;
 using ACI.Infrastructure.Persistence;
 using ACI.Infrastructure.Repositories;
 using ACI.WebApi.Tests.Helpers;
 using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -76,9 +79,9 @@ public class InviteAcceptanceTests : IDisposable
         return id;
     }
 
-    private async Task<string> InviteAsync(string email)
+    private async Task<string> InviteAsync(string email, string? preset = null)
     {
-        var created = await _invites.CreateInviteAsync(_orgId, _ownerId, new CreateInviteRequest { Email = email });
+        var created = await _invites.CreateInviteAsync(_orgId, _ownerId, new CreateInviteRequest { Email = email, Preset = preset });
         created.IsSuccess.Should().BeTrue(created.IsFailure ? created.Error.Description : "");
         var url = _acceptUrls.Last();
         url.Should().StartWith("https://crm.example.ch/invites/accept?token=");
@@ -163,4 +166,55 @@ public class InviteAcceptanceTests : IDisposable
         (await _invites.AcceptInviteAsync(first, newHire)).IsFailure.Should().BeTrue("the first link was replaced");
         (await _invites.AcceptInviteAsync(second, newHire)).IsSuccess.Should().BeTrue();
     }
+
+    [Fact]
+    public async Task AnInviteeInvitedAsReadOnly_JoinsReadOnly_NotAsAMember()
+    {
+        var token = await InviteAsync("founder@club.ch", "read_only");
+        _db.Invites.Single().PermissionPreset.Should().Be("read_only");
+        var founder = Account("founder@club.ch", confirmed: true);
+
+        var accepted = await _invites.AcceptInviteAsync(token, founder);
+
+        accepted.IsSuccess.Should().BeTrue(accepted.IsFailure ? accepted.Error.Description : "");
+        accepted.Value.Preset.Should().Be("read_only");
+        var joined = _db.OrganizationMembers.AsNoTracking().Single(m => m.OrganizationId == _orgId && m.UserId == founder);
+        (joined.Role, joined.PermissionPreset).Should().Be((OrgMemberRole.Viewer, "read_only"),
+            "they join with the preset they were invited with, never first as a Member who can edit, delete and export");
+    }
+
+    [Fact]
+    public async Task AnInvitationWithoutAPresetStillJoinsAsAMember_AndAnUnknownPresetIsRefused()
+    {
+        var token = await InviteAsync("newhire@club.ch");
+        var newHire = Account("newhire@club.ch", confirmed: true);
+        (await _invites.AcceptInviteAsync(token, newHire)).IsSuccess.Should().BeTrue();
+        var joined = _db.OrganizationMembers.AsNoTracking().Single(m => m.OrganizationId == _orgId && m.UserId == newHire);
+        (joined.Role, joined.PermissionPreset).Should().Be((OrgMemberRole.Member, (string?)null), "as invitations always did");
+
+        foreach (var preset in new[] { "owner", "superuser" })
+        {
+            var refused = await _invites.CreateInviteAsync(_orgId, _ownerId, new CreateInviteRequest { Email = $"{preset}@club.ch", Preset = preset });
+            refused.Error.Code.Should().Be("Invite.UnknownPreset", $"\"{preset}\" is not a preset anyone can be invited with");
+        }
+    }
+
+    [Fact]
+    public async Task NobodyInvitesSomeoneToMoreThanTheyCanDo()
+    {
+        // A manager whose own permissions were narrowed to the team alone may invite a read-only
+        // person, but not a Manager, who could do more than they can.
+        var manager = Account("lead@club.ch", confirmed: true);
+        _db.OrganizationMembers.Add(new OrganizationMember
+        {
+            OrganizationId = _orgId, UserId = manager, Role = OrgMemberRole.Manager, PermissionPreset = "manager",
+            Permissions = MemberPermissions.Format(new HashSet<string> { MemberPermissions.ManageMembers, MemberPermissions.SeeAllDeals }), JoinedAtUtc = DateTime.UtcNow,
+        });
+        _db.SaveChanges();
+
+        (await _invites.CreateInviteAsync(_orgId, manager, new CreateInviteRequest { Email = "founder@club.ch", Preset = "read_only" })).IsSuccess.Should().BeTrue();
+        (await _invites.CreateInviteAsync(_orgId, manager, new CreateInviteRequest { Email = "boss@club.ch", Preset = "manager" })).Error.Code
+            .Should().Be(DomainErrors.Permission.MoreThanYourOwn.Code);
+    }
 }
+
