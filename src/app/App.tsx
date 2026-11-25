@@ -17,6 +17,7 @@ import { ModuleOutlet, SalesHome } from '@/app/components/ModuleOff';
 import { I18nProvider } from '@/app/i18n';
 import { EmailComposerProvider } from '@/app/components/email/EmailComposerProvider';
 import { LanguageNotice } from '@/app/i18n/LanguageNotice';
+import { SiteAnalyticsPageViews } from '@/app/lib/siteAnalytics';
 
 // Eager-loaded pages (critical path)
 import Homepage from '@/app/pages/Homepage';
@@ -128,6 +129,8 @@ export default function App() {
       <ThemeProvider>
         <QueryProvider>
           <BrowserRouter>
+            {/* A page view on every route change (cookieless; see lib/siteAnalytics). */}
+            <SiteAnalyticsPageViews />
             <PageLoadingProvider>
               <RouteProgress />
             <OrgProvider>

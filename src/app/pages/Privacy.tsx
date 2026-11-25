@@ -191,6 +191,18 @@ function NoticeBody({ notice }: { notice: PrivacyNotice | null }) {
         </p>
       </Section>
 
+      <Section title="Visits to this site">
+        <p>
+          The operator of this app counts visits to it with its own analytics, without cookies and without any outside
+          analytics service. It records the pages opened, clicks on key buttons and on links to other sites, the type of
+          device, the browser, the language, the site a visit came from and the campaign of the link followed. Your IP
+          address is not stored: only a fingerprint of it that changes every day, so a visit can be counted but you cannot
+          be recognised from one day to the next. If you are signed in, only that fact is recorded, never who you are.
+          These records are kept for 400 days, then deleted. If your browser sends Do Not Track or Global Privacy
+          Control, nothing is recorded.
+        </p>
+      </Section>
+
       <Section title="How long it is kept">
         {notice.retention ? (
           <ul className="list-disc pl-5 space-y-1">

@@ -99,6 +99,19 @@ describe('the privacy notice', () => {
     expect(screen.queryByText('OpenAI')).toBeNull();
   });
 
+  it("says how visits to the site are counted: no cookies, no stored address, 400 days, and DNT and GPC honoured", async () => {
+    show('/privacy');
+
+    const visits = (await screen.findByRole('heading', { name: 'Visits to this site' })).closest('section');
+    const text = visits?.textContent ?? '';
+    expect(text).toMatch(/without cookies/);
+    expect(text).toMatch(/pages opened, clicks on key buttons/);
+    expect(text).toMatch(/type of\s+device, the browser, the language, the site a visit came from and the campaign/);
+    expect(text).toMatch(/IP\s+address is not stored: only a fingerprint of it that changes every day/);
+    expect(text).toMatch(/kept for 400 days/);
+    expect(text).toMatch(/Do Not Track or Global Privacy\s+Control/);
+  });
+
   it('says so when its details cannot be loaded, and tries again', async () => {
     let calls = 0;
     server.use(http.get(`${BASE}/api/public/privacy`, () => {
