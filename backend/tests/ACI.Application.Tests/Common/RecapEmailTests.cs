@@ -141,6 +141,19 @@ public class RecapEmailTests
     }
 
     [Fact]
+    public void WithSalesOff_NewMembersAloneStillShowTheClubPart()
+    {
+        // A club before it opens: no visits or events yet, and a member admitted. That member is
+        // what makes the recap go (RecapFigures.HasNews), so the recap must say it, not arrive empty.
+        var figures = Figures(salesOn: false, clubActive: false);
+        figures.HasNews.Should().BeTrue();
+
+        var (_, text, _) = RecapEmail.Compose(figures, Context("en", salesOn: false));
+
+        text.Should().Contain("The club").And.Contain("- New members: 1 (previously 0)");
+    }
+
+    [Fact]
     public void AClubWithoutActivityHasNoPartInTheRecap()
     {
         var (_, text, _) = RecapEmail.Compose(Figures(clubActive: false), Context("en"));

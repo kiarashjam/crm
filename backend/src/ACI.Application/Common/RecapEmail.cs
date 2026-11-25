@@ -117,7 +117,10 @@ public static class RecapEmail
                 s.PipelineNow.Select((count, i) => new Row(T($"pipeline.{i + 1}"), N(count), null)).ToList(), NowOnly: true));
         }
 
-        if (f.Club is { HasActivity: true } club)
+        // With Sales off the club's part also holds the new members, who alone can make a recap
+        // go: it is shown for them too, or the recap would arrive with nothing in it.
+        var membersHere = f.Sales == null && f.NewMembers is { } n && (n.Now > 0 || n.Before > 0);
+        if (f.Club is { } club && (club.HasActivity || membersHere))
         {
             var rows = new List<Row>
             {
