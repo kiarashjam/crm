@@ -4,7 +4,11 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "build": "vite build",
+    "build": "vite build && node scripts/seo/prerender.mjs",
+    "build:client": "vite build",
+    "prerender": "node scripts/seo/prerender.mjs",
+    "seo:og-images": "node scripts/seo/og-images.mjs",
+    "seo:indexnow": "node scripts/seo/indexnow.mjs",
     "dev": "vite",
     "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 10",
     "lint:fix": "eslint src --ext ts,tsx --fix",

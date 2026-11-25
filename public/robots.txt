@@ -1,0 +1,85 @@
+# CadenceE - https://www.cadencee.ai
+#
+# The public site (/, /features, the topic pages, /pricing, /fr/..., /de/..., /help,
+# /privacy, /terms, /login) is open to every crawler. The app's own pages sit behind a
+# sign-in and the API is not for crawling. Every app page also answers with noindex, so
+# keeping this list complete is a courtesy to crawlers, not what keeps pages out of search.
+#
+# Each app path is closed exactly ("$") and below it ("/"), so a prefix never closes a
+# public page: /members does not close /membership-management-software.
+
+User-agent: *
+Allow: /
+
+Disallow: /api/
+Disallow: /app.html
+
+Disallow: /activities$
+Disallow: /activities/
+Disallow: /applications$
+Disallow: /applications/
+Disallow: /apply/
+Disallow: /audit$
+Disallow: /auth/
+Disallow: /automations$
+Disallow: /automations/
+Disallow: /brief$
+Disallow: /calendar$
+Disallow: /campaigns$
+Disallow: /capture/
+Disallow: /charges$
+Disallow: /club-payments$
+Disallow: /club-reports$
+Disallow: /communications$
+Disallow: /companies$
+Disallow: /companies/
+Disallow: /contacts$
+Disallow: /contacts/
+Disallow: /corporate-memberships$
+Disallow: /dashboard$
+Disallow: /deals$
+Disallow: /deals/
+Disallow: /donations$
+Disallow: /duplicates$
+Disallow: /events$
+Disallow: /events/
+Disallow: /gift-cards$
+Disallow: /history$
+Disallow: /hospitality$
+Disallow: /hospitality-settings$
+Disallow: /households$
+Disallow: /invites/
+Disallow: /leads$
+Disallow: /leads/
+Disallow: /loyalty$
+Disallow: /mcp$
+Disallow: /member-portal/
+Disallow: /members$
+Disallow: /members/
+Disallow: /onboarding$
+Disallow: /organizations$
+Disallow: /pay/
+Disallow: /portal$
+Disallow: /pos$
+Disallow: /pos-tickets$
+Disallow: /privacy-requests$
+Disallow: /private-events$
+Disallow: /private-events/
+Disallow: /renewals$
+Disallow: /reports$
+Disallow: /reservations$
+Disallow: /send$
+Disallow: /sequences$
+Disallow: /settings$
+Disallow: /sign/
+Disallow: /statements$
+Disallow: /subscriptions$
+Disallow: /tabs$
+Disallow: /tasks$
+Disallow: /tasks/
+Disallow: /team$
+Disallow: /templates$
+Disallow: /unsubscribe/
+Disallow: /visits$
+
+Sitemap: https://www.cadencee.ai/sitemap.xml

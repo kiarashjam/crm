@@ -1,6 +1,63 @@
 {
+  "trailingSlash": "never",
   "navigationFallback": {
     "rewrite": "/index.html",
-    "exclude": ["/assets/*", "/*.{css,scss,js,png,gif,ico,jpg,svg,woff2}"]
+    "exclude": [
+      "/assets/*",
+      "/og/*",
+      "/*.{css,scss,js,mjs,map,json,png,gif,ico,jpg,jpeg,webp,avif,svg,woff,woff2,txt,xml,webmanifest,pdf}"
+    ]
+  },
+  "routes": [
+    {
+      "route": "/assets/*",
+      "headers": {
+        "Cache-Control": "public, max-age=31536000, immutable"
+      }
+    },
+    {
+      "route": "/og/*",
+      "headers": {
+        "Cache-Control": "public, max-age=604800"
+      }
+    },
+    {
+      "route": "/robots.txt",
+      "headers": {
+        "Cache-Control": "public, max-age=3600"
+      }
+    },
+    {
+      "route": "/sitemap.xml",
+      "headers": {
+        "Cache-Control": "public, max-age=3600"
+      }
+    },
+    {
+      "route": "/app.html",
+      "headers": {
+        "X-Robots-Tag": "noindex, nofollow"
+      }
+    },
+    {
+      "route": "/404.html",
+      "headers": {
+        "X-Robots-Tag": "noindex"
+      }
+    }
+  ],
+  "globalHeaders": {
+    "Cache-Control": "no-cache",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+    "Content-Security-Policy": "base-uri 'self'; object-src 'none'; frame-ancestors 'self'"
+  },
+  "mimeTypes": {
+    ".xml": "application/xml; charset=utf-8",
+    ".txt": "text/plain; charset=utf-8",
+    ".webmanifest": "application/manifest+json",
+    ".json": "application/json"
   }
 }
