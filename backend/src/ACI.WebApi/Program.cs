@@ -577,6 +577,8 @@ try
     builder.Services.AddHostedService<ACI.WebApi.Services.WeeklyDigestBackgroundService>();
     // Each person's morning brief, from 07:00 on their workspace's calendar.
     builder.Services.AddHostedService<ACI.WebApi.Services.MorningBriefBackgroundService>();
+    // The workspace's recap emails, daily, weekly and monthly, from 07:00 on its calendar.
+    builder.Services.AddHostedService<ACI.WebApi.Services.RecapBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.PersonContactBackfillBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.GiftCardExpiryBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.CampaignSchedulerBackgroundService>();

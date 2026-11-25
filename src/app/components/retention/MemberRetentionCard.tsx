@@ -15,6 +15,7 @@ import {
 } from '@/app/api/retention';
 import { LoadFailed } from '@/app/components/LoadFailed';
 import { WriteOnly } from '@/app/components/WriteOnly';
+import { RiskScoreExplainer } from '@/app/components/retention/RiskScoreExplainer';
 import { Button } from '@/app/components/ui/button';
 import { Textarea } from '@/app/components/ui/textarea';
 import { cn } from '@/app/components/ui/utils';
@@ -134,6 +135,8 @@ export function MemberRetentionCard({ memberId }: { memberId: string }) {
           </ul>
         </div>
       )}
+      {/* What the score is made of, with the club's own weights: shown with a score or before the first. */}
+      {!risk.isError && !risk.isLoading && <RiskScoreExplainer className="mt-3" />}
 
       <div className="mt-5">
         <h4 className="mb-2 inline-flex items-center gap-2 text-sm font-semibold text-slate-900">

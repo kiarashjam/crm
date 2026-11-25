@@ -16,6 +16,11 @@ public class Invite : Common.BaseEntity
     public DateTime CreatedAtUtc { get; set; }
     /// <summary>Set when the invite is accepted (user who accepted).</summary>
     public Guid? AcceptedByUserId { get; set; }
+    /// <summary>
+    /// The permission preset the person joins with (MemberPermissions.Presets), chosen when they
+    /// were invited; none for an invitation from before presets, which joins as a Member did.
+    /// </summary>
+    public string? PermissionPreset { get; set; }
     public DateTime? AcceptedAtUtc { get; set; }
 
     public Organization Organization { get; set; } = null!;

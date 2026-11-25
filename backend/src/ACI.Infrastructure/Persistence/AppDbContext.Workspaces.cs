@@ -217,6 +217,10 @@ public partial class AppDbContext
         Scope<AiUsage>(model, e => e.OrganizationId, e => e.UserId);
         Scope<AssistantSettings>(model, e => e.OrganizationId);
         Scope<AssistantBrief>(model, e => e.OrganizationId);
+        // The recap emails: an organization's alone. The job finds who is due across workspaces
+        // first (IgnoreQueryFilters, said where), then acts for each workspace and person.
+        Scope<RecapSubscription>(model, e => e.OrganizationId);
+        Scope<RecapSend>(model, e => e.OrganizationId);
         // Retention and referrals: an organization's alone. The daily scoring run finds the
         // workspaces it scores across workspaces first (IgnoreQueryFilters, said where), then
         // acts for each.

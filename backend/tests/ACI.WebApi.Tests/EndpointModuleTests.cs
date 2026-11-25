@@ -67,6 +67,8 @@ public class EndpointModuleTests
         ["PublicEmailImagesController"] = "an image in an email already sent: mail apps fetch it every time the email is opened",
         ["PublicMemberPortalController"] = "members signing in to the member portal, who are not on the team; with the club off the service itself refuses (Module.Off)",
         ["ClientErrorsController"] = "the browser reporting its own crashes, anonymous and from any page, of either module or neither",
+        ["RecapsController"] = "the recap emails hold both modules' figures, each part following its own module",
+        ["MyRecapsController"] = "the caller's own recap emails, which hold both modules' figures",
     };
 
     private static IEnumerable<Type> Controllers() =>

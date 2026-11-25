@@ -271,6 +271,11 @@ public static class OutboundSources
     public const string Invitation = "invitation";
     /// <summary>An event's invitation sent to the person who pressed "Send a test to me", marked as a test, its reply link a sample.</summary>
     public const string InvitationTest = "invitation_test";
+    /// <summary>
+    /// A workspace's daily, weekly or monthly recap email to a staff member who sees every deal;
+    /// <see cref="OutboundMessage.SourceId"/> is the recap (RecapSend), which keeps it to one per period.
+    /// </summary>
+    public const string Recap = "recap";
 }
 
 /// <summary>

@@ -137,6 +137,20 @@ describe("a member's at-risk score", () => {
     expect(screen.queryByRole('textbox', { name: 'Complaint or concern' })).not.toBeInTheDocument();
   });
 
+  it('explains how the score is calculated, with the club’s weights, beside the score', async () => {
+    api.risk.mockResolvedValue(RISK);
+    const user = userEvent.setup();
+    render(withQueries(<MemoryRouter><MemberRetentionCard memberId="m1" /></MemoryRouter>));
+
+    await screen.findByTestId('risk-score');
+    await user.click(screen.getByRole('button', { name: 'How is this score calculated?' }));
+
+    const list = await screen.findByRole('list', { name: 'The six signs and their weights' });
+    expect(within(list).getAllByRole('listitem').map((li) => li.textContent?.slice(0, 9))).toEqual(
+      ['30 of 100', '25 of 100', '15 of 100', '15 of 100', '10 of 100', '5 of 100L']);
+    expect(screen.getByText(/needs a few months of club life/)).toBeInTheDocument();
+  });
+
   it('says when the score could not be read, and reads it again', async () => {
     api.risk.mockRejectedValueOnce(new ApiError('The server is busy.', 503, '/api/members/m1/risk', true));
     api.risk.mockResolvedValue(RISK);

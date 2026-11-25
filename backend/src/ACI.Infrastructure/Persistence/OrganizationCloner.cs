@@ -603,6 +603,14 @@ public sealed class OrganizationCloner
                 // club's rules (the weights, the task, the referral bonus) come along.
                 retention.SaveEmail = false;
                 return "Members found at risk in the copy are not emailed from it";
+            case RecapSubscription recap when recap.DailySinceUtc != null || recap.WeeklySinceUtc != null || recap.MonthlySinceUtc != null:
+                // The same people work in both organizations: a copy made to try something out
+                // would email each of them its own recaps beside the original's. The rows come
+                // along with every frequency off, for someone to switch on again in the copy.
+                recap.DailySinceUtc = null;
+                recap.WeeklySinceUtc = null;
+                recap.MonthlySinceUtc = null;
+                return "Recap emails start off in the copy";
             case OnboardingSettings s when s.WebhookUrl != null || s.WebhookSecret != null:
                 // Like its events address: a customer won in the copy is never handed to the
                 // original's portal, signed as the original. The template and choices stay.

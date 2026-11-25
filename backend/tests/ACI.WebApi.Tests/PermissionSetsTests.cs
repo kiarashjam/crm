@@ -105,7 +105,7 @@ public class PermissionSetsTests
         var catalogue = await Ok(await club.Owner.GetAsync($"/api/organizations/{club.Org}/permission-sets"), "read the permission sets");
 
         catalogue.GetProperty("presets").EnumerateArray().Select(p => p.GetProperty("key").GetString()).Should().Equal(
-            "owner", "manager", "sales_rep", "membership_director", "finance", "front_desk", "read_only_accountant");
+            "owner", "manager", "sales_rep", "membership_director", "finance", "front_desk", "read_only_accountant", "read_only");
         catalogue.GetProperty("presets").EnumerateArray().Single(p => p.GetProperty("key").GetString() == "owner")
             .GetProperty("assignable").GetBoolean().Should().BeFalse("there is one owner, and ownership is transferred, not handed out");
         catalogue.GetProperty("permissions").EnumerateArray().Select(p => p.GetProperty("key").GetString())
@@ -232,6 +232,44 @@ public class PermissionSetsTests
         membership.Role.Should().Be(OrgMemberRole.Viewer, "the role older clients read says read-only too");
         membership.PermissionPreset.Should().Be("read_only_accountant");
         membership.Permissions.Should().BeNull("their permissions are the preset's");
+    }
+
+    [Fact]
+    public async Task AReadOnlyMemberSeesEveryDealPrivateOnesTooAndChangesAndExportsNothing()
+    {
+        using var club = await ClubAsync();
+        await LeadAsync(club.Owner);
+        var deal = (await Ok(await club.Owner.PostAsync("/api/deals", Body(new { name = "Founding membership", value = "12000", currency = "CHF" })), "add a deal"))
+            .GetProperty("id").GetGuid();
+        await Ok(await club.Owner.PutAsync($"/api/deals/{deal}", Body(new { isPrivate = true })), "make it private");
+        var (founder, founderId) = await JoinAsync(club, "miguel@pavillon46.ch", "read_only");
+        var (accountant, _) = await JoinAsync(club, "books@pavillon46.ch", "read_only_accountant");
+
+        // Reads everything, the owner's private deal included, which a read-only accountant does not see.
+        await Ok(await founder.GetAsync("/api/leads"), "the founder reads the leads");
+        await Ok(await founder.GetAsync($"/api/deals/{deal}"), "the founder opens the private deal");
+        (await (await founder.GetAsync("/api/deals")).Content.ReadAsStringAsync()).Should().Contain(deal.ToString());
+        (await accountant.GetAsync($"/api/deals/{deal}")).StatusCode.Should().Be(HttpStatusCode.NotFound, "the accountant does not see private deals");
+
+        // Exports nothing, changes nothing.
+        await RefusedForAsync(await founder.GetAsync("/api/contacts/export"), MemberPermissions.ExportRecords, "the founder exporting the contacts");
+        foreach (var (res, step) in new[]
+        {
+            (await founder.PostAsync("/api/leads", Body(new { name = "Marie Curie", status = "New" })), "creating a lead"),
+            (await founder.PutAsync($"/api/deals/{deal}", Body(new { name = "Renamed" })), "editing the deal"),
+            (await founder.PostAsync("/api/visits", Body(new { memberId = await ClubMemberAsync(club.Owner) })), "checking a member in"),
+        })
+            res.StatusCode.Should().Be(HttpStatusCode.Forbidden, $"the founder {step}");
+
+        var membership = await club.App.Services.Read(db => db.OrganizationMembers.Single(m => m.OrganizationId == club.Org && m.UserId == founderId));
+        membership.Role.Should().Be(OrgMemberRole.Viewer, "the role older clients read says read-only too");
+        membership.PermissionPreset.Should().Be("read_only");
+        membership.Permissions.Should().BeNull("their permissions are the preset's");
+        var me = await Ok(await founder.GetAsync($"/api/organizations/{club.Org}"), "the founder reads the workspace");
+        me.GetProperty("permissions").EnumerateArray().Select(p => p.GetString()).Should().Equal(MemberPermissions.SeeAllDeals);
+        MemberPermissions.RoleFor(MemberPermissions.ReadOnly, new HashSet<string>(MemberPermissions.ReadOnly.Permissions)).Should().Be(OrgMemberRole.Viewer);
+        MemberPermissions.PresetOf(OrgMemberRole.Viewer, "read_only").Should().Be(MemberPermissions.ReadOnly);
+        MemberPermissions.PresetOf(OrgMemberRole.Viewer, null).Should().Be(MemberPermissions.ReadOnlyAccountant, "a viewer from before presets keeps the accountant's");
     }
 
     [Fact]

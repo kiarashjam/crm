@@ -98,9 +98,19 @@ public sealed class OrganizationRepository : IOrganizationRepository
         if (member != null)
         {
             _db.OrganizationMembers.Remove(member);
+            await RemoveRecapsAsync(organizationId, userId, ct);
             await _db.SaveChangesAsync(ct);
         }
     }
+
+    /// <summary>
+    /// Someone leaving takes their recap emails with them: the job sends none to a person who is
+    /// not on the team anyway, and one added back later starts with none rather than the old ones.
+    /// Read past the filters: the request may come from another workspace than the one they leave.
+    /// </summary>
+    private async Task RemoveRecapsAsync(Guid organizationId, Guid userId, CancellationToken ct) =>
+        _db.RecapSubscriptions.RemoveRange(await _db.RecapSubscriptions.IgnoreQueryFilters()
+            .Where(s => s.OrganizationId == organizationId && s.UserId == userId).ToListAsync(ct));
 
     public async Task<MemberHandOver> RemoveMemberAsync(Guid organizationId, Guid userId, Guid handOverToUserId, Guid actingUserId, CancellationToken ct = default)
     {
@@ -152,6 +162,7 @@ public sealed class OrganizationRepository : IOrganizationRepository
             }
 
             _db.OrganizationMembers.Remove(member);
+            await RemoveRecapsAsync(organizationId, userId, ct);
             await _db.SaveChangesAsync(ct);
             handedOver = new MemberHandOver(
                 leads.Select(l => (l.Id, l.Name)).ToList(),

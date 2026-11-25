@@ -107,6 +107,12 @@ export const queryKeys = {
   /** Settings, System health: read again every minute while the page is open, and after a retry from it. */
   systemHealth: (s: WorkspaceScope) => key(s, 'system-health'),
   systemHealthSites: (s: WorkspaceScope) => key(s, 'system-health', 'sites'),
+  // The recap emails: who receives which, and the person's own. A change through
+  // /api/recaps refreshes both; the person's own (under /api/settings) is set from its answer.
+  recaps: {
+    recipients: (s: WorkspaceScope) => key(s, 'recaps', 'recipients'),
+    mine: (s: WorkspaceScope) => key(s, 'recaps', 'mine'),
+  },
   // The workspace's own fields and their values. A value saved, a field added or changed,
   // refreshes them, and the lists whose columns and filters show them (api/dataChanged).
   customFields: {

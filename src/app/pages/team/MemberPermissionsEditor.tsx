@@ -136,6 +136,7 @@ export function MemberPermissionsEditor({ organizationId, member, catalogue, min
 /** The role that goes with a preset, which the server also sets: for older clients that read it. */
 export function roleForPreset(preset: string): number {
   if (preset === 'manager') return 2;
-  if (preset === 'read_only_accountant') return 3;
+  // Neither read-only preset changes anything: their holders are Viewers to older clients.
+  if (preset === 'read_only_accountant' || preset === 'read_only') return 3;
   return 1;
 }

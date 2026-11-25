@@ -76,6 +76,8 @@ public sealed class OnboardingService : IOnboardingService
     private readonly IWorkspaceModules _modules;
     private readonly ILogger<OnboardingService> _logger;
     private readonly IOutbox? _mailer;
+    /// <summary>Carries the converted lead's tags and field values onto the member a handoff makes.</summary>
+    private readonly ILeadToMemberCopy? _leadCopy;
 
     public OnboardingService(
         IOnboardingRepository onboarding,
@@ -92,9 +94,11 @@ public sealed class OnboardingService : IOnboardingService
         IPublicAddress address,
         IWorkspaceModules modules,
         ILogger<OnboardingService> logger,
-        IOutbox? mailer = null)
+        IOutbox? mailer = null,
+        ILeadToMemberCopy? leadCopy = null)
     {
         _mailer = mailer;
+        _leadCopy = leadCopy;
         _address = address;
         _onboarding = onboarding;
         _organizations = organizations;
@@ -400,6 +404,8 @@ public sealed class OnboardingService : IOnboardingService
 
         _onboarding.Add(onboarding);
         await _onboarding.SaveAsync(ct);
+        // The lead's tags and field values go onto the member the handoff made (once per member).
+        if (onboarding.ClubMemberId is Guid memberId) await CopyLeadDetailsAsync(onboarding, memberId, userId);
 
         var message = await QueueAsync(onboarding, person, settings!, values, ct);
         await NoteAsync(onboarding, "Welcome & portal: handed over",
@@ -597,6 +603,24 @@ public sealed class OnboardingService : IOnboardingService
         }
         member.DealId ??= onboarding.DealId;
         return member.Id;
+    }
+
+    /// <summary>
+    /// The tags and custom field values of the lead being converted, carried onto its club member
+    /// (ILeadToMemberCopy). A copy that fails is logged: the handoff, which is what was asked for, goes on.
+    /// </summary>
+    private async Task CopyLeadDetailsAsync(DealOnboarding onboarding, Guid memberId, Guid userId)
+    {
+        if (_leadCopy == null) return;
+        try
+        {
+            // Not the request's token: the member is made, and a client that hangs up must not stop the copy half way.
+            await _leadCopy.CopyAsync(onboarding.OrganizationId, memberId, onboarding.LeadId, userId, CancellationToken.None);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Handoff {OnboardingId}: the lead's tags and fields could not be copied to the member", onboarding.Id);
+        }
     }
 
     /// <summary>Queue the handoff for the outbox, which posts it, signed, and retries until it is taken.</summary>

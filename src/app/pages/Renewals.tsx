@@ -16,6 +16,7 @@ import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import PageHero from '@/app/components/PageHero';
 import { LoadFailed } from '@/app/components/LoadFailed';
+import { RiskScoreExplainer } from '@/app/components/retention/RiskScoreExplainer';
 import { Button } from '@/app/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select';
 import { Switch } from '@/app/components/ui/switch';
@@ -139,6 +140,9 @@ export default function Renewals() {
             </div>
             {board.isFetching && !board.isLoading && <Loader2 className="h-4 w-4 animate-spin text-slate-400" aria-label="Refreshing" />}
           </div>
+
+          {/* What the score on each card is made of, with the club's own weights. */}
+          <RiskScoreExplainer className="mb-5" />
 
           {board.isError && (
             <LoadFailed what="The renewals board" error={board.error} onRetry={() => { void board.refetch(); }} retrying={board.isFetching} stale={!!data} />
