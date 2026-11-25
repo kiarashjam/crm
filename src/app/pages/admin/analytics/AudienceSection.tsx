@@ -9,7 +9,7 @@ import { SettingsCard } from '@/app/pages/settings/components/SettingsCard';
 import type { SiteAnalyticsNamedRow, SiteAnalyticsSummary } from '@/app/api/siteAnalytics';
 import { capitalise, languageName, nonEmpty } from './analyticsMath';
 import { BarRows, EmptyNote } from './AnalyticsUI';
-import { browserIcon, deviceIcon, osIcon } from './AnalyticsIcons';
+import { browserIcon, osIcon } from './AnalyticsIcons';
 
 const EMPTY = 'No visits yet in this period.';
 
@@ -41,19 +41,16 @@ function Devices({ rows, dark }: { rows: SiteAnalyticsNamedRow[]; dark: boolean 
           <span className="text-[10px] text-slate-500">visits</span>
         </span>
       </div>
+      {/* The dot is the device's colour in the donut; its name says the rest. */}
       <ul aria-label="Devices" className="min-w-[10rem] flex-1 space-y-1.5">
-        {rows.map((r) => {
-          const Icon = deviceIcon(r.name);
-          return (
-            <li key={r.name} className="flex items-center gap-2 text-sm">
-              <span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: colour(r.name) }} />
-              <Icon className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
-              <span className="min-w-0 flex-1 truncate text-slate-700 dark:text-slate-200">{capitalise(r.name)}</span>
-              <span className="font-semibold tabular-nums text-slate-900 dark:text-white">{fmt.number(r.sessions / total, { style: 'percent', maximumFractionDigits: 0 })}</span>
-              <span className="w-9 text-right text-xs tabular-nums text-slate-500">{fmt.number(r.sessions)}<span className="sr-only"> visits</span></span>
-            </li>
-          );
-        })}
+        {rows.map((r) => (
+          <li key={r.name} className="flex items-center gap-2 text-sm">
+            <span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: colour(r.name) }} />
+            <span className="min-w-0 flex-1 truncate text-slate-700 dark:text-slate-200" title={capitalise(r.name)}>{capitalise(r.name)}</span>
+            <span className="font-semibold tabular-nums text-slate-900 dark:text-white">{fmt.number(r.sessions / total, { style: 'percent', maximumFractionDigits: 0 })}</span>
+            <span className="w-8 text-right text-xs tabular-nums text-slate-500">{fmt.number(r.sessions)}<span className="sr-only"> visits</span></span>
+          </li>
+        ))}
       </ul>
     </div>
   );
