@@ -481,6 +481,33 @@ public class EventInvitationTests
     }
 
     [Fact]
+    public async Task RetentionRemovesTheInvitationsToEventsLongOver_AndKeepsThoseToCome()
+    {
+        await using var app = new App();
+        var club = await ClubAsync(app);
+        var anna = await MemberAsync(club, "Anna");
+        var old = await EventAsync(club, name: "Old gala");
+        var next = await EventAsync(club, name: "Next gala");
+        await Json(await SendAsync(club, old, Guid.NewGuid()), "invite to the old one");
+        await Json(await SendAsync(club, next, Guid.NewGuid()), "invite to the next one");
+        await app.SeedAsync(db =>
+        {
+            var ev = db.ClubEvents.Single(e => e.Id == old);
+            ev.StartAtUtc = DateTime.UtcNow.AddMonths(-20);
+            ev.EndAtUtc = ev.StartAtUtc.AddHours(3);
+        });
+        await Json(await club.Owner.PutAsync("/api/privacy/settings", Body(new { marketingConsent = "optional", mailRetentionMonths = 12 })), "keep emails a year");
+
+        var preview = await Json(await club.Owner.GetAsync("/api/privacy/retention/preview"), "preview");
+        preview.GetProperty("rules").EnumerateArray().Single(r => r.GetProperty("rule").GetString() == "mail").GetProperty("count").GetInt32()
+            .Should().BeGreaterThanOrEqualTo(1, "the old event's invitation is counted");
+        await Json(await club.Owner.PostAsync("/api/privacy/retention/run", null), "run now");
+
+        (await app.Services.Read(db => db.ClubEventInvitations.Where(i => i.MemberId == anna).Select(i => i.EventId).ToList()))
+            .Should().Equal(next);
+    }
+
+    [Fact]
     public void ExpectedAttendanceWeighsEachMemberByTheirOwnShowRate()
     {
         var anna = Guid.NewGuid();
