@@ -99,17 +99,27 @@ describe('the privacy notice', () => {
     expect(screen.queryByText('OpenAI')).toBeNull();
   });
 
-  it("says how visits to the site are counted: no cookies, no stored address, 400 days, and DNT and GPC honoured", async () => {
+  it('says what the site analytics record, how visitors are counted, what is never recorded, and for how long', async () => {
     show('/privacy');
 
     const visits = (await screen.findByRole('heading', { name: 'Visits to this site' })).closest('section');
-    const text = visits?.textContent ?? '';
-    expect(text).toMatch(/without cookies/);
-    expect(text).toMatch(/pages opened, clicks on key buttons/);
-    expect(text).toMatch(/type of\s+device, the browser, the language, the site a visit came from and the campaign/);
-    expect(text).toMatch(/IP\s+address is not stored: only a fingerprint of it that changes every day/);
+    const text = (visits?.textContent ?? '').replace(/\s+/g, ' ');
+    expect(text).toMatch(/without cookies and without any outside analytics service/);
+    expect(text).toMatch(/the pages opened \(as their general address/);
+    expect(text).toMatch(/clicks on marked buttons, the site a link to another site leads to, that a sign-up was started or completed/);
+    expect(text).toMatch(/the type of device, the browser, the operating system, the language, the site a visit came from \(its name only\)/);
+    expect(text).toMatch(/the utm source, medium and campaign/);
+    expect(text).toMatch(/random identifier for the tab in its session storage, deleted when the tab closes/);
+    expect(text).toMatch(/a hash of a shortened IP address and the browser, salted with a random value that is replaced every day and destroyed a day later/);
+    expect(text).toMatch(/The IP address itself is not stored/);
+    expect(text).toMatch(/Use of the app while signed in is not recorded/);
+    expect(text).toMatch(/sign a contract, pay, unsubscribe, fill in a club's form or use its member portal/);
+    expect(text).toMatch(/Do Not Track or Global Privacy Control, nothing is recorded/);
     expect(text).toMatch(/kept for 400 days/);
-    expect(text).toMatch(/Do Not Track or Global Privacy\s+Control/);
+    expect(text).toMatch(/legitimate interest in counting visits and improving the site/);
+    expect(text).toMatch(/server access logs, kept for security, hold IP addresses for up to 30 days/);
+    // Nothing the analytics no longer collect.
+    expect(text).not.toMatch(/title|screen size|fingerprint/i);
   });
 
   it('says so when its details cannot be loaded, and tries again', async () => {
