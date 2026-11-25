@@ -308,6 +308,32 @@ public class EventInvitationTests
     }
 
     [Fact]
+    public async Task TheReplyPageRefusesWhileTheEventIsBackToADraft_AsTheEventPageSaysItIsClosed()
+    {
+        await using var app = new App();
+        var club = await ClubAsync(app);
+        var anna = await MemberAsync(club, "Anna");
+        var eventId = await EventAsync(club, memberPrice: 40);
+        await Json(await SendAsync(club, eventId, Guid.NewGuid()), "send");
+        var link = await LinkOfAsync(app, anna);
+        var visitor = app.CreateClient();
+
+        // Taken back to a draft (being rescheduled, say): staff see its invitations closed, and
+        // a member's link must not put them on its list with a ticket on their account meanwhile.
+        var version = (await Json(await club.Owner.GetAsync($"/api/events/{eventId}"), "read")).GetProperty("version").GetString();
+        await Json(await club.Owner.PutAsync($"/api/events/{eventId}", Body(new { status = "Draft", version })), "back to a draft");
+        (await Json(await club.Owner.GetAsync($"/api/events/{eventId}/invitations"), "the invitations")).GetProperty("open").GetBoolean().Should().BeFalse();
+
+        (await Refused(await PageAsync(visitor, link), HttpStatusCode.Conflict, "a draft's page")).Should().Contain("Invitation.Closed.Conflict");
+        (await Refused(await AnswerAsync(visitor, link, "coming"), HttpStatusCode.Conflict, "an answer to a draft")).Should().Contain("Invitation.Closed.Conflict");
+        (await AttendeesAsync(club, eventId)).Should().BeEmpty("nobody is put on a draft's list from a reply link");
+
+        version = (await Json(await club.Owner.GetAsync($"/api/events/{eventId}"), "read again")).GetProperty("version").GetString();
+        await Json(await club.Owner.PutAsync($"/api/events/{eventId}", Body(new { status = "Published", version })), "published again");
+        (await Json(await AnswerAsync(visitor, link, "coming"), "Anna answers once it is published")).GetProperty("place").GetString().Should().Be("seat");
+    }
+
+    [Fact]
     public async Task AWrongLinkAndAnotherWorkspacesLinkAnswerNothingHere()
     {
         await using var app = new App();

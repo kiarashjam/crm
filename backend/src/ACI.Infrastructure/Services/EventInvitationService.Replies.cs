@@ -98,7 +98,7 @@ public sealed partial class EventInvitationService
     /// <summary>
     /// The invitation a reply link names, with its member and event, or why the page refuses:
     /// not one of ours (404, as for an erased member, so it says nothing more), the Club module
-    /// off (403), the event cancelled or started (409).
+    /// off (403), the event cancelled, started or taken back to a draft (409).
     /// </summary>
     private async Task<Result<(ClubEventInvitation Invitation, ClubMember Member, ClubEvent Event)>> FindAsync(string token, CancellationToken ct)
     {
@@ -121,6 +121,10 @@ public sealed partial class EventInvitationService
             return new Error("Invitation.Cancelled.Conflict", "This event was cancelled, so there is nothing to answer.");
         if (ev.Status == ClubEventStatuses.Completed || DateTime.UtcNow >= ev.StartAtUtc)
             return new Error("Invitation.Started.Conflict", "This event has started, so replies to its invitation are closed.");
+        // Taken back to a draft after the invitations went (being rescheduled, say): closed, as the
+        // event's page tells staff (Closed), rather than putting members on its list meanwhile.
+        if (ev.Status == ClubEventStatuses.Draft)
+            return new Error("Invitation.Closed.Conflict", "Replies to this invitation are closed for now.");
         return (invitation, member, ev);
     }
 
