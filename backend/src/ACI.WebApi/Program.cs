@@ -752,17 +752,10 @@ try
     // Global exception handler
     app.UseExceptionHandler();
 
-    // Serilog request logging with enrichment
-    app.UseSerilogRequestLogging(options =>
-    {
-        options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
-        {
-            diagnosticContext.Set("UserId", httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "anonymous");
-            diagnosticContext.Set("OrganizationId", httpContext.Request.Headers["X-Organization-Id"].FirstOrDefault() ?? "none");
-            diagnosticContext.Set("ClientIP", httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown");
-        };
-        options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms";
-    });
+    // Serilog request logging with enrichment: who called, for which workspace, from which
+    // address. The anonymous beacons every visitor's page sends (/api/site-analytics,
+    // /api/client-errors) are at Verbose, so not written, and never with the address (RequestLog).
+    app.UseSerilogRequestLogging(ACI.WebApi.Monitoring.RequestLog.Configure);
 
     // Immediately after the request logger, so it sits INSIDE it: this rewrites the
     // path on the way back out, after routing has used it and before Serilog reads
