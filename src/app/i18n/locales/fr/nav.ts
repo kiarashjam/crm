@@ -87,4 +87,5 @@ export const nav: Translation<typeof en> = {
   'header.account': 'Compte',
   'header.switchOrg': '{org} – changer d’espace de travail',
   'header.signOut': 'Se déconnecter',
+  'header.siteAnalytics': 'Statistiques du site',
 };

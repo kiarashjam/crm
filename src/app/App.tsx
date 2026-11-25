@@ -98,6 +98,7 @@ const HospitalityDashboard = lazy(() => import('@/app/pages/HospitalityDashboard
 const MemberImport = lazy(() => import('@/app/pages/MemberImport'));
 const SsoCallback = lazy(() => import('@/app/pages/SsoCallback'));
 const MorningBrief = lazy(() => import('@/app/pages/MorningBrief'));
+const SiteAnalytics = lazy(() => import('@/app/pages/admin/analytics/SiteAnalyticsPage'));
 
 function ProtectedLayout() {
   return (
@@ -225,6 +226,10 @@ export default function App() {
                   <Route path="/organizations" element={<Organizations />} />
                   {/* Outside RequireOrgLayout: the invitee may have no workspace yet. */}
                   <Route path="/invites/accept" element={<AcceptInvite />} />
+                  {/* Outside RequireOrgLayout too: the site's analytics are the platform's, not a
+                      workspace's, and a platform admin may have no workspace. The page itself
+                      shows its figures to platform admins only. */}
+                  <Route path="/admin/analytics" element={<SiteAnalytics />} />
                   <Route path="/onboarding" element={<Navigate to="/settings" replace />} />
                   <Route element={<RequireOrgLayout />}>
                     <Route path="/dashboard" element={<SalesHome><Dashboard /></SalesHome>} />
