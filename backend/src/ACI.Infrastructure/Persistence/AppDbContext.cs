@@ -120,6 +120,9 @@ public partial class AppDbContext : DbContext
     // Club events with their guest lists, and the bookable resources with their bookings.
     public DbSet<ClubEvent> ClubEvents => Set<ClubEvent>();
     public DbSet<ClubEventRegistration> ClubEventRegistrations => Set<ClubEventRegistration>();
+    // Invitations to an event: each "Invite members" send, and each member's invitation with its reply link.
+    public DbSet<ClubEventInvitationSend> ClubEventInvitationSends => Set<ClubEventInvitationSend>();
+    public DbSet<ClubEventInvitation> ClubEventInvitations => Set<ClubEventInvitation>();
     public DbSet<ClubResource> ClubResources => Set<ClubResource>();
     public DbSet<ClubReservation> ClubReservations => Set<ClubReservation>();
     // How people join (applications and the public form) and who belongs together (households).
@@ -162,6 +165,9 @@ public partial class AppDbContext : DbContext
     public DbSet<AiUsage> AiUsage => Set<AiUsage>();
     public DbSet<AssistantSettings> AssistantSettings => Set<AssistantSettings>();
     public DbSet<AssistantBrief> AssistantBriefs => Set<AssistantBrief>();
+    // The recap emails: who receives which, and each one taken for its period.
+    public DbSet<RecapSubscription> RecapSubscriptions => Set<RecapSubscription>();
+    public DbSet<RecapSend> RecapSends => Set<RecapSend>();
     // Keeping members and growing through them: the rules, each member's at-risk score, the
     // renewals board's records, referral bonuses, concerns recorded about members, and the
     // daily scoring runs.

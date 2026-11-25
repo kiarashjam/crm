@@ -60,15 +60,17 @@ public sealed class ClubApplicationService : IClubApplications
     private readonly IPrivacySettings? _privacy;
     private readonly IAutomationEngine? _automations;
     private readonly IClubReferrals? _referrals;
+    private readonly ILeadToMemberCopy? _leadCopy;
 
     public ClubApplicationService(AppDbContext db, IClubLedger ledger, IClubCatalog catalog, IClubRules rules, IOutbox outbox,
         IConsentRepository consent, IPermissionService permissions, IWorkspaceRecords records, ILeadService leads,
         ILeadOpsService leadOps, INotificationService notifications, ITenantContext tenant, ILogger<ClubApplicationService> logger,
         ILedgerReadObserver reads, IWorkspaceModules modules, IPrivacySettings? privacy = null,
-        IAutomationEngine? automations = null, IClubReferrals? referrals = null)
+        IAutomationEngine? automations = null, IClubReferrals? referrals = null, ILeadToMemberCopy? leadCopy = null)
     {
         _automations = automations;
         _referrals = referrals;
+        _leadCopy = leadCopy;
         _db = db;
         _ledger = ledger;
         _catalog = catalog;
@@ -646,6 +648,9 @@ public sealed class ClubApplicationService : IClubApplications
                 app.UpdatedAtUtc = DateTime.UtcNow;
                 await _db.SaveChangesAsync(ct);
                 if (transaction != null) await transaction.CommitAsync(ct);
+                // The lead's tags and field values go onto the member admitted: after the approval
+                // is committed, so they can never undo it, and once per member, however it was admitted.
+                if (outcome.Value.Admitted) await CopyLeadDetailsAsync(organizationId, app, approval, ct);
                 await AnnounceAsync(organizationId, app, outcome.Value.MemberCreated, approval.UserId, ct);
                 if (outcome.Value.Admitted) await RewardReferrerAsync(organizationId, app.Id, approval, outcome.Value.Notes, ct);
                 return await AnswerAsync(organizationId, app, outcome.Value with { Approved = true }, ct);
@@ -678,6 +683,24 @@ public sealed class ClubApplicationService : IClubApplications
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogWarning(ex, "Application {ApplicationId} was approved, but the workspace's automations for it failed", app.Id);
+        }
+    }
+
+    /// <summary>
+    /// The tags and custom field values of the lead the member came from, carried onto the member
+    /// (ILeadToMemberCopy): the lead the approval linked them to. A copy that fails is logged: the
+    /// member is admitted whatever happens here.
+    /// </summary>
+    private async Task CopyLeadDetailsAsync(Guid organizationId, ClubApplication app, Approval approval, CancellationToken ct)
+    {
+        if (_leadCopy == null || app.MemberId is not Guid memberId) return;
+        try
+        {
+            await _leadCopy.CopyAsync(organizationId, memberId, null, approval.UserId, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Application {ApplicationId} was approved, but its lead's tags and fields could not be copied to the member", app.Id);
         }
     }
 

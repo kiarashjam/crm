@@ -95,4 +95,5 @@ export const members = {
   'members.notesPlaceholder': 'Preferences, allergies, anniversaries...',
   'members.saving': 'Saving',
   'members.saveChanges': 'Save changes',
+  'members.interestsHint': 'To choose members by what they like, add a field such as “Interests” (a multiselect: wine, art, golf, wellness, business) in <link>Settings › Fields & Tags</link>, and fill it in on each member’s page. Campaigns and event invitations can then go to just those members. Tags work too.',
 } satisfies Record<string, Message>;

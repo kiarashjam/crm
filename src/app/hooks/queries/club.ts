@@ -19,8 +19,9 @@ import { getDonations } from '@/app/api/donations';
 import { getLoyaltyLedger } from '@/app/api/loyalty';
 import { getVisits } from '@/app/api/visits';
 import {
-  getCampaignAudience, getCampaignRecipients, getCampaigns, type CampaignPurpose, type SegmentFilter,
+  getCampaignAudience, getCampaignRecipients, getCampaigns, getSavedCampaignAudience, type Campaign, type CampaignPurpose, type SegmentFilter,
 } from '@/app/api/campaigns';
+import { getEventInvitations, getExpectedAttendance } from '@/app/api/eventInvitations';
 import { getCommunications } from '@/app/api/communications';
 import { getMemberConsent } from '@/app/api/consent';
 import { getCatalog, type CatalogKind } from '@/app/api/catalog';
@@ -316,6 +317,11 @@ export const clubKeys = {
   recipients: (s: WorkspaceScope, campaignId: string) => key(s, 'campaigns', 'recipients', campaignId),
   // Read again when members change (a tier, a status) as well as campaigns: who a segment reaches is theirs.
   audience: (s: WorkspaceScope, params: object) => key(s, 'campaigns', 'audience', params),
+  savedAudience: (s: WorkspaceScope, campaignId: string) => key(s, 'campaigns', 'audience', 'saved', campaignId),
+  // An event's invitations and its expected attendance: read again when its list changes (an
+  // answer registers, a check-in shows who came), so they sit under 'events'.
+  invitations: (s: WorkspaceScope, eventId: string) => key(s, 'events', 'invitations', eventId),
+  expectedAttendance: (s: WorkspaceScope, eventId: string) => key(s, 'events', 'expected', eventId),
   communications: (s: WorkspaceScope, memberId: string | null) => key(s, 'communications', memberId ?? 'all'),
   memberConsent: (s: WorkspaceScope, memberId: string) => key(s, 'members', 'consent', memberId),
   // The same list as queryKeys.club.members, which useClubMembers reads.
@@ -350,6 +356,36 @@ export function useCampaignAudience(segment: SegmentFilter, purpose: CampaignPur
     queryKey: clubKeys.audience(ws, { segment, purpose }),
     queryFn: ({ signal }) => timed(signal, (s) => getCampaignAudience(segment, purpose, { signal: s })),
     enabled,
+  });
+}
+
+/** Who a saved campaign would reach now, counted as its send will count it. Off while `campaign` is null. */
+export function useSavedCampaignAudience(campaign: Campaign | null) {
+  const ws = useWorkspaceScope();
+  return useQuery({
+    queryKey: clubKeys.savedAudience(ws, campaign?.id ?? ''),
+    queryFn: ({ signal }) => timed(signal, (s) => getSavedCampaignAudience(campaign!, { signal: s })),
+    enabled: campaign != null,
+  });
+}
+
+/** Everyone invited to an event, with where each stands. Off while `eventId` is empty or `enabled` is false. */
+export function useEventInvitations(eventId: string, enabled = true) {
+  const ws = useWorkspaceScope();
+  return useQuery({
+    queryKey: clubKeys.invitations(ws, eventId),
+    queryFn: ({ signal }) => timed(signal, (s) => getEventInvitations(eventId, { signal: s })),
+    enabled: enabled && eventId.length > 0,
+  });
+}
+
+/** How many of those with a seat at an event are likely to come: an estimate. */
+export function useExpectedAttendance(eventId: string, enabled = true) {
+  const ws = useWorkspaceScope();
+  return useQuery({
+    queryKey: clubKeys.expectedAttendance(ws, eventId),
+    queryFn: ({ signal }) => timed(signal, (s) => getExpectedAttendance(eventId, { signal: s })),
+    enabled: enabled && eventId.length > 0,
   });
 }
 

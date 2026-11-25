@@ -53,17 +53,15 @@ import {
   isEditable,
   type Campaign,
   type CampaignPurpose,
-  type CampaignAudience,
   type CampaignTotals,
   type SegmentFilter,
 } from '@/app/api/campaigns';
-import {
-  MEMBER_TIERS,
-  MEMBER_STATUSES,
-  type MemberTier,
-  type MemberStatus,
-} from '@/app/api/members';
+import { MEMBER_TIERS } from '@/app/api/members';
+import { cleanAudience, habitsInWords, leftOutCounts } from '@/app/api/memberAudience';
 import { CATEGORIES, commStatusLabel, type CommCategory, type CommStatus } from '@/app/api/communications';
+import { AudienceFilters } from '@/app/components/audience/AudienceFilters';
+import { AudienceSummary } from '@/app/components/audience/AudienceSummary';
+import { useDebounce } from '@/app/hooks/useDebounce';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
@@ -73,7 +71,9 @@ import {
 } from '@/app/components/views';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { PERMISSION } from '@/app/api/organizations';
-import { useCampaignAudience, useCampaignRecipients, useCampaigns } from '@/app/hooks/queries/club';
+import {
+  useCampaignAudience, useCampaignRecipients, useCampaigns, useClubCatalog, useClubEvents, useSavedCampaignAudience,
+} from '@/app/hooks/queries/club';
 import { currentDateLocale } from '@/app/i18n/current';
 
 const STATUS_BADGE: Record<Campaign['status'], string> = {
@@ -135,14 +135,27 @@ interface FormState {
   purpose: CampaignPurpose;
   subject: string;
   body: string;
-  tiers: MemberTier[];
-  statuses: MemberStatus[];
+  /** Who it is for: the member audience campaigns and event invitations share. */
+  segment: SegmentFilter;
   sendAt: string;
 }
 
 const EMPTY_FORM: FormState = {
-  id: null, name: '', category: 'Announcement', purpose: 'marketing', subject: '', body: '', tiers: [], statuses: ['Active'], sendAt: '',
+  id: null, name: '', category: 'Announcement', purpose: 'marketing', subject: '', body: '', segment: { statuses: ['Active'] }, sendAt: '',
 };
+
+/** A campaign's audience in a few words, for its row: its tiers and statuses, and what else narrows it. */
+function segmentWords(segment: SegmentFilter): string {
+  const parts: string[] = [];
+  if (segment.tiers?.length) parts.push(`Tiers: ${segment.tiers.join(', ')}`);
+  if (segment.statuses?.length) parts.push(`Statuses: ${segment.statuses.join(', ')}`);
+  if (segment.view?.name || segment.viewId) parts.push(`View: ${segment.view?.name ?? 'saved view'}`);
+  const flex = (segment.tags?.length ?? 0) + (segment.notTags?.length ?? 0) + (segment.fields?.length ?? 0);
+  if (flex) parts.push(`${flex} tag and field condition${flex === 1 ? '' : 's'}`);
+  const habits = habitsInWords(segment);
+  if (habits.length) parts.push(habits.join(', '));
+  return parts.join(' · ');
+}
 
 export default function Campaigns() {
   const campaignsQuery = useCampaigns();
@@ -163,15 +176,13 @@ export default function Campaigns() {
     return campaigns.filter((c) => (!q ? true : `${c.name} ${c.subject}`.toLowerCase().includes(q)));
   }, [campaigns, search]);
 
-  const segmentOf = (f: FormState): SegmentFilter => ({
-    tiers: f.tiers.length ? f.tiers : undefined,
-    statuses: f.statuses.length ? f.statuses : undefined,
-  });
+  // What the server takes: the filters set, without empty lists or the view's kept copy (it reads the view again).
+  const segmentOf = (f: FormState): SegmentFilter => cleanAudience(f.segment);
 
   const openCreate = () => setForm({ ...EMPTY_FORM });
   const openEdit = (c: Campaign) => setForm({
     id: c.id, version: c.version, name: c.name, category: c.category, purpose: c.purpose, subject: c.subject, body: c.body,
-    tiers: c.segment.tiers ?? [], statuses: c.segment.statuses ?? [], sendAt: toLocalInput(c.scheduledAtUtc),
+    segment: c.segment ?? {}, sendAt: toLocalInput(c.scheduledAtUtc),
   });
 
   const save = async () => {
@@ -296,7 +307,7 @@ export default function Campaigns() {
     { id: 'purpose', label: 'For', cell: (c) => PURPOSE_LABEL[c.purpose] },
     { id: 'subject', label: 'Subject', cell: (c) => <span className="line-clamp-1">{c.subject || '—'}</span> },
     { id: 'progress', label: 'Progress', cell: (c) => <span className="text-xs text-slate-600">{progress(c)}</span> },
-    { id: 'segment', label: 'Segment', byDefault: false, cell: (c) => [c.segment.tiers?.join(', '), c.segment.statuses?.join(', ')].filter(Boolean).join(' · ') || 'Everyone' },
+    { id: 'segment', label: 'Segment', byDefault: false, cell: (c) => segmentWords(c.segment ?? {}) || 'Everyone' },
   ];
 
   return (
@@ -388,8 +399,7 @@ export default function Campaigns() {
                               <p className="text-sm font-medium text-slate-700">{c.subject}</p>
                               {view.density !== 'compact' && <p className="text-sm text-slate-500 mt-0.5 line-clamp-2">{c.body}</p>}
                               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-slate-500">
-                                {c.segment.tiers && c.segment.tiers.length > 0 && <span>Tiers: {c.segment.tiers.join(', ')}</span>}
-                                {c.segment.statuses && c.segment.statuses.length > 0 && <span>Statuses: {c.segment.statuses.join(', ')}</span>}
+                                {segmentWords(c.segment ?? {}) && <span>{segmentWords(c.segment ?? {})}</span>}
                                 <span>{progress(c)}</span>
                               </div>
                             </div>
@@ -423,27 +433,20 @@ export default function Campaigns() {
   );
 }
 
-/** Those who may have it but whom the outbox would still refuse, in a sentence, or nothing when there are none. */
-function unreachableLine(a: CampaignAudience, purpose: CampaignPurpose): string {
-  const parts: string[] = [];
-  if (a.suppressed) parts.push(`${a.suppressed} at an address on the suppression list (bounced, complained or unsubscribed)`);
-  if (purpose === 'marketing' && a.doNotContact) parts.push(`${a.doNotContact} marked do not contact`);
-  return parts.length ? `Left out: ${parts.join(', ')}. ` : '';
-}
-
-/** Who a campaign would reach, in a sentence: the figures the server works out for it. */
+/**
+ * Who a campaign would reach, and who it leaves out and why: the figures the server works out
+ * for it, asked again a moment after the filters stop changing.
+ */
 function AudienceLine({ segment, purpose }: { segment: SegmentFilter; purpose: CampaignPurpose }) {
-  const audience = useCampaignAudience(segment, purpose);
-  if (audience.isPending) return <span className="text-fuchsia-700">Working out who it reaches…</span>;
-  if (audience.isError || !audience.data) return <span>Who it reaches could not be worked out.</span>;
-  const a = audience.data;
+  const settled = useDebounce(segment, 350);
+  const audience = useCampaignAudience(settled, purpose);
   return (
-    <span>
-      <strong>{a.matching}</strong> member{a.matching === 1 ? ' matches' : 's match'}, <strong>{a.withAddress}</strong> with an email address
-      {purpose === 'marketing' && <>, <strong>{a.agreed}</strong> agreed to marketing by email</>}.{' '}
-      {unreachableLine(a, purpose)}
-      It would go to <strong>{a.willReceive}</strong> address{a.willReceive === 1 ? '' : 'es'}.
-    </span>
+    <AudienceSummary
+      audience={audience.data}
+      loading={audience.isFetching}
+      error={audience.isError ? (audience.error instanceof Error ? audience.error.message : 'Try again.') : null}
+      onRetry={() => void audience.refetch()}
+    />
   );
 }
 
@@ -457,10 +460,17 @@ function CampaignDialog({
   busy: boolean;
   segment: SegmentFilter;
 }) {
-  const toggle = <T extends string>(list: T[], value: T) => (list.includes(value) ? list.filter((x) => x !== value) : [...list, value]);
+  // The club's own tiers, and its events for "came to any of these".
+  const catalog = useClubCatalog('Membership');
+  const tiers = useMemo(() => {
+    const names = (catalog.data ?? []).map((t) => t.name);
+    for (const t of form.segment.tiers ?? []) if (!names.includes(t)) names.push(t);
+    return names.length ? names : MEMBER_TIERS;
+  }, [catalog.data, form.segment.tiers]);
+  const events = useClubEvents();
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onCancel(); }}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-h-[92dvh] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{form.id ? 'Edit campaign' : 'New campaign'}</DialogTitle>
           <DialogDescription>
@@ -504,41 +514,24 @@ function CampaignDialog({
             <Textarea id="campaign-body" aria-label="Message" value={form.body} onChange={(e) => onChange({ ...form, body: e.target.value })} rows={5} />
             <p className="mt-1 text-xs text-slate-500">{'{{firstName}}'} becomes each member&apos;s first name.</p>
           </div>
-          <div className="md:col-span-2">
-            <Label>Segment: tiers</Label>
-            <div className="flex flex-wrap gap-1.5 mt-1">
-              {MEMBER_TIERS.map((t) => {
-                const on = form.tiers.includes(t);
-                return (
-                  <button key={t} type="button" aria-pressed={on} onClick={() => onChange({ ...form, tiers: toggle(form.tiers, t) })}
-                    className={`text-xs px-3 py-1.5 rounded-full transition ${on ? 'bg-fuchsia-100 text-fuchsia-800 ring-2 ring-fuchsia-300' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-                    {t}
-                  </button>
-                );
-              })}
+          <section className="md:col-span-2 rounded-xl border border-slate-200 p-3" aria-labelledby="campaign-audience">
+            <h3 id="campaign-audience" className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-slate-900">
+              <Users className="h-4 w-4" aria-hidden /> Who it is for
+            </h3>
+            <AudienceFilters
+              idPrefix="campaign"
+              value={form.segment}
+              onChange={(next) => onChange({ ...form, segment: next })}
+              tiers={tiers}
+              events={events.data ?? []}
+            />
+            <div className="mt-3 rounded-lg border border-fuchsia-200 bg-fuchsia-50 px-3 py-2">
+              <AudienceLine segment={segment} purpose={form.purpose} />
             </div>
-          </div>
-          <div className="md:col-span-2">
-            <Label>Segment: statuses</Label>
-            <div className="flex flex-wrap gap-1.5 mt-1">
-              {MEMBER_STATUSES.map((s) => {
-                const on = form.statuses.includes(s);
-                return (
-                  <button key={s} type="button" aria-pressed={on} onClick={() => onChange({ ...form, statuses: toggle(form.statuses, s) })}
-                    className={`text-xs px-3 py-1.5 rounded-full transition ${on ? 'bg-fuchsia-100 text-fuchsia-800 ring-2 ring-fuchsia-300' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-                    {s}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          </section>
           <div>
             <Label htmlFor="campaign-send-at">Send at (optional)</Label>
             <Input id="campaign-send-at" aria-label="Send at" type="datetime-local" value={form.sendAt} onChange={(e) => onChange({ ...form, sendAt: e.target.value })} />
-          </div>
-          <div className="md:col-span-2 bg-fuchsia-50 border border-fuchsia-200 rounded-lg px-3 py-2 text-sm text-fuchsia-900" aria-live="polite">
-            <Users className="mr-1 inline h-3.5 w-3.5" aria-hidden />
-            <AudienceLine segment={segment} purpose={form.purpose} />
           </div>
         </div>
         <DialogFooter>
@@ -554,7 +547,8 @@ function CampaignDialog({
 
 /** "Send now", once someone has seen who it will reach and who it will not. */
 function SendDialog({ campaign, onClose }: { campaign: Campaign; onClose: () => void }) {
-  const audience = useCampaignAudience(campaign.segment, campaign.purpose);
+  // Counted as the send will count it: the segment, and its saved view, as the campaign keeps them.
+  const audience = useSavedCampaignAudience(campaign);
   const [sending, setSending] = useState(false);
   const send = async () => {
     setSending(true);
@@ -588,10 +582,8 @@ function SendDialog({ campaign, onClose }: { campaign: Campaign; onClose: () => 
               <p>It goes to <strong>{a.willReceive}</strong> address{a.willReceive === 1 ? '' : 'es'}.</p>
               {a.matching - a.willReceive > 0 && (
                 <p className="mt-1 text-slate-500">
-                  {a.matching - a.willReceive} of the {a.matching} members it is for will not get it
-                  {campaign.purpose === 'marketing'
-                    ? ': no consent to marketing by email, no address, an address shared with another member, on the suppression list, or marked do not contact.'
-                    : ': no address, an address shared with another member, or on the suppression list.'}
+                  {a.matching - a.willReceive} of the {a.matching} members it is for will not get it:{' '}
+                  {leftOutCounts(a).filter((r) => r.reason !== 'status').map((r) => `${r.count} ${r.label}`).join(', ')}.
                 </p>
               )}
             </>

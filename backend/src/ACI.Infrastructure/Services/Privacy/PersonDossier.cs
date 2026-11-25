@@ -113,6 +113,8 @@ internal sealed class PersonDossier
     public List<MemberPortalLink> PortalLinks { get; private set; } = new();
     public List<ClubEventRegistration> Registrations { get; private set; } = new();
     public Dictionary<Guid, ClubEvent> Events { get; private set; } = new();
+    /// <summary>The invitations to the club's events they were sent: their answers and when (the reply links are kept only as hashes).</summary>
+    public List<ClubEventInvitation> Invitations { get; private set; } = new();
     public List<ClubReservation> Reservations { get; private set; } = new();
     public List<ClubHouseholdMember> HouseholdLinks { get; private set; } = new();
     public Dictionary<Guid, ClubHousehold> Households { get; private set; } = new();
@@ -386,7 +388,8 @@ internal sealed class PersonDossier
                 || (r.HostMemberId != null && memberIds.Contains(r.HostMemberId.Value))
                 || (r.Email != null && addresses.Contains(r.Email.Trim().ToLower())))
             .ToListAsync(ct);
-        var eventIds = d.Registrations.Select(r => r.EventId).Distinct().ToList();
+        d.Invitations = await Q(db.ClubEventInvitations).Where(i => memberIds.Contains(i.MemberId)).OrderBy(i => i.InvitedAtUtc).ToListAsync(ct);
+        var eventIds = d.Registrations.Select(r => r.EventId).Concat(d.Invitations.Select(i => i.EventId)).Distinct().ToList();
         d.Events = await db.ClubEvents.AsNoTracking().Where(e => eventIds.Contains(e.Id)).ToDictionaryAsync(e => e.Id, ct);
         d.Reservations = await Q(db.ClubReservations).Where(r =>
                 (r.MemberId != null && memberIds.Contains(r.MemberId.Value))

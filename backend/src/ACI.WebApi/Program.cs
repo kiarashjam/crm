@@ -197,6 +197,21 @@ try
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
             }));
+        // A member's reply link to an event invitation: they open it, answer, perhaps change their
+        // mind. Per link, like the unsubscribe link. Anything not shaped like a link of ours is
+        // never looked up, and all such share one limit rather than each holding a partition.
+        options.AddPolicy("public-invitation", context =>
+        {
+            var token = context.Request.RouteValues["token"]?.ToString() ?? "";
+            return System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+                ACI.Application.Common.InvitationReplyToken.LooksLikeOne(token) ? "invitation:" + token : "invitation:other",
+                _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 10,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                });
+        });
         // The privacy notice: anyone may read it, and a club's forms link to it with their token,
         // which is looked up each time. Per token, like the forms themselves, and generous: every
         // visitor of a club's page shares its token. Without one the notice reads only the
@@ -562,6 +577,8 @@ try
     builder.Services.AddHostedService<ACI.WebApi.Services.WeeklyDigestBackgroundService>();
     // Each person's morning brief, from 07:00 on their workspace's calendar.
     builder.Services.AddHostedService<ACI.WebApi.Services.MorningBriefBackgroundService>();
+    // The workspace's recap emails, daily, weekly and monthly, from 07:00 on its calendar.
+    builder.Services.AddHostedService<ACI.WebApi.Services.RecapBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.PersonContactBackfillBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.GiftCardExpiryBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.CampaignSchedulerBackgroundService>();

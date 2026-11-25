@@ -159,6 +159,29 @@ public class MemberPortalDataTests
     }
 
     [Fact]
+    public async Task SigningUpInThePortalSetsOffTheClubsRegistrationRulesOnce()
+    {
+        // The event service now dispatches a registration made with nobody signed in as the
+        // workspace's owner (for invitation reply links), and the portal announces its own
+        // sign-ups too: the rule still runs once for the one registration.
+        using var factory = new CustomWebApplicationFactory();
+        var (staff, _, _) = await ClubAsync(factory, "owner@rules.ch");
+        await Ok(await staff.PostAsync("/api/automations", Body(new
+        {
+            name = "Welcome the guest", trigger = "event.registered",
+            actions = new[] { new { type = "create_task", config = new { title = "Prepare the place card" } } },
+        })), "add the rule");
+        await MemberAsync(staff, "Anna");
+        var later = await EventAsync(staff, Days(10));
+        var key = await OpenPortalAsync(staff);
+        var member = await SignInMemberAsync(factory, key, "anna@example.ch");
+
+        await Ok(await member.PostAsync($"/api/portal/events/{later}/register", null), "sign up");
+
+        (await factory.Services.Read(db => db.TaskItems.Count(t => t.Title == "Prepare the place card"))).Should().Be(1);
+    }
+
+    [Fact]
     public async Task BookingsFollowTheResourcesRules_AndAClashNamesNobody()
     {
         using var factory = new CustomWebApplicationFactory();

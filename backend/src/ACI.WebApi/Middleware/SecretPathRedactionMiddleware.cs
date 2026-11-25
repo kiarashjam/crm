@@ -63,6 +63,11 @@ public sealed class SecretPathRedactionMiddleware
         // it was made for, and a mail app's one-click POST to it lands in this log too.
         new(@"^(?<keep>/api/public/unsubscribe/)(?<secret>[^/?]+)(?<rest>.*)$",
             RegexOptions.Compiled | RegexOptions.IgnoreCase),
+        // /api/public/invitations/{token}: an event invitation's reply link, which answers for
+        // the member it was sent to (a place on the list and a ticket on their account, or
+        // their place cancelled) until the event starts. Kept only as a hash in the database.
+        new(@"^(?<keep>/api/public/invitations/)(?<secret>[^/?]+)(?<rest>.*)$",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase),
     };
 
     private readonly RequestDelegate _next;

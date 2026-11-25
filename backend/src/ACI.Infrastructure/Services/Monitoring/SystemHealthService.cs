@@ -325,7 +325,8 @@ public sealed class SystemHealthService : ISystemHealth, IMonitoringReadings
     internal static string? OneLine(string? text)
     {
         if (string.IsNullOrWhiteSpace(text)) return null;
-        var line = string.Join(' ', text.Split(['\r', '\n', '\t'], StringSplitOptions.RemoveEmptyEntries)).Trim();
+        // An array, not a collection expression: the 8.0.1xx compilers cannot tell which Split that means.
+        var line = string.Join(' ', text.Split(new[] { '\r', '\n', '\t' }, StringSplitOptions.RemoveEmptyEntries)).Trim();
         return line.Length <= 300 ? line : line[..297] + "...";
     }
 }

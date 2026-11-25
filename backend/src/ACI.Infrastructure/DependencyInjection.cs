@@ -86,6 +86,10 @@ public static class DependencyInjection
         services.AddScoped<IClubLedger, ClubLedgerService>();
         // Events and their guest lists, resources and their bookings; their money goes through the ledger.
         services.AddScoped<IClubEvents, ClubEventService>();
+        // Who a campaign or an event's invitations are for: one place both ask.
+        services.AddScoped<IMemberAudience, MemberAudienceService>();
+        // Invitations to an event, with each member's reply link, and the expected attendance.
+        services.AddScoped<IEventInvitations, EventInvitationService>();
         services.AddScoped<IClubReservations, ClubReservationService>();
         services.AddSingleton<ILedgerReadObserver, NoLedgerReadObserver>();
         // The club's price catalogue, and the billing that runs on the ledger.
@@ -151,6 +155,10 @@ public static class DependencyInjection
         services.AddScoped<ISavedViewService, SavedViewService>();
         services.AddScoped<IRecordFlexQuery, RecordFlexQuery>();
         services.AddScoped<WeeklyDigestService>();
+        // The recap emails: who receives which, their figures, and the sending.
+        services.AddScoped<IRecapEmails, Services.Recaps.RecapService>();
+        // A lead's tags and field values carried onto the club member made from it, once.
+        services.AddScoped<ILeadToMemberCopy, LeadToMemberCopyService>();
         // System health: the page, the alerts' readings across workspaces, and the daily digest.
         // The page reads the job heartbeats and the portal pings, singletons the API registers.
         services.AddScoped<Services.Monitoring.SystemHealthService>();

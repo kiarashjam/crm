@@ -137,6 +137,11 @@ public partial class AppDbContext
         // never read through an event from another workspace.
         Scope<ClubEvent>(model, e => e.OrganizationId);
         Scope<ClubEventRegistration>(model, e => e.OrganizationId);
+        // An event's invitations: an organization's alone. A member answering on their reply page
+        // names no workspace until their invitation is found, which is looked up across workspaces
+        // by its token's hash (IgnoreQueryFilters, said where); the page then acts for its workspace.
+        Scope<ClubEventInvitationSend>(model, e => e.OrganizationId);
+        Scope<ClubEventInvitation>(model, e => e.OrganizationId);
         Scope<ClubResource>(model, e => e.OrganizationId);
         Scope<ClubReservation>(model, e => e.OrganizationId);
         // Member communications and consent: club records, so an organization's alone.
@@ -212,6 +217,10 @@ public partial class AppDbContext
         Scope<AiUsage>(model, e => e.OrganizationId, e => e.UserId);
         Scope<AssistantSettings>(model, e => e.OrganizationId);
         Scope<AssistantBrief>(model, e => e.OrganizationId);
+        // The recap emails: an organization's alone. The job finds who is due across workspaces
+        // first (IgnoreQueryFilters, said where), then acts for each workspace and person.
+        Scope<RecapSubscription>(model, e => e.OrganizationId);
+        Scope<RecapSend>(model, e => e.OrganizationId);
         // Retention and referrals: an organization's alone. The daily scoring run finds the
         // workspaces it scores across workspaces first (IgnoreQueryFilters, said where), then
         // acts for each.

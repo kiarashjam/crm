@@ -30,7 +30,9 @@ vi.mock('@/app/api/reporting', async (importOriginal) => ({
   saveForecastSnapshot: (...a: unknown[]) => saveForecastSnapshot(...a),
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
-const workspace = vi.hoisted(() => ({ current: null as null | { id: string; name: string; currency?: string; locale?: string; timeZone?: string } }));
+const workspace = vi.hoisted(() => ({
+  current: null as null | { id: string; name: string; currency?: string; locale?: string; timeZone?: string; role?: number; permissions?: string[] },
+}));
 vi.mock('@/app/contexts/OrgContext', () => ({
   useOrgOptional: () => (workspace.current ? { currentOrg: workspace.current } : null),
 }));
@@ -100,6 +102,15 @@ describe('SavedForecastPanel', () => {
     expect(screen.getByRole('option', { name: /by Beat/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save again (keeps the earlier one)' })).toBeInTheDocument();
     expect(screen.getByText(/2 with no close date/)).toBeInTheDocument();
+  });
+
+  it('shows a read-only member the saves but offers them no save, which the server would refuse', async () => {
+    // The Read-only preset sees every deal (so it reads the saved forecasts) and changes nothing.
+    workspace.current = { id: 'o', name: 'Pavillon 46', role: 3, permissions: ['deals.all'] };
+    render(<SavedForecastPanel />);
+
+    expect(await screen.findByRole('option', { name: /by Beat/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Save/ })).toBeNull();
   });
 
   it('shows the month picked last, whichever answer comes back first', async () => {

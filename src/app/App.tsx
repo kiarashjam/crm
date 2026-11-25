@@ -47,6 +47,7 @@ const LeadRouting = lazy(() => import('@/app/pages/LeadRouting'));
 const PublicCapture = lazy(() => import('@/app/pages/PublicCapture'));
 const PublicApply = lazy(() => import('@/app/pages/PublicApply'));
 const Unsubscribe = lazy(() => import('@/app/pages/Unsubscribe'));
+const InvitationReply = lazy(() => import('@/app/pages/InvitationReply'));
 const PayPage = lazy(() => import('@/app/pages/PayPage'));
 const MemberPortalSite = lazy(() => import('@/app/pages/portal/MemberPortalSite'));
 const Pipeline = lazy(() => import('@/app/pages/Pipeline'));
@@ -191,6 +192,12 @@ export default function App() {
                 <Route path="/unsubscribe/:token" element={
                   <Suspense fallback={<PageLoader />}>
                     <Unsubscribe />
+                  </Suspense>
+                } />
+                {/* A member's reply link to an event invitation: they answer with no account here. */}
+                <Route path="/invitation/:token" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <InvitationReply />
                   </Suspense>
                 } />
                 {/* A club's pay link: the member paying has no account here either. */}

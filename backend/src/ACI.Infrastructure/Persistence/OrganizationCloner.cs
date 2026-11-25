@@ -503,6 +503,13 @@ public sealed class OrganizationCloner
                 i.TokenHash = ACI.Application.Common.PasswordResetCrypto.HashRawToken(
                     ACI.Application.Common.PasswordResetCrypto.CreateRawToken());
                 return "Pending invitations get their own link";
+            case ClubEventInvitation invitation:
+                // The reply link a member has answers in the original. The copy keeps who was
+                // invited and what they said, under hashes of tokens nobody has.
+                invitation.TokenHash = ACI.Application.Common.InvitationReplyToken.Hash(ACI.Application.Common.InvitationReplyToken.Create());
+                if (invitation.ReminderTokenHash != null)
+                    invitation.ReminderTokenHash = ACI.Application.Common.InvitationReplyToken.Hash(ACI.Application.Common.InvitationReplyToken.Create());
+                return "Event invitations keep their reply links with the original";
             case OutboundMessage m:
                 // The copy keeps the history, but an email or event still queued in the
                 // original goes out once, from the original. Replies and the mail service's
@@ -596,6 +603,14 @@ public sealed class OrganizationCloner
                 // club's rules (the weights, the task, the referral bonus) come along.
                 retention.SaveEmail = false;
                 return "Members found at risk in the copy are not emailed from it";
+            case RecapSubscription recap when recap.DailySinceUtc != null || recap.WeeklySinceUtc != null || recap.MonthlySinceUtc != null:
+                // The same people work in both organizations: a copy made to try something out
+                // would email each of them its own recaps beside the original's. The rows come
+                // along with every frequency off, for someone to switch on again in the copy.
+                recap.DailySinceUtc = null;
+                recap.WeeklySinceUtc = null;
+                recap.MonthlySinceUtc = null;
+                return "Recap emails start off in the copy";
             case OnboardingSettings s when s.WebhookUrl != null || s.WebhookSecret != null:
                 // Like its events address: a customer won in the copy is never handed to the
                 // original's portal, signed as the original. The template and choices stay.

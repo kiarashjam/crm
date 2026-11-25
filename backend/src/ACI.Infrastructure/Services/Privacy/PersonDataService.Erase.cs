@@ -262,6 +262,7 @@ public sealed partial class PersonDataService
             "Kept under the pseudonym, so the events' figures stay.");
         Add("Bookings in the diary", ErasureActions.Anonymise, d.Reservations.Count - (cancelledAhead == null ? upcomingReservations : 0),
             "Kept under the pseudonym, with their notes removed.");
+        Add("Invitations to events", ErasureActions.Delete, d.Invitations.Count, "Their reply links stop working; a place an answer took is handled with the event's list.");
         Add("Visits", ErasureActions.Anonymise, d.Visits.Count, "Kept for the club's figures, under the pseudonym.");
         Add("Loyalty points", ErasureActions.Anonymise, d.Loyalty.Count, "Kept for the club's figures, under the pseudonym.");
         Add("At-risk score", ErasureActions.Delete, d.Risks.Count, "An erased member is not scored again.");
@@ -603,6 +604,9 @@ public sealed partial class PersonDataService
         _db.ClubMemberRisks.RemoveRange(d.Risks);
         _db.ClubRenewals.RemoveRange(d.Renewals);
         _db.ClubMemberConcerns.RemoveRange(d.Concerns);
+        // An invitation names them and holds their reply link and answer, none of which the books
+        // need: it goes, and its link with it. The place an answer took is the event list's.
+        _db.ClubEventInvitations.RemoveRange(d.Invitations);
         foreach (var b in d.ReferralBonuses) b.Reason = Scrub(b.Reason);
         // A seat names the member and nothing the books need: it goes, and a seat they held now is
         // free for the company. A membership billed to their contact or address keeps going, without them.

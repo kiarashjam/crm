@@ -5,7 +5,7 @@ import {
   User, Palette, Bell, Shield,
   ChevronRight,
   Settings2, Sparkles,
-  Link2, Bot, MessageSquareHeart, MessagesSquare, HeartPulse,
+  Link2, Bot, MessageSquareHeart, MessagesSquare, HeartPulse, Newspaper,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -65,9 +65,11 @@ import { WelcomeTab } from './settings/components/WelcomeTab';
 import { SystemHealthSection } from './settings/components/SystemHealthSection';
 import { ClaudeSection } from './McpSetup';
 import { AssistantSection } from './settings/components/AssistantSection';
+import { RecapEmailsSection } from './settings/components/RecapEmailsSection';
+import { MyRecapsCard } from './settings/components/MyRecapsCard';
 import PageHero from '@/app/components/PageHero';
 
-type SettingsTab = 'profile' | 'brand' | 'appearance' | 'notifications' | 'assistant' | 'integrations' | 'welcome' | 'health' | 'claude' | 'organization' | 'pipelines' | 'customFields' | 'security' | 'account';
+type SettingsTab = 'profile' | 'brand' | 'appearance' | 'notifications' | 'assistant' | 'recaps' | 'integrations' | 'welcome' | 'health' | 'claude' | 'organization' | 'pipelines' | 'customFields' | 'security' | 'account';
 
 /** The tabs of the Sales module, left out while the workspace has it turned off. */
 const SALES_TABS: readonly SettingsTab[] = ['pipelines'];
@@ -78,6 +80,7 @@ const TAB_CONFIG: { id: SettingsTab; label: string; icon: React.ElementType; des
   { id: 'appearance', label: 'Appearance', icon: Palette, description: 'Theme, layout, and display options' },
   { id: 'notifications', label: 'Notifications', icon: Bell, description: 'Email and in-app notifications' },
   { id: 'assistant', label: 'Assistant', icon: MessagesSquare, description: 'The chat, morning briefs and the monthly AI limit' },
+  { id: 'recaps', label: 'Recap emails', icon: Newspaper, description: 'Who gets the daily, weekly and monthly figures' },
   { id: 'integrations', label: 'Integrations', icon: Link2, description: 'Inbound webhooks and URLs' },
   { id: 'welcome', label: 'Welcome & portal', icon: MessageSquareHeart, description: 'Your member portal, and handing new customers to one' },
   { id: 'health', label: 'System health', icon: HeartPulse, description: 'What needs attention, and the background jobs' },
@@ -96,11 +99,12 @@ export default function Settings() {
   const { sales: salesOn, club: clubOn } = useModules();
   // Pipelines belong to Sales. Welcome & portal holds the club's member portal (Club) and the
   // welcome a deal's contact is handed over with (Sales): it shows while either is on.
-  // System health is for those who manage an organization's settings: it has nothing for anyone else.
+  // System health and who gets the recap emails are for those who manage an organization's
+  // settings: they have nothing for anyone else (each person switches their own recaps in Notifications).
   const seesHealth = Boolean(currentOrg) && orgCan(currentOrg, PERMISSION.ManageSettings);
   const tabsShown = TAB_CONFIG.filter((tab) =>
     tab.id === 'welcome' ? salesOn || clubOn
-    : tab.id === 'health' ? seesHealth
+    : tab.id === 'health' || tab.id === 'recaps' ? seesHealth
     : salesOn || !SALES_TABS.includes(tab.id));
 
   // Tab state
@@ -586,9 +590,11 @@ export default function Settings() {
       case 'appearance':
         return <AppearanceSection settings={settings} updateSettings={updateSettings} />;
       case 'notifications':
-        return <NotificationsSection settings={settings} updateSettings={updateSettings} />;
+        return <NotificationsSection settings={settings} updateSettings={updateSettings} recaps={<MyRecapsCard />} />;
       case 'assistant':
         return <AssistantSection />;
+      case 'recaps':
+        return <RecapEmailsSection />;
       case 'integrations':
         return <IntegrationsSection currentOrg={currentOrg} />;
       case 'welcome':

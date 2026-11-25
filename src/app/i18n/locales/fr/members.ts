@@ -94,4 +94,5 @@ export const members: Translation<typeof en> = {
   'members.notesPlaceholder': 'Préférences, allergies, anniversaires…',
   'members.saving': 'Enregistrement',
   'members.saveChanges': 'Enregistrer les modifications',
+  'members.interestsHint': 'Pour choisir les membres selon leurs goûts, ajoutez un champ comme « Centres d’intérêt » (choix multiple : vin, art, golf, bien-être, affaires) dans <link>Paramètres › Champs et tags</link>, puis renseignez-le sur la fiche de chaque membre. Campagnes et invitations aux événements peuvent alors aller à ces seuls membres. Les tags fonctionnent aussi.',
 };
