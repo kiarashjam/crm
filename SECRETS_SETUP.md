@@ -299,6 +299,26 @@ Azure service principal the workflow already logs in with. Notes:
 - Re-deploy (or **Actions → Build and deploy to Azure Static Web Apps → Run workflow**) to apply it. Rotating
   the key later means updating the secret and re-running — nothing else.
 
+### Platform admins (site analytics of cadencee.ai)
+
+The people who run CadenceE itself may read the site's visitor analytics (the dashboard at
+`/admin/analytics`, `GET /api/site-analytics/…`) and get its email at 07:30 Zurich each
+morning. They are named by `Platform__AdminEmails`, a comma-separated list of addresses
+(case does not matter). An account counts only once it has confirmed its address.
+
+| Secret | Value |
+|--------|-------|
+| `PLATFORM_ADMIN_EMAILS` | e.g. `you@yourcompany.example, partner@yourcompany.example` |
+
+The `Configure platform admins` step of `.github/workflows/deploy-backend.yml` sets it on the
+Web App (merging, like the email step) and does nothing while the secret is absent. The
+addresses live only in the secret: never put them in the repository, which is public. To
+check, sign in as one of them: `GET /api/platform/me` answers `{ "isPlatformAdmin": true }`.
+
+Optionally set `SiteAnalytics__Secret` (32 or more random characters) in the Web App: the daily
+visitor hashes are then made from it instead of a secret generated once and kept in the
+database. `SiteAnalytics__Enabled=false` stops recording visits.
+
 ### Local development
 
 By default local development **does not send email**: `appsettings.Development.json`
