@@ -14,7 +14,6 @@ import { toast } from 'sonner';
 import { completeSso, keepWorkspaceFor, readSsoLanding, ssoErrorMessage } from '@/app/api/signIn';
 import { messages } from '@/app/api/messages';
 import { setSession } from '@/app/lib/auth';
-import { trackEvent } from '@/app/lib/siteAnalytics';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import { useT } from '@/app/i18n';
 
@@ -43,7 +42,6 @@ export default function SsoCallback() {
         }
         if (!response.token || !response.user) throw new Error(ssoErrorMessage('server_error'));
         setSession(response.token, response.user);
-        trackEvent('login');
         // Right after the session starts, so the account's older answer is dropped (see I18nProvider).
         if (language !== undefined) void choose(language);
         keepWorkspaceFor(response.user, kept);

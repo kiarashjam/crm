@@ -200,7 +200,6 @@ const EVENT_LABELS: Record<string, string> = {
   'cta-signup': 'Sign-up button clicked',
   signup_started: 'Sign-up started',
   signup_completed: 'Sign-up completed',
-  login: 'Logged in',
   outbound: 'Outbound link followed',
 };
 

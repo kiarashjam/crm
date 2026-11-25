@@ -365,7 +365,7 @@ describe('the sign-up funnel', () => {
   it('gives each step its share of the step before, and the visitors who signed up', async () => {
     summary = (from, to) => HttpResponse.json(summaryFor(from, to, {
       totals: totals({ visitors: 200, sessions: 230, pageViews: 500, signups: 10 }),
-      events: [{ name: 'cta-signup', count: 40 }, { name: 'signup_started', count: 20 }, { name: 'signup_completed', count: 10 }, { name: 'login', count: 4 }],
+      events: [{ name: 'cta-signup', count: 40 }, { name: 'signup_started', count: 20 }, { name: 'signup_completed', count: 10 }, { name: 'outbound', count: 4 }],
     }));
     show();
     await loaded();
@@ -377,7 +377,7 @@ describe('the sign-up funnel', () => {
     expect(within(funnel).getByTestId('funnel-signup_completed-step')).toHaveTextContent('50%');
     expect(within(funnel).getByTestId('funnel-signup_completed-visitors')).toHaveTextContent('5%');
     expect(screen.getByTestId('funnel-overall')).toHaveTextContent('5% of visitors signed up (10 of 200).');
-    expect(within(screen.getByRole('list', { name: 'Events' })).getByText('Logged in')).toBeInTheDocument();
+    expect(within(screen.getByRole('list', { name: 'Events' })).getByText('Outbound link followed')).toBeInTheDocument();
   });
 });
 

@@ -1,5 +1,5 @@
-// Whose visits the site analytics show: the website's visitors (the default), the people
-// signed in to the app (the owner's own browsing among them), or everyone. Like the period,
+// Whose visits the site analytics show: the website's visitors (the default), what was sent
+// signed in (the sign-up events alone: the app's own use is not recorded), or everyone. Like the period,
 // the choice lives in the address (?audience=signed-in), so a link or the back button brings
 // back the same view; the website's visitors need no parameter.
 
@@ -17,7 +17,7 @@ export const AUDIENCE_OPTIONS: { value: SiteAnalyticsAudience; label: string; de
   {
     value: 'signed-in',
     label: 'Signed-in',
-    description: 'People using the CRM while signed in, you included.',
+    description: 'Sign-up events sent just after signing in. Using the CRM signed in is not recorded.',
   },
   {
     value: 'everyone',
@@ -59,8 +59,8 @@ export const AUDIENCE_HINTS: Record<SiteAnalyticsAudience, Partial<Record<KpiKey
   },
   'signed-in': {
     visitors: 'signed-in people, once a day',
-    sessions: 'signed-in sessions in the app',
-    pageViews: 'pages opened signed in',
+    sessions: 'sessions with a sign-up signed in',
+    pageViews: 'not recorded signed in',
   },
   everyone: {
     visitors: 'everyone, once a day',

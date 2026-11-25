@@ -63,7 +63,7 @@ export function ConversionsSection({ summary }: { summary: SiteAnalyticsSummary 
       </SettingsCard>
       <SettingsCard icon={Zap} tone="pink" title="Events" description="Clicks and actions the site recorded.">
         {events.length === 0 ? (
-          <EmptyNote>No events yet in this period. Sign-up clicks, logins and outbound links show up here.</EmptyNote>
+          <EmptyNote>No events yet in this period. Sign-up clicks, sign-ups and outbound links show up here.</EmptyNote>
         ) : (
           <BarRows
             label="Events"

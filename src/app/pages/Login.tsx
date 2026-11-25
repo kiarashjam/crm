@@ -95,7 +95,6 @@ export default function Login() {
         const res = await loginWithTwoFactor(twoFactorToken!, code);
         if (!res.token || !res.user) throw new Error('Login failed');
         setSession(res.token, res.user);
-        trackEvent('login');
         keepPickedLanguage();
         keepWorkspaceFor(res.user, fromSso?.kept);
         toast.success(messages.auth.signedIn);
@@ -117,7 +116,8 @@ export default function Login() {
 
       if (!res.token || !res.user) throw new Error('Login failed');
       setSession(res.token, res.user);
-      trackEvent(mode === 'register' ? 'signup_completed' : 'login');
+      // A new account is the website's conversion; a sign-in is not counted (site analytics).
+      if (mode === 'register') trackEvent('signup_completed');
       keepPickedLanguage();
       toast.success(mode === 'register' ? messages.auth.accountCreated : messages.auth.signedIn);
       navigate(resumeInvitation ?? (isUsingRealApi() ? '/organizations' : '/dashboard'), { replace: true });
@@ -144,7 +144,6 @@ export default function Login() {
       return;
     }
     setSession(res.token, res.user);
-    trackEvent('login');
     keepPickedLanguage();
     keepWorkspaceFor(res.user, fromSso?.kept);
     toast.success(messages.auth.signedIn);

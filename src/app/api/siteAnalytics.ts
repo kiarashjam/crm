@@ -18,10 +18,10 @@ import { ApiError, authFetchJson, servesDemoData, type RequestOptions } from './
 export const SITE_ANALYTICS_TIME_ZONE = 'Europe/Zurich';
 
 /**
- * Whose events the figures count. The website and the app are one origin, so the tracker
- * sees both: 'visitors' is the website's (what was done signed out, plus every sign-up and
- * login, often recorded just after signing in); 'signed-in' is the app's signed-in use, the
- * owner's own included; 'everyone' is both.
+ * Whose events the figures count. The website and the app are one origin, but signed in the
+ * tracker sends only the sign-up events: 'visitors' is the website's (what was done signed
+ * out, plus every sign-up, often recorded just after signing in); 'signed-in' is the sign-up
+ * events sent signed in (the app's own use is not recorded); 'everyone' is both.
  */
 export type SiteAnalyticsAudience = 'visitors' | 'signed-in' | 'everyone';
 
@@ -93,7 +93,7 @@ export interface SiteAnalyticsNamedRow {
   sessions: number;
 }
 
-/** An event the site sent: cta-signup, signup_started, signup_completed, login, outbound… */
+/** An event the site sent: cta-signup, signup_started, signup_completed, outbound… */
 export interface SiteAnalyticsEventRow {
   name: string;
   count: number;

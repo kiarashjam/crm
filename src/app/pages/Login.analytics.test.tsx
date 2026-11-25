@@ -1,5 +1,6 @@
-// What the sign-in page tells the site analytics: someone opened the sign-up form, made an
-// account, or signed in. Names of events only; the analytics never hear who.
+// What the sign-in page tells the site analytics: someone opened the sign-up form, or made an
+// account. Names of events only; the analytics never hear who. A sign-in is not counted: it is
+// not the website's growth, and its moment would match the account's last sign-in.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -64,7 +65,7 @@ describe('the sign-in page and the site analytics', () => {
     expect(trackEvent.mock.calls).toEqual([['signup_started'], ['signup_completed']]);
   });
 
-  it('counts a sign-in', async () => {
+  it('does not count a sign-in', async () => {
     const user = userEvent.setup();
     show();
 
@@ -73,6 +74,6 @@ describe('the sign-in page and the site analytics', () => {
     await user.click(screen.getByRole('button', { name: /sign in/i }));
 
     expect(await screen.findByText('Signed in')).toBeInTheDocument();
-    expect(trackEvent.mock.calls).toEqual([['login']]);
+    expect(trackEvent).not.toHaveBeenCalled();
   });
 });

@@ -1,7 +1,8 @@
 /**
  * First-party, cookieless visitor analytics of cadencee.ai: what pages people open, the tracked
- * buttons and outbound links they click, and a few events the app reports (a sign-up, a sign-in),
- * posted in batches to POST /api/site-analytics/events. Platform admins read the figures back.
+ * buttons and outbound links they click, and the sign-up events the app reports (signup_started,
+ * signup_completed), posted in batches to POST /api/site-analytics/events. Platform admins read
+ * the figures back.
  *
  * Nothing that could name or follow someone leaves the browser:
  * - no cookie, and nothing in localStorage: the session is a random id in sessionStorage, which
@@ -9,8 +10,11 @@
  * - a path goes as its route's template (/leads/:id), without its query string or fragment, and
  *   the secret in a signing, unsubscribe or pay link (and any other token) is never sent;
  * - the referrer goes as its scheme and host only, and only when it is another site;
- * - a page's title goes on public pages only (the app's own put the open record's name in it);
- * - a signed-in visitor is only "signed in": no id, workspace, name or email.
+ * - no page title, no screen size, and of the utm tags only source, medium and campaign;
+ * - signed in, nothing but the sign-up events: the app's own use (page views, clicks) is not
+ *   recorded, and a sign-up event says only "signed in", never who;
+ * - a customer's pages (signing a contract, paying, unsubscribing, a capture or application
+ *   form, a club's member portal) and the analytics dashboard are never recorded.
  *
  * It does nothing when the browser asks not to be tracked (Do Not Track or Global Privacy
  * Control), in the demo, in a build with no API, under automation (navigator.webdriver), and in
@@ -53,28 +57,38 @@ const ROUTE_TEMPLATES: Record<string, string> = {
   'member-portal': ':key',
 };
 
-/** Pages not counted: the analytics dashboard itself. */
-const UNTRACKED_PREFIXES = ['/admin'];
+/**
+ * Pages never counted: the analytics dashboard, and the pages a club's customers open from a
+ * link or a form (signing, paying, unsubscribing, capture and application forms, the member
+ * portal). The server refuses these too.
+ */
+const UNTRACKED_PREFIXES = ['/admin', '/sign', '/pay', '/unsubscribe', '/capture', '/apply', '/member-portal'];
 
-const LIMITS = { path: 300, title: 200, name: 64, utm: 100, referrer: 300, segment: 80, segments: 12 };
+const LIMITS = { path: 300, name: 64, utm: 64, referrer: 300, segment: 80, segments: 12 };
 
-const UTM_KEYS = ['source', 'medium', 'campaign', 'term', 'content'] as const;
+const UTM_KEYS = ['source', 'medium', 'campaign'] as const;
 type UtmKey = (typeof UTM_KEYS)[number];
 export type Utm = Partial<Record<UtmKey, string>>;
 
 export type SiteEventType = 'page_view' | 'click' | 'event';
+
+/**
+ * The events the app may report: the website's sign-up funnel, and nothing else. A sign-in is
+ * not one: it is not the website's growth, and its moment would match the account's last
+ * sign-in. The server takes these names alone (SiteAnalyticsRules.EventNames).
+ */
+export const SITE_EVENT_NAMES = ['signup_started', 'signup_completed'] as const;
+export type SiteEventName = (typeof SITE_EVENT_NAMES)[number];
 
 /** One event as it is posted. */
 export interface SiteEvent {
   type: SiteEventType;
   name?: string;
   path: string;
-  title?: string;
   referrer?: string;
   utm?: Utm;
   sessionId: string;
   at: string;
-  screen?: { w: number; h: number };
   lang?: string;
   signedIn: boolean;
 }
@@ -182,8 +196,10 @@ function signedIn(): boolean {
   }
 }
 
+/** Whether a page is never counted (UNTRACKED_PREFIXES), whatever the case of its path. */
 function untracked(path: string): boolean {
-  return UNTRACKED_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+  const lower = path.toLowerCase();
+  return UNTRACKED_PREFIXES.some((prefix) => lower === prefix || lower.startsWith(`${prefix}/`));
 }
 
 // ── The session and where it came from ────────────────────────────────────
@@ -265,17 +281,13 @@ function currentPath(): string {
   }
 }
 
-function makeEvent(type: SiteEventType, path: string, extra: { name?: string; title?: string } = {}): SiteEvent {
-  const isSignedIn = signedIn();
+function makeEvent(type: SiteEventType, path: string, name?: string): SiteEvent {
   const from = landing();
-  const event: SiteEvent = { type, path, sessionId: sessionId(), at: new Date().toISOString(), signedIn: isSignedIn };
-  if (extra.name) event.name = clip(extra.name, LIMITS.name);
-  // A title only on a public page: in the app it carries the open record's name.
-  if (extra.title && !isSignedIn && !path.includes(':')) event.title = clip(extra.title.trim(), LIMITS.title);
+  const event: SiteEvent = { type, path, sessionId: sessionId(), at: new Date().toISOString(), signedIn: signedIn() };
+  if (name) event.name = clip(name, LIMITS.name);
   if (from.referrer) event.referrer = from.referrer;
   if (from.utm) event.utm = from.utm;
   try {
-    if (typeof screen !== 'undefined' && screen.width > 0) event.screen = { w: screen.width, h: screen.height };
     if (navigator.language) event.lang = navigator.language;
   } catch {
     // Left out.
@@ -284,6 +296,8 @@ function makeEvent(type: SiteEventType, path: string, extra: { name?: string; ti
 }
 
 function enqueue(event: SiteEvent): void {
+  // Signed in, the app's own use is not recorded: only the sign-up events go.
+  if (event.signedIn && event.type !== 'event') return;
   if (untracked(event.type === 'click' && event.name === 'outbound' ? currentPath() : event.path)) return;
   ensureInstalled();
   queue.push(event);
@@ -291,7 +305,7 @@ function enqueue(event: SiteEvent): void {
   if (queue.length >= MAX_BATCH) flushSiteAnalytics();
 }
 
-/** Counts a page view of `pathname` (the current page by default), a tick later so the page has set its title. */
+/** Counts a page view of `pathname` (the current page by default), a tick later, once the page has settled (a redirect signs in, say). */
 export function trackPageView(pathname?: string): void {
   try {
     if (!siteAnalyticsEnabled()) return;
@@ -301,7 +315,7 @@ export function trackPageView(pathname?: string): void {
     setTimeout(() => {
       try {
         if (!siteAnalyticsEnabled()) return;
-        enqueue(makeEvent('page_view', path, { title: document.title }));
+        enqueue(makeEvent('page_view', path));
       } catch {
         // Never breaks the page.
       }
@@ -312,14 +326,15 @@ export function trackPageView(pathname?: string): void {
 }
 
 /**
- * Counts something the app did: 'signup_started', 'signup_completed', 'login'. The name is a word
- * of letters, digits and _ . : -; where it happened is the current page unless props say.
+ * Counts a step of the sign-up funnel (SITE_EVENT_NAMES); any other name is dropped. Where it
+ * happened is the current page unless props say. These are the only events still sent while
+ * someone is signed in.
  */
-export function trackEvent(name: string, props?: TrackEventProps): void {
+export function trackEvent(name: SiteEventName, props?: TrackEventProps): void {
   try {
-    if (!siteAnalyticsEnabled() || !name) return;
+    if (!siteAnalyticsEnabled() || !(SITE_EVENT_NAMES as readonly string[]).includes(name)) return;
     const path = props?.path ? templatePath(props.path) : currentPath();
-    enqueue(makeEvent('event', path, { name }));
+    enqueue(makeEvent('event', path, name));
   } catch {
     // Never breaks the page.
   }
@@ -334,14 +349,14 @@ function onClick(event: MouseEvent): void {
     const tracked = target.closest('[data-track]');
     const name = tracked?.getAttribute('data-track')?.trim();
     if (name) {
-      enqueue(makeEvent('click', currentPath(), { name }));
+      enqueue(makeEvent('click', currentPath(), name));
       return;
     }
     const link = target.closest('a[href]');
     if (!(link instanceof HTMLAnchorElement)) return;
     const url = new URL(link.href, location.href);
     if ((url.protocol !== 'http:' && url.protocol !== 'https:') || url.host === location.host) return;
-    enqueue(makeEvent('click', url.hostname.toLowerCase(), { name: 'outbound' }));
+    enqueue(makeEvent('click', url.hostname.toLowerCase(), 'outbound'));
     // The page may be about to go: send it now.
     flushSiteAnalytics();
   } catch {
@@ -465,7 +480,13 @@ export function SiteAnalyticsPageViews(): null {
   return null;
 }
 
-function clip(text: string | undefined | null, max: number): string | undefined {
+/**
+ * At most `max` UTF-16 units, cut between code points: never half of a surrogate pair (an emoji),
+ * which JSON would send as a lone surrogate.
+ */
+export function clip(text: string | undefined | null, max: number): string | undefined {
   if (!text) return undefined;
-  return text.length <= max ? text : text.slice(0, max);
+  if (text.length <= max) return text;
+  const last = text.charCodeAt(max - 1);
+  return text.slice(0, last >= 0xd800 && last <= 0xdbff ? max - 1 : max);
 }
