@@ -110,6 +110,34 @@ public class SiteAnalyticsDigestTests
     }
 
     [Fact]
+    public async Task It_counts_the_websites_visitors_and_their_sign_ups_not_the_apps_signed_in_use()
+    {
+        await using var app = new AnalyticsApp(admins: AnalyticsApp.AdminEmail);
+        await app.SeedAsync(
+            // A visitor reads the home page, signs up (recorded once signed in) and lands in the app.
+            Event(NoonOf(Yesterday), "v1", "s1", path: "/", source: "google"),
+            Event(NoonOf(Yesterday, 1), "v1", "s1", SiteEventTypes.Event, "/login", "signup_completed", source: "google", signedIn: true),
+            Event(NoonOf(Yesterday, 2), "v1", "s1", path: "/dashboard", source: "google", signedIn: true),
+            Event(NoonOf(Yesterday, 30), "v2", "s2", path: "/pricing"),
+            // The owner working in the CRM, signed in: not a visitor of the website.
+            Event(NoonOf(Yesterday, 60), "v9", "s9", path: "/deals", signedIn: true),
+            Event(NoonOf(Yesterday, 61), "v9", "s9", path: "/leads/:id", signedIn: true),
+            Event(NoonOf(Yesterday.AddDays(-1)), "v8", "s8", path: "/dashboard", signedIn: true));
+
+        (await SendAsync(app, Morning)).Should().Be(1);
+
+        var digest = (await DigestsAsync(app)).Should().ContainSingle().Subject;
+        digest.Subject.Should().Be("cadencee.ai yesterday: 2 visitors, 2 page views, 1 sign-up");
+        digest.TextBody.Should().Contain("Visitors: 2   (+2 (new) vs the day before, +2 (new) vs last Tuesday)")
+            .And.Contain("Sign-ups: 1")
+            .And.Contain("1. /  1 view, 1 visitor")
+            .And.Contain("2. /pricing  1 view, 1 visitor")
+            .And.Contain("Website visitors only")
+            .And.NotContain("/deals").And.NotContain("/leads/:id").And.NotContain("/dashboard");
+        digest.HtmlBody.Should().Contain("Website visitors only").And.NotContain("/deals");
+    }
+
+    [Fact]
     public async Task A_quiet_day_is_reported_too()
     {
         await using var app = new AnalyticsApp(admins: AnalyticsApp.AdminEmail);

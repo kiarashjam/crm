@@ -6,7 +6,8 @@ using Microsoft.EntityFrameworkCore;
 namespace ACI.Infrastructure.Services.SiteAnalytics;
 
 /// <summary>
-/// The site analytics' aggregate queries, each one SQL statement over a range of Zurich days.
+/// The site analytics' aggregate queries, each one SQL statement over a range of Zurich days,
+/// counting the events of one <see cref="SiteAudience"/>.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -75,15 +76,28 @@ public static class SiteAnalyticsQueries
         public int Count { get; init; }
     }
 
-    private static IQueryable<SiteEvent> Range(AppDbContext db, DateOnly from, DateOnly to) =>
-        db.SiteEvents.AsNoTracking().Where(e => e.Day >= from && e.Day <= to);
+    /// <summary>
+    /// The events of <paramref name="audience"/>: signed out, plus every custom event, for the
+    /// website's visitors (a sign-up recorded just after signing in is still the website's);
+    /// signed in, for the app's users; all of them for everyone.
+    /// </summary>
+    private static IQueryable<SiteEvent> Of(this IQueryable<SiteEvent> events, SiteAudience audience) => audience switch
+    {
+        SiteAudience.Visitors => events.Where(e => !e.SignedIn || e.Type == SiteEventTypes.Event),
+        SiteAudience.SignedIn => events.Where(e => e.SignedIn),
+        SiteAudience.Everyone => events,
+        _ => throw new ArgumentOutOfRangeException(nameof(audience), audience, "Not an audience."),
+    };
 
-    private static IQueryable<SiteEvent> PageViews(AppDbContext db, DateOnly from, DateOnly to) =>
-        Range(db, from, to).Where(e => e.Type == SiteEventTypes.PageView);
+    private static IQueryable<SiteEvent> Range(AppDbContext db, DateOnly from, DateOnly to, SiteAudience audience) =>
+        db.SiteEvents.AsNoTracking().Where(e => e.Day >= from && e.Day <= to).Of(audience);
+
+    private static IQueryable<SiteEvent> PageViews(AppDbContext db, DateOnly from, DateOnly to, SiteAudience audience) =>
+        Range(db, from, to, audience).Where(e => e.Type == SiteEventTypes.PageView);
 
     /// <summary>Per day with events: distinct visitors, distinct sessions, page views, sign-ups.</summary>
-    public static IQueryable<DayRow> Daily(AppDbContext db, DateOnly from, DateOnly to) =>
-        Range(db, from, to)
+    public static IQueryable<DayRow> Daily(AppDbContext db, DateOnly from, DateOnly to, SiteAudience audience) =>
+        Range(db, from, to, audience)
             .GroupBy(e => e.Day)
             .Select(g => new DayRow
             {
@@ -99,8 +113,8 @@ public static class SiteAnalyticsQueries
     /// attribution (the tracker sends it with each), so the largest non-direct source, referrer
     /// and campaign are the session's.
     /// </summary>
-    public static IQueryable<SessionRow> Sessions(AppDbContext db, DateOnly from, DateOnly to) =>
-        Range(db, from, to)
+    public static IQueryable<SessionRow> Sessions(AppDbContext db, DateOnly from, DateOnly to, SiteAudience audience) =>
+        Range(db, from, to, audience)
             .GroupBy(e => e.SessionKey)
             .Select(g => new SessionRow
             {
@@ -123,17 +137,17 @@ public static class SiteAnalyticsQueries
             .OrderByDescending(s => s.Start).ThenBy(s => s.Key);
 
     /// <summary>The most viewed pages: views and distinct visitors.</summary>
-    public static IQueryable<PageRow> TopPages(AppDbContext db, DateOnly from, DateOnly to) =>
-        PageViews(db, from, to)
+    public static IQueryable<PageRow> TopPages(AppDbContext db, DateOnly from, DateOnly to, SiteAudience audience) =>
+        PageViews(db, from, to, audience)
             .GroupBy(e => e.Path)
             .Select(g => new PageRow { Path = g.Key, Views = g.Count(), Visitors = g.Select(e => e.VisitorHash).Distinct().Count() })
             .OrderByDescending(p => p.Views).ThenBy(p => p.Path)
             .Take(SiteAnalyticsRules.TopListSize);
 
     /// <summary>The pages sessions began on: each session's first page view.</summary>
-    public static IQueryable<EntryRow> EntryPages(AppDbContext db, DateOnly from, DateOnly to)
+    public static IQueryable<EntryRow> EntryPages(AppDbContext db, DateOnly from, DateOnly to, SiteAudience audience)
     {
-        var views = PageViews(db, from, to);
+        var views = PageViews(db, from, to, audience);
         var firsts = views.GroupBy(e => e.SessionKey).Select(g => new { Key = g.Key, At = g.Min(e => e.OccurredAtUtc) });
         return ByPage(
             from e in views
@@ -142,9 +156,9 @@ public static class SiteAnalyticsQueries
     }
 
     /// <summary>The pages sessions ended on: each session's last page view.</summary>
-    public static IQueryable<EntryRow> ExitPages(AppDbContext db, DateOnly from, DateOnly to)
+    public static IQueryable<EntryRow> ExitPages(AppDbContext db, DateOnly from, DateOnly to, SiteAudience audience)
     {
-        var views = PageViews(db, from, to);
+        var views = PageViews(db, from, to, audience);
         var lasts = views.GroupBy(e => e.SessionKey).Select(g => new { Key = g.Key, At = g.Max(e => e.OccurredAtUtc) });
         return ByPage(
             from e in views
@@ -178,10 +192,11 @@ public static class SiteAnalyticsQueries
         public string VisitorHash { get; init; } = "";
     }
 
-    /// <summary>The events since <paramref name="sinceUtc"/>, newest first, at most <paramref name="take"/>.</summary>
-    public static IQueryable<LiveRow> Since(AppDbContext db, DateTime sinceUtc, int take) =>
+    /// <summary>The events of <paramref name="audience"/> since <paramref name="sinceUtc"/>, newest first, at most <paramref name="take"/>.</summary>
+    public static IQueryable<LiveRow> Since(AppDbContext db, DateTime sinceUtc, int take, SiteAudience audience) =>
         db.SiteEvents.AsNoTracking()
             .Where(e => e.OccurredAtUtc >= sinceUtc)
+            .Of(audience)
             .OrderByDescending(e => e.OccurredAtUtc).ThenByDescending(e => e.Id)
             .Take(take)
             .Select(e => new LiveRow { Type = e.Type, Name = e.Name, Path = e.Path, SessionKey = e.SessionKey, VisitorHash = e.VisitorHash });
@@ -196,9 +211,10 @@ public static class SiteAnalyticsQueries
         public string Device { get; init; } = "";
     }
 
-    /// <summary>The latest <paramref name="take"/> events, newest first.</summary>
-    public static IQueryable<RecentRow> Latest(AppDbContext db, int take) =>
+    /// <summary>The latest <paramref name="take"/> events of <paramref name="audience"/>, newest first.</summary>
+    public static IQueryable<RecentRow> Latest(AppDbContext db, int take, SiteAudience audience) =>
         db.SiteEvents.AsNoTracking()
+            .Of(audience)
             .OrderByDescending(e => e.OccurredAtUtc).ThenByDescending(e => e.Id)
             .Take(take)
             .Select(e => new RecentRow { At = e.OccurredAtUtc, Type = e.Type, Path = e.Path, Name = e.Name, Source = e.Source, Device = e.Device });
@@ -209,10 +225,14 @@ public static class SiteAnalyticsQueries
         public DateTime Start { get; init; }
     }
 
-    /// <summary>The day's sessions that started last, newest first.</summary>
-    public static IQueryable<SessionStart> LatestSessions(AppDbContext db, DateOnly day, int take) =>
+    /// <summary>
+    /// The day's sessions with events of <paramref name="audience"/> that started last (by
+    /// their first such event), newest first.
+    /// </summary>
+    public static IQueryable<SessionStart> LatestSessions(AppDbContext db, DateOnly day, int take, SiteAudience audience) =>
         db.SiteEvents.AsNoTracking()
             .Where(e => e.Day == day)
+            .Of(audience)
             .GroupBy(e => e.SessionKey)
             .Select(g => new SessionStart { Key = g.Key, Start = g.Min(e => e.OccurredAtUtc) })
             .OrderByDescending(s => s.Start).ThenBy(s => s.Key)
@@ -234,7 +254,10 @@ public static class SiteAnalyticsQueries
         public bool SignedIn { get; init; }
     }
 
-    /// <summary>Every event of these sessions on the day, in the order they happened.</summary>
+    /// <summary>
+    /// Every event of these sessions on the day, in the order they happened, whatever the
+    /// audience that chose them: a visit is shown whole.
+    /// </summary>
     public static IQueryable<StepRow> Steps(AppDbContext db, DateOnly day, IReadOnlyCollection<string> keys) =>
         db.SiteEvents.AsNoTracking()
             .Where(e => e.Day == day && keys.Contains(e.SessionKey))
@@ -256,8 +279,8 @@ public static class SiteAnalyticsQueries
             });
 
     /// <summary>Clicks and events by name, most frequent first.</summary>
-    public static IQueryable<EventRow> Events(AppDbContext db, DateOnly from, DateOnly to) =>
-        Range(db, from, to)
+    public static IQueryable<EventRow> Events(AppDbContext db, DateOnly from, DateOnly to, SiteAudience audience) =>
+        Range(db, from, to, audience)
             .Where(e => e.Type != SiteEventTypes.PageView && e.Name != null)
             .GroupBy(e => e.Name!)
             .Select(g => new EventRow { Name = g.Key, Count = g.Count() })

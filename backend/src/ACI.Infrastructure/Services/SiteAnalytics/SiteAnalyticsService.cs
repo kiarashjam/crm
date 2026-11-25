@@ -150,23 +150,23 @@ public sealed class SiteAnalyticsService : ISiteAnalytics
 
     // ── Reading ──────────────────────────────────────────────────────────────
 
-    public async Task<SiteSummaryDto> SummaryAsync(DateOnly from, DateOnly to, CancellationToken ct = default)
+    public async Task<SiteSummaryDto> SummaryAsync(DateOnly from, DateOnly to, SiteAudience audience, CancellationToken ct = default)
     {
         var length = to.DayNumber - from.DayNumber + 1;
         var previousTo = from.AddDays(-1);
         var previousFrom = previousTo.AddDays(-(length - 1));
 
-        var daily = await DailyAsync(from, to, ct);
-        var sessions = await SessionRowsAsync(from, to, ct);
+        var daily = await DailyAsync(from, to, audience, ct);
+        var sessions = await SessionRowsAsync(from, to, audience, ct);
         var totals = Totals(daily, sessions, await BotHitsAsync(from, to, ct));
-        var previous = Totals(await DailyAsync(previousFrom, previousTo, ct), await SessionRowsAsync(previousFrom, previousTo, ct),
+        var previous = Totals(await DailyAsync(previousFrom, previousTo, audience, ct), await SessionRowsAsync(previousFrom, previousTo, audience, ct),
             await BotHitsAsync(previousFrom, previousTo, ct));
 
         var top = SiteAnalyticsRules.TopListSize;
-        var pages = await SiteAnalyticsQueries.TopPages(_db, from, to).ToListAsync(ct);
-        var entries = await SiteAnalyticsQueries.EntryPages(_db, from, to).ToListAsync(ct);
-        var exits = await SiteAnalyticsQueries.ExitPages(_db, from, to).ToListAsync(ct);
-        var events = await SiteAnalyticsQueries.Events(_db, from, to).ToListAsync(ct);
+        var pages = await SiteAnalyticsQueries.TopPages(_db, from, to, audience).ToListAsync(ct);
+        var entries = await SiteAnalyticsQueries.EntryPages(_db, from, to, audience).ToListAsync(ct);
+        var exits = await SiteAnalyticsQueries.ExitPages(_db, from, to, audience).ToListAsync(ct);
+        var events = await SiteAnalyticsQueries.Events(_db, from, to, audience).ToListAsync(ct);
 
         return new SiteSummaryDto(
             SiteAnalyticsRules.Format(from),
@@ -194,9 +194,9 @@ public sealed class SiteAnalyticsService : ISiteAnalytics
     }
 
     /// <summary>Every day from <paramref name="from"/> to <paramref name="to"/>, zeros included.</summary>
-    private async Task<List<SiteDailyDto>> DailyAsync(DateOnly from, DateOnly to, CancellationToken ct)
+    private async Task<List<SiteDailyDto>> DailyAsync(DateOnly from, DateOnly to, SiteAudience audience, CancellationToken ct)
     {
-        var counted = (await SiteAnalyticsQueries.Daily(_db, from, to).ToListAsync(ct)).ToDictionary(d => d.Day);
+        var counted = (await SiteAnalyticsQueries.Daily(_db, from, to, audience).ToListAsync(ct)).ToDictionary(d => d.Day);
         var days = new List<SiteDailyDto>(to.DayNumber - from.DayNumber + 1);
         for (var day = from; day <= to; day = day.AddDays(1))
         {
@@ -207,9 +207,9 @@ public sealed class SiteAnalyticsService : ISiteAnalytics
         return days;
     }
 
-    private async Task<List<SiteAnalyticsQueries.SessionRow>> SessionRowsAsync(DateOnly from, DateOnly to, CancellationToken ct)
+    private async Task<List<SiteAnalyticsQueries.SessionRow>> SessionRowsAsync(DateOnly from, DateOnly to, SiteAudience audience, CancellationToken ct)
     {
-        var rows = await SiteAnalyticsQueries.Sessions(_db, from, to).Take(SiteAnalyticsRules.MaxSessionsRead).ToListAsync(ct);
+        var rows = await SiteAnalyticsQueries.Sessions(_db, from, to, audience).Take(SiteAnalyticsRules.MaxSessionsRead).ToListAsync(ct);
         if (rows.Count == SiteAnalyticsRules.MaxSessionsRead)
             _logger.LogWarning("Site analytics: more than {Max} sessions from {From} to {To}; the session figures cover the latest {Max}",
                 SiteAnalyticsRules.MaxSessionsRead, from, to, SiteAnalyticsRules.MaxSessionsRead);
@@ -249,9 +249,9 @@ public sealed class SiteAnalyticsService : ISiteAnalytics
             .Take(SiteAnalyticsRules.TopListSize)
             .ToList();
 
-    public async Task<SiteLiveDto> LiveAsync(DateTime nowUtc, CancellationToken ct = default)
+    public async Task<SiteLiveDto> LiveAsync(DateTime nowUtc, SiteAudience audience, CancellationToken ct = default)
     {
-        var now = await SiteAnalyticsQueries.Since(_db, nowUtc - SiteAnalyticsRules.LiveWindow, LiveRead).ToListAsync(ct);
+        var now = await SiteAnalyticsQueries.Since(_db, nowUtc - SiteAnalyticsRules.LiveWindow, LiveRead, audience).ToListAsync(ct);
 
         // Where each session is: the page of its latest event (newest first, so its first here),
         // leaving out a click that left the site.
@@ -265,7 +265,7 @@ public sealed class SiteAnalyticsService : ISiteAnalytics
             .Take(SiteAnalyticsRules.TopListSize)
             .ToList();
 
-        var recent = (await SiteAnalyticsQueries.Latest(_db, SiteAnalyticsRules.RecentEvents).ToListAsync(ct))
+        var recent = (await SiteAnalyticsQueries.Latest(_db, SiteAnalyticsRules.RecentEvents, audience).ToListAsync(ct))
             .Select(e => new SiteLiveEventDto(e.At, e.Type, e.Path, e.Name, e.Source, e.Device))
             .ToList();
 
@@ -276,10 +276,11 @@ public sealed class SiteAnalyticsService : ISiteAnalytics
             recent);
     }
 
-    public async Task<IReadOnlyList<SiteSessionDto>> SessionsAsync(DateOnly day, int limit, CancellationToken ct = default)
+    public async Task<IReadOnlyList<SiteSessionDto>> SessionsAsync(DateOnly day, int limit, SiteAudience audience, CancellationToken ct = default)
     {
         limit = Math.Clamp(limit, 1, SiteAnalyticsRules.MaxSessions);
-        var keys = (await SiteAnalyticsQueries.LatestSessions(_db, day, limit).ToListAsync(ct)).Select(s => s.Key).ToList();
+        // The audience picks the sessions; each is then shown whole, signed in or not.
+        var keys = (await SiteAnalyticsQueries.LatestSessions(_db, day, limit, audience).ToListAsync(ct)).Select(s => s.Key).ToList();
         if (keys.Count == 0) return [];
 
         var bySession = (await SiteAnalyticsQueries.Steps(_db, day, keys).ToListAsync(ct))

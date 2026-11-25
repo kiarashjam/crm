@@ -20,6 +20,10 @@ namespace ACI.Infrastructure.Services.SiteAnalytics;
 /// worth knowing, and the trend is the point.
 /// </para>
 /// <para>
+/// It counts the website's visitors (<see cref="SiteAudience.Visitors"/>): what people did
+/// signed out, and their sign-ups, never the app's signed-in use, the owner's own included.
+/// </para>
+/// <para>
 /// One email per platform admin (Platform:AdminEmails), through the outbox as a platform email
 /// (no workspace). The day's <see cref="SiteAnalyticsDigest"/> row is the claim: inserted once,
 /// keyed by the day, so a second server or a restart never sends the day again. The emails are
@@ -131,9 +135,10 @@ public sealed class SiteAnalyticsDigestService : ISiteAnalyticsDigest
 
     private async Task<Digest> ReadAsync(DateOnly day, CancellationToken ct)
     {
-        // The day itself, for its pages and sources, then the eight days before it for the comparisons.
-        var summary = await _analytics.SummaryAsync(day, day, ct);
-        var weeks = await _analytics.SummaryAsync(day.AddDays(-7), day, ct);
+        // The day itself, for its pages and sources, then the eight days before it for the
+        // comparisons: the website's visitors, not the app's signed-in users.
+        var summary = await _analytics.SummaryAsync(day, day, SiteAudience.Visitors, ct);
+        var weeks = await _analytics.SummaryAsync(day.AddDays(-7), day, SiteAudience.Visitors, ct);
         var daily = weeks.Daily;
         return new Digest(
             day,
@@ -195,6 +200,7 @@ public sealed class SiteAnalyticsDigestService : ISiteAnalyticsDigest
         text.AppendLine();
         text.AppendLine($"Open the dashboard: {link}");
         text.AppendLine();
+        text.AppendLine("Website visitors only: what is done signed in to the app is left out, sign-ups excepted.");
         text.AppendLine("Counted without cookies. A visitor is counted once a day and cannot be followed from one day to the next.");
         text.AppendLine("You receive this because your address is a platform admin of CadenceE (Platform:AdminEmails).");
 
@@ -250,7 +256,7 @@ public sealed class SiteAnalyticsDigestService : ISiteAnalyticsDigest
             html.Append($"<p style=\"margin:16px 0 0;color:#64748b;\">Robots: {E(Count(d.BotHits, "hit", "hits"))} counted and left out of the figures above.</p>");
 
         html.Append($"<p style=\"margin:24px 0;\"><a href=\"{E(link)}\" style=\"display:inline-block;background:#ea580c;color:#fff;text-decoration:none;padding:10px 16px;border-radius:8px;font-weight:600;\">Open the dashboard</a></p>");
-        html.Append("<p style=\"margin:0;color:#64748b;font-size:12px;\">Counted without cookies. A visitor is counted once a day and cannot be followed from one day to the next. ");
+        html.Append("<p style=\"margin:0;color:#64748b;font-size:12px;\">Website visitors only: what is done signed in to the app is left out, sign-ups excepted. Counted without cookies. A visitor is counted once a day and cannot be followed from one day to the next. ");
         html.Append("You receive this because your address is a platform admin of CadenceE (Platform:AdminEmails).</p>");
         html.Append("</div></body></html>");
         return html.ToString();

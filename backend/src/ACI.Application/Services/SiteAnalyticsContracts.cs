@@ -29,14 +29,21 @@ public interface ISiteAnalytics
     /// </summary>
     Task IngestAsync(SiteVisit visit, IReadOnlyList<SiteEventInput> events, DateTime nowUtc, CancellationToken ct = default);
 
-    /// <summary>The figures for <paramref name="from"/> to <paramref name="to"/> (Zurich days, inclusive), and the same for the period as long before it.</summary>
-    Task<SiteSummaryDto> SummaryAsync(DateOnly from, DateOnly to, CancellationToken ct = default);
+    /// <summary>
+    /// The figures of <paramref name="audience"/> for <paramref name="from"/> to <paramref name="to"/>
+    /// (Zurich days, inclusive), and the same for the period as long before it. Robots' hits are
+    /// the same whatever the audience.
+    /// </summary>
+    Task<SiteSummaryDto> SummaryAsync(DateOnly from, DateOnly to, SiteAudience audience, CancellationToken ct = default);
 
-    /// <summary>Who is on the site now (the last five minutes) and the last thirty events.</summary>
-    Task<SiteLiveDto> LiveAsync(DateTime nowUtc, CancellationToken ct = default);
+    /// <summary>Who of <paramref name="audience"/> is on the site now (the last five minutes), and their last thirty events.</summary>
+    Task<SiteLiveDto> LiveAsync(DateTime nowUtc, SiteAudience audience, CancellationToken ct = default);
 
-    /// <summary>The day's latest sessions, newest first, each with its steps.</summary>
-    Task<IReadOnlyList<SiteSessionDto>> SessionsAsync(DateOnly day, int limit, CancellationToken ct = default);
+    /// <summary>
+    /// The day's latest sessions of <paramref name="audience"/>, newest first, each with all its
+    /// steps: a visit that signed in shows its whole journey, signed in or not.
+    /// </summary>
+    Task<IReadOnlyList<SiteSessionDto>> SessionsAsync(DateOnly day, int limit, SiteAudience audience, CancellationToken ct = default);
 
     /// <summary>Deletes what is older than <see cref="SiteAnalyticsRules.RetentionDays"/> days. Returns the events deleted.</summary>
     Task<int> PurgeAsync(DateTime nowUtc, CancellationToken ct = default);
@@ -66,6 +73,58 @@ public interface IPlatformAdmins
 
     /// <summary>Whether this account is a platform admin: its address is one of them, and it has confirmed that address.</summary>
     Task<bool> IsPlatformAdminAsync(Guid userId, CancellationToken ct = default);
+}
+
+/// <summary>
+/// Whose events the figures count. The website and the app are one origin, so the tracker sees
+/// both the people reading www.cadencee.ai and the people working in the CRM signed in, the
+/// owner among them. The dashboard and the daily email show <see cref="Visitors"/> unless asked.
+/// </summary>
+public enum SiteAudience
+{
+    /// <summary>
+    /// The website's visitors: what was done signed out, and every custom event
+    /// (signup_started, signup_completed, login) however it was sent, since a conversion is
+    /// often recorded just after signing in and still belongs to the website.
+    /// </summary>
+    Visitors = 0,
+
+    /// <summary>People signed in to the app: what was done signed in.</summary>
+    SignedIn = 1,
+
+    /// <summary>Every event, signed in or not.</summary>
+    Everyone = 2,
+}
+
+/// <summary>How an audience is written in the endpoints' <c>audience</c> parameter.</summary>
+public static class SiteAudiences
+{
+    public const string Visitors = "visitors";
+    public const string SignedIn = "signed-in";
+    public const string Everyone = "everyone";
+
+    /// <summary>
+    /// "visitors", "signed-in" or "everyone", whatever its case; nothing at all is
+    /// <see cref="SiteAudience.Visitors"/>. False for anything else.
+    /// </summary>
+    public static bool TryParse(string? value, out SiteAudience audience)
+    {
+        audience = SiteAudience.Visitors;
+        var text = (value ?? "").Trim();
+        if (text.Length == 0) return true;
+        if (text.Equals(Visitors, StringComparison.OrdinalIgnoreCase)) return true;
+        if (text.Equals(SignedIn, StringComparison.OrdinalIgnoreCase))
+        {
+            audience = SiteAudience.SignedIn;
+            return true;
+        }
+        if (text.Equals(Everyone, StringComparison.OrdinalIgnoreCase))
+        {
+            audience = SiteAudience.Everyone;
+            return true;
+        }
+        return false;
+    }
 }
 
 /// <summary>The request the events came in: what is known of the browser, never kept as such.</summary>

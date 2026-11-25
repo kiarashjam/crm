@@ -99,13 +99,16 @@ public sealed class SiteAnalyticsController : ControllerBase
     /// both included; the last 30 days to today by default), with the same figures for the period
     /// as long just before. "visitors" counts each visitor once a day: over several days it is the
     /// days' distinct visitors summed, since nobody is followed from one day to the next. See
-    /// <see cref="SiteSummaryDto"/> for the rest.
+    /// <see cref="SiteSummaryDto"/> for the rest. The audience is whose events: "visitors" (the
+    /// default: the website's, signed out, and every custom event such as a sign-up), "signed-in"
+    /// (the app's users) or "everyone"; 400 for anything else.
     /// </summary>
     [HttpGet("summary")]
     [Authorize]
     [PlatformAdmin]
-    public async Task<ActionResult<SiteSummaryDto>> Summary([FromQuery] string? from, [FromQuery] string? to, CancellationToken ct)
+    public async Task<ActionResult<SiteSummaryDto>> Summary([FromQuery] string? from, [FromQuery] string? to, [FromQuery] string? audience, CancellationToken ct)
     {
+        if (!SiteAudiences.TryParse(audience, out var who)) return NotAnAudience();
         var parsedTo = SiteAnalyticsRules.ParseDay(to);
         var parsedFrom = SiteAnalyticsRules.ParseDay(from);
         if ((!string.IsNullOrWhiteSpace(to) && parsedTo == null) || (!string.IsNullOrWhiteSpace(from) && parsedFrom == null))
@@ -117,38 +120,47 @@ public sealed class SiteAnalyticsController : ControllerBase
             return Refused($"A period is at most {SiteAnalyticsRules.MaxRangeDays} days.");
 
         Response.Headers.CacheControl = "no-store";
-        return Ok(await _analytics.SummaryAsync(start, end, ct));
+        return Ok(await _analytics.SummaryAsync(start, end, who, ct));
     }
 
-    /// <summary>Who is on the site in the last five minutes, where, and the last thirty events.</summary>
+    /// <summary>Who of the audience (as for the summary) is on the site in the last five minutes, where, and their last thirty events.</summary>
     [HttpGet("live")]
     [Authorize]
     [PlatformAdmin]
-    public async Task<ActionResult<SiteLiveDto>> Live(CancellationToken ct)
+    public async Task<ActionResult<SiteLiveDto>> Live([FromQuery] string? audience, CancellationToken ct)
     {
+        if (!SiteAudiences.TryParse(audience, out var who)) return NotAnAudience();
         Response.Headers.CacheControl = "no-store";
-        return Ok(await _analytics.LiveAsync(DateTime.UtcNow, ct));
+        return Ok(await _analytics.LiveAsync(DateTime.UtcNow, who, ct));
     }
 
     /// <summary>
-    /// The latest sessions of <paramref name="day"/> (yyyy-MM-dd, Zurich; today by default), newest
-    /// first, at most <paramref name="limit"/> (50 by default, 200 at most), each with its steps.
+    /// The latest sessions of <paramref name="day"/> (yyyy-MM-dd, Zurich; today by default) with
+    /// events of the audience (as for the summary), newest first, at most
+    /// <paramref name="limit"/> (50 by default, 200 at most), each with all its steps.
     /// </summary>
     [HttpGet("sessions")]
     [Authorize]
     [PlatformAdmin]
-    public async Task<ActionResult<IReadOnlyList<SiteSessionDto>>> Sessions([FromQuery] string? day, [FromQuery] int? limit, CancellationToken ct)
+    public async Task<ActionResult<IReadOnlyList<SiteSessionDto>>> Sessions([FromQuery] string? day, [FromQuery] int? limit, [FromQuery] string? audience, CancellationToken ct)
     {
+        if (!SiteAudiences.TryParse(audience, out var who)) return NotAnAudience();
         var parsed = SiteAnalyticsRules.ParseDay(day);
         if (!string.IsNullOrWhiteSpace(day) && parsed == null) return Refused("A day is written yyyy-MM-dd.");
         Response.Headers.CacheControl = "no-store";
         return Ok(await _analytics.SessionsAsync(
             parsed ?? SiteAnalyticsRules.DayOf(DateTime.UtcNow),
             Math.Clamp(limit ?? SiteAnalyticsRules.DefaultSessions, 1, SiteAnalyticsRules.MaxSessions),
+            who,
             ct));
     }
 
     private ObjectResult Refused(string detail) => Problem(statusCode: StatusCodes.Status400BadRequest, title: "Not a period", detail: detail);
+
+    private ObjectResult NotAnAudience() => Problem(
+        statusCode: StatusCodes.Status400BadRequest,
+        title: "Not an audience",
+        detail: $"The audience is \"{SiteAudiences.Visitors}\" (the default), \"{SiteAudiences.SignedIn}\" or \"{SiteAudiences.Everyone}\".");
 
     private ObjectResult TooLarge() => Problem(
         statusCode: StatusCodes.Status413PayloadTooLarge,

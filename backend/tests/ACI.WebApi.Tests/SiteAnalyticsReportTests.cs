@@ -234,6 +234,160 @@ public class SiteAnalyticsReportTests
             .Which.Steps.Should().HaveCount(2);
     }
 
+    /// <summary>
+    /// One day of the website and the app at once: a visitor who reads two pages, clicks, signs up
+    /// (the conversion is recorded just after signing in) and lands in the app; another who
+    /// bounces; and the owner working in the CRM signed in. The day before: one of each.
+    /// </summary>
+    private static async Task SeedAudiencesAsync(AnalyticsApp app)
+    {
+        await app.SeedAsync(
+            Event(NoonOf(From), "v1", "s1", path: "/", source: "google", referrer: "google.com"),
+            Event(NoonOf(From, 1), "v1", "s1", path: "/pricing", source: "google", referrer: "google.com"),
+            Event(NoonOf(From, 2), "v1", "s1", SiteEventTypes.Click, "/pricing", "cta-signup", source: "google", referrer: "google.com"),
+            Event(NoonOf(From, 3), "v1", "s1", SiteEventTypes.Event, "/login", "signup_completed", source: "google", referrer: "google.com", signedIn: true),
+            Event(NoonOf(From, 4), "v1", "s1", path: "/dashboard", source: "google", referrer: "google.com", signedIn: true),
+            Event(NoonOf(From, 60), "v2", "s2", path: "/", device: "mobile"),
+            Event(NoonOf(From, 120), "v9", "s9", path: "/leads/:id", signedIn: true),
+            Event(NoonOf(From, 121), "v9", "s9", path: "/deals", signedIn: true),
+            Event(NoonOf(From, 122), "v9", "s9", SiteEventTypes.Click, "/deals", "save-deal", signedIn: true),
+            Event(NoonOf(From.AddDays(-1)), "v5", "s5", path: "/pricing"),
+            Event(NoonOf(From.AddDays(-1), 30), "v8", "s8", path: "/dashboard", signedIn: true));
+        using var scope = app.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        db.SiteBotHits.Add(new SiteBotHit { Day = From, Bot = "googlebot", Hits = 4 });
+        await db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task The_summary_counts_the_websites_visitors_by_default_and_signed_in_use_or_everyone_on_request()
+    {
+        await using var app = new AnalyticsApp();
+        var admin = await AdminAsync(app);
+        await SeedAudiencesAsync(app);
+        var day = $"from={From:yyyy-MM-dd}&to={From:yyyy-MM-dd}";
+        async Task<SiteSummaryDto> SummaryAsync(string audience) =>
+            await ReadAsync<SiteSummaryDto>(await admin.GetAsync($"/api/site-analytics/summary?{day}{audience}"));
+
+        // The website's visitors: what was done signed out, and the sign-up recorded once signed in.
+        var visitors = await SummaryAsync("&audience=visitors");
+        visitors.Totals.Should().Be(new SiteTotalsDto(
+            Visitors: 2, Sessions: 2, PageViews: 3, BounceRate: 0.5, PagesPerSession: 1.5, AvgSessionSeconds: 90, Signups: 1, BotHits: 4));
+        visitors.Previous.Should().Be(new SiteTotalsDto(1, 1, 1, 1, 1, 0, 0, 0));
+        visitors.Daily.Should().Equal(new SiteDailyDto("2026-10-05", 2, 2, 3, 1));
+        visitors.TopPages.Should().Equal(new SitePageDto("/", 2, 2), new SitePageDto("/pricing", 1, 1));
+        visitors.EntryPages.Select(p => p.Path).Should().Equal("/");
+        visitors.ExitPages.Select(p => p.Path).Should().Equal("/", "/pricing");
+        visitors.Sources.Should().Equal(new SiteSourceDto("direct", 1, 1), new SiteSourceDto("google", 1, 1));
+        visitors.Events.Should().Equal(new SiteEventCountDto("cta-signup", 1), new SiteEventCountDto("signup_completed", 1));
+
+        // Asked for nothing, or in another case: the same.
+        (await SummaryAsync("")).Should().BeEquivalentTo(visitors);
+        (await SummaryAsync("&audience=Visitors")).Should().BeEquivalentTo(visitors);
+
+        // The app's signed-in users: the new account's first page and its sign-up, and the owner at work.
+        var signedIn = await SummaryAsync("&audience=signed-in");
+        signedIn.Totals.Should().Be(new SiteTotalsDto(
+            Visitors: 2, Sessions: 2, PageViews: 3, BounceRate: 0, PagesPerSession: 1.5, AvgSessionSeconds: 90, Signups: 1, BotHits: 4));
+        signedIn.Previous.Should().Be(new SiteTotalsDto(1, 1, 1, 1, 1, 0, 0, 0));
+        signedIn.TopPages.Select(p => p.Path).Should().Equal("/dashboard", "/deals", "/leads/:id");
+        signedIn.Events.Should().Equal(new SiteEventCountDto("save-deal", 1), new SiteEventCountDto("signup_completed", 1));
+
+        // Everyone: all of it, the sign-up once.
+        var everyone = await SummaryAsync("&audience=everyone");
+        everyone.Totals.Should().Be(new SiteTotalsDto(
+            Visitors: 3, Sessions: 3, PageViews: 6, BounceRate: 0.3333, PagesPerSession: 2, AvgSessionSeconds: 120, Signups: 1, BotHits: 4));
+        everyone.Previous.Should().Be(new SiteTotalsDto(2, 2, 2, 1, 1, 0, 0, 0));
+        everyone.TopPages.Should().HaveCount(5);
+    }
+
+    [Fact]
+    public async Task Live_and_the_journeys_follow_the_audience_and_a_journey_is_shown_whole()
+    {
+        await using var app = new AnalyticsApp();
+        var admin = await AdminAsync(app);
+        var now = DateTime.UtcNow;
+        await app.SeedAsync(
+            Event(now.AddMinutes(-1), "v1", "s1", path: "/pricing"),
+            Event(now.AddMinutes(-2), "v9", "s9", path: "/deals", signedIn: true),
+            Event(now.AddSeconds(-90), "v3", "s3", path: "/login"),
+            Event(now.AddSeconds(-30), "v3", "s3", SiteEventTypes.Event, "/login", "login", signedIn: true),
+            Event(now.AddSeconds(-20), "v3", "s3", path: "/dashboard", signedIn: true));
+
+        var visitors = await ReadAsync<SiteLiveDto>(await admin.GetAsync("/api/site-analytics/live"));
+        (visitors.VisitorsNow, visitors.SessionsNow).Should().Be((2, 2));
+        visitors.Pages.Should().Equal(new SiteLivePageDto("/login", 1), new SiteLivePageDto("/pricing", 1));
+        visitors.Recent.Select(r => (r.Type, r.Path)).Should().Equal(
+            (SiteEventTypes.Event, "/login"), (SiteEventTypes.PageView, "/pricing"), (SiteEventTypes.PageView, "/login"));
+
+        var signedIn = await ReadAsync<SiteLiveDto>(await admin.GetAsync("/api/site-analytics/live?audience=signed-in"));
+        (signedIn.VisitorsNow, signedIn.SessionsNow).Should().Be((2, 2));
+        signedIn.Pages.Should().Equal(new SiteLivePageDto("/dashboard", 1), new SiteLivePageDto("/deals", 1));
+        signedIn.Recent.Select(r => r.Path).Should().Equal("/dashboard", "/login", "/deals");
+
+        var everyone = await ReadAsync<SiteLiveDto>(await admin.GetAsync("/api/site-analytics/live?audience=everyone"));
+        (everyone.VisitorsNow, everyone.SessionsNow, everyone.Recent.Count).Should().Be((3, 3, 5));
+
+        // The journeys of a day: the audience picks the visits, each is shown with all its steps.
+        var day = new DateOnly(2026, 11, 3);
+        var morning = NoonOf(day, -180);
+        await app.SeedAsync(
+            Event(morning, "v1", "j1", path: "/"),
+            Event(morning.AddSeconds(60), "v1", "j1", SiteEventTypes.Event, "/login", "signup_completed", signedIn: true),
+            Event(morning.AddSeconds(90), "v1", "j1", path: "/dashboard", signedIn: true),
+            Event(NoonOf(day, -60), "v2", "j2", path: "/pricing"),
+            Event(NoonOf(day, -30), "v9", "j9", path: "/deals", signedIn: true));
+        async Task<List<SiteSessionDto>> JourneysAsync(string audience) =>
+            await ReadAsync<List<SiteSessionDto>>(await admin.GetAsync($"/api/site-analytics/sessions?day={day:yyyy-MM-dd}{audience}"));
+
+        var websites = await JourneysAsync("");
+        websites.Select(s => s.Steps[0].Path).Should().Equal("/pricing", "/");
+        websites[1].Steps.Select(s => s.Path).Should().Equal("/", "/login", "/dashboard");
+        websites[1].Should().BeEquivalentTo(new { SignedIn = true, Converted = true, PageViews = 2, DurationSeconds = 90 });
+
+        var apps = await JourneysAsync("&audience=signed-in");
+        apps.Select(s => s.Steps[0].Path).Should().Equal("/deals", "/");
+        apps[1].Steps.Should().HaveCount(3, "the visit is shown whole, from its first page signed out");
+
+        (await JourneysAsync("&audience=everyone")).Select(s => s.Steps[0].Path).Should().Equal("/deals", "/pricing", "/");
+    }
+
+    [Theory]
+    [InlineData("/api/site-analytics/summary")]
+    [InlineData("/api/site-analytics/live")]
+    [InlineData("/api/site-analytics/sessions")]
+    public async Task An_audience_other_than_visitors_signed_in_or_everyone_is_refused(string read)
+    {
+        await using var app = new AnalyticsApp();
+        var admin = await AdminAsync(app);
+
+        foreach (var audience in new[] { "bots", "signedin", "signed_in", "all", "visitors,everyone" })
+        {
+            var res = await admin.GetAsync($"{read}?audience={Uri.EscapeDataString(audience)}");
+            res.StatusCode.Should().Be(HttpStatusCode.BadRequest, audience);
+            using var problem = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+            problem.RootElement.GetProperty("title").GetString().Should().Be("Not an audience");
+            problem.RootElement.GetProperty("detail").GetString().Should()
+                .Be("The audience is \"visitors\" (the default), \"signed-in\" or \"everyone\".");
+        }
+        foreach (var audience in new[] { "", "visitors", "signed-in", "everyone", "Everyone" })
+            (await admin.GetAsync($"{read}?audience={audience}")).StatusCode.Should().Be(HttpStatusCode.OK, audience);
+    }
+
+    [Theory]
+    [InlineData(null, SiteAudience.Visitors)]
+    [InlineData("", SiteAudience.Visitors)]
+    [InlineData(" visitors ", SiteAudience.Visitors)]
+    [InlineData("signed-in", SiteAudience.SignedIn)]
+    [InlineData("SIGNED-IN", SiteAudience.SignedIn)]
+    [InlineData("everyone", SiteAudience.Everyone)]
+    public void An_audience_is_read_whatever_its_case_and_nothing_is_the_websites_visitors(string? text, SiteAudience audience)
+    {
+        SiteAudiences.TryParse(text, out var read).Should().BeTrue();
+        read.Should().Be(audience);
+        SiteAudiences.TryParse("signed in", out _).Should().BeFalse();
+    }
+
     [Fact]
     public void Every_read_is_for_platform_admins_and_only_the_trackers_post_is_anonymous()
     {
@@ -259,16 +413,38 @@ public class SiteAnalyticsReportTests
         using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseSqlServer("Server=not-connected;Database=none;").Options);
         var day = new DateOnly(2026, 10, 5);
 
-        var daily = SiteAnalyticsQueries.Daily(db, day, day.AddDays(6)).ToQueryString();
-        daily.Should().Contain("COUNT(DISTINCT").And.Contain("GROUP BY");
-        SiteAnalyticsQueries.Sessions(db, day, day).Take(100).ToQueryString().Should().Contain("MAX(");
-        SiteAnalyticsQueries.TopPages(db, day, day).ToQueryString().Should().Contain("TOP(");
-        SiteAnalyticsQueries.EntryPages(db, day, day).ToQueryString().Should().Contain("JOIN").And.Contain("MIN(");
-        SiteAnalyticsQueries.ExitPages(db, day, day).ToQueryString().Should().Contain("JOIN").And.Contain("MAX(");
-        SiteAnalyticsQueries.Events(db, day, day).ToQueryString().Should().Contain("GROUP BY");
-        SiteAnalyticsQueries.Since(db, DateTime.UtcNow, 10).ToQueryString().Should().Contain("ORDER BY");
-        SiteAnalyticsQueries.Latest(db, 30).ToQueryString().Should().Contain("ORDER BY");
-        SiteAnalyticsQueries.LatestSessions(db, day, 50).ToQueryString().Should().Contain("GROUP BY");
+        foreach (var audience in Enum.GetValues<SiteAudience>())
+        {
+            var queries = new Dictionary<string, string>
+            {
+                ["Daily"] = SiteAnalyticsQueries.Daily(db, day, day.AddDays(6), audience).ToQueryString(),
+                ["Sessions"] = SiteAnalyticsQueries.Sessions(db, day, day, audience).Take(100).ToQueryString(),
+                ["TopPages"] = SiteAnalyticsQueries.TopPages(db, day, day, audience).ToQueryString(),
+                ["EntryPages"] = SiteAnalyticsQueries.EntryPages(db, day, day, audience).ToQueryString(),
+                ["ExitPages"] = SiteAnalyticsQueries.ExitPages(db, day, day, audience).ToQueryString(),
+                ["Events"] = SiteAnalyticsQueries.Events(db, day, day, audience).ToQueryString(),
+                ["Since"] = SiteAnalyticsQueries.Since(db, DateTime.UtcNow, 10, audience).ToQueryString(),
+                ["Latest"] = SiteAnalyticsQueries.Latest(db, 30, audience).ToQueryString(),
+                ["LatestSessions"] = SiteAnalyticsQueries.LatestSessions(db, day, 50, audience).ToQueryString(),
+            };
+            queries["Daily"].Should().Contain("COUNT(DISTINCT").And.Contain("GROUP BY");
+            queries["Sessions"].Should().Contain("MAX(");
+            queries["TopPages"].Should().Contain("TOP(");
+            queries["EntryPages"].Should().Contain("JOIN").And.Contain("MIN(");
+            queries["ExitPages"].Should().Contain("JOIN").And.Contain("MAX(");
+            queries["Events"].Should().Contain("GROUP BY");
+            queries["Since"].Should().Contain("ORDER BY");
+            queries["Latest"].Should().Contain("ORDER BY");
+            queries["LatestSessions"].Should().Contain("GROUP BY");
+            foreach (var (name, sql) in queries)
+            {
+                // The audience is a WHERE clause in SQL, never a filter in memory.
+                if (audience == SiteAudience.Everyone) sql.Should().NotContain("[SignedIn]", $"{name} for everyone");
+                else sql.Should().Contain("[SignedIn]", $"{name} for {audience}");
+                if (audience == SiteAudience.Visitors) sql.Should().Contain("= 'event'", $"{name} keeps every custom event for the website's visitors");
+            }
+        }
+        // A journey is shown whole, whatever the audience that picked it.
         SiteAnalyticsQueries.Steps(db, day, ["a", "b"]).ToQueryString().Should().Contain("ORDER BY");
 
         // The site analytics are in no workspace: no workspace filter is on their tables.

@@ -2,12 +2,13 @@
 // A platform page, not a workspace's: only CadenceE's platform admins may read it, and the
 // server answers 403 to everyone else.
 //
-//   GET /api/platform/me                         whether the signed-in person is a platform admin
-//   GET /api/site-analytics/summary?from=&to=    the period's figures, against the period before
-//   GET /api/site-analytics/live                 the last 5 minutes
-//   GET /api/site-analytics/sessions?day=&limit= one day's visits, newest first, with their steps
+//   GET /api/platform/me                                   whether the signed-in person is a platform admin
+//   GET /api/site-analytics/summary?from=&to=&audience=    the period's figures, against the period before
+//   GET /api/site-analytics/live?audience=                 the last 5 minutes
+//   GET /api/site-analytics/sessions?day=&limit=&audience= one day's visits, newest first, with their steps
 //
-// Days are "yyyy-MM-dd" in Europe/Zurich; moments are ISO UTC.
+// Days are "yyyy-MM-dd" in Europe/Zurich; moments are ISO UTC. The audience is whose events
+// are counted (SiteAnalyticsAudience); every read sends it.
 //
 // Server only: in demo mode there is no site to report on, and nobody is a platform admin.
 
@@ -15,6 +16,19 @@ import { ApiError, authFetchJson, servesDemoData, type RequestOptions } from './
 
 /** The time zone the site's days are counted in. */
 export const SITE_ANALYTICS_TIME_ZONE = 'Europe/Zurich';
+
+/**
+ * Whose events the figures count. The website and the app are one origin, so the tracker
+ * sees both: 'visitors' is the website's (what was done signed out, plus every sign-up and
+ * login, often recorded just after signing in); 'signed-in' is the app's signed-in use, the
+ * owner's own included; 'everyone' is both.
+ */
+export type SiteAnalyticsAudience = 'visitors' | 'signed-in' | 'everyone';
+
+export const SITE_ANALYTICS_AUDIENCES: readonly SiteAnalyticsAudience[] = ['visitors', 'signed-in', 'everyone'];
+
+/** What the dashboard shows unless asked: the website's visitors. */
+export const DEFAULT_SITE_ANALYTICS_AUDIENCE: SiteAnalyticsAudience = 'visitors';
 
 export interface PlatformMe {
   isPlatformAdmin: boolean;
@@ -187,18 +201,36 @@ function query(params: Record<string, string | number | undefined>): string {
   return text ? `?${text}` : '';
 }
 
-/** The period's figures and the period before's. */
-export async function getSiteAnalyticsSummary(range: SiteAnalyticsRange = {}, req?: RequestOptions): Promise<SiteAnalyticsSummary> {
-  return authFetchJson<SiteAnalyticsSummary>(`/api/site-analytics/summary${query({ from: range.from, to: range.to })}`, { signal: req?.signal });
+/** The audience's figures for the period, and for the period before. */
+export async function getSiteAnalyticsSummary(
+  range: SiteAnalyticsRange = {},
+  audience: SiteAnalyticsAudience = DEFAULT_SITE_ANALYTICS_AUDIENCE,
+  req?: RequestOptions,
+): Promise<SiteAnalyticsSummary> {
+  return authFetchJson<SiteAnalyticsSummary>(
+    `/api/site-analytics/summary${query({ from: range.from, to: range.to, audience })}`,
+    { signal: req?.signal },
+  );
 }
 
-/** Who is on the site in the last 5 minutes, and what they did. */
-export async function getSiteAnalyticsLive(req?: RequestOptions): Promise<SiteAnalyticsLive> {
-  return authFetchJson<SiteAnalyticsLive>('/api/site-analytics/live', { signal: req?.signal });
+/** Who of the audience is on the site in the last 5 minutes, and what they did. */
+export async function getSiteAnalyticsLive(
+  audience: SiteAnalyticsAudience = DEFAULT_SITE_ANALYTICS_AUDIENCE,
+  req?: RequestOptions,
+): Promise<SiteAnalyticsLive> {
+  return authFetchJson<SiteAnalyticsLive>(`/api/site-analytics/live${query({ audience })}`, { signal: req?.signal });
 }
 
-/** One day's visits, newest first. */
-export async function getSiteAnalyticsSessions(day: string, limit = 50, req?: RequestOptions): Promise<SiteAnalyticsSession[]> {
-  const rows = await authFetchJson<SiteAnalyticsSession[] | null>(`/api/site-analytics/sessions${query({ day, limit })}`, { signal: req?.signal });
+/** One day's visits of the audience, newest first, each with all its steps. */
+export async function getSiteAnalyticsSessions(
+  day: string,
+  limit = 50,
+  audience: SiteAnalyticsAudience = DEFAULT_SITE_ANALYTICS_AUDIENCE,
+  req?: RequestOptions,
+): Promise<SiteAnalyticsSession[]> {
+  const rows = await authFetchJson<SiteAnalyticsSession[] | null>(
+    `/api/site-analytics/sessions${query({ day, limit, audience })}`,
+    { signal: req?.signal },
+  );
   return Array.isArray(rows) ? rows : [];
 }

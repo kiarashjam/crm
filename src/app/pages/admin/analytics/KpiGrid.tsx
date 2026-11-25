@@ -1,13 +1,14 @@
 // The six headline figures: each with its value, its change against the period before and
-// a sparkline of the period's days.
+// a sparkline of the period's days. Their hints say whose figures they are (the audience).
 
 import type { ComponentType } from 'react';
 import { Clock, Eye, LogOut, MousePointerClick, UserPlus, Users } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
 import { useFormat } from '@/app/i18n';
-import type { SiteAnalyticsDay, SiteAnalyticsSummary } from '@/app/api/siteAnalytics';
+import type { SiteAnalyticsAudience, SiteAnalyticsDay, SiteAnalyticsSummary } from '@/app/api/siteAnalytics';
 import { formatDuration, kpiDelta, type KpiKey } from './analyticsMath';
 import { Bone, DeltaBadge, Sparkline } from './AnalyticsUI';
+import { AUDIENCE_HINTS } from './audience';
 
 interface KpiDef {
   key: KpiKey;
@@ -61,7 +62,12 @@ function CompareBars({ previous, current, color }: { previous: number; current: 
   );
 }
 
-export function KpiGrid({ summary, previousLabel, dark }: { summary: SiteAnalyticsSummary; previousLabel: string; dark: boolean }) {
+export function KpiGrid({ summary, previousLabel, dark, audience }: {
+  summary: SiteAnalyticsSummary;
+  previousLabel: string;
+  dark: boolean;
+  audience: SiteAnalyticsAudience;
+}) {
   const fmt = useFormat();
   const { totals, previous, daily } = summary;
   const valueOf = (key: KpiKey, t: typeof totals): string => {
@@ -75,6 +81,7 @@ export function KpiGrid({ summary, previousLabel, dark }: { summary: SiteAnalyti
         const Icon = k.icon;
         const color = dark ? k.line[1] : k.line[0];
         const delta = kpiDelta(k.key, totals, previous);
+        const hint = AUDIENCE_HINTS[audience][k.key] ?? k.hint;
         return (
           <li
             key={k.key}
@@ -92,7 +99,7 @@ export function KpiGrid({ summary, previousLabel, dark }: { summary: SiteAnalyti
               </p>
               <DeltaBadge delta={delta} higherIsBetter={k.higherIsBetter ?? true} previousLabel={previousLabel} />
             </div>
-            <p className="mt-0.5 truncate text-[11px] text-slate-500" title={k.hint}>{k.hint}</p>
+            <p className="mt-0.5 truncate text-[11px] text-slate-500" title={hint} data-testid={`kpi-${k.key}-hint`}>{hint}</p>
             <div className="mt-2 text-slate-400">
               {k.daily
                 ? <Sparkline values={daily.map(k.daily)} color={color} />

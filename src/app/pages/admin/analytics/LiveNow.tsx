@@ -7,11 +7,14 @@ import { Eye, MousePointerClick, Radio, Zap } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
 import { useFormat } from '@/app/i18n';
 import { SettingsCard } from '@/app/pages/settings/components/SettingsCard';
-import { SITE_ANALYTICS_TIME_ZONE, type SiteAnalyticsLive, type SiteAnalyticsLiveEvent } from '@/app/api/siteAnalytics';
+import {
+  SITE_ANALYTICS_TIME_ZONE, type SiteAnalyticsAudience, type SiteAnalyticsLive, type SiteAnalyticsLiveEvent,
+} from '@/app/api/siteAnalytics';
 import { SITE_ANALYTICS_LIVE_REFRESH_MS } from '@/app/hooks/queries/siteAnalytics';
 import { capitalise, eventLabel, relativeTime, sourceLabel } from './analyticsMath';
 import { BarRows, Bone, EmptyNote, InlineError, ListBones } from './AnalyticsUI';
 import { SourceIcon, deviceIcon } from './AnalyticsIcons';
+import { AUDIENCE_NOUN } from './audience';
 
 interface LiveRead {
   data: SiteAnalyticsLive | undefined;
@@ -113,7 +116,7 @@ function FeedItem({ e, now }: { e: SiteAnalyticsLiveEvent; now: number }) {
   );
 }
 
-export function LiveNow({ live }: { live: LiveRead }) {
+export function LiveNow({ live, audience }: { live: LiveRead; audience: SiteAnalyticsAudience }) {
   const fmt = useFormat();
   const now = useNow(SITE_ANALYTICS_LIVE_REFRESH_MS);
   const data = live.data;
@@ -180,7 +183,7 @@ export function LiveNow({ live }: { live: LiveRead }) {
       icon={Radio}
       tone="emerald"
       title={<>Live now <Pulse on={n > 0} className="ml-1" /></>}
-      description="The last 5 minutes, refreshed every 15 seconds."
+      description={`${AUDIENCE_NOUN[audience]} in the last 5 minutes, refreshed every 15 seconds.`}
       className="h-full"
     >
       {body}

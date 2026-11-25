@@ -1,13 +1,14 @@
 // Admin, Site analytics: shown to platform admins only; the headline figures with their
 // change against the period before; the growth chart with zero days and its summary in
 // words; Live, read again every 15 seconds; sources, pages, the funnel's rates, journeys
-// opened step by step, the period's days in the requests, empty states and a failed read.
+// opened step by step, the period's days in the requests, the audience (the website's
+// visitors unless picked) in every read and in the address, empty states and a failed read.
 
 import type { ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { http, HttpResponse } from 'msw';
 import { server } from '@/test/mocks/server';
 import { withQueries } from '@/test/queryWrapper';
@@ -116,7 +117,9 @@ let live: () => Response;
 let sessions: (day: string) => Response;
 let summaryAsked: URLSearchParams[];
 let liveReads: number;
+let liveAsked: URLSearchParams[];
 let sessionDays: string[];
+let sessionsAsked: URLSearchParams[];
 
 beforeEach(() => {
   localStorage.clear();
@@ -129,7 +132,9 @@ beforeEach(() => {
   sessions = () => HttpResponse.json([visit()]);
   summaryAsked = [];
   liveReads = 0;
+  liveAsked = [];
   sessionDays = [];
+  sessionsAsked = [];
   server.use(
     http.get(`${BASE}/api/platform/me`, () => me()),
     http.get(`${BASE}/api/site-analytics/summary`, ({ request }) => {
@@ -138,12 +143,15 @@ beforeEach(() => {
       const to = params.get('to') ?? today;
       return summary(params.get('from') ?? addDays(to, -29), to);
     }),
-    http.get(`${BASE}/api/site-analytics/live`, () => {
+    http.get(`${BASE}/api/site-analytics/live`, ({ request }) => {
       liveReads++;
+      liveAsked.push(new URL(request.url).searchParams);
       return live();
     }),
     http.get(`${BASE}/api/site-analytics/sessions`, ({ request }) => {
-      const day = new URL(request.url).searchParams.get('day') ?? '';
+      const params = new URL(request.url).searchParams;
+      sessionsAsked.push(params);
+      const day = params.get('day') ?? '';
       sessionDays.push(day);
       return sessions(day);
     }),
@@ -155,11 +163,17 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
+/** The address's query string, as the page left it. */
+function Where() {
+  return <span data-testid="location">{useLocation().search}</span>;
+}
+
 const show = (url = '/admin/analytics') => render(withQueries(
   <MemoryRouter initialEntries={[url]}>
     <Routes>
       <Route path="/admin/analytics" element={<SiteAnalyticsPage />} />
     </Routes>
+    <Where />
   </MemoryRouter>,
 ));
 
@@ -445,6 +459,74 @@ describe('the period', () => {
     show('/admin/analytics?range=7d');
     await loaded();
     expect(summaryAsked.map((p) => p.get('from'))).toEqual([addDays(today, -6)]);
+  });
+});
+
+describe('the audience', () => {
+  const audiences = (asked: URLSearchParams[]) => asked.map((p) => p.get('audience'));
+
+  it("shows the website's visitors by default, in every read, and says so", async () => {
+    show();
+    await loaded();
+    await screen.findByRole('list', { name: /^Visits on / });
+
+    const group = screen.getByRole('group', { name: 'Audience' });
+    expect(within(group).getAllByRole('button').map((b) => b.textContent)).toEqual(['Website visitors', 'Signed-in', 'Everyone']);
+    expect(within(group).getByRole('button', { name: 'Website visitors' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(group).getByRole('button', { name: 'Signed-in' })).toHaveAttribute('aria-pressed', 'false');
+    expect(within(group).getByRole('button', { name: 'Website visitors' })).toHaveAccessibleDescription(/Your own use of the CRM is left out\./);
+
+    expect(audiences(summaryAsked)).toEqual(['visitors']);
+    expect(audiences(liveAsked)).toEqual(['visitors']);
+    expect(audiences(sessionsAsked)).toEqual(['visitors']);
+    expect(screen.getByTestId('kpi-visitors-hint')).toHaveTextContent('website visitors, once a day');
+    expect(screen.getByTestId('kpi-sessions-hint')).toHaveTextContent('visits to the website');
+    expect(screen.getByRole('region', { name: 'Live now' })).toHaveTextContent('Website visitors in the last 5 minutes');
+    expect(screen.getByTestId('location')).toHaveTextContent(/^$/);
+  });
+
+  it('asks for the audience picked in the summary, Live and the journeys, and keeps it in the address', async () => {
+    const user = userEvent.setup();
+    show('/admin/analytics?range=7d');
+    await loaded();
+    await screen.findByRole('list', { name: /^Visits on / });
+
+    await user.click(screen.getByRole('button', { name: 'Signed-in' }));
+    await waitFor(() => expect(audiences(summaryAsked)).toEqual(['visitors', 'signed-in']));
+    await waitFor(() => expect(audiences(liveAsked)).toContain('signed-in'));
+    await waitFor(() => expect(audiences(sessionsAsked)).toContain('signed-in'));
+    // The period stays as it was.
+    expect(summaryAsked[1]?.get('from')).toBe(addDays(today, -6));
+    expect(screen.getByRole('button', { name: 'Signed-in' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Website visitors' })).toHaveAttribute('aria-pressed', 'false');
+    await waitFor(() => expect(screen.getByTestId('kpi-visitors-hint')).toHaveTextContent('signed-in people, once a day'));
+    expect(screen.getByTestId('location')).toHaveTextContent('?range=7d&audience=signed-in');
+
+    await user.click(screen.getByRole('button', { name: 'Everyone' }));
+    await waitFor(() => expect(audiences(summaryAsked)).toEqual(['visitors', 'signed-in', 'everyone']));
+    await waitFor(() => expect(audiences(liveAsked)).toContain('everyone'));
+    await waitFor(() => expect(screen.getByTestId('kpi-visitors-hint')).toHaveTextContent('everyone, once a day'));
+    expect(screen.getByTestId('location')).toHaveTextContent('?range=7d&audience=everyone');
+
+    // Back to the website's visitors: the address needs no parameter for them.
+    await user.click(screen.getByRole('button', { name: 'Website visitors' }));
+    await waitFor(() => expect(screen.getByTestId('kpi-visitors-hint')).toHaveTextContent('website visitors, once a day'));
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\?range=7d$/);
+  });
+
+  it('opens on the audience in the address', async () => {
+    show('/admin/analytics?audience=everyone');
+    await loaded();
+    expect(audiences(summaryAsked)).toEqual(['everyone']);
+    expect(screen.getByRole('button', { name: 'Everyone' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('kpi-pageViews-hint')).toHaveTextContent('all pages opened');
+  });
+
+  it("reads an audience it does not know as the website's visitors", async () => {
+    show('/admin/analytics?audience=robots');
+    await loaded();
+    expect(audiences(summaryAsked)).toEqual(['visitors']);
+    expect(screen.getByRole('button', { name: 'Website visitors' })).toHaveAttribute('aria-pressed', 'true');
   });
 });
 

@@ -2,11 +2,14 @@
 //
 // These reads are the platform's, not a workspace's: they are keyed by the signed-in user
 // only (platformKeys), so a workspace switch keeps them and no workspace's save re-reads them.
+// Each figure is read for one audience (the website's visitors, the app's signed-in users or
+// everyone), which is part of its key.
 
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { servesDemoData } from '@/app/api/apiClient';
 import {
-  getPlatformMe, getSiteAnalyticsLive, getSiteAnalyticsSessions, getSiteAnalyticsSummary, type SiteAnalyticsRange,
+  getPlatformMe, getSiteAnalyticsLive, getSiteAnalyticsSessions, getSiteAnalyticsSummary,
+  type SiteAnalyticsAudience, type SiteAnalyticsRange,
 } from '@/app/api/siteAnalytics';
 import { getCurrentUser } from '@/app/lib/auth';
 import { platformKeys } from './queryKeys';
@@ -45,35 +48,35 @@ export function useIsPlatformAdmin(): boolean {
   return usePlatformMe().data?.isPlatformAdmin === true;
 }
 
-/** The period's figures. The last period's stay on screen, dimmed, while a new range loads. */
-export function useSiteAnalyticsSummary(range: SiteAnalyticsRange, enabled = true) {
+/** The audience's figures for the period. The last ones stay on screen, dimmed, while a new period or audience loads. */
+export function useSiteAnalyticsSummary(range: SiteAnalyticsRange, audience: SiteAnalyticsAudience, enabled = true) {
   const userId = useUserId();
   return useQuery({
-    queryKey: platformKeys.siteAnalytics.summary(userId, range),
-    queryFn: ({ signal }) => timed(signal, (s) => getSiteAnalyticsSummary(range, { signal: s })),
+    queryKey: platformKeys.siteAnalytics.summary(userId, range, audience),
+    queryFn: ({ signal }) => timed(signal, (s) => getSiteAnalyticsSummary(range, audience, { signal: s })),
     placeholderData: keepPreviousData,
     enabled,
   });
 }
 
-/** The last 5 minutes, read again every 15 seconds while the tab is in front. */
-export function useSiteAnalyticsLive(enabled = true) {
+/** The audience's last 5 minutes, read again every 15 seconds while the tab is in front. */
+export function useSiteAnalyticsLive(audience: SiteAnalyticsAudience, enabled = true) {
   const userId = useUserId();
   return useQuery({
-    queryKey: platformKeys.siteAnalytics.live(userId),
-    queryFn: ({ signal }) => timed(signal, (s) => getSiteAnalyticsLive({ signal: s })),
+    queryKey: platformKeys.siteAnalytics.live(userId, audience),
+    queryFn: ({ signal }) => timed(signal, (s) => getSiteAnalyticsLive(audience, { signal: s })),
     refetchInterval: SITE_ANALYTICS_LIVE_REFRESH_MS,
     staleTime: 0,
     enabled,
   });
 }
 
-/** One day's visits, newest first. */
-export function useSiteAnalyticsSessions(day: string, enabled = true, limit = SITE_ANALYTICS_SESSIONS_LIMIT) {
+/** One day's visits of the audience, newest first. */
+export function useSiteAnalyticsSessions(day: string, audience: SiteAnalyticsAudience, enabled = true, limit = SITE_ANALYTICS_SESSIONS_LIMIT) {
   const userId = useUserId();
   return useQuery({
-    queryKey: platformKeys.siteAnalytics.sessions(userId, day, limit),
-    queryFn: ({ signal }) => timed(signal, (s) => getSiteAnalyticsSessions(day, limit, { signal: s })),
+    queryKey: platformKeys.siteAnalytics.sessions(userId, day, limit, audience),
+    queryFn: ({ signal }) => timed(signal, (s) => getSiteAnalyticsSessions(day, limit, audience, { signal: s })),
     placeholderData: keepPreviousData,
     enabled: enabled && /^\d{4}-\d{2}-\d{2}$/.test(day),
   });

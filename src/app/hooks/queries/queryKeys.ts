@@ -50,9 +50,10 @@ const platformKey = (userId: string | null, ...rest: unknown[]) => ['platform', 
 export const platformKeys = {
   me: (userId: string | null) => platformKey(userId, 'me'),
   siteAnalytics: {
-    summary: (userId: string | null, range: object) => platformKey(userId, 'site-analytics', 'summary', range),
-    live: (userId: string | null) => platformKey(userId, 'site-analytics', 'live'),
-    sessions: (userId: string | null, day: string, limit: number) => platformKey(userId, 'site-analytics', 'sessions', day, limit),
+    summary: (userId: string | null, range: object, audience: string) => platformKey(userId, 'site-analytics', 'summary', audience, range),
+    live: (userId: string | null, audience: string) => platformKey(userId, 'site-analytics', 'live', audience),
+    sessions: (userId: string | null, day: string, limit: number, audience: string) =>
+      platformKey(userId, 'site-analytics', 'sessions', audience, day, limit),
   },
 } as const;
 

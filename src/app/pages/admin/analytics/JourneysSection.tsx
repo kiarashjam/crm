@@ -11,7 +11,9 @@ import { DateInput } from '@/app/components/DateInput';
 import { useFormat } from '@/app/i18n';
 import { formatDay } from '@/app/lib/zonedTime';
 import { SettingsCard } from '@/app/pages/settings/components/SettingsCard';
-import { SITE_ANALYTICS_TIME_ZONE, type SiteAnalyticsSession, type SiteAnalyticsStep } from '@/app/api/siteAnalytics';
+import {
+  SITE_ANALYTICS_TIME_ZONE, type SiteAnalyticsAudience, type SiteAnalyticsSession, type SiteAnalyticsStep,
+} from '@/app/api/siteAnalytics';
 import { SITE_ANALYTICS_SESSIONS_LIMIT, useSiteAnalyticsSessions } from '@/app/hooks/queries/siteAnalytics';
 import { capitalise, eventLabel, formatDuration, journeyText, languageName, sourceLabel, stepText } from './analyticsMath';
 import { EmptyNote, InlineError, ListBones } from './AnalyticsUI';
@@ -116,14 +118,14 @@ function SessionRow({ s }: { s: SiteAnalyticsSession }) {
   );
 }
 
-export function JourneysSection({ defaultDay }: { defaultDay: string }) {
+export function JourneysSection({ defaultDay, audience }: { defaultDay: string; audience: SiteAnalyticsAudience }) {
   const fmt = useFormat();
   const [picked, setPicked] = useState<{ day: string; forDefault: string } | null>(null);
   // A new period starts the list on its last day again.
   const day = picked && picked.forDefault === defaultDay ? picked.day : defaultDay;
   const setDay = (next: string) => setPicked({ day: next, forDefault: defaultDay });
   const today = todayInZurich();
-  const sessions = useSiteAnalyticsSessions(day);
+  const sessions = useSiteAnalyticsSessions(day, audience);
   const rows = sessions.data ?? [];
   const label = formatDay(day, { weekday: 'long', day: 'numeric', month: 'long' }, fmt.dateLocale);
 

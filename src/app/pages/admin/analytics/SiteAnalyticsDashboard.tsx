@@ -1,7 +1,8 @@
-// The site analytics, for a platform admin: the header with the period and the Live pill,
-// the headline figures, growth, live visitors, sources, pages, conversions, journeys and
-// audience, and the privacy note. One read of the period's summary feeds every section but
-// Live (read every 15 seconds) and Journeys (read per day).
+// The site analytics, for a platform admin: the header with the audience, the period and the
+// Live pill, the headline figures, growth, live visitors, sources, pages, conversions,
+// journeys and audience, and the privacy note. One read of the period's summary feeds every
+// section but Live (read every 15 seconds) and Journeys (read per day); all three are read
+// for the audience picked, the website's visitors unless the address says otherwise.
 
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -17,7 +18,8 @@ import { formatDay } from '@/app/lib/zonedTime';
 import { SectionHead } from '@/app/pages/reports/ReportUI';
 import { SettingsCard } from '@/app/pages/settings/components/SettingsCard';
 import { useSiteAnalyticsLive, useSiteAnalyticsSummary } from '@/app/hooks/queries/siteAnalytics';
-import type { SiteAnalyticsSummary } from '@/app/api/siteAnalytics';
+import type { SiteAnalyticsAudience, SiteAnalyticsSummary } from '@/app/api/siteAnalytics';
+import { AudiencePicker } from './AudiencePicker';
 import { AudienceSection } from './AudienceSection';
 import { Bone } from './AnalyticsUI';
 import { ConversionsSection } from './ConversionsSection';
@@ -30,6 +32,7 @@ import { PagesSection } from './PagesSection';
 import { RangePicker } from './RangePicker';
 import { SourcesSection } from './SourcesSection';
 import { previousPeriodLabel, rangeFor, rangeLength, readSelection, todayInZurich, writeSelection, type RangeSelection } from './range';
+import { readAudience, writeAudience } from './audience';
 
 export const SITE_URL = 'https://www.cadencee.ai';
 
@@ -74,10 +77,12 @@ export function SiteAnalyticsDashboard() {
   const [params, setParams] = useSearchParams();
   const selection = useMemo(() => readSelection(params), [params]);
   const range = useMemo(() => rangeFor(selection), [selection]);
-  const summaryQuery = useSiteAnalyticsSummary(range ?? {}, range !== null);
-  const live = useSiteAnalyticsLive();
+  const audience = readAudience(params);
+  const summaryQuery = useSiteAnalyticsSummary(range ?? {}, audience, range !== null);
+  const live = useSiteAnalyticsLive(audience);
 
   const choose = (next: RangeSelection) => setParams((p) => writeSelection(next, p), { replace: true });
+  const chooseAudience = (next: SiteAnalyticsAudience) => setParams((p) => writeAudience(next, p), { replace: true });
 
   const summary = summaryQuery.data;
   // The period asked for; the server's own, while a period still being picked asks for none.
@@ -133,7 +138,10 @@ export function SiteAnalyticsDashboard() {
           <LivePill live={live} />
         </div>
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-          <RangePicker selection={selection} onChange={choose} />
+          <div className="flex min-w-0 flex-wrap items-end gap-x-3 gap-y-2">
+            <AudiencePicker audience={audience} onChange={chooseAudience} />
+            <RangePicker selection={selection} onChange={choose} />
+          </div>
           {period && (
             <p className="text-xs text-slate-500" aria-live="polite" data-testid="period">
               <span className="font-medium text-slate-700 dark:text-slate-200">{period}</span>
@@ -153,7 +161,7 @@ export function SiteAnalyticsDashboard() {
         <h2 id="sa-overview" className="sr-only">Overview</h2>
         {summary && isEmpty(summary) && <NoVisitsYet />}
         {summary
-          ? <div className={dim} aria-busy={stale || undefined}><KpiGrid summary={summary} previousLabel={previousLabel} dark={dark} /></div>
+          ? <div className={dim} aria-busy={stale || undefined}><KpiGrid summary={summary} previousLabel={previousLabel} dark={dark} audience={audience} /></div>
           : range !== null && summaryQuery.isPending && <KpiGridSkeleton />}
         <div className="grid gap-4 lg:grid-cols-3 [&>*]:min-w-0">
           <div className="lg:col-span-2">
@@ -163,7 +171,7 @@ export function SiteAnalyticsDashboard() {
               </SettingsCard>
             ) : instead}
           </div>
-          <LiveNow live={live} />
+          <LiveNow live={live} audience={audience} />
         </div>
       </section>
 
@@ -189,7 +197,7 @@ export function SiteAnalyticsDashboard() {
           <section aria-labelledby="sa-journeys">
             <SectionHead id="sa-journeys" eyebrow="Visits" title="Journeys" accent="sky" icon={Route}
               blurb="Pick a day to follow each visit from its first page to its last." />
-            <JourneysSection defaultDay={range?.to ?? (summary.to || todayInZurich())} />
+            <JourneysSection defaultDay={range?.to ?? (summary.to || todayInZurich())} audience={audience} />
           </section>
 
           <section aria-labelledby="sa-audience">
