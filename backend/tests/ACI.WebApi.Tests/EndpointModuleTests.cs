@@ -66,6 +66,8 @@ public class EndpointModuleTests
         ["PublicEmailImagesController"] = "an image in an email already sent: mail apps fetch it every time the email is opened",
         ["PublicMemberPortalController"] = "members signing in to the member portal, who are not on the team; with the club off the service itself refuses (Module.Off)",
         ["ClientErrorsController"] = "the browser reporting its own crashes, anonymous and from any page, of either module or neither",
+        ["SiteAnalyticsController"] = "visits to cadencee.ai itself: the tracker posts anonymously from any page, and only platform admins read the figures, in no workspace",
+        ["PlatformController"] = "the platform above every workspace: whether the caller is one of the people who run it",
     };
 
     private static IEnumerable<Type> Controllers() =>

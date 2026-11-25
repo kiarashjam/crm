@@ -373,6 +373,18 @@ try
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
             }));
+        // The site analytics' tracker (SiteAnalyticsController), anonymous, by address: a tab posts
+        // every five seconds at most, so this is room for several visitors behind one address, and
+        // a script posting in a loop is held to two a second. The address is the proxy's forwarded
+        // one when the connection comes from a private network (SiteTraffic.ClientAddress).
+        options.AddPolicy(ACI.WebApi.Controllers.SiteAnalyticsController.RateLimitPolicy, context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            "site-analytics:" + ACI.WebApi.SiteAnalytics.SiteTraffic.ClientAddress(context),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = ACI.WebApi.Controllers.SiteAnalyticsController.PerMinute,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
     });
     builder.Services.AddResponseCompression(options => options.EnableForHttps = true);
     builder.Services.AddEndpointsApiExplorer();
@@ -580,6 +592,9 @@ try
     builder.Services.AddHostedService<ACI.WebApi.Services.PortalPingBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.MonitoringSignalsBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.HealthDigestBackgroundService>();
+    // The site analytics of cadencee.ai: yesterday's figures to the platform admins from 07:30
+    // Zurich, and the daily clean-up of events older than 400 days.
+    builder.Services.AddHostedService<ACI.WebApi.Services.SiteAnalyticsDigestBackgroundService>();
 
     // HTTP Context accessor for current user service
     builder.Services.AddHttpContextAccessor();

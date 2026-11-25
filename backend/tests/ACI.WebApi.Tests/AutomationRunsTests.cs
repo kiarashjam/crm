@@ -101,6 +101,8 @@ public class AutomationRunsTests
                 ? throw new InvalidOperationException("The outbox could not be reached.")
                 : _inner.QueueEmailAsync(request, ct);
 
+        public Task<Result<OutboundMessage>> QueuePlatformEmailAsync(PlatformEmailRequest request, CancellationToken ct = default) =>
+            _inner.QueuePlatformEmailAsync(request, ct);
         public Task<OutboxAttempt> SendNowAsync(OutboundMessage message, CancellationToken ct = default) => _inner.SendNowAsync(message, ct);
         public Task ProcessAsync(DueOutboundMessage due, CancellationToken ct = default) => _inner.ProcessAsync(due, ct);
         public Task<Result> CancelAsync(Guid id, Guid organizationId, Guid userId, CancellationToken ct = default) => _inner.CancelAsync(id, organizationId, userId, ct);
