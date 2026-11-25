@@ -24,6 +24,12 @@ namespace ACI.Infrastructure.Services.SiteAnalytics;
 /// signed out, and their sign-ups, never the app's signed-in use, the owner's own included.
 /// </para>
 /// <para>
+/// Its pages and sources are what visitors' browsers sent, so the email shows them defanged: a
+/// source is a classified kind (google, linkedin, email…) or a valid host, anything else
+/// "other"; and every dot in a page or a source is written "[.]", so no mail client turns
+/// "example.com" into a link (<see cref="Defang"/>).
+/// </para>
+/// <para>
 /// One email per platform admin (Platform:AdminEmails), through the outbox as a platform email
 /// (no workspace). The day's <see cref="SiteAnalyticsDigest"/> row is the claim: inserted once,
 /// keyed by the day, so a second server or a restart never sends the day again. The emails are
@@ -38,6 +44,9 @@ public sealed class SiteAnalyticsDigestService : ISiteAnalyticsDigest
 
     /// <summary>Rows in the email's top lists.</summary>
     public const int TopRows = 5;
+
+    /// <summary>What a source that is neither a classified kind nor a host (a utm_source) is shown as.</summary>
+    public const string OtherSource = "other";
 
     private readonly AppDbContext _db;
     private readonly ISiteAnalytics _analytics;
@@ -123,6 +132,7 @@ public sealed class SiteAnalyticsDigestService : ISiteAnalyticsDigest
 
     /// <summary>What one day's email says.</summary>
     /// <param name="Week">The seven days up to <paramref name="Day"/>, oldest first.</param>
+    /// <param name="TopSources">The day's sources, most sessions first: the email shows the first <see cref="TopRows"/> of <see cref="ShownSources"/>.</param>
     public sealed record Digest(
         DateOnly Day,
         SiteDailyDto Yesterday,
@@ -147,13 +157,29 @@ public sealed class SiteAnalyticsDigestService : ISiteAnalyticsDigest
             daily[0],
             daily.Skip(daily.Count - 7).ToList(),
             summary.TopPages.Take(TopRows).ToList(),
-            summary.Sources.Take(TopRows).ToList(),
+            summary.Sources,
             summary.Totals.BotHits);
     }
+
+    /// <summary>
+    /// The sources as the email names them: a classified kind or a valid host as it is, any other
+    /// (a utm_source, which is whatever a link said) as <see cref="OtherSource"/>, those summed.
+    /// </summary>
+    public static IReadOnlyList<SiteSourceDto> ShownSources(IEnumerable<SiteSourceDto> sources) =>
+        sources
+            .GroupBy(s => SiteAnalyticsRules.SourceKinds.Contains(s.Source) || SiteAnalyticsRules.IsHostName(s.Source) ? s.Source : OtherSource)
+            .Select(g => new SiteSourceDto(g.Key, g.Sum(s => s.Sessions), g.Sum(s => s.Visitors)))
+            .OrderByDescending(s => s.Sessions).ThenBy(s => s.Source, StringComparer.Ordinal)
+            .Take(TopRows)
+            .ToList();
+
+    /// <summary>Visitor-sent text with every dot written "[.]" ("example[.]com"), so a mail client makes no link of it.</summary>
+    public static string Defang(string text) => text.Replace(".", "[.]", StringComparison.Ordinal);
 
     /// <summary>The subject, the plain text and the HTML of the email: counts and pages, nothing about anyone.</summary>
     public static (string Subject, string Text, string Html) Compose(Digest d, string link)
     {
+        d = d with { TopPages = d.TopPages.Take(TopRows).ToList(), TopSources = ShownSources(d.TopSources) };
         var y = d.Yesterday;
         var dayName = d.Day.ToString("dddd d MMMM yyyy", CultureInfo.InvariantCulture);
         var weekday = d.Day.ToString("dddd", CultureInfo.InvariantCulture);
@@ -186,12 +212,12 @@ public sealed class SiteAnalyticsDigestService : ISiteAnalyticsDigest
         text.AppendLine("Top pages");
         if (d.TopPages.Count == 0) text.AppendLine("  (none)");
         for (var i = 0; i < d.TopPages.Count; i++)
-            text.AppendLine($"  {i + 1}. {d.TopPages[i].Path}  {Count(d.TopPages[i].Views, "view", "views")}, {Visitors(d.TopPages[i].Visitors)}");
+            text.AppendLine($"  {i + 1}. {Defang(d.TopPages[i].Path)}  {Count(d.TopPages[i].Views, "view", "views")}, {Visitors(d.TopPages[i].Visitors)}");
         text.AppendLine();
         text.AppendLine("Top sources");
         if (d.TopSources.Count == 0) text.AppendLine("  (none)");
         for (var i = 0; i < d.TopSources.Count; i++)
-            text.AppendLine($"  {i + 1}. {d.TopSources[i].Source}  {Count(d.TopSources[i].Sessions, "session", "sessions")}, {Visitors(d.TopSources[i].Visitors)}");
+            text.AppendLine($"  {i + 1}. {Defang(d.TopSources[i].Source)}  {Count(d.TopSources[i].Sessions, "session", "sessions")}, {Visitors(d.TopSources[i].Visitors)}");
         if (d.BotHits > 0)
         {
             text.AppendLine();
@@ -250,8 +276,8 @@ public sealed class SiteAnalyticsDigestService : ISiteAnalyticsDigest
                 html.Append($"<tr><td style=\"{cell}word-break:break-all;\">{E(name)}</td><td style=\"{cell}text-align:right;white-space:nowrap;\">{E(figures)}</td></tr>");
             html.Append("</table>");
         }
-        List("Top pages", d.TopPages.Select(p => (p.Path, $"{Count(p.Views, "view", "views")}, {Visitors(p.Visitors)}")).ToList());
-        List("Top sources", d.TopSources.Select(s => (s.Source, $"{Count(s.Sessions, "session", "sessions")}, {Visitors(s.Visitors)}")).ToList());
+        List("Top pages", d.TopPages.Select(p => (Defang(p.Path), $"{Count(p.Views, "view", "views")}, {Visitors(p.Visitors)}")).ToList());
+        List("Top sources", d.TopSources.Select(s => (Defang(s.Source), $"{Count(s.Sessions, "session", "sessions")}, {Visitors(s.Visitors)}")).ToList());
         if (d.BotHits > 0)
             html.Append($"<p style=\"margin:16px 0 0;color:#64748b;\">Robots: {E(Count(d.BotHits, "hit", "hits"))} counted and left out of the figures above.</p>");
 

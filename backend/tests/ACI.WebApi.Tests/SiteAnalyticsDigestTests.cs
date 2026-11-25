@@ -14,8 +14,9 @@ namespace ACI.WebApi.Tests;
 
 /// <summary>
 /// The daily site analytics email: from 07:30 Zurich, yesterday's figures against the day before
-/// and the same weekday a week earlier, to every platform admin through the outbox, once a day;
-/// and the daily clean-up of events older than 400 days.
+/// and the same weekday a week earlier, to every platform admin through the outbox, once a day,
+/// with what visitors sent defanged; and the daily clean-up of events older than 400 days and of
+/// salts older than yesterday's.
 /// </summary>
 public class SiteAnalyticsDigestTests
 {
@@ -138,6 +139,55 @@ public class SiteAnalyticsDigestTests
     }
 
     [Fact]
+    public async Task What_visitors_sent_is_defanged_and_a_source_is_a_kind_a_host_or_other()
+    {
+        await using var app = new AnalyticsApp(admins: AnalyticsApp.AdminEmail);
+        await app.SeedAsync(
+            Event(NoonOf(Yesterday), "v1", "s1", path: "/go/evil.example", source: "visit evil.example now"),
+            Event(NoonOf(Yesterday, 1), "v2", "s2", path: "/", source: "pavillon46.ch", referrer: "pavillon46.ch"),
+            Event(NoonOf(Yesterday, 2), "v3", "s3", path: "/", source: "newsletter"),
+            Event(NoonOf(Yesterday, 3), "v4", "s4", path: "/", source: "linkedin"));
+
+        (await SendAsync(app, Morning)).Should().Be(1);
+
+        var digest = (await DigestsAsync(app)).Should().ContainSingle().Subject;
+        foreach (var body in new[] { digest.TextBody, digest.HtmlBody! })
+        {
+            body.Should().Contain("/go/evil[.]example").And.Contain("pavillon46[.]ch").And.Contain("linkedin");
+            body.Should().NotContain("evil.example").And.NotContain("pavillon46.ch").And.NotContain("newsletter").And.NotContain("visit evil");
+        }
+        digest.TextBody.Should().Contain("1. other  2 sessions, 2 visitors")
+            .And.Contain("2. linkedin  1 session, 1 visitor")
+            .And.Contain("3. pavillon46[.]ch  1 session, 1 visitor");
+        digest.HtmlBody.Should().Contain($"href=\"{AnalyticsApp.FrontendBaseUrl}/admin/analytics\"", "the dashboard's own link is not defanged");
+    }
+
+    [Theory]
+    [InlineData("example.com", "example[.]com")]
+    [InlineData("/blog/crm.for.clubs", "/blog/crm[.]for[.]clubs")]
+    [InlineData("/pricing", "/pricing")]
+    public void A_dot_is_written_so_no_mail_client_links_it(string text, string defanged)
+    {
+        SiteAnalyticsDigestService.Defang(text).Should().Be(defanged);
+    }
+
+    [Fact]
+    public void The_email_shows_a_kind_or_a_host_as_it_is_and_any_other_source_as_other()
+    {
+        SiteAnalyticsDigestService.ShownSources([
+            new SiteSourceDto("google", 5, 4),
+            new SiteSourceDto("spring sale", 3, 3),
+            new SiteSourceDto("pavillon46.ch", 2, 2),
+            new SiteSourceDto("newsletter", 2, 1),
+            new SiteSourceDto("direct", 1, 1),
+        ]).Should().Equal(
+            new SiteSourceDto("google", 5, 4),
+            new SiteSourceDto("other", 5, 4),
+            new SiteSourceDto("pavillon46.ch", 2, 2),
+            new SiteSourceDto("direct", 1, 1));
+    }
+
+    [Fact]
     public async Task A_quiet_day_is_reported_too()
     {
         await using var app = new AnalyticsApp(admins: AnalyticsApp.AdminEmail);
@@ -197,6 +247,8 @@ public class SiteAnalyticsDigestTests
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             db.SiteBotHits.AddRange(new SiteBotHit { Day = today.AddDays(-401), Bot = "googlebot", Hits = 3 }, new SiteBotHit { Day = today, Bot = "googlebot", Hits = 1 });
             db.SiteAnalyticsDigests.Add(new SiteAnalyticsDigest { Day = today.AddDays(-402), SentAtUtc = now.AddDays(-401), Recipients = 1 });
+            foreach (var day in new[] { today, today.AddDays(-1), today.AddDays(-2), today.AddDays(-30) })
+                db.SiteAnalyticsSalts.Add(new SiteAnalyticsSalt { Day = day, ProtectedSalt = "x", CreatedAtUtc = now });
             await db.SaveChangesAsync();
         }
 
@@ -208,6 +260,8 @@ public class SiteAnalyticsDigestTests
         (await app.Services.SiteEventsAsync()).Select(e => e.Path).Should().Equal("/kept", "/recent");
         (await app.Services.BotHitsAsync()).Select(h => h.Day).Should().Equal(today);
         (await app.Services.Read(db => db.SiteAnalyticsDigests.Count())).Should().Be(0);
+        (await app.Services.Read(db => db.SiteAnalyticsSalts.Select(s => s.Day).OrderBy(d => d).ToList()))
+            .Should().Equal([today.AddDays(-1), today], "only today's and yesterday's salts are kept");
 
         using var again = app.Services.CreateScope();
         (await again.ServiceProvider.GetRequiredService<ISiteAnalytics>().PurgeAsync(now)).Should().Be(0, "nothing older is left");
