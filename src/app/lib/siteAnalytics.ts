@@ -82,7 +82,6 @@ export interface SiteEvent {
 /** Where a trackEvent happened, when not the current page. Nothing else is sent: free-form properties are where personal data leaks in. */
 export interface TrackEventProps {
   path?: string;
-  title?: string;
 }
 
 interface Landing {
@@ -320,7 +319,7 @@ export function trackEvent(name: string, props?: TrackEventProps): void {
   try {
     if (!siteAnalyticsEnabled() || !name) return;
     const path = props?.path ? templatePath(props.path) : currentPath();
-    enqueue(makeEvent('event', path, { name, title: props?.title }));
+    enqueue(makeEvent('event', path, { name }));
   } catch {
     // Never breaks the page.
   }
