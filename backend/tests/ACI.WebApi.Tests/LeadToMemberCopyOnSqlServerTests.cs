@@ -15,6 +15,13 @@ namespace ACI.WebApi.Tests;
 /// </summary>
 public class LeadToMemberCopyOnSqlServerTests
 {
+    private static async Task<JsonElement> Success(HttpResponseMessage response)
+    {
+        var body = await response.Content.ReadAsStringAsync();
+        response.IsSuccessStatusCode.Should().BeTrue($"{(int)response.StatusCode}: {body}");
+        return JsonDocument.Parse(body).RootElement.Clone();
+    }
+
     [SqlServerFact]
     public async Task ThreeWaysAtOnceCopyTheLeadsTagsAndValuesOnce()
     {
@@ -64,6 +71,42 @@ public class LeadToMemberCopyOnSqlServerTests
             (await SqlServerApp.ScalarAsync(database, $"SELECT COUNT(*) FROM [RecordTags] WHERE [RecordId] = '{member.Id}'")).Should().Be(1);
             (await SqlServerApp.ScalarAsync(database, $"SELECT COUNT(*) FROM [ClubMembers] WHERE [Id] = '{member.Id}' AND [LeadDetailsCopiedAtUtc] IS NOT NULL")).Should().Be(1);
             (await CopyAsync()).Should().Be(LeadToMemberCopyResult.None);
+        }
+        finally
+        {
+            await SqlServerApp.DropDatabaseAsync(database);
+        }
+    }
+
+    [SqlServerFact]
+    public async Task ApprovingTheLeadsApplication_CopiesOnceTheApprovalHasCommitted()
+    {
+        // The approval runs in a transaction of its own and the copy in another, after it commits:
+        // only a real database shows the copy starts its own rather than leaning on the finished one.
+        await SqlServerApp.WaitForServerAsync();
+        var database = await SqlServerApp.NewDatabaseAsync();
+        try
+        {
+            using var app = SqlServerApp.Start(database);
+            var (client, ownerId) = await SignInAsync(app, $"owner-{Guid.NewGuid():N}@pavillon46.ch");
+            var org = (await Success(await client.PostAsync("/api/organizations", Body(new { name = "Pavillon 46" })))).GetProperty("id").GetGuid();
+            client.In(org);
+            var lead = (await Success(await client.PostAsync("/api/leads", Body(new { name = "Anna Muster", email = "anna@example.ch", status = "New" }))))
+                .GetProperty("id").GetGuid();
+            var now = DateTime.UtcNow;
+            var tag = new Tag { Id = Guid.NewGuid(), OrganizationId = org, OwnerUserId = ownerId, Name = "Wine lover", CreatedAtUtc = now, UpdatedAtUtc = now };
+            await HealthWorld.SaveAsync(app, tag,
+                new RecordTag { Id = Guid.NewGuid(), OrganizationId = org, OwnerUserId = ownerId, TagId = tag.Id, EntityType = RecordTypes.Lead, RecordId = lead, CreatedAtUtc = now });
+            var application = (await Success(await client.PostAsync($"/api/applications/from-lead/{lead}", null))).GetProperty("id").GetGuid();
+            await Success(await client.PutAsync($"/api/applications/{application}", Body(new { requestedTier = "Gold" })));
+
+            var approved = await Success(await client.PostAsync($"/api/applications/{application}/approve", Body(new { })));
+
+            var member = approved.GetProperty("memberId").GetGuid();
+            approved.GetProperty("approved").GetBoolean().Should().BeTrue();
+            (await SqlServerApp.ScalarAsync(database, $"SELECT COUNT(*) FROM [RecordTags] WHERE [RecordId] = '{member}' AND [TagId] = '{tag.Id}'"))
+                .Should().Be(1, "the lead's tag is on the member admitted");
+            (await SqlServerApp.ScalarAsync(database, $"SELECT COUNT(*) FROM [ClubMembers] WHERE [Id] = '{member}' AND [LeadDetailsCopiedAtUtc] IS NOT NULL")).Should().Be(1);
         }
         finally
         {
