@@ -138,6 +138,8 @@ public sealed partial class ClubRetentionService
             RecipientName = member.Name,
             Subject = subject,
             Body = body,
+            // The club's own words as paragraphs, in its look, under the subject when it reads as a title.
+            Design = draft => ClubEmails.Letter(draft.WorkspaceName ?? clubName, language, draft.Subject, draft.Body, title: true),
             CreatedByUserId = actor,
             ReplyToUserId = owner ?? actor,
             MemberId = member.Id,

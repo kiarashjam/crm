@@ -249,6 +249,9 @@ public class ClubRetentionTests
         (email.To, email.MemberId, email.Purpose).Should().Be(("anna@example.ch", anna, ConsentPurposes.Service));
         email.Subject.Should().Be("We would love to see you at Pavillon46 again");
         email.Body.Should().Contain("Dear Anna,");
+        // The club's own words as paragraphs, in its look, under the subject as the title.
+        email.TextBody.Should().StartWith("We would love to see you at Pavillon46 again\n\nDear Anna,\n\nWe have not seen you at Pavillon46 for a while");
+        email.HtmlBody.Should().Contain(">We would love to see you at Pavillon46 again</h1>").And.Contain("we read every answer").And.Contain("#2c5545");
         (await factory.Services.Read(db => db.MemberMessages.Count(m => m.MemberId == anna && m.OutboundMessageId == email.Id))).Should().Be(1,
             "the email shows in the member's communications");
 

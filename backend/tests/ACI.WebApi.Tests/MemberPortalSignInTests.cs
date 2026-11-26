@@ -69,6 +69,10 @@ public class MemberPortalSignInTests
         message.Body.Should().Contain("/member-portal/").And.Contain("#token=", "the secret rides in the fragment, which no server logs");
         var stored = await factory.Services.Read(db => db.MemberPortalLinks.Single());
         var token = await LinkTokenAsync(factory, "anna@example.ch");
+        // A security email in the club's look: the link as its button (in both parts), how long it works, and what to do if it was not you.
+        var link = message.TextBody!.Split('\n').Single(l => l.Contains("#token=", StringComparison.Ordinal));
+        message.TextBody.Should().Contain($"Sign in:\n{link}").And.Contain("for 15 minutes").And.Contain("If you did not ask for it, you can ignore this email");
+        message.HtmlBody.Should().Contain($"href=\"{System.Net.WebUtility.HtmlEncode(link)}\"").And.Contain("Your sign-in link").And.Contain("#2c5545");
         stored.TokenHash.Should().NotBe(token, "only the secret's hash is kept");
 
         var session = await Ok(await RedeemAsync(factory, key, token), "use the link");

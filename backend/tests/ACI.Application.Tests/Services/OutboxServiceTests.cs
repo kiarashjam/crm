@@ -627,6 +627,41 @@ public class OutboxServiceTests
         _repo.Messages.Single().Status.Should().Be(OutboundStatuses.Cancelled);
     }
 
+    // ── designed emails ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ADesignedEmail_IsDrawnFromItsWordsAsFilled_InBothParts_WithItsUnsubscribeLinkKept()
+    {
+        var message = await QueueAndDispatchAsync(Email("jean@example.ch") with
+        {
+            Source = OutboundSources.Event,
+            RecipientName = "Jean Muster",
+            Subject = "{{firstName}}, a <place> for you",
+            Body = "Dear {{firstName}},\n\nIt is yours.",
+            Design = draft => ClubEmails.Letter(draft.WorkspaceName, "en", draft.Subject, draft.Body, title: true),
+        });
+
+        message.Body.Should().Be("Dear Jean,\n\nIt is yours.", "the words as written, filled, are what the record keeps");
+        message.TextBody.Should().StartWith("Jean, a <place> for you\n\nDear Jean,\n\nIt is yours.\n\n--\nYou are receiving this email as a member of Pavillon 46.\n\n--\n")
+            .And.EndWith("Unsubscribe: https://crm.example.ch/unsubscribe/t-jean\n");
+        message.HtmlBody.Should().Contain(">Jean, a &lt;place&gt; for you</h1>").And.Contain("Dear Jean,").And.Contain("Pavillon 46").And.NotContain("{{")
+            .And.Contain("<a href=\"https://crm.example.ch/unsubscribe/t-jean\" class=\"em-muted\"");
+        _sent.Single().HtmlBody.Should().Be(message.HtmlBody);
+    }
+
+    [Fact]
+    public async Task AnEmailHasItsOwnHtmlOrADesign_NotBoth()
+    {
+        var result = await Service().QueueEmailAsync(Email() with
+        {
+            ForOwnTeam = true,
+            Html = "<p>Hi</p>",
+            Design = _ => new EmailDesign(EmailLook.Club, "Pavillon 46").Paragraph("Hi"),
+        });
+
+        result.Error.Code.Should().Be("Email.HtmlAndDesign");
+    }
+
     [Fact]
     public async Task OnlyTheOwnerAndManagersSeeTheDeliveries()
     {

@@ -19,13 +19,30 @@ internal sealed record OverdueCharge(Guid Id, Guid MemberId, string Description,
 internal static class ClubOverdue
 {
     /// <summary>The workspace's charges past their due date with something still to pay, oldest first; with <paramref name="memberIds"/>, only theirs.</summary>
-    public static async Task<List<OverdueCharge>> ListAsync(AppDbContext db, Guid organizationId, DateTime now,
+    public static Task<List<OverdueCharge>> ListAsync(AppDbContext db, Guid organizationId, DateTime now,
+        IReadOnlyCollection<Guid>? memberIds, CancellationToken ct) =>
+        OwingAsync(db, organizationId, now, null, memberIds, ct);
+
+    /// <summary>
+    /// When what a member's statement shows as owed falls due: the earliest due date of their
+    /// charges posted before <paramref name="postedBeforeUtc"/> (the statement's end) that still
+    /// have something to pay, after credit they hold. Null when none has.
+    /// </summary>
+    public static async Task<DateTime?> EarliestDueAsync(AppDbContext db, Guid organizationId, Guid memberId, DateTime postedBeforeUtc, CancellationToken ct)
+    {
+        var owing = await OwingAsync(db, organizationId, DateTime.MaxValue, postedBeforeUtc, [memberId], ct);
+        return owing.Count == 0 ? null : owing.Min(c => c.DueAtUtc);
+    }
+
+    /// <summary>Charges due before <paramref name="dueBefore"/> (and posted before <paramref name="postedBefore"/>) with something still to pay, oldest first.</summary>
+    private static async Task<List<OverdueCharge>> OwingAsync(AppDbContext db, Guid organizationId, DateTime dueBefore, DateTime? postedBefore,
         IReadOnlyCollection<Guid>? memberIds, CancellationToken ct)
     {
         var members = memberIds?.ToList();
         var candidates = await db.ClubCharges.AsNoTracking()
             .Where(c => c.OrganizationId == organizationId && (members == null || members.Contains(c.MemberId))
-                && c.ReversesChargeId == null && c.DueAtUtc != null && c.DueAtUtc < now && c.Amount > 0)
+                && c.ReversesChargeId == null && c.DueAtUtc != null && c.DueAtUtc < dueBefore && c.Amount > 0
+                && (postedBefore == null || c.PostedAtUtc < postedBefore))
             .Select(c => new { c.Id, c.MemberId, c.Description, c.Amount, c.Currency, Due = c.DueAtUtc!.Value, c.SubscriptionId })
             .ToListAsync(ct);
         if (candidates.Count == 0) return [];

@@ -333,36 +333,15 @@ public sealed partial class MemberPortalAccess : IMemberPortalSignIn, IMemberPor
         var language = AppLanguages.ForMember(first.PreferredLanguage);
         var club = await _db.Organizations.AsNoTracking().FirstOrDefaultAsync(o => o.Id == settings.OrganizationId, ct);
         var clubName = club?.Name ?? "";
-        string L(string key, params (string, object?)[] args) => MemberTexts.T(language, key, args);
-
-        var body = new StringBuilder();
         var greeting = members.Count == 1 ? Clip(first.FirstName.Trim(), 100) : string.Join(", ", members.Select(m => m.FirstName.Trim()));
-        body.Append(L("greeting", ("name", greeting))).Append("\n\n");
-        string subject;
-        if (purpose == MemberPortalSignInWays.Invite)
-        {
-            subject = L("portal.inviteSubject", ("club", clubName));
-            body.Append(L("portal.inviteIntro", ("club", clubName))).Append("\n\n");
-            foreach (var (member, _, url) in links)
-            {
-                body.Append(members.Count == 1 ? L("portal.inviteOpen") : L("portal.inviteOpenFor", ("name", NameOf(member)))).Append('\n');
-                body.Append(url).Append("\n\n");
-            }
-            var until = MemberTexts.Date(language, club?.Locale, Local(now + lifetime, club?.TimeZone));
-            body.Append(L("portal.inviteValid", ("date", until), ("portal", PortalUrl(settings.PortalKey)))).Append("\n\n");
-        }
-        else
-        {
-            subject = L("portal.signInSubject", ("club", clubName));
-            body.Append(L("portal.signInIntro", ("club", clubName))).Append("\n\n");
-            foreach (var (member, _, url) in links)
-            {
-                if (members.Count > 1) body.Append(L("portal.signInAs", ("name", NameOf(member)))).Append('\n');
-                body.Append(url).Append("\n\n");
-            }
-            body.Append(L("portal.signInValid", ("minutes", (int)lifetime.TotalMinutes))).Append("\n\n");
-        }
-        body.Append(clubName);
+        var invite = purpose == MemberPortalSignInWays.Invite;
+        var email = ClubEmails.PortalLinks(new PortalLinkDetails(
+            clubName, language, greeting, invite,
+            links.Select(l => new PortalLink(NameOf(l.Member), l.Url)).ToList(),
+            invite ? MemberTexts.Date(language, club?.Locale, Local(now + lifetime, club?.TimeZone)) : null,
+            (int)lifetime.TotalMinutes,
+            PortalUrl(settings.PortalKey)));
+        var subject = email.Subject;
 
         var sender = await _db.OnboardingSettings.AsNoTracking().FirstOrDefaultAsync(s => s.OrganizationId == settings.OrganizationId, ct);
         var queued = await _outbox.QueueEmailAsync(new OutboundEmailRequest
@@ -373,7 +352,8 @@ public sealed partial class MemberPortalAccess : IMemberPortalSignIn, IMemberPor
             To = [first.Email.Trim()],
             RecipientName = NameOf(first),
             Subject = subject,
-            Body = body.ToString(),
+            Body = email.Text,
+            Design = _ => email.Design,
             CreatedByUserId = userId,
             ReplyToUserId = userId,
             MemberId = first.Id,
