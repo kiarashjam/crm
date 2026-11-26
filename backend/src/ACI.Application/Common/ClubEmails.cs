@@ -21,10 +21,11 @@ public sealed record ClubEmail(string Subject, EmailDesign Design)
 /// <param name="QrBill">Whether the attached statement ends with a QR-bill to pay it with.</param>
 /// <param name="PayUrl">A link to pay online, when the club takes payments online.</param>
 /// <param name="PayUntil">Until when <paramref name="PayUrl"/> works.</param>
+/// <param name="TestNote">For a test copy staff send themselves: what it says to them, at the top.</param>
 public sealed record StatementDetails(
     string Club, string Language, string FirstName, string Period,
     string BroughtForward, string Charges, string Payments, decimal Owed, string Closing,
-    string? DueDate = null, bool QrBill = false, string? PayUrl = null, string? PayUntil = null);
+    string? DueDate = null, bool QrBill = false, string? PayUrl = null, string? PayUntil = null, string? TestNote = null);
 
 /// <summary>A charge a payment reminder names, written as the member reads it.</summary>
 public sealed record ReminderCharge(string Description, string Amount, string DueDate);
@@ -128,8 +129,9 @@ public static partial class ClubEmails
         // What it comes to, large, then how it got there, as the attached PDF sets it out.
         var figures = new List<(string, string)> { (Label(l, closing), d.Closing) };
         if (owing && Blank(d.DueDate) is { } due) figures.Add((Label(l, "statement.labelDueDate"), due));
-        var design = Design(d.Club, l, T(l, "statement.eyebrow"), d.Period, T(l, preheader, ("amount", d.Closing)))
-            .Paragraph(T(l, "greeting", ("name", d.FirstName)))
+        var design = Design(d.Club, l, T(l, "statement.eyebrow"), d.Period, T(l, preheader, ("amount", d.Closing)));
+        if (Blank(d.TestNote) is { } test) design.Note(test, EmailTone.Warning);
+        design.Paragraph(T(l, "greeting", ("name", d.FirstName)))
             .Paragraph(T(l, "statement.attached", ("period", d.Period)))
             .Stats(figures)
             .Facts([

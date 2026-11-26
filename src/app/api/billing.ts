@@ -70,6 +70,13 @@ export interface StatementDelivery {
   outboundMessageId?: string;
 }
 
+/** A test copy of a statement: the message, the address it went to, and whether it went at once. */
+export interface StatementTest {
+  messageId: string;
+  to: string;
+  status: 'sent' | 'queued';
+}
+
 /** The latest runs, newest first. Demo data has none: nothing runs on its own there. */
 export async function getBillingRuns(req?: RequestOptions): Promise<BillingRun[]> {
   return apiWithFallback(
@@ -135,6 +142,18 @@ export async function downloadChargeInvoicePdf(chargeId: string): Promise<void> 
   const res = await authFetch(`/api/charges/${chargeId}/invoice.pdf`);
   await ensureOk(res);
   downloadFile(await res.blob(), fileNameOf(res, 'invoice.pdf'));
+}
+
+/**
+ * Sends the member's statement for [fromUtc, toUtc), as they would get it, to the signed-in
+ * user alone, marked as a test: the member gets nothing and nothing is recorded on them.
+ */
+export async function emailStatementTest(memberId: string, fromUtc: string, toUtc: string): Promise<StatementTest> {
+  if (servesDemoData()) throw new Error('Statements are emailed from the live app; demo data sends no email.');
+  return authFetchJson<StatementTest>(`/api/members/${memberId}/statement/email-test`, {
+    method: 'POST',
+    body: JSON.stringify({ from: fromUtc, to: toUtc }),
+  });
 }
 
 /** Emails the member their statement for [fromUtc, toUtc), the PDF attached. */

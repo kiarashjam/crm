@@ -211,6 +211,20 @@ public class MemberAccountController : ControllerBase
             request.From.ToUniversalTime(), request.To.ToUniversalTime(), ct);
         return sent.IsSuccess ? Ok(sent.Value) : sent.Error.ToProblemResult();
     }
+
+    /// <summary>
+    /// Sends the member's statement for the period, as they would get it, to the person asking
+    /// alone, marked as a test: the member gets nothing and nothing is recorded on their account.
+    /// </summary>
+    [HttpPost("statement/email-test")]
+    [Requires(MemberPermissions.ManageMoney, What = "send a test copy of a member's statement")]
+    public async Task<ActionResult> EmailStatementTest(Guid memberId, [FromBody] StatementPeriodRequest request, CancellationToken ct)
+    {
+        if (_user.UserId is not { } userId) return Unauthorized();
+        var sent = await _billing.EmailStatementTestAsync(_user.CurrentOrganizationId!.Value, userId, memberId,
+            request.From.ToUniversalTime(), request.To.ToUniversalTime(), ct);
+        return sent.IsSuccess ? Ok(sent.Value) : sent.Error.ToProblemResult();
+    }
 }
 
 /// <summary>The period of a statement: from (included) to (not included).</summary>

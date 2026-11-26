@@ -23,6 +23,7 @@ import {
   ChevronRight,
   Download,
   Mail,
+  MailCheck,
   CreditCard,
   QrCode,
 } from 'lucide-react';
@@ -45,7 +46,7 @@ import { NONE, useClubMembers, useClubReads, useMemberStatement, usePaymentStatu
 import PageHero, { heroPrimary, heroSecondary } from '@/app/components/PageHero';
 import { StaggerItem } from '@/app/components/motion/Stagger';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
-import { downloadStatementPdf, emailStatement } from '@/app/api/billing';
+import { downloadStatementPdf, emailStatement, emailStatementTest } from '@/app/api/billing';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { PERMISSION } from '@/app/api/organizations';
 import { PayOnlineDialog } from '@/app/components/payments/PayOnlineDialog';
@@ -129,6 +130,7 @@ export default function Statements() {
 
   const [downloading, setDownloading] = useState(false);
   const [emailing, setEmailing] = useState(false);
+  const [testing, setTesting] = useState(false);
   const failed = (err: unknown, fallback: string) =>
     toast.error(err instanceof Error && err.message ? err.message : fallback);
 
@@ -160,6 +162,20 @@ export default function Statements() {
     }
   };
 
+  // The member's statement as they would get it, to the person asking alone: nothing reaches the member.
+  const sendTestCopy = async () => {
+    if (!member) return;
+    setTesting(true);
+    try {
+      const sent = await emailStatementTest(member.id, fromUtc, toUtc);
+      toast.success(`Test copy of ${member.firstName}'s statement ${sent.status === 'sent' ? 'sent' : 'on its way'} to ${sent.to}`);
+    } catch (err) {
+      failed(err, 'Could not send the test copy');
+    } finally {
+      setTesting(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
@@ -183,6 +199,15 @@ export default function Statements() {
                   <WriteOnly permission={PERMISSION.ManageMoney}>
                     <Button variant="outline" onClick={() => void sendByEmail()} disabled={!statement || emailing} className={heroSecondary}>
                       {emailing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />} Email statement
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => void sendTestCopy()}
+                      disabled={!statement || testing}
+                      className={heroSecondary}
+                      title="Send this statement, as the member would get it, to yourself only"
+                    >
+                      {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <MailCheck className="h-4 w-4" />} Send a test copy to me
                     </Button>
                     {payment?.onlinePayments && (
                       <Button variant="outline" onClick={() => setPaying(true)} disabled={!member} className={heroSecondary}>

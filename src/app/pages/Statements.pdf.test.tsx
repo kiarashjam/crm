@@ -62,11 +62,12 @@ vi.mock('@/app/api/charges', async (importOriginal) => ({
   getMemberStatement: (...a: unknown[]) => getMemberStatement(...a),
 }));
 
-const billing = vi.hoisted(() => ({ download: vi.fn(), email: vi.fn() }));
+const billing = vi.hoisted(() => ({ download: vi.fn(), email: vi.fn(), test: vi.fn() }));
 vi.mock('@/app/api/billing', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/app/api/billing')>()),
   downloadStatementPdf: (...a: unknown[]) => billing.download(...a),
   emailStatement: (...a: unknown[]) => billing.email(...a),
+  emailStatementTest: (...a: unknown[]) => billing.test(...a),
 }));
 
 const payments = vi.hoisted(() => ({ status: vi.fn(), email: vi.fn() }));
@@ -98,6 +99,7 @@ beforeEach(() => {
   getMemberStatement.mockReset().mockResolvedValue(STATEMENT);
   billing.download.mockReset().mockResolvedValue(undefined);
   billing.email.mockReset().mockResolvedValue(delivery({}));
+  billing.test.mockReset().mockResolvedValue({ messageId: 'om1', to: 'manager@example.ch', status: 'sent' });
   payments.status.mockReset().mockResolvedValue(NOTHING_SET_UP);
   payments.email.mockReset().mockResolvedValue({
     url: 'https://club.example.ch/pay/t', purpose: 'account', amount: 299, currency: 'CHF', expiresAtUtc: '2027-01-09T00:00:00Z', emailStatus: 'queued',
@@ -171,6 +173,35 @@ describe("a member's statement as a PDF", () => {
     expect(billing.email).not.toHaveBeenCalled();
   });
 
+  it('sends a test copy to whoever asks, without asking to confirm or emailing the member', async () => {
+    as([PERMISSION.ManageMoney]);
+    const user = userEvent.setup();
+    show();
+
+    await screen.findByText('Gold dues');
+    await user.click(screen.getByRole('button', { name: /Send a test copy to me/ }));
+
+    await vi.waitFor(() => expect(billing.test).toHaveBeenCalledTimes(1));
+    // The same member and period the page shows; nothing goes to the member.
+    const [memberId, fromUtc, toUtc] = getMemberStatement.mock.calls[0]!;
+    expect(billing.test.mock.calls[0]).toEqual([memberId, fromUtc, toUtc]);
+    expect(confirm).not.toHaveBeenCalled();
+    expect(billing.email).not.toHaveBeenCalled();
+    expect(toast.success).toHaveBeenCalledWith("Test copy of Jean's statement sent to manager@example.ch");
+  });
+
+  it("says why when the test copy can't be sent", async () => {
+    as([PERMISSION.ManageMoney]);
+    billing.test.mockRejectedValue(new Error('Sending email is not set up on the server yet.'));
+    const user = userEvent.setup();
+    show();
+
+    await screen.findByText('Gold dues');
+    await user.click(screen.getByRole('button', { name: /Send a test copy to me/ }));
+
+    await vi.waitFor(() => expect(toast.error).toHaveBeenCalledWith('Sending email is not set up on the server yet.'));
+  });
+
   it('offers the download but not the email to someone who does not manage the money', async () => {
     as([PERMISSION.ClubMembers]);
     show();
@@ -178,6 +209,7 @@ describe("a member's statement as a PDF", () => {
     await screen.findByText('Gold dues');
     expect(screen.getByRole('button', { name: /Download PDF/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Email statement/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Send a test copy to me/ })).toBeNull();
   });
 });
 

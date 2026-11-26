@@ -214,6 +214,11 @@ public static class OutboundSources
     public const string Member = "member";
     /// <summary>A member's statement, as a PDF: emailed on request or by the monthly run.</summary>
     public const string Statement = "statement";
+    /// <summary>
+    /// A member's statement sent to the staff member who pressed "Send a test copy to me",
+    /// marked as a test; <see cref="OutboundMessage.SourceId"/> is the member.
+    /// </summary>
+    public const string StatementTest = "statement_test";
     /// <summary>A reminder of charges a member has not paid by their due date, from the billing run.</summary>
     public const string PaymentReminder = "reminder";
     /// <summary>
