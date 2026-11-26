@@ -466,7 +466,8 @@ public static class EmailLayout
                 .Append(row.Indented
                     ? $"padding-left:34px;font-size:13px;line-height:20px;color:{p.Muted};"
                     : $"padding-left:18px;font-size:14px;line-height:20px;color:{p.Body};")
-                .Append("text-align:left;\">").Append(E(row.Label)).Append("</td>");
+                // A long label with no space in it (a page's path) wraps rather than widen the email.
+                .Append("text-align:left;word-break:break-word;\">").Append(E(row.Label)).Append("</td>");
             for (var c = 0; c < heads.Count; c++)
             {
                 // The first figure in bold; a part's (an indented row's) in plain type, under its whole.
@@ -552,8 +553,10 @@ public static class EmailLayout
                ".em-title{word-break:break-word}h1.em-title{font-size:24px !important;line-height:30px !important}" +
                ".em-stat{display:block !important;width:100% !important;padding:0 0 10px 0 !important}" +
                // A table keeps to the screen: tighter edges, and a long figure may break at a space.
-               ".em-table td,.em-table th{white-space:normal !important}.em-tl{padding-left:12px !important}.em-tl.em-indent{padding-left:24px !important}" +
-               ".em-tr{padding-right:12px !important}" +
+               // A figure breaks only at a space ("CHF" / "14 400,00"), never inside its digits; a label anywhere it must.
+               ".em-table td,.em-table th{white-space:normal !important;word-break:normal !important;padding-left:6px !important;padding-right:10px !important}" +
+               ".em-table .em-tl{padding-left:12px !important;word-break:break-word !important}.em-table .em-tl.em-indent{padding-left:24px !important}" +
+               ".em-table .em-tr{padding-right:12px !important}" +
                ".em-btn-wrap{width:100% !important}.em-btn{display:block !important;text-align:center !important}}" +
                "</style>";
     }

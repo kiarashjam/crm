@@ -123,8 +123,10 @@ public class EmailLayoutTests
         var html = EmailLayout.Html(WeekTable(), "s");
 
         html.Should().Contain("em-indent").And.Contain("padding-left:34px;");
-        // Dark mode recolours its lines; a phone tightens its edges and lets a long figure break.
-        html.Should().Contain(".em-table th{border-color").And.Contain(".em-table td,.em-table th{white-space:normal !important}");
+        // Dark mode recolours its lines; a phone tightens its edges, lets a figure break only at a space
+        // and a label anywhere it must.
+        html.Should().Contain(".em-table th{border-color").And.Contain(".em-table td,.em-table th{white-space:normal !important;word-break:normal !important;")
+            .And.Contain("text-align:left;word-break:break-word;\">New leads<");
     }
 
     [Fact]

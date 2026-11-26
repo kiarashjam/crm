@@ -223,7 +223,7 @@ public class EmailGalleryProductTests
         return new SiteAnalyticsDigestService.Digest(
             new DateOnly(2026, 11, 24), week[^1], week[^2], new SiteDailyDto("2026-11-17", 44, 50, 121, 1), week,
             [new SitePageDto("/", 88, 51), new SitePageDto("/pricing", 41, 29), new SitePageDto("/guides/crm-for-private-members-clubs", 27, 22),
-             new SitePageDto("/de/preise", 19, 14), new SitePageDto("/signup", 12, 9)],
+             new SitePageDto("/de/preise", 19, 14), new SitePageDto("/r/7f3a9c2e1b8d4f6a0c5e9b2d7a1f4c8e0b6d", 12, 9)],
             [new SiteSourceDto("google", 31, 27), new SiteSourceDto("direct", 22, 19), new SiteSourceDto("linkedin", 9, 8),
              new SiteSourceDto("pavillon46.ch", 6, 5), new SiteSourceDto("spring newsletter", 4, 4)],
             BotHits: 312);
