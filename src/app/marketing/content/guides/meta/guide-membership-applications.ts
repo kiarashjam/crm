@@ -1,8 +1,19 @@
 import type { GuideMeta } from './types';
 
-// Placeholder: replaced when the guide is written.
 export const membershipApplicationsMeta: GuideMeta = {
-  en: { title: 'Guide guide-membership-applications (en) | CadenceE', description: 'Placeholder description for guide-membership-applications in English.', nav: 'guide-membership-applications en' },
-  fr: { title: 'Guide guide-membership-applications (fr) | CadenceE', description: 'Placeholder description for guide-membership-applications in French.', nav: 'guide-membership-applications fr' },
-  de: { title: 'Guide guide-membership-applications (de) | CadenceE', description: 'Placeholder description for guide-membership-applications in German.', nav: 'guide-membership-applications de' },
+  en: {
+    title: 'Membership Application Process, Step by Step | CadenceE',
+    description: 'A fair, fast membership application process: application form, sponsors, committee review, waitlists, agreement, e-signature and new member onboarding.',
+    nav: 'Membership applications',
+  },
+  fr: {
+    title: 'Processus d’adhésion d’un club, étape par étape | CadenceE',
+    description: 'Un processus d’adhésion juste et rapide : formulaire d’adhésion, parrains, comité, liste d’attente, contrat signé en ligne, admission de nouveaux membres.',
+    nav: 'Processus d’adhésion',
+  },
+  de: {
+    title: 'Aufnahmeprozess im Verein und Club | CadenceE',
+    description: 'Ein fairer, schneller Aufnahmeprozess für Verein und Club: Mitgliedsantrag, Paten, Aufnahmekommission, Warteliste, Vertrag, E-Signatur und Willkommen.',
+    nav: 'Aufnahmeprozess',
+  },
 };
