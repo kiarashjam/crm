@@ -11,7 +11,7 @@ import { useLaunchOfferActive, useSignupLabel } from './LaunchOffer';
 import { LanguageSwitch } from './LanguageSwitch';
 
 /** The pages the header links to, in order. Every other page is in the menu and the footer. */
-export const HEADER_PAGES: MarketingPageId[] = ['features', 'private-clubs', 'hospitality', 'sales', 'swiss', 'pricing'];
+export const HEADER_PAGES: MarketingPageId[] = ['features', 'private-clubs', 'hospitality', 'sales', 'swiss', 'guides', 'pricing'];
 
 /**
  * The public site's header: transparent over the hero, frosted white once the page scrolls,
@@ -57,12 +57,14 @@ export function MarketingHeader({ lang, pageId }: { lang: SiteLang; pageId?: Mar
           {HEADER_PAGES.map((id) => {
             const current = id === pageId;
             return (
-              <li key={id}>
+              // The guides' link only where the header has room for it (it is in the footer, and
+              // on every topic page, everywhere): French and German names are long.
+              <li key={id} className={id === 'guides' ? 'hidden 2xl:block' : undefined}>
                 <Link
                   to={marketingPath(id, lang)}
                   data-track={`nav-${id}`}
                   aria-current={current ? 'page' : undefined}
-                  className={`px-4 py-2 text-sm font-medium rounded-full transition-all duration-300 block ${
+                  className={`px-2.5 2xl:px-4 py-2 text-sm font-medium rounded-full whitespace-nowrap transition-all duration-300 block ${
                     current ? 'bg-white text-orange-700 shadow-sm' : 'text-slate-700 hover:text-orange-700 hover:bg-white'
                   }`}
                 >
@@ -79,14 +81,14 @@ export function MarketingHeader({ lang, pageId }: { lang: SiteLang; pageId?: Mar
         <CtaLink
           kind="login"
           lang={lang}
-          className="hidden xl:flex text-slate-700 hover:text-orange-700 font-semibold px-4 py-2.5 rounded-xl transition-colors"
+          className="hidden xl:flex whitespace-nowrap text-slate-700 hover:text-orange-700 font-semibold px-3 2xl:px-4 py-2.5 rounded-xl transition-colors"
         >
           {strings.signIn}
         </CtaLink>
         <CtaLink
           kind="signup"
           lang={lang}
-          className="group hidden sm:flex bg-gradient-to-r from-orange-600 to-amber-500 text-white px-5 py-2.5 rounded-xl font-semibold shadow-lg shadow-orange-500/25 hover:shadow-xl hover:shadow-orange-500/40 items-center gap-2 transition-shadow"
+          className="group hidden sm:flex whitespace-nowrap bg-gradient-to-r from-orange-600 to-amber-500 text-white px-4 2xl:px-5 py-2.5 rounded-xl font-semibold shadow-lg shadow-orange-500/25 hover:shadow-xl hover:shadow-orange-500/40 items-center gap-2 transition-shadow"
         >
           <span>{offer ? LAUNCH_OFFER_COPY[lang].headerCta : strings.headerCta}</span>
           <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" aria-hidden="true" />

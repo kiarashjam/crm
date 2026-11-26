@@ -135,8 +135,8 @@ URLs; it never fails a deploy. `llms.txt` describes the site for AI search, buil
 ## Owner's to-do list
 
 1. **Contact address.** Set the repository variable `VITE_CONTACT_EMAIL` (e.g. a monitored
-   inbox) so "Request a demo" and "Contact us" open an email; until then they lead to /help,
-   whose own contact button still says `support@example.com` (`src/app/pages/Help.tsx`).
+   inbox) so "Contact us" and /help's "Contact support" open an email; until then they lead
+   to /help, which then says how to reach the team without an address.
 2. **Google Search Console**: add the property `https://www.cadencee.ai` (or the domain
    property `cadencee.ai` with a DNS TXT record). With the HTML tag method, put the code in
    the repository variable `VITE_GOOGLE_SITE_VERIFICATION` and deploy. Then submit
@@ -154,7 +154,12 @@ URLs; it never fails a deploy. `llms.txt` describes the site for AI search, buil
      directories, the Vaud and Lausanne business associations, software review sites such as
      Capterra or GetApp (real reviews only);
    - Bexio's and Abacus's partner or integration directories, Lightspeed's app marketplace,
-     TWINT's merchant listings, if CadenceE qualifies.
+     TWINT's merchant listings, if CadenceE qualifies;
+   - the lists Swiss clubs and associations search: Swiss Made Software's list of Swiss CRM
+     providers (swissmadesoftware.org), PostFinance's association-software partners, and
+     European membership-tool directories (e.g. europeanpurpose.com);
+   - the guides (below) are what other sites link to: share them where clubs, associations
+     and sales teams ask these questions.
 6. **Google Business Profile**: only if CadenceE has a staffed address customers may visit
    or a service area; a software company without one does not need it.
 7. Watch Search Console's Pages report for "Crawled, currently not indexed" and Core Web
@@ -182,6 +187,23 @@ URLs; it never fails a deploy. `llms.txt` describes the site for AI search, buil
 
 When a page's words change, bump its `lastmod` so the sitemap and IndexNow say so.
 
+## Adding a guide
+
+The guides (`/guides`, `/fr/guides`, `/de/ratgeber`) are long-form articles on the questions
+clubs, venues and sales teams search for. Each is an Article in the structured data (with
+its FAQPage and a Home › Guides › guide breadcrumb), links into the topic pages, and is
+listed under "Further reading" on the topic pages named in its `topics`.
+
+1. `routes.ts`: add the id to `GUIDE_IDS` and an entry (`kind: 'guide'`, `published`,
+   `lastmod`, `topics`, an address per language) to `MARKETING_PAGES`.
+2. `content/guides/meta/<id>.ts`: title, description and short name per language (same
+   limits as any page), registered in `content/guides/meta/index.ts`.
+3. `content/guides/{en,fr,de}/<id>.ts`: the words (see `content/guides/types.ts`), registered
+   in each language's `index.ts`. No price and no launch offer in a guide: the page adds the
+   offer itself while it runs, and a guide outlives it.
+4. `npx vitest run src/app/marketing/guides.test.ts` checks length (≥ 1,000 words per
+   language), shape, links into the site and claims; redraw the OG images.
+
 ## Keywords per page
 
 | Page | English | French | German |
@@ -199,6 +221,15 @@ When a page's words change, bump its `lastmod` so the sitemap and IndexNow say s
 | AI | AI CRM assistant, AI sales writer, Claude | assistant IA CRM | KI-Assistent CRM, KI-Texter |
 | Pricing | CadenceE pricing, CRM price | tarifs CRM, prix CRM | CRM Preise, CRM Kosten |
 | Free CRM (until 2027) | free CRM, free CRM software, free CRM Switzerland, free CRM for clubs, free membership management software, free sales CRM | CRM gratuit, logiciel CRM gratuit, CRM gratuit Suisse, CRM gratuit pour club / association | kostenloses CRM, CRM kostenlos, CRM Software kostenlos, kostenloses CRM Schweiz, Mitgliederverwaltung kostenlos |
+
+| Guide: run a club | how to run a private members club, members club management | gérer un club privé, gestion d'un club de membres | Privatclub führen, Clubverwaltung |
+| Guide: member retention | membership renewal, member retention strategies | renouvellement des adhésions, fidélisation des membres | Mitgliederbindung, Mitgliedschaft verlängern |
+| Guide: QR-bill | Swiss QR-bill, QR-bill for associations | facture QR, QR-facture association | QR-Rechnung, QR-Rechnung Verein |
+| Guide: Excel to CRM | Excel vs CRM, move from Excel to CRM | passer d'Excel à un CRM, Excel ou CRM | Excel vs CRM, von Excel zum CRM |
+| Guide: sales follow-up | sales follow-up email, follow-up email templates | email de relance commerciale, modèle de relance | Nachfass-E-Mail, Follow-up-E-Mail Vorlage |
+| Guide: FADP checklist | Swiss FADP checklist, member data protection | checklist nLPD, protection des données association | nDSG Checkliste, Datenschutz Verein |
+| Guide: membership applications | membership application process, new member onboarding | processus d'adhésion, admission de nouveaux membres | Aufnahmeprozess Verein, Mitgliedsantrag |
+| Guide: choose a CRM | how to choose a CRM, CRM selection checklist | comment choisir un CRM, critères de choix | CRM auswählen, CRM-Auswahl Kriterien |
 
 These come from what the product does and how Swiss buyers describe it, not from a keyword
 tool's volumes; check them against Search Console's queries after a few weeks and adjust.

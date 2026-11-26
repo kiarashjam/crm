@@ -30,9 +30,23 @@ export default function AttachmentsCard({ entityType, recordId, className }: Att
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // The list answers only while the card is on screen, and only for the latest request: a
+  // reply that lands after the card has gone (another page, the end of a test) or after a
+  // newer request (another record) changes nothing.
+  const alive = useRef(true);
+  const latest = useRef(0);
+  useEffect(() => {
+    alive.current = true;
+    return () => { alive.current = false; };
+  }, []);
   const load = useCallback(() => {
+    const request = ++latest.current;
+    const current = () => alive.current && request === latest.current;
     setLoading(true);
-    getAttachments(entityType, recordId).then(setItems).catch(() => setItems([])).finally(() => setLoading(false));
+    getAttachments(entityType, recordId)
+      .then((rows) => { if (current()) setItems(rows); })
+      .catch(() => { if (current()) setItems([]); })
+      .finally(() => { if (current()) setLoading(false); });
   }, [entityType, recordId]);
   useEffect(() => { load(); }, [load]);
 

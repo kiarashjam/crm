@@ -4,6 +4,7 @@
 
 import { frFreeCrm } from './freeCrm';
 import { frPricing } from './pricing';
+import { frGuides } from './guides/fr';
 import type { LanguageContent } from './types';
 import { withFrenchSpacing } from './typography';
 
@@ -14,6 +15,15 @@ const fr: LanguageContent = {
     faqEyebrow: 'FAQ',
     solutionsEyebrow: 'Solutions',
     stepLabel: 'Étape',
+    minRead: 'min de lecture',
+    updated: 'Mis à jour le',
+    onThisPage: 'Sur cette page',
+    keyTakeaways: 'En bref',
+    furtherReading: 'Pour aller plus loin',
+    moreGuides: 'Autres guides',
+    guidesEyebrow: 'Guides',
+    guidesH1: 'Guides pour gérer un club et une équipe de vente',
+    guidesLead: 'Des guides pratiques sur les questions que se posent le plus les clubs, les établissements et les équipes de vente en Suisse : membres et renouvellements, facture QR et protection des données, relances et choix d’un CRM.',
   },
   pages: {
     home: {
@@ -1108,6 +1118,7 @@ const fr: LanguageContent = {
     pricing: frPricing,
     'free-crm': frFreeCrm,
   },
+  guides: frGuides,
 };
 
 export default withFrenchSpacing(fr);

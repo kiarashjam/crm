@@ -12,8 +12,8 @@ describe('sitemap from the route manifest', () => {
     const marketing = MARKETING_PAGES.length * SITE_LANGS.length;
     const listedPublic = PUBLIC_PAGES.filter((p) => p.sitemap && p.index).length;
     expect(entries).toHaveLength(marketing + listedPublic);
-    // 13 pages × 3 languages, and /help, /privacy, /terms.
-    expect(entries).toHaveLength(42);
+    // 22 pages × 3 languages (13 pages, the guides' index and 8 guides), and /help, /privacy, /terms.
+    expect(entries).toHaveLength(69);
     const locs = entries.map((e) => e.loc);
     expect(new Set(locs).size).toBe(locs.length);
     expect(locs).toContain('https://www.cadencee.ai/');
@@ -34,13 +34,13 @@ describe('sitemap from the route manifest', () => {
     expect(sitemapEntries(MARKETING_PAGES, PUBLIC_PAGES, AFTER_OFFER - 1).map((e) => e.loc)).toContain(free[0]);
 
     const after = sitemapEntries(MARKETING_PAGES, PUBLIC_PAGES, AFTER_OFFER);
-    expect(after).toHaveLength(39);
+    expect(after).toHaveLength(66);
     for (const loc of free) expect(after.map((e) => e.loc)).not.toContain(loc);
     for (const entry of after) {
       for (const alt of entry.alternates) expect(alt.href).not.toMatch(/free-crm|crm-gratuit|kostenloses-crm/);
     }
-    expect(buildSitemapXml(after).match(/<loc>/g)).toHaveLength(39);
-    expect(buildSitemapXml(sitemapEntries(MARKETING_PAGES, PUBLIC_PAGES, DURING_OFFER)).match(/<loc>/g)).toHaveLength(42);
+    expect(buildSitemapXml(after).match(/<loc>/g)).toHaveLength(66);
+    expect(buildSitemapXml(sitemapEntries(MARKETING_PAGES, PUBLIC_PAGES, DURING_OFFER)).match(/<loc>/g)).toHaveLength(69);
   });
 
   it('gives each language version the full hreflang set, x-default English', () => {

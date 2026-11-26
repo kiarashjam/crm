@@ -6,6 +6,7 @@
 // search: "CRM pour club privé", "Mitgliederverwaltung Software", "Swiss CRM", and the like.
 
 import { isLaunchOfferActive } from '@/app/lib/launchOffer';
+import { GUIDE_META } from './content/guides/meta';
 import type { MarketingPageId } from './routes';
 import type { SiteLang } from './site';
 
@@ -104,6 +105,12 @@ export const PAGE_META: Record<SiteLang, Record<MarketingPageId, PageMeta>> = {
       offerTitle: 'Free CRM Software: Every Feature, No Credit Card | CadenceE',
       offerDescription: 'Free CRM software for clubs, hospitality and sales teams: every feature, your whole team, no credit card, no feature tiers. Free until end of 2026.',
     },
+    guides: {
+      title: 'Guides for Clubs and Sales Teams | CadenceE',
+      description: 'Practical guides on running a private club and a sales team in Switzerland: members, renewals, QR-bills, follow-ups, privacy and choosing a CRM.',
+      nav: 'Guides',
+    },
+    ...GUIDE_META.en,
   },
   fr: {
     home: {
@@ -187,6 +194,12 @@ export const PAGE_META: Record<SiteLang, Record<MarketingPageId, PageMeta>> = {
       offerTitle: 'Logiciel CRM gratuit, tout inclus, sans carte | CadenceE',
       offerDescription: 'CRM gratuit pour clubs, associations et équipes de vente : toutes les fonctionnalités, toute l’équipe, sans carte. Gratuit jusqu’à fin 2026.',
     },
+    guides: {
+      title: 'Guides pour clubs et équipes de vente | CadenceE',
+      description: 'Guides pratiques pour gérer un club privé et une équipe de vente en Suisse : membres, renouvellements, facture QR, relances, nLPD et choix d’un CRM.',
+      nav: 'Guides',
+    },
+    ...GUIDE_META.fr,
   },
   de: {
     home: {
@@ -270,6 +283,12 @@ export const PAGE_META: Record<SiteLang, Record<MarketingPageId, PageMeta>> = {
       offerTitle: 'CRM-Software kostenlos: alle Funktionen inklusive | CadenceE',
       offerDescription: 'Kostenloses CRM für Clubs, Vereine und Verkaufsteams: alle Funktionen, das ganze Team, keine Kreditkarte. Kostenlos bis Ende 2026.',
     },
+    guides: {
+      title: 'Ratgeber für Clubs und Verkaufsteams | CadenceE',
+      description: 'Praxis-Ratgeber für Privatclubs und Verkaufsteams in der Schweiz: Mitglieder, Verlängerungen, QR-Rechnung, Nachfassen, nDSG und die Wahl eines CRM.',
+      nav: 'Ratgeber',
+    },
+    ...GUIDE_META.de,
   },
 };
 

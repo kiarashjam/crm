@@ -10,6 +10,7 @@
 //   everything else   the app: noindex, nofollow; the title is left to the page
 
 import {
+  articleJsonLd,
   breadcrumbJsonLd,
   graphJsonLd,
   organizationJsonLd,
@@ -124,12 +125,13 @@ export function hreflangLinks(match: MarketingMatch): HeadLink[] {
   return links;
 }
 
-/** Breadcrumbs of a marketing page: Home, then the page (none on a home page). */
+/** Breadcrumbs of a marketing page: Home, then the page (none on a home page); a guide sits under Guides. */
 export function breadcrumbsFor(match: MarketingMatch): { name: string; path: string }[] {
   if (match.page.kind === 'home') return [];
   const meta = PAGE_META[match.lang];
   return [
     { name: meta.home.nav, path: marketingPath('home', match.lang) },
+    ...(match.page.kind === 'guide' ? [{ name: meta.guides.nav, path: marketingPath('guides', match.lang) }] : []),
     { name: meta[match.page.id].nav, path: match.page.paths[match.lang] },
   ];
 }
@@ -146,6 +148,18 @@ function marketingHead(match: MarketingMatch, now: Date | number): HeadData {
   } else if (page.kind === 'hub' || page.kind === 'pricing' || page.offerOnly) {
     jsonLd.push(graphJsonLd([softwareApplicationJsonLd(lang, meta.description, now, pricingPath), organizationJsonLd()]));
   }
+  const image = ogImagePath(page.id, lang, offer && (OFFER_OG_PAGES as readonly string[]).includes(page.id));
+  if (page.kind === 'guide') {
+    jsonLd.push(articleJsonLd({
+      headline: meta.title.replace(/\s*\|\s*CadenceE$/, ''),
+      description: meta.description,
+      url,
+      image,
+      lang,
+      published: page.published ?? page.lastmod,
+      modified: page.lastmod,
+    }));
+  }
   const crumbs = breadcrumbsFor(match);
   if (crumbs.length) jsonLd.push(breadcrumbJsonLd(crumbs));
   return {
@@ -160,9 +174,10 @@ function marketingHead(match: MarketingMatch, now: Date | number): HeadData {
         title: meta.title,
         description: meta.description,
         url,
-        image: ogImagePath(page.id, lang, offer && (OFFER_OG_PAGES as readonly string[]).includes(page.id)),
+        image,
         imageAlt: `${SITE_NAME}: ${meta.nav}`,
         lang,
+        type: page.kind === 'guide' ? 'article' : 'website',
       }),
     ],
     links: [{ rel: 'canonical', href: url }, ...hreflangLinks(match)],

@@ -46,7 +46,8 @@ describe('rendered public pages', () => {
   });
 
   it('carry the FAQPage structured data of their questions', () => {
-    for (const [path, html] of rendered) {
+    // Every page but the guides' index, which only lists the guides.
+    for (const [path, html] of rendered.filter(([path]) => matchMarketingPath(path)?.page.kind !== 'guides')) {
       const blocks = [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map((m) => JSON.parse(m[1]!));
       const faq = blocks.find((b) => b['@type'] === 'FAQPage');
       expect(faq, path).toBeDefined();
