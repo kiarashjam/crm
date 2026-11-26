@@ -42,7 +42,7 @@ public static class AccountEmailContent
             }
             .Paragraph(Hi(recipientName))
             .Paragraph($"We received a request to reset the password of your CadenceE account, {toEmail.Trim()}. " +
-                       "Choose a new one with the button below.")
+                       "You can choose a new one below.")
             .Button("Choose a new password", resetUrl)
             .Note("This link expires in one hour and works once. If you ask again, only the newest link works. " +
                   "Choosing a new password signs you out on every device.")
