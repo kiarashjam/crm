@@ -139,7 +139,7 @@ function marketingHead(match: MarketingMatch, now: Date | number): HeadData {
   const jsonLd: JsonLd[] = [];
   if (page.kind === 'home') {
     jsonLd.push(graphJsonLd([organizationJsonLd(), websiteJsonLd(), softwareApplicationJsonLd(lang, meta.description, now, pricingPath)]));
-  } else if (page.kind === 'hub' || page.kind === 'pricing') {
+  } else if (page.kind === 'hub' || page.kind === 'pricing' || page.offerOnly) {
     jsonLd.push(graphJsonLd([softwareApplicationJsonLd(lang, meta.description, now, pricingPath), organizationJsonLd()]));
   }
   const crumbs = breadcrumbsFor(match);
@@ -150,7 +150,8 @@ function marketingHead(match: MarketingMatch, now: Date | number): HeadData {
     lang,
     metas: [
       { name: 'description', content: meta.description },
-      { name: 'robots', content: ROBOTS_INDEX },
+      // A page about the launch offer is not to be found once the offer has ended.
+      { name: 'robots', content: page.offerOnly && !offer ? ROBOTS_NOINDEX_FOLLOW : ROBOTS_INDEX },
       ...socialMetas({
         title: meta.title,
         description: meta.description,

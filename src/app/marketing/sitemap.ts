@@ -2,6 +2,7 @@
 // hreflang alternates, and the public pages worth listing. Written at build by the prerender.
 
 import { MARKETING_PAGES, PUBLIC_PAGES, type MarketingPageDef, type PublicPageDef } from './routes';
+import { isLaunchOfferActive } from '@/app/lib/launchOffer';
 import { SITE_LANGS, absoluteUrl } from './site';
 
 export interface SitemapEntry {
@@ -22,9 +23,13 @@ function escapeXml(value: string): string {
 export function sitemapEntries(
   pages: readonly MarketingPageDef[] = MARKETING_PAGES,
   publicPages: readonly PublicPageDef[] = PUBLIC_PAGES,
+  now: Date | number = Date.now(),
 ): SitemapEntry[] {
   const entries: SitemapEntry[] = [];
+  const offer = isLaunchOfferActive(now);
   for (const page of pages) {
+    // A page about the launch offer leaves the sitemap once the offer has ended.
+    if (page.offerOnly && !offer) continue;
     const alternates = [
       ...SITE_LANGS.map((lang) => ({ hreflang: lang, href: absoluteUrl(page.paths[lang]) })),
       { hreflang: 'x-default', href: absoluteUrl(page.paths.en) },

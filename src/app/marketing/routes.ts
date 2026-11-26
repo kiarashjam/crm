@@ -31,6 +31,12 @@ export interface MarketingPageDef {
   paths: Record<SiteLang, string>;
   /** When the page's words last changed (YYYY-MM-DD): the sitemap's lastmod. Bump it with the copy. */
   lastmod: string;
+  /**
+   * A page about the launch offer itself ("free CRM"): listed and indexed only while the offer
+   * runs (until 31 December 2026). Afterwards it shows its afterOffer words, is marked noindex
+   * and leaves the sitemap; it is never in the topic grids (LANDING_PAGE_IDS).
+   */
+  offerOnly?: boolean;
 }
 
 export const MARKETING_PAGES: readonly MarketingPageDef[] = [
@@ -49,7 +55,7 @@ export const MARKETING_PAGES: readonly MarketingPageDef[] = [
 ];
 
 /** The topic pages, in the order the navigation and the hub list them. */
-export const LANDING_PAGE_IDS = MARKETING_PAGES.filter((p) => p.kind === 'landing').map((p) => p.id);
+export const LANDING_PAGE_IDS = MARKETING_PAGES.filter((p) => p.kind === 'landing' && !p.offerOnly).map((p) => p.id);
 
 export interface PublicPageDef {
   path: string;
