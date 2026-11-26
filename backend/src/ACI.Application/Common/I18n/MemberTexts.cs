@@ -5,9 +5,9 @@ namespace ACI.Application.Common.I18n;
 
 /// <summary>
 /// What the server writes to a member, in English, German (Swiss spelling: "ss", never "ß") and
-/// French (as written in Romandy): the statement and invoice PDFs with their Swiss QR-bill, the
-/// statement, reminder, welcome, event and pay-link emails, the marketing footer, and the
-/// defaults of the public forms.
+/// French (as written in Romandy): the statement and invoice PDFs with their Swiss QR-bill, every
+/// email the club sends a member (ClubEmails: statements, reminders, pay links, events, invitations,
+/// the welcome, portal links), the marketing footer, and the defaults of the public forms.
 /// </summary>
 /// <remarks>
 /// <para>
