@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   ArrowLeft, ArrowRight, Sparkles, Play, Mail, Lock, User as UserIcon,
@@ -9,6 +9,7 @@ import {
 import { toast } from 'sonner';
 import { login, loginWithTwoFactor, register, messages } from '@/app/api';
 import { setSession, setDemoUser } from '@/app/lib/auth';
+import { trackEvent } from '@/app/lib/siteAnalytics';
 import { isUsingRealApi } from '@/app/api/apiClient';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/app/components/ui/input-otp';
 import {
@@ -57,7 +58,9 @@ export default function Login() {
   // the other ways in below read) and this browser can use one.
   const signInOptions = useQuery({ queryKey: ['sign-in-options'], queryFn: getSignInOptions, staleTime: 5 * 60_000, retry: 1 });
   const passkeyInsteadOfCode = Boolean(signInOptions.data?.passkeys) && passkeysSupported();
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  // "Create your workspace" on the public site links here with ?mode=register.
+  const [mode, setMode] = useState<'login' | 'register'>(() =>
+    new URLSearchParams(location.search).get('mode') === 'register' ? 'register' : 'login');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -69,6 +72,14 @@ export default function Login() {
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [errorModal, setErrorModal] = useState<{ message: string; was2fa: boolean } | null>(null);
+
+  // Counted once a visit to this page: someone opened the sign-up form (site analytics).
+  const signupStarted = useRef(false);
+  useEffect(() => {
+    if (mode !== 'register' || signupStarted.current) return;
+    signupStarted.current = true;
+    trackEvent('signup_started');
+  }, [mode]);
 
   const canSubmit = useMemo(() => {
     if (requires2fa) return code.replace(/\D/g, '').length === 6 && !!twoFactorToken;
@@ -107,6 +118,8 @@ export default function Login() {
 
       if (!res.token || !res.user) throw new Error('Login failed');
       setSession(res.token, res.user);
+      // A new account is the website's conversion; a sign-in is not counted (site analytics).
+      if (mode === 'register') trackEvent('signup_completed');
       keepPickedLanguage();
       toast.success(mode === 'register' ? messages.auth.accountCreated : messages.auth.signedIn);
       navigate(resumeInvitation ?? (isUsingRealApi() ? '/organizations' : '/dashboard'), { replace: true });

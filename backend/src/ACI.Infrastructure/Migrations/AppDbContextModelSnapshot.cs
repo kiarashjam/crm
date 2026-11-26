@@ -8555,6 +8555,158 @@ namespace ACI.Infrastructure.Migrations
                     b.ToTable("SentMessages", (string)null);
                 });
 
+            modelBuilder.Entity("ACI.Domain.Entities.SiteAnalyticsDigest", b =>
+                {
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date");
+
+                    b.Property<int>("Recipients")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("SentAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Day");
+
+                    b.ToTable("SiteAnalyticsDigests", (string)null);
+                });
+
+            modelBuilder.Entity("ACI.Domain.Entities.SiteAnalyticsSalt", b =>
+                {
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ProtectedSalt")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.HasKey("Day");
+
+                    b.ToTable("SiteAnalyticsSalts", (string)null);
+                });
+
+            modelBuilder.Entity("ACI.Domain.Entities.SiteBotHit", b =>
+                {
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Bot")
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<int>("Hits")
+                        .HasColumnType("int");
+
+                    b.HasKey("Day", "Bot");
+
+                    b.ToTable("SiteBotHits", (string)null);
+                });
+
+            modelBuilder.Entity("ACI.Domain.Entities.SiteEvent", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Browser")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Device")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(16)");
+
+                    b.Property<string>("Language")
+                        .HasMaxLength(8)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(8)");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Os")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("ReferrerHost")
+                        .HasMaxLength(253)
+                        .HasColumnType("nvarchar(253)");
+
+                    b.Property<string>("SessionKey")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<bool>("SignedIn")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(16)");
+
+                    b.Property<string>("UtmCampaign")
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("UtmMedium")
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("UtmSource")
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("VisitorHash")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OccurredAtUtc");
+
+                    b.HasIndex("Day", "Type");
+
+                    b.HasIndex("Day", "SessionKey", "OccurredAtUtc");
+
+                    b.ToTable("SiteEvents", (string)null);
+                });
+
             modelBuilder.Entity("ACI.Domain.Entities.Tag", b =>
                 {
                     b.Property<Guid>("Id")

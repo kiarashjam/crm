@@ -122,6 +122,30 @@ public sealed record OutboundEmailRequest
     public string? ReplyTo { get; init; }
 }
 
+/// <summary>
+/// An email from the platform itself to the people who run it (a platform admin), such as the
+/// daily site analytics: it belongs to no workspace, goes from the configured sender address
+/// under its name (Email:FromName), carries no unsubscribe link and no reply address, and no
+/// workspace's suppression list, timeline or bell is involved.
+/// </summary>
+public sealed record PlatformEmailRequest
+{
+    /// <summary><see cref="OutboundSources"/>.</summary>
+    public required string Source { get; init; }
+
+    /// <summary>The one address it goes to.</summary>
+    public required string To { get; init; }
+
+    /// <summary>The subject as it goes; nothing is filled in.</summary>
+    public required string Subject { get; init; }
+
+    /// <summary>The plain-text part as it goes; nothing is filled in.</summary>
+    public required string Body { get; init; }
+
+    /// <summary>A finished HTML part; null: one made from <see cref="Body"/>.</summary>
+    public string? Html { get; init; }
+}
+
 /// <summary>How an attempt at a message ended.</summary>
 public enum OutboxAttemptResult
 {
@@ -149,6 +173,13 @@ public interface IOutbox
     /// where replies go and its Message-ID. Nothing is sent here.
     /// </summary>
     Task<Result<OutboundMessage>> QueueEmailAsync(OutboundEmailRequest request, CancellationToken ct = default);
+
+    /// <summary>
+    /// Queues an email from the platform to one of the people who run it
+    /// (<see cref="PlatformEmailRequest"/>). It has no workspace: the dispatcher sends it like
+    /// any other, without a workspace's checks.
+    /// </summary>
+    Task<Result<OutboundMessage>> QueuePlatformEmailAsync(PlatformEmailRequest request, CancellationToken ct = default);
 
     /// <summary>
     /// The first attempt at a message queued with <see cref="OutboundEmailRequest.PersonWaiting"/>,
@@ -397,6 +428,43 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
         }).ToList();
         await _messages.AddAsync(message, files, ct);
         if (!request.PersonWaiting) _signal.Notify();
+        return message;
+    }
+
+    public async Task<Result<OutboundMessage>> QueuePlatformEmailAsync(PlatformEmailRequest request, CancellationToken ct = default)
+    {
+        var to = Addresses([request.To]);
+        if (to.Count != 1) return new Error("Email.NoRecipient", "A platform email goes to one address.");
+        if (!ValidationHelper.IsValidEmail(to[0])) return new Error("Email.InvalidAddress", $"\"{to[0]}\" is not a valid email address.");
+        var subject = OneLine(request.Subject);
+        if (subject.Length == 0) return new Error("Email.NoSubject", "Add a subject.");
+        if (subject.Length > 300) subject = subject[..300];
+
+        var id = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        var fromName = string.IsNullOrWhiteSpace(_settings.FromName) ? "CadenceE" : OneLine(_settings.FromName);
+        var message = new OutboundMessage
+        {
+            Id = id,
+            // No workspace and nobody behind it: no workspace's filter shows it, and no
+            // suppression list, timeline or bell is involved when the dispatcher sends it.
+            OrganizationId = null,
+            CreatedByUserId = null,
+            Channel = OutboundChannels.Email,
+            Source = request.Source,
+            Status = OutboundStatuses.Queued,
+            NextAttemptAtUtc = now,
+            CreatedAtUtc = now,
+            FromName = Clip(fromName, MaxFromName),
+            To = to[0],
+            Subject = subject,
+            Body = request.Body,
+            TextBody = request.Body,
+            HtmlBody = request.Html ?? PlainTextEmail.ToHtml(request.Body),
+            MessageIdHeader = $"<{id:N}@{MessageIdDomain(null)}>",
+        };
+        await _messages.AddAsync(message, ct);
+        _signal.Notify();
         return message;
     }
 

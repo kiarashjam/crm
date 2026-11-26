@@ -135,7 +135,12 @@ public sealed class ClientErrorsController : ControllerBase
         return Clip(address, MaxUrl);
     }
 
-    private static string RedactPath(string path)
+    /// <summary>
+    /// A page's or the API's path with its secret segment replaced by <see cref="Placeholder"/>:
+    /// the app's own (/sign, /unsubscribe, /pay) and the request log's. Also what the site
+    /// analytics redact a page's path with (SiteTraffic).
+    /// </summary>
+    public static string RedactPath(string path)
     {
         var page = PageSecret.Match(path);
         if (page.Success) return page.Groups["keep"].Value + Placeholder + page.Groups["rest"].Value;
@@ -157,7 +162,8 @@ public sealed class ClientErrorsController : ControllerBase
     /// <summary>Cut short before it is worked on, so a long field costs no more than a short one.</summary>
     private static string Bound(string text, int max) => text.Length <= max + 64 ? text : text[..(max + 64)];
 
-    private static async Task<byte[]?> ReadAtMostAsync(Stream body, int max, CancellationToken ct)
+    /// <summary>The body, or null once it is longer than <paramref name="max"/> bytes (read no further).</summary>
+    internal static async Task<byte[]?> ReadAtMostAsync(Stream body, int max, CancellationToken ct)
     {
         using var buffer = new MemoryStream();
         var chunk = new byte[4096];

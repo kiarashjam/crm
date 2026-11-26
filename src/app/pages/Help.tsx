@@ -5,6 +5,7 @@ import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import PageHero from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
+import { CONTACT_EMAIL } from '@/app/marketing/site';
 
 const TOC = [
   { href: '#what-heading', label: 'What CadenceE does' },
@@ -141,9 +142,13 @@ export default function Help() {
             </div>
             <div className="bg-gradient-to-r from-teal-600 to-teal-500 rounded-2xl shadow-lg shadow-teal-200/50 p-8 text-white">
               <p className="text-lg mb-4">Something unclear or broken? We’re here to help.</p>
-              <a href="mailto:support@example.com" className="inline-block bg-white text-teal-700 hover:bg-slate-50 px-6 py-3 rounded-2xl font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-teal-500">
-                Contact Support
-              </a>
+              {CONTACT_EMAIL ? (
+                <a href={`mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent('CadenceE support')}`} className="inline-block bg-white text-teal-700 hover:bg-slate-50 px-6 py-3 rounded-2xl font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-teal-500">
+                  Contact Support
+                </a>
+              ) : (
+                <p className="text-teal-50">Reply to your CadenceE welcome email, or ask the person who invited you to your workspace.</p>
+              )}
             </div>
           </section>
         </div>

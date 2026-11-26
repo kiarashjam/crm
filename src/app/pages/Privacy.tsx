@@ -191,6 +191,32 @@ function NoticeBody({ notice }: { notice: PrivacyNotice | null }) {
         </p>
       </Section>
 
+      <Section title="Visits to this site">
+        <p>
+          The operator counts visits to this site with its own analytics, without cookies and without any outside
+          analytics service. It records the pages opened (as their general address, such as /leads/:id, never with what
+          follows a ? or a token), clicks on marked buttons, the site a link to another site leads to, that a sign-up was
+          started or completed, the type of device, the browser, the operating system, the language, the site a visit
+          came from (its name only), and the utm source, medium and campaign of the link followed.
+        </p>
+        <p>
+          To group the pages of one visit, the browser keeps a random identifier for the tab in its session storage,
+          deleted when the tab closes. Visitors are counted with a hash of a shortened IP address and the browser,
+          salted with a random value that is replaced every day and destroyed a day later, so visits cannot be linked
+          from one day to the next and the IP address cannot be recovered. The IP address itself is not stored.
+        </p>
+        <p>
+          Use of the app while signed in is not recorded, and neither are the pages a club&apos;s customers open to sign a
+          contract, pay, unsubscribe, fill in a club&apos;s form or use its member portal. If your browser sends Do Not
+          Track or Global Privacy Control, nothing is recorded. The records are kept for 400 days, then deleted. The legal
+          basis is the operator&apos;s legitimate interest in counting visits and improving the site (GDPR art. 6(1)(f)).
+        </p>
+        <p>
+          Separately, the hosting platform&apos;s server access logs, kept for security, hold IP addresses for up to 30
+          days.
+        </p>
+      </Section>
+
       <Section title="How long it is kept">
         {notice.retention ? (
           <ul className="list-disc pl-5 space-y-1">

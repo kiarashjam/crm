@@ -80,6 +80,43 @@ jobs:
             --output none
           echo "Applied Email__SmtpPassword and Email__FrontendBaseUrl=$SPA_ORIGIN to $APP_NAME ($RESOURCE_GROUP)."
 
+      # Names the platform admins (Platform__AdminEmails): the people who run CadenceE
+      # itself, who may read the site analytics of cadencee.ai and get its daily email.
+      # A comma-separated list of addresses kept in the PLATFORM_ADMIN_EMAILS secret,
+      # never in the repository, which is public. No-ops until that secret exists, so
+      # the deploy is unaffected before then, and a list set by hand in Azure is kept.
+      #
+      # The "is the secret set?" test is done inside the script, NOT in an `if:`
+      # condition: the secrets context is not available to step-level `if`, and
+      # referencing it there makes the whole workflow file invalid (every job is
+      # skipped, so the deploy fails before it starts).
+      #
+      # `appsettings set` MERGES: it updates only the key named below and leaves
+      # everything else (notably the database connection string) untouched. The
+      # addresses are not printed; only how many there are.
+      - name: Configure platform admins
+        env:
+          APP_NAME: ${{ secrets.AZURE_WEBAPP_NAME }}
+          PLATFORM_ADMIN_EMAILS: ${{ secrets.PLATFORM_ADMIN_EMAILS }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PLATFORM_ADMIN_EMAILS:-}" ]; then
+            echo "PLATFORM_ADMIN_EMAILS secret is not set; leaving the platform admins unchanged."
+            exit 0
+          fi
+          RESOURCE_GROUP=$(az webapp list --query "[?name=='$APP_NAME'].resourceGroup | [0]" -o tsv)
+          if [ -z "$RESOURCE_GROUP" ]; then
+            echo "::error::Could not find a Web App named '$APP_NAME' in this subscription; cannot apply the platform admins."
+            exit 1
+          fi
+          az webapp config appsettings set \
+            --name "$APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --settings "Platform__AdminEmails=$PLATFORM_ADMIN_EMAILS" \
+            --output none
+          COUNT=$(printf '%s' "$PLATFORM_ADMIN_EMAILS" | tr ',;' '\n\n' | grep -c '@' || true)
+          echo "Applied Platform__AdminEmails ($COUNT address(es)) to $APP_NAME ($RESOURCE_GROUP)."
+
       # The API's own public address (Email__ApiBaseUrl) builds the links to email images
       # and the address a member portal reports a welcome's progress to, which must be
       # https: Pavillon 46 refuses a handoff that names any other. It defaults to

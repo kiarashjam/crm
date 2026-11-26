@@ -265,6 +265,13 @@ public static class OutboundSources
     /// <summary>A newsletter sent to the person who pressed "Send a test to me", marked as a test.</summary>
     public const string NewsletterTest = "newsletter_test";
     /// <summary>
+    /// The daily site analytics email to the platform's admins (Platform:AdminEmails). It
+    /// belongs to no workspace: its OrganizationId and CreatedByUserId are empty, and
+    /// <see cref="OutboundMessage.SourceId"/> is empty too; the day's SiteAnalyticsDigest row
+    /// keeps it to one a day.
+    /// </summary>
+    public const string SiteAnalyticsDigest = "analytics_digest";
+    /// <summary>
     /// A member's invitation to an event, or its one reminder, with their own reply link;
     /// <see cref="OutboundMessage.SourceId"/> is their invitation (ClubEventInvitation).
     /// </summary>

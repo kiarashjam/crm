@@ -187,6 +187,14 @@ public partial class AppDbContext : DbContext
     public DbSet<ClubPrivateEventLine> ClubPrivateEventLines => Set<ClubPrivateEventLine>();
     public DbSet<ClubPrivateEventGuest> ClubPrivateEventGuests => Set<ClubPrivateEventGuest>();
 
+    // The site analytics of cadencee.ai itself: global, in no workspace (no OrganizationId, so
+    // no workspace filter), read by platform admins only. The visits, the robots counted instead,
+    // the secret the daily salts come from, and the days the daily email has gone for.
+    public DbSet<SiteEvent> SiteEvents => Set<SiteEvent>();
+    public DbSet<SiteBotHit> SiteBotHits => Set<SiteBotHit>();
+    public DbSet<SiteAnalyticsSalt> SiteAnalyticsSalts => Set<SiteAnalyticsSalt>();
+    public DbSet<SiteAnalyticsDigest> SiteAnalyticsDigests => Set<SiteAnalyticsDigest>();
+
     /// <summary>
     /// Whether saving writes audit lines. Off only while an organization is copied: its
     /// history is copied with it, and each copied record would otherwise get a new

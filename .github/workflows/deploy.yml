@@ -15,6 +15,12 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+  # The launch offer (free until 31 December 2026, src/app/lib/launchOffer.ts) ends at
+  # midnight in Zurich. The browser hides it by itself from then on; this rebuild, at
+  # 00:07 in Zurich on 1 January, takes it out of the prerendered HTML crawlers read too.
+  # It deploys main as it is, like a manual run.
+  schedule:
+    - cron: '7 23 31 12 *'
 
 # One deploy at a time. A deploy under way is never cancelled halfway through; a
 # newer push waits for it, and takes the place of any older one still waiting.
@@ -53,11 +59,24 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # npm run build is vite build, then the prerender (scripts/seo/prerender.mjs): every
+      # public page as static HTML, sitemap.xml, llms.txt, 404.html and the SWA routes. It
+      # renders with React on Node, so no browser is installed; it adds a few seconds.
       - name: Build
         run: npm run build
         env:
           # Optional: set vars.VITE_API_URL (e.g. https://aci-api-xxx.azurewebsites.net) so frontend calls deployed backend
           VITE_API_URL: ${{ vars.VITE_API_URL }}
+          # Optional (docs/SEO.md): the search consoles' site-verification codes, and the
+          # address "Request a demo" and "Contact us" write to. Empty leaves them out.
+          VITE_GOOGLE_SITE_VERIFICATION: ${{ vars.VITE_GOOGLE_SITE_VERIFICATION }}
+          VITE_BING_SITE_VERIFICATION: ${{ vars.VITE_BING_SITE_VERIFICATION }}
+          VITE_CONTACT_EMAIL: ${{ vars.VITE_CONTACT_EMAIL }}
+
+      # The sitemap the live site serves before this deploy, so IndexNow is told only
+      # about pages that are new or changed. Nothing there yet is fine.
+      - name: Keep the live sitemap
+        run: curl -fsSL --max-time 20 https://www.cadencee.ai/sitemap.xml -o previous-sitemap.xml || true
 
       - name: Deploy to Azure Static Web Apps
         uses: Azure/static-web-apps-deploy@v1
@@ -68,3 +87,10 @@ jobs:
           app_location: 'dist'
           output_location: '.'
           skip_app_build: true
+
+      # Bing and the other IndexNow engines hear about new and changed pages at once
+      # (Google reads the sitemap). Never fails the deploy.
+      - name: Ping IndexNow
+        continue-on-error: true
+        timeout-minutes: 2
+        run: node scripts/seo/indexnow.mjs --sitemap dist/sitemap.xml --previous previous-sitemap.xml

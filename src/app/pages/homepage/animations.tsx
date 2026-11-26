@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, ReactNode } from 'react';
+import { useState, useEffect, useId, useRef, ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Circle, Hexagon, Triangle, ChevronDown, Sparkles } from 'lucide-react';
 
@@ -10,7 +10,9 @@ export { ChevronDown }; // Re-export for use in Homepage
 
 export function useInView(options?: IntersectionObserverInit) {
   const ref = useRef<HTMLDivElement>(null);
-  const [isInView, setIsInView] = useState(false);
+  // Rendered at build time (the prerender has no window), content is shown as it is once
+  // scrolled to, so the static HTML is readable; in the browser it fades in as before.
+  const [isInView, setIsInView] = useState(typeof window === 'undefined');
 
   useEffect(() => {
     const observer = new IntersectionObserver(([entry]) => {
@@ -203,7 +205,7 @@ export function GlitchText({ children, className = '' }: { children: ReactNode; 
 }
 
 // Ripple button
-export function RippleButton({ children, className = '', to }: { children: ReactNode; className?: string; to: string }) {
+export function RippleButton({ children, className = '', to, track }: { children: ReactNode; className?: string; to: string; track?: string }) {
   const [ripples, setRipples] = useState<{ x: number; y: number; id: number }[]>([]);
 
   const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
@@ -216,7 +218,7 @@ export function RippleButton({ children, className = '', to }: { children: React
   };
 
   return (
-    <Link to={to} className={`relative overflow-hidden ${className}`} onClick={handleClick}>
+    <Link to={to} className={`relative overflow-hidden ${className}`} onClick={handleClick} data-track={track}>
       <style>{`
         @keyframes ripple {
           to { transform: scale(4); opacity: 0; }
@@ -464,57 +466,62 @@ export function FAQItemNew({
 }: FAQItemProps) {
   const [isOpen, setIsOpen] = useState(false);
   const { ref, isInView } = useInView();
-  
+  const answerId = useId();
+
+  // The question is a heading with a button in it (not a button around a heading, which
+  // HTML does not allow); the answer is always in the page, shown or folded.
   return (
     <div
       ref={ref}
       className={`transition-all duration-700 ${isInView ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'}`}
       style={{ transitionDelay: `${index * 100}ms` }}
     >
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full group"
-      >
-        <div className={`relative bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden border border-slate-100 ${
-          isOpen ? 'ring-2 ring-offset-2 ring-orange-500' : ''
-        }`}>
-          {/* Decorative gradient stripe */}
-          <div className={`absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b ${color}`} />
-          
-          <div className="p-6 pl-8">
-            {/* Question Header */}
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
-                {/* Icon */}
-                <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center shadow-lg flex-shrink-0 group-hover:scale-110 transition-transform duration-300`}>
-                  <Icon className="w-6 h-6 text-white" />
-                </div>
-                
-                {/* Question text */}
-                <h3 className="text-left text-lg font-semibold text-slate-900 group-hover:text-orange-600 transition-colors">
-                  {question}
-                </h3>
-              </div>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-all duration-300 ${
-                isOpen ? 'bg-slate-900 rotate-180' : 'bg-slate-100 group-hover:bg-slate-200'
-              }`}>
-                <ChevronDown className={`w-4 h-4 transition-colors duration-300 ${
-                  isOpen ? 'text-white' : 'text-slate-500'
-                }`} />
-              </div>
-            </div>
-            
-            {/* Answer */}
-            <div className={`overflow-hidden transition-all duration-500 ease-out ${
-              isOpen ? 'max-h-48 opacity-100 mt-4' : 'max-h-0 opacity-0 mt-0'
-            }`}>
-              <p className="text-slate-600 leading-relaxed pr-12">
-                {answer}
-              </p>
-            </div>
-          </div>
+      <div className={`group relative bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden border border-slate-100 ${
+        isOpen ? 'ring-2 ring-offset-2 ring-orange-500' : ''
+      }`}>
+        {/* Decorative gradient stripe */}
+        <div className={`absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b ${color}`} aria-hidden="true" />
+
+        <h3 className="m-0">
+          <button
+            type="button"
+            onClick={() => setIsOpen(!isOpen)}
+            aria-expanded={isOpen}
+            aria-controls={answerId}
+            className="w-full p-6 pl-8 flex items-center justify-between gap-4 text-left"
+          >
+            <span className="flex items-center gap-4">
+              {/* Icon */}
+              <span className={`w-12 h-12 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center shadow-lg flex-shrink-0 group-hover:scale-110 transition-transform duration-300`} aria-hidden="true">
+                <Icon className="w-6 h-6 text-white" />
+              </span>
+              {/* Question text */}
+              <span className="text-left text-lg font-semibold text-slate-900 group-hover:text-orange-700 transition-colors">
+                {question}
+              </span>
+            </span>
+            <span className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-all duration-300 ${
+              isOpen ? 'bg-slate-900 rotate-180' : 'bg-slate-100 group-hover:bg-slate-200'
+            }`} aria-hidden="true">
+              <ChevronDown className={`w-4 h-4 transition-colors duration-300 ${
+                isOpen ? 'text-white' : 'text-slate-600'
+              }`} />
+            </span>
+          </button>
+        </h3>
+
+        {/* Answer */}
+        <div
+          id={answerId}
+          className={`overflow-hidden transition-all duration-500 ease-out px-8 ${
+            isOpen ? 'max-h-96 opacity-100 pb-6' : 'max-h-0 opacity-0 pb-0'
+          }`}
+        >
+          <p className="text-slate-700 leading-relaxed pl-16 pr-12">
+            {answer}
+          </p>
         </div>
-      </button>
+      </div>
     </div>
   );
 }

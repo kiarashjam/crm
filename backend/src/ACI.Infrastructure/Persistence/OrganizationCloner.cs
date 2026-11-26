@@ -76,6 +76,10 @@ public sealed class OrganizationCloner
         [typeof(MemberPortalLink)] = "Sign-in links emailed for the original's member portal, which sign in to the original only.",
         [typeof(MemberPortalAccount)] = "Who was invited to and used the original's member portal; nobody has used the copy's yet.",
         [typeof(AiUsage)] = "The original's calls to the language model, held against its monthly limit; the copy has made none.",
+        [typeof(SiteEvent)] = "The platform's own site analytics, which belong to no organization.",
+        [typeof(SiteBotHit)] = "The platform's own site analytics, which belong to no organization.",
+        [typeof(SiteAnalyticsSalt)] = "The platform's own site analytics, which belong to no organization.",
+        [typeof(SiteAnalyticsDigest)] = "The platform's own site analytics, which belong to no organization.",
     };
 
     private static readonly Regex GuidText = new(

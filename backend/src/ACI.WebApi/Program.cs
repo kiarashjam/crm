@@ -388,6 +388,13 @@ try
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
             }));
+        // The site analytics' tracker (SiteAnalyticsController.Events), anonymous: 30 posts a minute
+        // from one address (a tab posts every five seconds at most), then 600 a minute from everyone
+        // together, chained so an address over its own limit takes nothing from everyone's. The
+        // address is the proxy's forwarded one when the connection comes from a private network
+        // (SiteTraffic.ClientAddress). The global limiter, as an endpoint policy cannot chain two
+        // limiters; it lets every other request through.
+        options.GlobalLimiter = ACI.WebApi.Controllers.SiteAnalyticsController.Limiter();
     });
     builder.Services.AddResponseCompression(options => options.EnableForHttps = true);
     builder.Services.AddEndpointsApiExplorer();
@@ -597,6 +604,9 @@ try
     builder.Services.AddHostedService<ACI.WebApi.Services.PortalPingBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.MonitoringSignalsBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.HealthDigestBackgroundService>();
+    // The site analytics of cadencee.ai: yesterday's figures to the platform admins from 07:30
+    // Zurich, and the daily clean-up of events older than 400 days.
+    builder.Services.AddHostedService<ACI.WebApi.Services.SiteAnalyticsDigestBackgroundService>();
 
     // HTTP Context accessor for current user service
     builder.Services.AddHttpContextAccessor();
@@ -759,17 +769,10 @@ try
     // Global exception handler
     app.UseExceptionHandler();
 
-    // Serilog request logging with enrichment
-    app.UseSerilogRequestLogging(options =>
-    {
-        options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
-        {
-            diagnosticContext.Set("UserId", httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "anonymous");
-            diagnosticContext.Set("OrganizationId", httpContext.Request.Headers["X-Organization-Id"].FirstOrDefault() ?? "none");
-            diagnosticContext.Set("ClientIP", httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown");
-        };
-        options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms";
-    });
+    // Serilog request logging with enrichment: who called, for which workspace, from which
+    // address. The anonymous beacons every visitor's page sends (/api/site-analytics,
+    // /api/client-errors) are at Verbose, so not written, and never with the address (RequestLog).
+    app.UseSerilogRequestLogging(ACI.WebApi.Monitoring.RequestLog.Configure);
 
     // Immediately after the request logger, so it sits INSIDE it: this rewrites the
     // path on the way back out, after routing has used it and before Serilog reads

@@ -1,5 +1,8 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
-import EmailComposerDialog, { type EmailComposerDialogProps } from '@/app/components/EmailComposerDialog';
+import { createContext, lazy, Suspense, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import type { EmailComposerDialogProps } from '@/app/components/EmailComposerDialog';
+
+// Fetched the first time someone composes an email, not with every page (the public site included).
+const EmailComposerDialog = lazy(() => import('@/app/components/EmailComposerDialog'));
 
 /** What to email, and to whom: everything the composer takes but its opening and closing. */
 export type ComposeEmail = Omit<EmailComposerDialogProps, 'open' | 'onOpenChange'>;
@@ -22,7 +25,11 @@ export function EmailComposerProvider({ children }: { children: ReactNode }) {
   return (
     <ComposerContext.Provider value={value}>
       {children}
-      {email && <EmailComposerDialog {...email} open={open} onOpenChange={setOpen} />}
+      {email && (
+        <Suspense fallback={null}>
+          <EmailComposerDialog {...email} open={open} onOpenChange={setOpen} />
+        </Suspense>
+      )}
     </ComposerContext.Provider>
   );
 }

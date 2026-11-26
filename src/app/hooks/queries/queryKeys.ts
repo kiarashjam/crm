@@ -39,6 +39,25 @@ const key = (scope: WorkspaceScope, resource: string, ...rest: unknown[]) =>
   [...workspacePrefix(scope), resource, ...rest] as const;
 
 /**
+ * The one exception to the workspace prefix: what belongs to the platform, not to any
+ * workspace (whether someone is a platform admin, the analytics of www.cadencee.ai). It is
+ * the same whichever workspace the tab has open, so a switch keeps it, and no workspace's
+ * save refreshes it; it is keyed by the signed-in user, and a sign-in or sign-out still
+ * clears it with everything else.
+ */
+const platformKey = (userId: string | null, ...rest: unknown[]) => ['platform', userId ?? 'signed-out', ...rest] as const;
+
+export const platformKeys = {
+  me: (userId: string | null) => platformKey(userId, 'me'),
+  siteAnalytics: {
+    summary: (userId: string | null, range: object, audience: string) => platformKey(userId, 'site-analytics', 'summary', audience, range),
+    live: (userId: string | null, audience: string) => platformKey(userId, 'site-analytics', 'live', audience),
+    sessions: (userId: string | null, day: string, limit: number, audience: string) =>
+      platformKey(userId, 'site-analytics', 'sessions', audience, day, limit),
+  },
+} as const;
+
+/**
  * The keys, by kind of record. A kind is named as api/dataChanged names what a write
  * changes, so a list is refreshed when, and only when, a write touched its kind.
  */
