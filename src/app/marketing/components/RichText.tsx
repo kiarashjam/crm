@@ -26,7 +26,7 @@ export function RichText({ text, lang }: { text: string; lang: SiteLang }) {
       track = `nav-${id}`;
     } else if (target.startsWith('/login')) {
       // "/login?demo=1" opens the demo workspace (sample data, no account): counted apart from sign-ins.
-      track = target.includes('mode=register') ? 'cta-signup' : target.includes('demo=1') ? 'cta-try-demo' : 'cta-login';
+      track = target.includes('mode=register') ? 'cta-signup' : target.includes('demo=1') ? 'cta-try' : 'cta-login';
     }
     parts.push(
       <Link key={at} to={to} data-track={track} className="font-semibold text-orange-700 underline decoration-orange-300 underline-offset-4 hover:decoration-orange-600">

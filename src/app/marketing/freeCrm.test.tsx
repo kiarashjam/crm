@@ -122,7 +122,7 @@ describe('the free-CRM page as people see it', () => {
       expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
       expect(screen.getByRole('heading', { level: 1 }).textContent).toMatch(DURING_H1[lang]);
       const demo = during.container.querySelector('a[href="/login?demo=1"]');
-      expect(demo?.getAttribute('data-track')).toBe('cta-try-demo');
+      expect(demo?.getAttribute('data-track')).toBe('cta-try');
       expect(during.container.querySelector('script[type="application/ld+json"]')?.textContent).toContain('FAQPage');
       during.unmount();
 
