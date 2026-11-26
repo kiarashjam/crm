@@ -5,6 +5,7 @@
 
 import { deFreeCrm } from './freeCrm';
 import { dePricing } from './pricing';
+import { deGuides } from './guides/de';
 import type { LanguageContent } from './types';
 
 const de: LanguageContent = {
@@ -14,6 +15,15 @@ const de: LanguageContent = {
     faqEyebrow: 'FAQ',
     solutionsEyebrow: 'Lösungen',
     stepLabel: 'Schritt',
+    minRead: 'Min. Lesezeit',
+    updated: 'Aktualisiert am',
+    onThisPage: 'Auf dieser Seite',
+    keyTakeaways: 'Das Wichtigste in Kürze',
+    furtherReading: 'Weiterlesen',
+    moreGuides: 'Weitere Ratgeber',
+    guidesEyebrow: 'Ratgeber',
+    guidesH1: 'Ratgeber für Clubs, Vereine und Verkaufsteams',
+    guidesLead: 'Praxisnahe Ratgeber zu den Fragen, die sich Clubs, Gastronomie und Verkaufsteams in der Schweiz am häufigsten stellen: Mitglieder und Verlängerungen, QR-Rechnung und Datenschutz, Nachfassen und die Wahl eines CRM.',
   },
   pages: {
     home: {
@@ -1108,6 +1118,7 @@ const de: LanguageContent = {
     pricing: dePricing,
     'free-crm': deFreeCrm,
   },
+  guides: deGuides,
 };
 
 export default de;

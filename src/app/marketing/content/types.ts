@@ -5,7 +5,8 @@
 // language and "[label](/login)" to an address on the site: the pages link to each other in
 // their own sentences, not only in lists.
 
-import type { MarketingPageId } from '../routes';
+import type { GuideId, MarketingPageId } from '../routes';
+import type { GuideContent } from './guides/types';
 
 export const FEATURE_ICONS = [
   'leads', 'score', 'duplicates', 'partner', 'import', 'forms', 'webhook',
@@ -84,9 +85,21 @@ export interface TemplateStrings {
   faqEyebrow: string;
   solutionsEyebrow: string;
   stepLabel: string;
+  /** The guides: "8 min read", "Updated", "On this page", "In brief", and the lists that link them. */
+  minRead: string;
+  updated: string;
+  onThisPage: string;
+  keyTakeaways: string;
+  furtherReading: string;
+  moreGuides: string;
+  /** The guides' index: the badge above its H1, the H1, and the paragraph under it. */
+  guidesEyebrow: string;
+  guidesH1: string;
+  guidesLead: string;
 }
 
 export interface LanguageContent {
   template: TemplateStrings;
   pages: Partial<Record<MarketingPageId, PageContent>>;
+  guides: Record<GuideId, GuideContent>;
 }

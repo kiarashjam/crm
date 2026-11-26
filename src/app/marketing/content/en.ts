@@ -5,6 +5,7 @@
 
 import { enFreeCrm } from './freeCrm';
 import { enPricing } from './pricing';
+import { enGuides } from './guides/en';
 import type { LanguageContent } from './types';
 
 const en: LanguageContent = {
@@ -14,6 +15,15 @@ const en: LanguageContent = {
     faqEyebrow: 'FAQ',
     solutionsEyebrow: 'Solutions',
     stepLabel: 'Step',
+    minRead: 'min read',
+    updated: 'Updated',
+    onThisPage: 'On this page',
+    keyTakeaways: 'In brief',
+    furtherReading: 'Further reading',
+    moreGuides: 'More guides',
+    guidesEyebrow: 'Guides',
+    guidesH1: 'Guides for running a club and a sales team',
+    guidesLead: 'Practical, independent guides on the questions clubs, venues and sales teams in Switzerland ask most: members and renewals, QR-bills and privacy, follow-ups, and choosing a CRM.',
   },
   pages: {
     features: {
@@ -1020,6 +1030,7 @@ const en: LanguageContent = {
     pricing: enPricing,
     'free-crm': enFreeCrm,
   },
+  guides: enGuides,
 };
 
 export default en;

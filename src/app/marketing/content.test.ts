@@ -8,6 +8,8 @@ import { LANDING_PAGE_IDS, MARKETING_PAGES, MARKETING_PAGE_IDS } from './routes'
 import { SITE_LANGS, type SiteLang } from './site';
 
 const CONTENT: Record<SiteLang, LanguageContent> = { en, fr, de };
+/** The pages laid out from PageContent: every one but the guides and their index (guides.test.ts). */
+const CONTENT_PAGES = MARKETING_PAGES.filter((p) => p.kind !== 'guide' && p.kind !== 'guides');
 const DURING_OFFER = Date.parse('2026-11-25T12:00:00Z');
 const AFTER_OFFER = Date.parse('2027-01-02T12:00:00Z');
 
@@ -93,7 +95,7 @@ describe('page content', () => {
   for (const lang of SITE_LANGS) {
     it(`exists for every page in ${lang}, with one distinct H1 each`, () => {
       const h1s: string[] = [];
-      for (const page of MARKETING_PAGES) {
+      for (const page of CONTENT_PAGES) {
         const content = CONTENT[lang].pages[page.id];
         if (lang === 'en' && page.id === 'home') {
           expect(content).toBeUndefined(); // the animated Homepage
@@ -106,7 +108,7 @@ describe('page content', () => {
     });
 
     it(`keeps one distinct H1 per page in ${lang} after the offer, too`, () => {
-      const h1s = MARKETING_PAGES.flatMap((page) => {
+      const h1s = CONTENT_PAGES.flatMap((page) => {
         const content = CONTENT[lang].pages[page.id];
         return content ? [fullH1({ ...content, ...content.afterOffer })] : [];
       });
@@ -114,7 +116,7 @@ describe('page content', () => {
     });
 
     it(`is substantial and well formed in ${lang}`, () => {
-      for (const page of MARKETING_PAGES) {
+      for (const page of CONTENT_PAGES) {
         const content = CONTENT[lang].pages[page.id];
         if (!content) continue;
         const count = words(content);
