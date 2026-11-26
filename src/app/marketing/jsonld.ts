@@ -149,6 +149,37 @@ export function breadcrumbJsonLd(crumbs: Crumb[]): JsonLd {
   };
 }
 
+/** A guide: an Article by CadenceE, in its language, with its dates and its social image. */
+export function articleJsonLd(input: {
+  headline: string;
+  description: string;
+  url: string;
+  image: string;
+  lang: SiteLang;
+  published: string;
+  modified: string;
+}): JsonLd {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: input.headline,
+    description: input.description,
+    inLanguage: input.lang,
+    url: input.url,
+    mainEntityOfPage: { '@type': 'WebPage', '@id': input.url },
+    image: absoluteUrl(input.image),
+    datePublished: input.published,
+    dateModified: input.modified,
+    author: { '@type': 'Organization', '@id': ORG_ID, name: SITE_NAME, url: `${SITE_URL}/` },
+    publisher: {
+      '@type': 'Organization',
+      '@id': ORG_ID,
+      name: SITE_NAME,
+      logo: { '@type': 'ImageObject', url: absoluteUrl(SITE_LOGO_PATH), width: 512, height: 512 },
+    },
+  };
+}
+
 export interface FaqEntry {
   q: string;
   a: string;

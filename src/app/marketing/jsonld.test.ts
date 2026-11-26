@@ -80,7 +80,8 @@ describe('JSON-LD', () => {
         }
         expect(crumbs).toHaveLength(1);
         const items = crumbs[0]!.itemListElement as JsonLd[];
-        expect(items.map((i) => i.position)).toEqual([1, 2]);
+        // A guide sits under the guides' index: Home › Guides › the guide.
+        expect(items.map((i) => i.position)).toEqual(page.kind === 'guide' ? [1, 2, 3] : [1, 2]);
         for (const item of items) expect(item.item).toMatch(/^https:\/\/www\.cadencee\.ai\//);
       }
     }
@@ -107,5 +108,22 @@ describe('JSON-LD', () => {
       }
     }
     expect(stripLinkMarkup('See [billing](page:billing) and [sign in](/login).')).toBe('See billing and sign in.');
+  });
+
+  it('describes every guide as an Article by CadenceE, with its dates, in its language', () => {
+    for (const page of MARKETING_PAGES.filter((p) => p.kind === 'guide')) {
+      for (const lang of SITE_LANGS) {
+        const head = headForPath(page.paths[lang], DURING_OFFER);
+        const article = head.jsonLd.find((d) => d['@type'] === 'Article');
+        expect(article, page.paths[lang]).toBeDefined();
+        expect(article!.inLanguage).toBe(lang);
+        expect(article!.datePublished).toBe(page.published);
+        expect(article!.dateModified).toBe(page.lastmod);
+        expect(article!.url).toBe(`https://www.cadencee.ai${page.paths[lang]}`);
+        expect(String(article!.headline)).not.toMatch(/\| CadenceE$/);
+        expect((article!.publisher as JsonLd).name).toBe('CadenceE');
+        expect(head.metas.find((m) => m.property === 'og:type')?.content).toBe('article');
+      }
+    }
   });
 });

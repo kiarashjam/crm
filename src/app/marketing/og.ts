@@ -9,7 +9,7 @@ import en from './content/en';
 import fr from './content/fr';
 import type { LanguageContent } from './content/types';
 import { PAGE_META, SITE_STRINGS } from './meta';
-import { MARKETING_PAGES } from './routes';
+import { MARKETING_PAGES, type GuideId } from './routes';
 import { DEFAULT_OG_IMAGE, OFFER_OG_PAGES, ogImagePath } from './seo';
 import { SITE_LANGS, type SiteLang } from './site';
 
@@ -39,9 +39,15 @@ export function ogImageSpecs(): OgImageSpec[] {
     for (const lang of SITE_LANGS) {
       const words = CONTENT[lang].pages[page.id];
       const enHome = lang === 'en' && page.id === 'home';
+      // A guide says its own eyebrow and H1; the guides' index, its labels.
+      const guide = page.kind === 'guide' ? CONTENT[lang].guides[page.id as GuideId] : undefined;
       const base = enHome
         ? EN_HOME
-        : { kicker: words?.eyebrow ?? PAGE_META[lang][page.id].nav, title: words?.h1 ?? PAGE_META[lang][page.id].title, accent: words?.h1Accent };
+        : guide
+          ? { kicker: guide.eyebrow, title: guide.h1, accent: undefined }
+          : page.kind === 'guides'
+            ? { kicker: CONTENT[lang].template.guidesEyebrow, title: CONTENT[lang].template.guidesH1, accent: undefined }
+            : { kicker: words?.eyebrow ?? PAGE_META[lang][page.id].nav, title: words?.h1 ?? PAGE_META[lang][page.id].title, accent: words?.h1Accent };
       const footer = `www.cadencee.ai · ${SITE_STRINGS[lang].builtIn}`;
       // A page whose words change when the offer ends (pricing, the free-CRM page, the French
       // and German home pages) says its offer words on the -offer image and its after-offer

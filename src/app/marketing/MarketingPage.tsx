@@ -13,7 +13,7 @@ import { PageCard } from './components/PageCard';
 import { RichText } from './components/RichText';
 import type { PageContent, TemplateStrings } from './content/types';
 import { PAGE_META, SITE_STRINGS } from './meta';
-import { LANDING_PAGE_IDS, marketingPage, marketingPath, type MarketingPageId } from './routes';
+import { LANDING_PAGE_IDS, guidesFor, marketingPage, marketingPath, type MarketingPageId } from './routes';
 import { breadcrumbsFor } from './seo';
 import type { SiteLang } from './site';
 
@@ -277,6 +277,20 @@ export function MarketingPage({ id, lang, content, template }: MarketingPageProp
           </div>
         </div>
       </section>
+
+      {/* Further reading: the guides that go deeper on this page's topic */}
+      {guidesFor(id).length > 0 && (
+        <section className="py-16 lg:py-20 bg-white border-t border-slate-100">
+          <div className={container}>
+            <h2 className="text-3xl font-bold text-slate-900 mb-10">{template.furtherReading}</h2>
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              {guidesFor(id).slice(0, 3).map((gid) => (
+                <PageCard key={gid} id={gid} lang={lang} />
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Related pages */}
       {content.related.length > 0 && (

@@ -29,7 +29,7 @@ function wordCount(guide: GuideContent): number {
 }
 
 function links(guide: GuideContent): string[] {
-  return texts(guide).flatMap((t) => [...t.matchAll(/\]\(([^)]+)\)/g)].map((m) => m[1]));
+  return texts(guide).flatMap((t) => [...t.matchAll(/\]\(([^)]+)\)/g)].map((m) => m[1] ?? ''));
 }
 
 describe('the guides', () => {

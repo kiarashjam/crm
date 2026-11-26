@@ -11,7 +11,7 @@ import { useLaunchOfferActive, useSignupLabel } from './LaunchOffer';
 import { LanguageSwitch } from './LanguageSwitch';
 
 /** The pages the header links to, in order. Every other page is in the menu and the footer. */
-export const HEADER_PAGES: MarketingPageId[] = ['features', 'private-clubs', 'hospitality', 'sales', 'swiss', 'pricing'];
+export const HEADER_PAGES: MarketingPageId[] = ['features', 'private-clubs', 'hospitality', 'sales', 'swiss', 'guides', 'pricing'];
 
 /**
  * The public site's header: transparent over the hero, frosted white once the page scrolls,

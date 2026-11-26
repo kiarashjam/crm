@@ -7,7 +7,7 @@ import { CtaLink } from './CtaLink';
 import { useLaunchOfferActive } from './LaunchOffer';
 
 export const FOOTER_PRODUCT: MarketingPageId[] = ['features', 'pricing', 'ai', 'e-signature', 'email', 'billing'];
-export const FOOTER_SOLUTIONS: MarketingPageId[] = ['private-clubs', 'membership', 'hospitality', 'sales', 'swiss'];
+export const FOOTER_SOLUTIONS: MarketingPageId[] = ['private-clubs', 'membership', 'hospitality', 'sales', 'swiss', 'guides'];
 /** The pages about the launch offer (the free-CRM page): in the Product column, after Pricing, only while it runs. */
 export const FOOTER_OFFER: MarketingPageId[] = MARKETING_PAGES.filter((p) => p.offerOnly).map((p) => p.id);
 
