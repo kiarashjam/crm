@@ -1,10 +1,12 @@
+using System.Globalization;
+
 namespace ACI.Application.Common;
 
 /// <summary>A composed message: subject, plain-text part, HTML part.</summary>
 public record EmailContent(string Subject, string Text, string Html);
 
 /// <summary>
-/// The wording and markup of the three contract emails.
+/// The wording of the contract emails, drawn in the one email design (<see cref="EmailLayout"/>).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -16,69 +18,28 @@ public record EmailContent(string Subject, string Text, string Html);
 /// full contract text are all checkable, and the HTML can be rendered and looked at.
 /// </para>
 /// <para>
-/// Two constraints drive the markup. Every mail client strips a <c>&lt;style&gt;</c>
-/// block, so everything is inlined; and layout support varies enough that a single
-/// column with no floats is the only thing that degrades gracefully everywhere.
-/// Each message carries BOTH parts — a text-only client still gets the whole
-/// contract, not a "please enable HTML" stub.
+/// What goes to the counterparty (the request to sign, its reminder, the executed copy) wears
+/// the club's look, under the workspace's name: it is the workspace's contract, not the
+/// software's. The note that the counterparty has signed goes to the team, in CadenceE's own.
+/// Each message carries BOTH parts — a text-only client still gets the whole contract, not a
+/// "please enable HTML" stub.
 /// </para>
 /// </remarks>
 public static class ContractEmailContent
 {
-    private const string PStyle = "margin:0 0 14px;font-size:15px;line-height:1.55;color:#0f172a;";
-    private const string MutedStyle = "margin:18px 0 0;font-size:13px;line-height:1.5;color:#64748b;";
-    private const string PreStyle =
-        "white-space:pre-wrap;word-wrap:break-word;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;" +
-        "font-size:13px;line-height:1.6;color:#0f172a;background:#f8fafc;border:1px solid #e2e8f0;" +
-        "border-radius:10px;padding:16px;margin:0 0 16px;";
-    private const string SignatureBoxStyle =
-        "border:1px solid #a7f3d0;background:#ecfdf5;border-radius:10px;padding:14px 16px;margin:0 0 8px;";
+    private static string Hi(string? recipientName)
+        => string.IsNullOrWhiteSpace(recipientName) ? "Hi," : $"Hi {recipientName.Trim()},";
 
-    /// <summary>
-    /// HTML-escapes a value coming from the database.
-    /// </summary>
-    /// <remarks>
-    /// Every interpolation into the HTML goes through this. A contract title is
-    /// typed by a person, and a title containing <c>&lt;script&gt;</c> would
-    /// otherwise be delivered as markup into the counterparty's mail client.
-    /// Quotes are escaped too because several of these land inside attributes.
-    /// </remarks>
-    public static string Escape(string? s) => string.IsNullOrEmpty(s)
-        ? string.Empty
-        : s.Replace("&", "&amp;")
-           .Replace("<", "&lt;")
-           .Replace(">", "&gt;")
-           .Replace("\"", "&quot;")
-           .Replace("'", "&#39;");
+    private static EmailDesign Counterparty(string organizationName, string senderName) =>
+        new(EmailLook.Club, organizationName)
+        {
+            Language = "en",
+            FooterNote = string.IsNullOrWhiteSpace(organizationName)
+                ? $"Sent by {senderName}."
+                : $"Sent by {senderName} on behalf of {organizationName.Trim()}.",
+        };
 
-    private static string Greeting(string? recipientName)
-        => string.IsNullOrWhiteSpace(recipientName) ? string.Empty : " " + recipientName.Trim();
-
-    private static string Button(string url, string label) =>
-        $"<p style=\"margin:22px 0;\"><a href=\"{Escape(url)}\" " +
-        "style=\"display:inline-block;background:#ea580c;color:#ffffff;text-decoration:none;" +
-        "font-weight:600;font-size:15px;padding:12px 22px;border-radius:10px;\">" +
-        $"{Escape(label)}</a></p>" +
-        // Always paired with the bare URL. Plenty of clients strip or fail to
-        // render the anchor, and a button that does nothing with no way to
-        // recover is how a contract goes unsigned.
-        $"<p style=\"{MutedStyle}\">If the button does not work, paste this into your browser:<br>" +
-        $"<span style=\"color:#0f172a;word-break:break-all;\">{Escape(url)}</span></p>";
-
-    private static string Document(string senderName, string heading, string intro, string bodyHtml, string? footer) =>
-        "<!doctype html><html><body style=\"margin:0;padding:24px;background:#f1f5f9;" +
-        "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;\">" +
-        "<div style=\"max-width:640px;margin:0 auto;background:#ffffff;border-radius:16px;" +
-        "border:1px solid #e2e8f0;padding:28px 30px;\">" +
-        $"<h1 style=\"margin:0 0 6px;font-size:20px;line-height:1.3;color:#0f172a;\">{Escape(heading)}</h1>" +
-        $"<p style=\"{PStyle}\">{intro}</p>" +
-        bodyHtml +
-        (string.IsNullOrWhiteSpace(footer)
-            ? string.Empty
-            : $"<p style=\"{MutedStyle}\">— {Escape(footer)}</p>") +
-        $"<p style=\"{MutedStyle}border-top:1px solid #e2e8f0;padding-top:14px;\">" +
-        $"Sent by {Escape(senderName)}.</p>" +
-        "</div></body></html>";
+    private static string Day(DateTime utc) => utc.ToString("d MMMM yyyy", CultureInfo.InvariantCulture);
 
     /// <summary>Step 3: the counterparty is asked to read and sign.</summary>
     /// <param name="hasAttachment">
@@ -91,36 +52,51 @@ public static class ContractEmailContent
         string contractTitle, string signUrl, bool hasAttachment = false)
     {
         var subject = $"{organizationName}: please review and sign “{contractTitle}”";
-        var attachedText = hasAttachment
-            ? "A copy is attached to this email so you can read it at your leisure. It is " +
-              "marked unsigned until both parties have signed.\n\n"
-            : "";
-        var text =
-            $"Hi{Greeting(recipientName)},\n\n" +
-            $"{organizationName} has sent you a contract to review and sign:\n\n" +
-            $"    {contractTitle}\n\n" +
-            attachedText +
-            "You can read it in full and sign it here:\n\n" +
-            $"    {signUrl}\n\n" +
-            "Nothing is agreed until you sign. If anything looks wrong, reply to this " +
-            "email instead of signing and we will sort it out.\n\n" +
-            $"— {organizationName}\n";
+        var design = Counterparty(organizationName, senderName);
+        design.Eyebrow = "Contract for signature";
+        design.Title = "Please review and sign";
+        design.Preheader = $"{organizationName} has sent you “{contractTitle}” to read and sign.";
+        design
+            .Paragraph(Hi(recipientName))
+            .Paragraph($"{organizationName} has sent you a contract to review and sign.")
+            .Facts([("Contract", contractTitle), ("From", organizationName), ("Attached", hasAttachment ? "An unsigned copy (PDF)" : null)])
+            .Paragraph(hasAttachment
+                ? "A copy is attached to this email so you can read it at your leisure. It is marked unsigned until both parties have signed."
+                : null)
+            .Button("Read and sign the contract", signUrl)
+            .Note($"Nothing is agreed until you sign. If anything looks wrong, reply to this email instead of signing and we will sort it out. " +
+                  $"The link works for {ContractSigningToken.Lifetime.TotalDays:0} days.")
+            .SignOff("Kind regards,", organizationName);
+        return EmailLayout.Compose(design, subject);
+    }
 
-        var html = Document(senderName,
-            heading: "Please review and sign",
-            intro: $"{Escape(organizationName)} has sent you a contract to review and sign.",
-            bodyHtml:
-                $"<p style=\"{PStyle}\"><strong>{Escape(contractTitle)}</strong></p>" +
-                (hasAttachment
-                    ? $"<p style=\"{MutedStyle}\">A copy is attached to this email so you can read it " +
-                      "at your leisure. It is marked unsigned until both parties have signed.</p>"
-                    : "") +
-                Button(signUrl, "Read and sign the contract") +
-                $"<p style=\"{MutedStyle}\">Nothing is agreed until you sign. If anything looks wrong, " +
-                "reply to this email instead of signing and we will sort it out.</p>",
-            footer: organizationName);
-
-        return new EmailContent(subject, text, html);
+    /// <summary>
+    /// The one reminder to a counterparty who has not opened a contract three days after it was
+    /// sent (ContractReminderBackgroundService). Only the signing link's hash is kept, so it
+    /// points back to the original email rather than carrying a link.
+    /// </summary>
+    /// <param name="sentAtUtc">When the contract was sent.</param>
+    /// <param name="linkExpiresAtUtc">When the link in the original email stops working.</param>
+    public static EmailContent Reminder(
+        string senderName, string recipientName, string organizationName, string contractTitle,
+        DateTime? sentAtUtc = null, DateTime? linkExpiresAtUtc = null)
+    {
+        var design = Counterparty(organizationName, senderName);
+        design.Eyebrow = "Reminder";
+        design.Title = "A gentle reminder";
+        design.Preheader = $"“{contractTitle}” is still waiting for your signature.";
+        design
+            .Paragraph(Hi(recipientName))
+            .Paragraph("A contract is waiting for your signature. Please use the link from the original email to read and sign it.")
+            .Facts([
+                ("Contract", contractTitle),
+                ("From", string.IsNullOrWhiteSpace(organizationName) ? null : organizationName),
+                ("Sent on", sentAtUtc is { } sent ? Day(sent) : null),
+                ("Link works until", linkExpiresAtUtc is { } expires ? Day(expires) : null),
+            ])
+            .Paragraph("Nothing is agreed until you sign.", muted: true)
+            .SignOff("Kind regards,", organizationName);
+        return EmailLayout.Compose(design, $"Reminder: {contractTitle}");
     }
 
     /// <summary>Step 3 done: we are told to countersign.</summary>
@@ -129,34 +105,31 @@ public static class ContractEmailContent
         string contractTitle, string contractUrl)
     {
         var subject = $"{counterpartyName} signed “{contractTitle}” — your signature is next";
-        var text =
-            $"Hi{Greeting(recipientName)},\n\n" +
-            $"{counterpartyName} has signed “{contractTitle}”.\n\n" +
-            "Add your countersignature to execute it and send the finished copy to everyone:\n\n" +
-            $"    {contractUrl}\n";
-
-        var html = Document(senderName,
-            heading: "They have signed",
-            intro: $"{Escape(counterpartyName)} has signed <strong>{Escape(contractTitle)}</strong>.",
-            bodyHtml:
-                $"<p style=\"{PStyle}\">Add your countersignature to execute it and send the " +
-                "finished copy to everyone.</p>" +
-                Button(contractUrl, "Countersign the contract"),
-            footer: null);
-
-        return new EmailContent(subject, text, html);
+        var who = string.IsNullOrWhiteSpace(counterpartyName) ? null : counterpartyName.Trim();
+        var design = new EmailDesign(EmailLook.Product)
+            {
+                Language = "en",
+                Eyebrow = "Contract signed",
+                Title = who == null ? "They have signed" : $"{who} has signed",
+                Preheader = $"“{contractTitle}” is signed on their side. Your countersignature is next.",
+                FooterNote = "You received this because a contract you created was signed.",
+            }
+            .Paragraph(Hi(recipientName))
+            .Note($"{who ?? "The counterparty"} has signed “{contractTitle}”.", EmailTone.Success)
+            .Paragraph("Add your countersignature to execute it and send the finished copy to everyone.")
+            .Button("Countersign the contract", contractUrl);
+        return EmailLayout.Compose(design, subject);
     }
 
     /// <summary>
     /// Step 4: the executed contract, to both parties.
     /// </summary>
     /// <remarks>
-    /// The full text travels INLINE rather than as an attachment. There is no PDF
-    /// library and no file storage in this system, and an email that promises an
-    /// attachment it does not carry is worse than one that simply contains the
-    /// document. Inline text is also readable in every client, quotable in a
-    /// reply, and printable — and it is the same string whose hash was stamped at
-    /// send time, so it is the evidence rather than a rendering of it.
+    /// The full text travels INLINE as well as in any attachment: inline text is readable in
+    /// every client, quotable in a reply, and printable — and it is the same string whose hash
+    /// was stamped at send time, so it is the evidence rather than a rendering of it. The
+    /// signature record, with both names, both times and that hash, follows it under a note in
+    /// the success colours that says what it is.
     /// </remarks>
     /// <param name="hasAttachment">
     /// Whether the typeset copy travels with the message. The text stays in the body
@@ -168,36 +141,26 @@ public static class ContractEmailContent
         string contractTitle, string contractBody, string signatureBlock,
         bool hasAttachment = false)
     {
-        var rule = new string('-', 60);
         var subject = $"Signed by both parties: “{contractTitle}”";
-        var attachedText = hasAttachment
-            ? "The signed contract is attached as a PDF for your records. The full text " +
-              "and the signature record are also below, so this email is a complete copy " +
-              "on its own.\n\n"
-            : "The full text and the signature record are below — keep this email as your copy.\n\n";
-        var text =
-            $"Hi{Greeting(recipientName)},\n\n" +
-            $"“{contractTitle}” has now been signed by both parties.\n\n" +
-            attachedText +
-            rule + "\n\n" +
-            contractBody + "\n\n" +
-            rule + "\n\n" +
-            signatureBlock + "\n\n" +
-            $"— {organizationName}\n";
-
-        var html = Document(senderName,
-            heading: "Signed by both parties",
-            intro: $"<strong>{Escape(contractTitle)}</strong> has now been signed by both parties. " +
-                   (hasAttachment
-                       ? "The signed contract is attached as a PDF for your records, and the full " +
-                         "text and signature record are below as well."
-                       : "The full text and the signature record are below — keep this email as your copy."),
-            bodyHtml:
-                $"<pre style=\"{PreStyle}\">{Escape(contractBody)}</pre>" +
-                $"<div style=\"{SignatureBoxStyle}\"><pre style=\"{PreStyle}margin:0;background:none;border:0;padding:0;\">" +
-                $"{Escape(signatureBlock)}</pre></div>",
-            footer: organizationName);
-
-        return new EmailContent(subject, text, html);
+        var design = Counterparty(organizationName, senderName);
+        design.Eyebrow = "Signed contract";
+        design.Title = "Signed by both parties";
+        design.Preheader = $"“{contractTitle}” is signed by both parties. Your copy is inside.";
+        design
+            .Paragraph(Hi(recipientName))
+            .Paragraph($"“{contractTitle}” has now been signed by both parties.")
+            .Paragraph(hasAttachment
+                ? "The signed contract is attached as a PDF for your records. The full text and the signature record are also below, " +
+                  "so this email is a complete copy on its own."
+                : "The full text and the signature record are below — keep this email as your copy.")
+            .Heading(contractTitle)
+            .Preformatted(contractBody)
+            .Note("Signed by both parties. The signature record below is the evidence: who signed and when, " +
+                  "and the hash of the exact text above.", EmailTone.Success)
+            // Set out as written, as the contract is: its columns line up, and the 64-character
+            // hash wraps on a phone where a note's text would push the email off the screen.
+            .Preformatted(signatureBlock)
+            .SignOff("Kind regards,", organizationName);
+        return EmailLayout.Compose(design, subject);
     }
 }

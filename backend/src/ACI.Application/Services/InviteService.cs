@@ -85,7 +85,7 @@ public sealed class InviteService : IInviteService
             OrganizationId = organizationId,
             Email = email,
             TokenHash = PasswordResetCrypto.HashRawToken(rawToken),
-            ExpiresAtUtc = DateTime.UtcNow.AddDays(7),
+            ExpiresAtUtc = DateTime.UtcNow.Add(AccountEmailContent.InvitationLifetime),
             CreatedAtUtc = DateTime.UtcNow,
             PermissionPreset = preset?.Key,
         };
@@ -96,7 +96,7 @@ public sealed class InviteService : IInviteService
         var inviter = await _userRepository.GetByIdAsync(userId, ct);
         var acceptUrl = BuildAcceptUrl(rawToken);
         var sent = await _emailSender.SendOrganizationInviteEmailAsync(
-            email, org.Name, inviter?.Name ?? string.Empty, acceptUrl, ct);
+            email, org.Name, inviter?.Name ?? string.Empty, acceptUrl, invite.PermissionPreset, ct);
         if (!sent)
         {
             _logger.LogError("Invite not created: could not send the invitation email to {Email}", email);
@@ -146,7 +146,7 @@ public sealed class InviteService : IInviteService
         var rawToken = PasswordResetCrypto.CreateRawToken();
         var inviter = await _userRepository.GetByIdAsync(userId, ct);
         var sent = await _emailSender.SendOrganizationInviteEmailAsync(
-            invite.Email, org.Name, inviter?.Name ?? string.Empty, BuildAcceptUrl(rawToken), ct);
+            invite.Email, org.Name, inviter?.Name ?? string.Empty, BuildAcceptUrl(rawToken), invite.PermissionPreset, ct);
 
         if (!sent)
         {
@@ -161,7 +161,7 @@ public sealed class InviteService : IInviteService
         // full window again — an invitation worth re-sending is usually one that sat
         // unseen, and an already-expired link would be useless.
         invite.TokenHash = PasswordResetCrypto.HashRawToken(rawToken);
-        invite.ExpiresAtUtc = DateTime.UtcNow.AddDays(7);
+        invite.ExpiresAtUtc = DateTime.UtcNow.Add(AccountEmailContent.InvitationLifetime);
         await _inviteRepository.UpdateAsync(invite, ct);
 
         _logger.LogInformation("Invite {InviteId} re-sent to {Email}", inviteId, invite.Email);

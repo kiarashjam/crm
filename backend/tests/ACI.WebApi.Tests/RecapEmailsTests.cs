@@ -413,8 +413,8 @@ public class RecapEmailsTests
         var recaps = await RecapsAsync(w);
         var french = recaps.Single(m => m.To == "miguel@pavillon46.ch");
         french.Subject.Should().Be("Pavillon 46 · Récapitulatif du jour · lundi 23 novembre 2026");
-        french.TextBody.Should().Contain("Nouveaux prospects : 1 (auparavant 0)");
-        french.HtmlBody.Should().Contain("<html lang=\"fr\">");
+        french.TextBody.Should().Contain("- Nouveaux prospects\u00a0: Jour 1, Veille 0");
+        french.HtmlBody.Should().Contain("<html lang=\"fr\"").And.Contain(">Veille<");
         recaps.Single(m => m.To == "max@pavillon46.ch").Subject.Should().Be("Pavillon 46 · Daily recap · Monday 23 November 2026");
         recaps.Single(m => m.To == "olga@pavillon46.ch").Subject
             .Should().Be("Pavillon 46 · Tagesrückblick · Montag, 23. November 2026", "with no language of their own, the workspace's (de-CH)");
@@ -446,7 +446,7 @@ public class RecapEmailsTests
         await SaveAsync(w, new ClubVisit { Id = Guid.NewGuid(), OrganizationId = w.Org, MemberId = member.Id, MemberName = "Mia Member", VisitedAtUtc = Utc(11, 24, 12) });
         (await SendAsync(w, TuesdayMorning.AddDays(1))).Should().Be(1);
         var text = (await RecapsAsync(w)).Single().TextBody;
-        text.Should().Contain("- Visits: 1 (previously 0)").And.NotContain("New leads").And.NotContain("/dashboard");
+        text.Should().Contain("- Visits: Day 1, Day before 0").And.NotContain("New leads").And.NotContain("/dashboard");
     }
 
     [Fact]

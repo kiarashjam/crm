@@ -145,7 +145,10 @@ public class CampaignTests
         await app.DispatchOutboxAsync();
         var email = app.Mail.Sent.Should().ContainSingle("one email per address that may have it").Subject;
         email.To.Should().Equal("anna@example.ch");
-        email.TextBody.Should().StartWith("Dear Anna,").And.Contain("https://crm.example.ch/unsubscribe/");
+        // What staff wrote, under its subject, in the club's look, with the link that withdraws consent at its foot.
+        email.TextBody.Should().StartWith("The autumn gala\n\nDear Anna,\nJoin us on Friday.").And.Contain("https://crm.example.ch/unsubscribe/");
+        email.HtmlBody.Should().Contain(">The autumn gala</h1>").And.Contain("Dear Anna,<br>Join us on Friday.").And.Contain("#2c5545")
+            .And.Contain(">Unsubscribe</a>").And.Contain("Pavillon46");
         Recipient(await RecipientsAsync(club, id), m.Agreed).GetProperty("status").GetString().Should().Be("sent");
         var after = await Json(await club.Owner.GetAsync($"/api/campaigns/{id}"), "read campaign");
         after.GetProperty("totals").GetProperty("sent").GetInt32().Should().Be(1);
@@ -281,7 +284,7 @@ public class CampaignTests
         foreach (var member in firstJoined) Recipient(recipients, member).GetProperty("status").GetString().Should().Be("queued");
         foreach (var member in joinedLater) Recipient(recipients, member).GetProperty("status").GetString().Should().Be("skipped");
         await app.DispatchOutboxAsync();
-        app.Mail.Sent.Should().HaveCount(6).And.OnlyContain(e => e.TextBody.StartsWith("Dear Yann"));
+        app.Mail.Sent.Should().HaveCount(6).And.OnlyContain(e => e.TextBody.StartsWith("The autumn gala\n\nDear Yann"));
     }
 
     [Fact]
@@ -333,7 +336,10 @@ public class CampaignTests
         var email = app.Mail.Sent.Should().ContainSingle().Subject;
         email.To.Should().Equal("olga@pavillon46.ch");
         email.Subject.Should().Be("[Test] The autumn gala");
-        email.TextBody.Should().StartWith("This is a test of the campaign \"Autumn gala\", sent to you alone. Members have not received it.");
+        // As members will see it, under its subject without the tag, the note on top.
+        email.TextBody.Should().StartWith("The autumn gala\n\nThis is a test of the campaign \"Autumn gala\", sent to you alone. Members have not received it.")
+            .And.Contain("Join us on Friday.");
+        email.HtmlBody.Should().Contain("Test copy").And.Contain(">The autumn gala</h1>").And.NotContain(">Unsubscribe</a>");
         email.TextBody.Should().NotContain("/unsubscribe/", "nobody on the staff is unsubscribing from their own test");
         (await app.Services.Read(db => db.MemberMessages.Count())).Should().Be(0, "a test is no member's message");
         var campaign = await Json(await club.Owner.GetAsync($"/api/campaigns/{id}"), "read");
@@ -735,6 +741,27 @@ public class CampaignTests
     }
 
     [Fact]
+    public async Task AMarketingMessageToOneMember_IsInTheClubsLook_WithTheLinkThatWithdrawsConsentAtItsFoot()
+    {
+        await using var app = new App();
+        var club = await ClubAsync(app);
+        var anna = await MemberAsync(club, "Anna", "anna@example.ch");
+        await ConsentAsync(club, anna, true);
+        await Json(await club.Owner.PostAsync("/api/communications/send", Body(new
+        {
+            memberId = anna, category = "Loyalty", purpose = "marketing", subject = "Double points", body = "Dear {{firstName}},\n\nDouble points <this> week.",
+        })), "send");
+        await app.DispatchOutboxAsync();
+
+        var email = app.Mail.Sent.Should().ContainSingle().Subject;
+        email.TextBody.Should().StartWith("Dear Anna,\n\nDouble points <this> week.\n\n--\nYou are receiving this email as a member of Pavillon46.\n\n--\n"
+            + "Don't want news and offers from Pavillon46 by email? Unsubscribe: https://crm.example.ch/unsubscribe/");
+        email.HtmlBody.Should().Contain("Double points &lt;this&gt; week.").And.NotContain("<this>").And.Contain("#2c5545")
+            .And.Contain("<a href=\"https://crm.example.ch/unsubscribe/").And.Contain(">Unsubscribe</a>");
+        email.UnsubscribeUrl.Should().NotBeNull();
+    }
+
+    [Fact]
     public async Task AMessageToOneMemberGoesThroughTheOutboxAndALogOnlyRecords()
     {
         await using var app = new App();
@@ -750,7 +777,11 @@ public class CampaignTests
         })), "send");
         sent.GetProperty("status").GetString().Should().Be("queued");
         await app.DispatchOutboxAsync();
-        app.Mail.Sent.Should().ContainSingle().Which.TextBody.Should().StartWith("Dear Anna, it is ready.");
+        var note = app.Mail.Sent.Should().ContainSingle().Subject;
+        // From the club to one member: its look, light (no eyebrow, no title), the message as paragraphs.
+        note.TextBody.Should().StartWith("Dear Anna, it is ready.\n\n--\nYou are receiving this email as a member of Pavillon46.");
+        note.HtmlBody.Should().Contain("Dear Anna, it is ready.").And.Contain("#2c5545").And.Contain("Pavillon46").And.NotContain("<h1")
+            .And.NotContain("class=\"em-eyebrow\"").And.NotContain("nsubscribe", "a service message carries no unsubscribe link");
 
         var offer = await Json(await club.Owner.PostAsync("/api/communications/send", Body(new
         {

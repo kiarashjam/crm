@@ -49,13 +49,23 @@ public sealed class ContractReminderBackgroundService : BackgroundService
                     .Take(50)
                     .ToListAsync(stoppingToken);
 
+                // The reminder is the workspace's, under its name, as the request to sign was.
+                var workspaceIds = rows.Select(c => c.OrganizationId).Distinct().ToList();
+                var workspaces = rows.Count == 0
+                    ? new Dictionary<Guid, string>()
+                    : await db.Organizations.IgnoreQueryFilters().AsNoTracking()
+                        .Where(o => workspaceIds.Contains(o.Id))
+                        .ToDictionaryAsync(o => o.Id, o => o.Name, stoppingToken);
+
                 foreach (var contract in rows)
                 {
-                    var sent = await email.SendMessageAsync(
+                    var sent = await email.SendContractReminderEmailAsync(
                         contract.CounterpartyEmail,
                         contract.CounterpartyName,
-                        $"Reminder: {contract.Title}",
-                        "A contract is waiting for your signature. Please use the link from the original email.",
+                        workspaces.GetValueOrDefault(contract.OrganizationId, ""),
+                        contract.Title,
+                        contract.SentAtUtc,
+                        contract.SigningTokenExpiresAtUtc,
                         stoppingToken);
                     if (!sent) continue;
                     contract.ReminderSentAtUtc = DateTime.UtcNow;

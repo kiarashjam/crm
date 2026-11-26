@@ -54,9 +54,10 @@ public sealed class ClubBillingService : IClubBilling
     private readonly ICurrentUserService _user;
     private readonly IClubQrBills _qrBills;
     private readonly ILogger<ClubBillingService> _logger;
+    private readonly IMemberPayLinks? _payLinks;
 
     public ClubBillingService(AppDbContext db, IClubLedger ledger, IClubRules rules, IOutbox outbox, ICurrentUserService user,
-        IClubQrBills qrBills, ILogger<ClubBillingService> logger)
+        IClubQrBills qrBills, ILogger<ClubBillingService> logger, IMemberPayLinks? payLinks = null)
     {
         _db = db;
         _ledger = ledger;
@@ -65,6 +66,7 @@ public sealed class ClubBillingService : IClubBilling
         _user = user;
         _qrBills = qrBills;
         _logger = logger;
+        _payLinks = payLinks;
     }
 
     // ── runs ─────────────────────────────────────────────────────────────────
@@ -401,29 +403,21 @@ public sealed class ClubBillingService : IClubBilling
         var last = reached.Max(r => r.Step);
         // In the member's language (English when none is set).
         var language = LanguageOf(member);
-        string L(string key, params (string, object?)[] args) => MemberTexts.T(language, key, args);
-        var subject = last == steps.Count && steps.Count > 1 ? L("reminder.subjectFinal")
-            : last == 1 ? L("reminder.subjectFirst")
-            : last == 2 ? L("reminder.subjectSecond")
-            : L("reminder.subjectNth", ("step", last));
         var culture = Culture(workspace.Locale);
         var zone = RegionalSettings.ZoneOf(workspace.TimeZone);
-        var body = new StringBuilder();
-        body.Append(L("greeting", ("name", string.IsNullOrWhiteSpace(member.FirstName) ? NameOf(member) : member.FirstName.Trim()))).Append("\n\n");
-        body.Append(last == steps.Count && steps.Count > 1
-            ? L("reminder.introFinal")
-            : last == 1
-                ? L("reminder.introFirst")
-                : L("reminder.introLater")).Append("\n\n");
-        foreach (var (charge, _) in reached.OrderBy(r => r.Charge.DueAtUtc))
-            body.Append(L("reminder.line", ("description", charge.Description), ("amount", Money(charge.Owed, charge.Currency, culture)),
-                ("date", Date(charge.DueAtUtc, zone, language, workspace.Locale)))).Append('\n');
-        var currency = reached[0].Charge.Currency;
-        if (reached.All(r => r.Charge.Currency == currency))
-            body.Append('\n').Append(L("reminder.total", ("amount", Money(reached.Sum(r => r.Charge.Owed), currency, culture)))).Append('\n');
-        if (rules.Billing.LapseEnabled)
-            body.Append('\n').Append(L("reminder.lapse", ("days", rules.Billing.GracePeriodDays))).Append('\n');
-        body.Append('\n').Append(L("reminder.ignore")).Append("\n\n").Append(workspace.Name);
+        var charges = reached.Select(r => r.Charge).OrderBy(c => c.DueAtUtc).ToList();
+        var currency = charges[0].Currency;
+        // Its button pays the charges it reminds of, when the club takes payments online.
+        var pay = reachable ? await PayLinkAsync(organizationId, member.Id, charges.Select(c => c.Id).ToList(), ct) : null;
+        var email = ClubEmails.Reminder(new ReminderDetails(
+            workspace.Name, language, string.IsNullOrWhiteSpace(member.FirstName) ? NameOf(member) : member.FirstName.Trim(), last, steps.Count,
+            charges.Select(c => new ReminderCharge(c.Description, Money(c.Owed, c.Currency, culture), Date(c.DueAtUtc, zone, language, workspace.Locale))).ToList(),
+            charges.All(c => c.Currency == currency) ? Money(charges.Sum(c => c.Owed), currency, culture) : null,
+            (int)Math.Floor((now - charges[0].DueAtUtc).TotalDays),
+            rules.Billing.LapseEnabled ? rules.Billing.GracePeriodDays : null,
+            pay?.Url, pay == null ? null : Date(pay.ExpiresAtUtc, zone, language, workspace.Locale)));
+        var subject = email.Subject;
+        var body = email.Text;
 
         var log = new MemberMessage
         {
@@ -436,7 +430,7 @@ public sealed class ClubBillingService : IClubBilling
             Category = "Dues",
             Purpose = ConsentPurposes.Service,
             Subject = subject,
-            Preview = Clip(body.ToString(), 500),
+            Preview = Clip(body, 500),
             Status = reachable ? MemberMessageStatuses.Queued : MemberMessageStatuses.Skipped,
             Reason = reachable ? null : "This member has no valid email address on their record.",
             CreatedAtUtc = now,
@@ -459,7 +453,8 @@ public sealed class ClubBillingService : IClubBilling
                 To = [address],
                 RecipientName = NameOf(member),
                 Subject = subject,
-                Body = body.ToString(),
+                Body = body,
+                Design = _ => email.Design,
                 MemberId = member.Id,
                 Purpose = ConsentPurposes.Service,
             }, ct);
@@ -602,7 +597,7 @@ public sealed class ClubBillingService : IClubBilling
             DateTime.UtcNow,
             slip,
             Language: language));
-        return new StatementFile(FileName(statement, workspace), bytes, statement, amountDue);
+        return new StatementFile(FileName(statement, workspace), bytes, statement, amountDue, slip != null);
     }
 
     /// <remarks>
@@ -848,25 +843,29 @@ public sealed class ClubBillingService : IClubBilling
         var statement = file.Value.Statement;
         // In the member's language, as the attached statement is.
         var language = LanguageOf(member);
-        string L(string key, params (string, object?)[] args) => MemberTexts.T(language, key, args);
         var period = MemberTexts.Period(language, workspace.Locale,
             TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(fromUtc, DateTimeKind.Utc), zone),
             TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(toUtc, DateTimeKind.Utc), zone));
         var address = (member.Email ?? "").Trim();
         var reachable = ValidationHelper.IsValidEmail(address);
         var now = DateTime.UtcNow;
-        var subject = L("statement.subject", ("period", period));
 
         var closing = Owed(statement.ClosingBalance);
-        var body = new StringBuilder();
-        body.Append(L("greeting", ("name", string.IsNullOrWhiteSpace(member.FirstName) ? NameOf(member) : member.FirstName.Trim()))).Append("\n\n");
-        body.Append(L("statement.attached", ("period", period))).Append("\n\n");
-        body.Append(L("statement.broughtForward", ("amount", Money(Owed(statement.OpeningBalance), statement.Currency, culture)))).Append('\n');
-        body.Append(L("statement.charges", ("amount", Money(statement.TotalDebits, statement.Currency, culture)))).Append('\n');
-        body.Append(L("statement.payments", ("amount", Money(statement.TotalCredits, statement.Currency, culture)))).Append('\n');
-        var owedKey = closing > 0 ? "statement.amountDue" : closing < 0 ? "statement.inCredit" : "statement.balance";
-        body.Append(L(owedKey, ("amount", Money(Math.Abs(closing), statement.Currency, culture)))).Append("\n\n");
-        body.Append(L("statement.question")).Append("\n\n").Append(workspace.Name);
+        // What is owed falls due with the earliest charge of the period still open, and the
+        // button pays the account online, when the club takes payments online.
+        var due = closing > 0 ? await ClubOverdue.EarliestDueAsync(_db, organizationId, member.Id, toUtc, ct) : null;
+        var pay = closing > 0 && reachable ? await PayLinkAsync(organizationId, member.Id, null, ct) : null;
+        var email = ClubEmails.Statement(new StatementDetails(
+            workspace.Name, language, string.IsNullOrWhiteSpace(member.FirstName) ? NameOf(member) : member.FirstName.Trim(), period,
+            Money(Owed(statement.OpeningBalance), statement.Currency, culture),
+            Money(statement.TotalDebits, statement.Currency, culture),
+            Money(statement.TotalCredits, statement.Currency, culture),
+            closing, Money(Math.Abs(closing), statement.Currency, culture),
+            due is DateTime dueAt ? Date(dueAt, zone, language, workspace.Locale) : null,
+            file.Value.PaymentSlip,
+            pay?.Url, pay == null ? null : Date(pay.ExpiresAtUtc, zone, language, workspace.Locale)));
+        var subject = email.Subject;
+        var body = email.Text;
 
         var delivery = new ClubStatementDelivery
         {
@@ -895,7 +894,7 @@ public sealed class ClubBillingService : IClubBilling
             Category = "Dues",
             Purpose = ConsentPurposes.Service,
             Subject = subject,
-            Preview = Clip(body.ToString(), 500),
+            Preview = Clip(body, 500),
             Status = reachable ? MemberMessageStatuses.Queued : MemberMessageStatuses.Skipped,
             Reason = delivery.Reason,
             CreatedByUserId = userId,
@@ -918,7 +917,8 @@ public sealed class ClubBillingService : IClubBilling
                     To = [address],
                     RecipientName = NameOf(member),
                     Subject = subject,
-                    Body = body.ToString(),
+                    Body = body,
+                    Design = _ => email.Design,
                     CreatedByUserId = userId,
                     ReplyToUserId = userId,
                     MemberId = member.Id,
@@ -951,6 +951,24 @@ public sealed class ClubBillingService : IClubBilling
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// A link for the member to pay online from a statement or reminder, or null: the club takes
+    /// no payments online, or the link could not be made, which never holds the email back.
+    /// </summary>
+    private async Task<MemberPayLink?> PayLinkAsync(Guid organizationId, Guid memberId, IReadOnlyList<Guid>? chargeIds, CancellationToken ct)
+    {
+        if (_payLinks == null) return null;
+        try
+        {
+            return await _payLinks.ForEmailAsync(organizationId, memberId, chargeIds, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "The email to member {MemberId} goes without a pay link: it could not be made", memberId);
+            return null;
+        }
+    }
 
     /// <summary>What a run did, added up as it goes.</summary>
     private sealed class Tally

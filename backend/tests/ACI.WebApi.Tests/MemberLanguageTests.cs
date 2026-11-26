@@ -124,15 +124,21 @@ public class MemberLanguageTests
 
         var french = app.Mail.Sent.Single(m => m.To.Contains("jeanne@example.ch"));
         french.Subject.Should().StartWith("Votre relevé de compte pour");
-        french.TextBody.Should().StartWith("Bonjour Jeanne,").And.Contain("Montant dû : CHF 299.00")
-            .And.Contain("Pour toute question à ce sujet");
+        // Under the period as its title, the figures set out, in the club's look, in French.
+        french.TextBody.Should().Contain("\n\nBonjour Jeanne,\n\nVous trouverez en pièce jointe votre relevé de compte pour")
+            .And.Contain("Montant dû\u00a0: CHF 299.00").And.Contain("Échéance\u00a0: ").And.Contain("Pour toute question à ce sujet")
+            .And.Contain("Avec nos meilleures salutations\nPavillon46");
+        french.HtmlBody.Should().Contain("lang=\"fr\"").And.Contain("Relev&#233; de compte").And.Contain("CHF 299.00").And.Contain("#2c5545")
+            .And.Contain("Vous recevez cet e-mail en tant que membre de Pavillon46.");
         // The PDF's own escapes stand for its accented letters here (\351 for é), so only plain words are looked for.
         PdfText.Of(french.Attachments!.Single().Content).Should().Contain(" de compte").And.Contain("Membre Gold").And.Contain("Page 1 sur 1")
             .And.NotContain("Amount due");
 
         var english = app.Mail.Sent.Single(m => m.To.Contains("jean@example.ch"));
         english.Subject.Should().StartWith("Your statement for");
-        english.TextBody.Should().StartWith("Dear Jean,").And.Contain("Amount due: CHF 299.00");
+        english.TextBody.Should().Contain("\n\nDear Jean,").And.Contain("Amount due: CHF 299.00").And.Contain("Due date: ")
+            .And.NotContain("Pay online", "the club takes no payments online");
+        english.HtmlBody.Should().Contain("lang=\"en\"").And.Contain("Amount due").And.Contain("CHF 299.00");
 
         var from = Uri.EscapeDataString(period.from.ToString("o"));
         var to = Uri.EscapeDataString(period.to.ToString("o"));
@@ -157,8 +163,10 @@ public class MemberLanguageTests
 
         var email = app.Mail.Sent.Should().ContainSingle().Subject;
         email.Subject.Should().Be("Zahlungserinnerung");
-        email.TextBody.Should().StartWith("Guten Tag Max,").And.Contain("Wir erinnern Sie daran")
-            .And.Contain("- Bar: CHF 30.00, fällig am").And.Contain("Total überfällig: CHF 30.00");
+        email.TextBody.Should().StartWith("Eine freundliche Erinnerung\n\nGuten Tag Max,").And.Contain("Wir erinnern Sie daran")
+            .And.Contain("Bar · fällig am").And.Contain(": CHF 30.00").And.Contain("Total überfällig: CHF 30.00").And.Contain("Tage überfällig: ")
+            .And.Contain("Freundliche Grüsse");
+        email.HtmlBody.Should().Contain("lang=\"de\"").And.Contain("Zahlungserinnerung").And.Contain("Total &#252;berf&#228;llig").And.Contain("CHF 30.00");
     }
 
     [Fact]
@@ -193,7 +201,8 @@ public class MemberLanguageTests
             "the member is written to in the language they applied in");
         var welcome = await factory.Services.Read(db => db.OutboundMessages.Single(m => m.Source == OutboundSources.Welcome));
         welcome.Subject.Should().Be("Bienvenue chez Pavillon46");
-        welcome.Body.Should().StartWith("Bonjour Lena,").And.Contain("Votre demande a été acceptée");
+        welcome.Body.Should().StartWith("Bienvenue chez Pavillon46\n\nBonjour Lena,").And.Contain("Votre demande a été acceptée");
+        welcome.HtmlBody.Should().Contain("lang=\"fr\"").And.Contain("Adh&#233;sion confirm&#233;e").And.Contain("Votre demande a &#233;t&#233; accept&#233;e");
     }
 
     [Fact]
@@ -327,8 +336,9 @@ public class MemberLanguageTests
         var mail = await factory.Services.Read(db => db.OutboundMessages.Single(m => m.OrganizationId == org));
         mail.To.Should().Be("marie@example.ch");
         mail.Subject.Should().Be("Une place pour vous : Soirée vins");
-        mail.Body.Should().StartWith("Bonne nouvelle\u00a0: une place s’est libérée pour Soirée vins").And.Contain("CHF 35.00")
-            .And.Contain("compte au club");
+        mail.Body.Should().StartWith("Soirée vins\n\nBonjour Marie,\n\nBonne nouvelle\u00a0: une place s’est libérée pour Soirée vins")
+            .And.Contain("CHF 35.00").And.Contain("compte au club").And.Contain("Quand\u00a0: ").And.Contain("Où\u00a0: Bibliothèque");
+        mail.HtmlBody.Should().Contain("lang=\"fr\"").And.Contain("Depuis la liste d’attente").And.Contain("Biblioth&#232;que").And.Contain("#2c5545");
     }
 
     private static string TokenFrom(string text)

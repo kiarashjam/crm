@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text;
 using ACI.Application.Common.I18n;
 using ACI.Application.Services;
 using ACI.Domain.Entities;
@@ -14,13 +13,15 @@ namespace ACI.Application.Common;
 public sealed record RecapEmailContext(string Language, string? RecipientName, string WorkspaceName, string? WorkspaceLocale, string AppUrl, bool SalesOn);
 
 /// <summary>
-/// A recap's subject, plain-text part and HTML part, from its figures, in the reader's language.
+/// A recap's subject, plain-text part and HTML part, from its figures, in the reader's language,
+/// in CadenceE's design (<see cref="EmailLayout"/>).
 /// </summary>
 /// <remarks>
-/// Both parts are drawn from one list of sections, so they never say different things. Each
-/// figure stands beside the period before's; the pipeline, members at risk and renewals coming up
-/// are as they stand now, and say so. Record text (a lead source, a referrer's name, the
-/// workspace's name) is HTML-encoded in the HTML part.
+/// It leads with the period's key figures, large, then a part per section, each a table of its
+/// figures beside the period before's; the pipeline, members at risk and renewals coming up are
+/// as they stand now, in a column of their own that says so. Both parts are drawn from the one
+/// design, so they never say different things, and record text (a lead source, a referrer's
+/// name, the workspace's name) goes through it, escaped.
 /// </remarks>
 public static class RecapEmail
 {
@@ -55,12 +56,75 @@ public static class RecapEmail
 
         var sections = Sections(figures, language, numbers);
         var money = figures.Sales is { } s && (s.DepositAmounts.Count > 0 || s.WonValue.Count > 0);
-        var links = Links(context, language);
-        var current = T($"col.{frequency}");
-        var before = T($"col.{frequency}Before");
+        string[] compared = [T($"col.{frequency}"), T($"col.{frequency}Before")];
+        string[] now = [T("col.now")];
 
-        return (subject, Text(greeting, intro, sections, money, links, context, language),
-            Html(subject, T($"title.{frequency}"), periodText, greeting, intro, sections, current, before, money, links, context, language));
+        var design = new EmailDesign(EmailLook.Product)
+            {
+                Language = language,
+                Eyebrow = $"{T($"title.{frequency}")} · {OneLine(context.WorkspaceName)}",
+                Title = periodText,
+                Preheader = intro,
+                FooterNote = T("why", ("workspace", context.WorkspaceName)),
+            }
+            .Paragraph(greeting)
+            .Paragraph(intro)
+            .Stats(KeyFigures(figures, language, numbers));
+
+        foreach (var section in sections)
+        {
+            design.Heading(section.Title);
+            if (section.Note != null && section.NowOnly) design.Paragraph(section.Note, muted: true);
+            // A figure as it stands now has no period before to stand beside: such rows go in a
+            // table of their own whose one column says "Now".
+            foreach (var run in Runs(section.Rows))
+            {
+                var snapshot = run[0].Before == null;
+                design.Table(snapshot ? now : compared,
+                    run.Select(r => new EmailTableRow(OneLine(r.Label), snapshot ? [r.Now] : [r.Now, r.Before!], r.Indented)));
+            }
+            if (section.Note != null && !section.NowOnly) design.Paragraph(section.Note, muted: true);
+        }
+
+        if (money) design.Paragraph(T("amounts"), muted: true);
+        var links = Links(context, language);
+        if (SettingsUrl(context) is { } settings) links.Add((T("link.settings"), settings));
+        design.Links(links);
+
+        var (html, text) = EmailLayout.Render(design, subject);
+        return (subject, text, html);
+    }
+
+    /// <summary>The section's rows in runs: those beside the period before, and those as they stand now.</summary>
+    private static IEnumerable<List<Row>> Runs(IReadOnlyList<Row> rows)
+    {
+        var run = new List<Row>();
+        foreach (var row in rows)
+        {
+            if (run.Count > 0 && (run[0].Before == null) != (row.Before == null))
+            {
+                yield return run;
+                run = new List<Row>();
+            }
+            run.Add(row);
+        }
+        if (run.Count > 0) yield return run;
+    }
+
+    /// <summary>
+    /// The three figures the recap leads with: the sales funnel's first and last steps with the
+    /// meetings between, or with Sales off the club's visits, events and new members.
+    /// </summary>
+    private static IEnumerable<(string Label, string Value)> KeyFigures(RecapFigures f, string language, CultureInfo numbers)
+    {
+        string T(string key) => RecapTexts.T(language, key);
+        string N(int n) => n.ToString("N0", numbers);
+        if (f.Sales is { } s)
+            return [(T("leads.new"), N(s.NewLeads.Now)), (T("meetings.held"), N(s.MeetingsHeld.Now)), (T("conversions.won"), N(s.Won.Now))];
+        if (f.Club is not { } club) return [];
+        var figures = new List<(string, string)> { (T("club.visits"), N(club.Visits.Now)), (T("club.events"), N(club.Events.Now)) };
+        figures.Add(f.NewMembers is { } joined ? (T("club.newMembers"), N(joined.Now)) : (T("club.atRisk"), N(club.AtRiskNow)));
+        return figures;
     }
 
     /// <summary>The period as the reader says it: "Monday 23 November 2026", "16 – 22 November 2026", "October 2026".</summary>
@@ -150,113 +214,6 @@ public static class RecapEmail
     {
         var app = (context.AppUrl ?? "").Trim().TrimEnd('/');
         return app.Length == 0 ? null : app + SettingsPath;
-    }
-
-    private static string Text(string greeting, string intro, List<Section> sections, bool money,
-        List<(string Label, string Url)> links, RecapEmailContext context, string language)
-    {
-        string Line(string label, string value) => RecapTexts.T(language, "text.line", ("label", label), ("value", value));
-        var b = new StringBuilder();
-        b.AppendLine(greeting).AppendLine().AppendLine(intro);
-        foreach (var section in sections)
-        {
-            b.AppendLine().AppendLine(section.Title).AppendLine(new string('-', Math.Min(section.Title.Length, 60)));
-            if (section.Note != null && section.NowOnly) b.AppendLine(section.Note);
-            foreach (var row in section.Rows)
-            {
-                var value = row.Before == null ? row.Now : RecapTexts.T(language, "text.beside", ("now", row.Now), ("before", row.Before));
-                b.Append(row.Indented ? "  - " : "- ").AppendLine(Line(OneLine(row.Label), value));
-            }
-            if (section.Note != null && !section.NowOnly) b.AppendLine(section.Note);
-        }
-        if (money) b.AppendLine().AppendLine(RecapTexts.T(language, "amounts"));
-        if (links.Count > 0)
-        {
-            b.AppendLine();
-            foreach (var (label, url) in links) b.AppendLine(Line(label, url));
-        }
-        b.AppendLine().AppendLine(RecapTexts.T(language, "why", ("workspace", context.WorkspaceName)));
-        if (SettingsUrl(context) is { } settings) b.AppendLine(Line(RecapTexts.T(language, "link.settings"), settings));
-        return b.ToString().TrimEnd() + "\n";
-    }
-
-    private static string Html(string subject, string title, string periodText, string greeting, string intro, List<Section> sections,
-        string current, string before, bool money, List<(string Label, string Url)> links, RecapEmailContext context, string language)
-    {
-        // Only what HTML reads as markup: the page is UTF-8, so the reader's letters stay as written.
-        static string E(string? text) => (text ?? "")
-            .Replace("&", "&amp;", StringComparison.Ordinal)
-            .Replace("<", "&lt;", StringComparison.Ordinal)
-            .Replace(">", "&gt;", StringComparison.Ordinal)
-            .Replace("\"", "&quot;", StringComparison.Ordinal)
-            .Replace("'", "&#39;", StringComparison.Ordinal);
-        const string Cell = "padding:7px 0;border-top:1px solid #eef0f3;";
-        var b = new StringBuilder();
-        b.Append("<!DOCTYPE html><html lang=\"").Append(E(language)).Append("\"><head><meta charset=\"utf-8\">")
-            .Append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>").Append(E(subject)).Append("</title></head>")
-            .Append("<body style=\"margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1f2937;\">")
-            .Append("<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f4f5f7;\"><tr><td align=\"center\" style=\"padding:24px 12px;\">")
-            .Append("<table role=\"presentation\" width=\"600\" cellpadding=\"0\" cellspacing=\"0\" style=\"width:100%;max-width:600px;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;\">")
-            .Append("<tr><td style=\"padding:24px 28px 8px;\">")
-            .Append("<p style=\"margin:0;font-size:13px;color:#6b7280;\">").Append(E(context.WorkspaceName)).Append("</p>")
-            .Append("<h1 style=\"margin:4px 0 0;font-size:21px;line-height:1.3;color:#111827;\">").Append(E(title)).Append("</h1>")
-            .Append("<p style=\"margin:2px 0 0;font-size:14px;color:#374151;\">").Append(E(periodText)).Append("</p>")
-            .Append("<p style=\"margin:16px 0 0;font-size:14px;line-height:1.5;\">").Append(E(greeting)).Append("</p>")
-            .Append("<p style=\"margin:6px 0 0;font-size:14px;line-height:1.5;\">").Append(E(intro)).Append("</p>")
-            .Append("</td></tr>");
-
-        foreach (var section in sections)
-        {
-            b.Append("<tr><td style=\"padding:14px 28px 0;\">")
-                .Append("<h2 style=\"margin:0 0 4px;font-size:15px;color:#111827;\">").Append(E(section.Title)).Append("</h2>");
-            if (section.Note != null && section.NowOnly)
-                b.Append("<p style=\"margin:0 0 4px;font-size:13px;color:#6b7280;\">").Append(E(section.Note)).Append("</p>");
-            b.Append("<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse:collapse;font-size:14px;\">")
-                .Append("<tr><th align=\"left\" style=\"padding:4px 0;font-size:12px;font-weight:600;color:#6b7280;\"></th>");
-            if (section.NowOnly)
-            {
-                b.Append("<th align=\"right\" style=\"padding:4px 0;font-size:12px;font-weight:600;color:#6b7280;\">").Append(E(RecapTexts.T(language, "col.now"))).Append("</th>");
-            }
-            else
-            {
-                b.Append("<th align=\"right\" style=\"padding:4px 0 4px 12px;font-size:12px;font-weight:600;color:#6b7280;white-space:nowrap;\">").Append(E(current)).Append("</th>")
-                    .Append("<th align=\"right\" style=\"padding:4px 0 4px 12px;font-size:12px;font-weight:600;color:#9ca3af;white-space:nowrap;\">").Append(E(before)).Append("</th>");
-            }
-            b.Append("</tr>");
-            foreach (var row in section.Rows)
-            {
-                var label = row.Indented
-                    ? $"<td style=\"{Cell}padding-left:14px;color:#4b5563;\">{E(row.Label)}</td>"
-                    : $"<td style=\"{Cell}\">{E(row.Label)}</td>";
-                b.Append("<tr>").Append(label)
-                    .Append("<td align=\"right\" style=\"").Append(Cell).Append("padding-left:12px;font-weight:600;white-space:nowrap;\">").Append(E(row.Now)).Append("</td>");
-                if (!section.NowOnly)
-                    b.Append("<td align=\"right\" style=\"").Append(Cell).Append("padding-left:12px;color:#9ca3af;white-space:nowrap;\">").Append(E(row.Before ?? "")).Append("</td>");
-                b.Append("</tr>");
-            }
-            b.Append("</table>");
-            if (section.Note != null && !section.NowOnly)
-                b.Append("<p style=\"margin:6px 0 0;font-size:12px;color:#6b7280;\">").Append(E(section.Note)).Append("</p>");
-            b.Append("</td></tr>");
-        }
-
-        b.Append("<tr><td style=\"padding:20px 28px 24px;font-size:13px;line-height:1.5;color:#6b7280;\">");
-        if (money) b.Append("<p style=\"margin:0 0 10px;\">").Append(E(RecapTexts.T(language, "amounts"))).Append("</p>");
-        if (links.Count > 0)
-        {
-            b.Append("<p style=\"margin:0 0 14px;\">");
-            for (var i = 0; i < links.Count; i++)
-            {
-                if (i > 0) b.Append(" &nbsp;·&nbsp; ");
-                b.Append("<a href=\"").Append(E(links[i].Url)).Append("\" style=\"color:#c2410c;font-weight:600;text-decoration:none;\">").Append(E(links[i].Label)).Append("</a>");
-            }
-            b.Append("</p>");
-        }
-        b.Append("<p style=\"margin:0;\">").Append(E(RecapTexts.T(language, "why", ("workspace", context.WorkspaceName))));
-        if (SettingsUrl(context) is { } settings)
-            b.Append(" <a href=\"").Append(E(settings)).Append("\" style=\"color:#c2410c;\">").Append(E(RecapTexts.T(language, "link.settings"))).Append("</a>");
-        b.Append("</p></td></tr></table></td></tr></table></body></html>");
-        return b.ToString();
     }
 
     /// <summary>Record text on one line: a source or a name typed with a line break stays in its row.</summary>

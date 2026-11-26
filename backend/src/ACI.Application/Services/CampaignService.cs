@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using ACI.Application.Common;
+using ACI.Application.Common.I18n;
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
 using Microsoft.Extensions.Logging;
@@ -318,6 +319,7 @@ public sealed class CampaignService : ICampaignService
 
         var note = $"This is a test of the campaign \"{campaign.Name}\", sent to you alone. Members have not received it."
             + (campaign.Purpose == ConsentPurposes.Marketing ? " Their copies end with a link to unsubscribe from marketing." : "");
+        const string tag = "[Test] ";
         var queued = await _outbox.QueueEmailAsync(new OutboundEmailRequest
         {
             OrganizationId = organizationId,
@@ -325,8 +327,11 @@ public sealed class CampaignService : ICampaignService
             SourceId = campaign.Id,
             To = [address],
             RecipientName = user!.Name,
-            Subject = $"[Test] {campaign.Subject}",
-            Body = $"{note}\n\n{campaign.Body}",
+            Subject = tag + campaign.Subject,
+            Body = campaign.Body,
+            // As members will see it, under the subject without its tag, with the note on top.
+            Design = draft => ClubEmails.Letter(draft.WorkspaceName, AppLanguages.English,
+                draft.Subject.StartsWith(tag, StringComparison.Ordinal) ? draft.Subject[tag.Length..] : draft.Subject, draft.Body, title: true, "Test copy", note),
             CreatedByUserId = userId,
             ReplyToUserId = userId,
             ForOwnTeam = true,
@@ -461,6 +466,8 @@ public sealed class CampaignService : ICampaignService
                     RecipientName = row.MemberName,
                     Subject = campaign.Subject,
                     Body = campaign.Body,
+                    // What staff wrote, filled for the member, as paragraphs in the club's look.
+                    Design = draft => ClubEmails.Letter(draft.WorkspaceName, AppLanguages.ForMember(member.PreferredLanguage), draft.Subject, draft.Body, title: true),
                     CreatedByUserId = campaign.SentByUserId,
                     ReplyToUserId = campaign.SentByUserId,
                     MemberId = member.Id,

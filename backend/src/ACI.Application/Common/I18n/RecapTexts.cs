@@ -114,10 +114,6 @@ public static partial class RecapTexts
         ["club.atRisk"] = new("Members at risk now", "Gefährdete Mitglieder jetzt", "Membres à risque aujourd’hui"),
         ["club.renewals"] = new("Renewals due in the next 30 days", "Erneuerungen in den nächsten 30 Tagen", "Renouvellements dans les 30 prochains jours"),
 
-        // ── the plain-text lines ────────────────────────────────────────────────
-        ["text.line"] = new("{label}: {value}", "{label}: {value}", $"{{label}}{Nb}: {{value}}"),
-        ["text.beside"] = new("{now} (previously {before})", "{now} (zuvor {before})", "{now} (auparavant {before})"),
-
         // ── the foot ────────────────────────────────────────────────────────────
         ["amounts"] = new("Amounts are per currency and never converted.", "Beträge sind je Währung angegeben und nie umgerechnet.", "Les montants sont indiqués par monnaie et jamais convertis."),
         ["link.dashboard"] = new("Open the dashboard", "Dashboard öffnen", "Ouvrir le tableau de bord"),

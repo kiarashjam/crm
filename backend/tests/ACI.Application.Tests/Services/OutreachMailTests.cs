@@ -100,4 +100,36 @@ public class OutreachMailTests
 
         body.Html.Should().Contain("&lt;b&gt;Club&lt;/b&gt;").And.NotContain("<b>Club</b>");
     }
+
+    [Fact]
+    public void AMembersDesignedMarketingEmail_KeepsItsDesign_WithTheLinkThatWithdrawsConsentAtTheFootOfIt()
+    {
+        var member = Guid.NewGuid();
+        _links.Setup(l => l.CreateMemberToken(Org, member, "anna@example.ch")).Returns("m.tok-anna");
+        var design = ACI.Application.Common.ClubEmails.Letter("Pavillon 46", "fr", "La soirée d’hiver", "Bonjour Anna,\n\nVenez nombreux.", title: true);
+        var (html, text) = ACI.Application.Common.EmailLayout.Render(design, "La soirée d’hiver");
+
+        var marketing = Mail().MemberBody(Org, "Pavillon 46", text, member, "anna@example.ch", marketing: true, "fr", html);
+
+        const string url = "https://crm.example.ch/unsubscribe/m.tok-anna";
+        marketing.Text.Should().StartWith(text).And.EndWith($"Vous ne souhaitez plus recevoir les nouvelles et offres de Pavillon 46 par e-mail ? Se désinscrire: {url}\n");
+        marketing.Html.Should().Contain("Venez nombreux.").And.Contain("#2c5545", "it is still the club's design");
+        marketing.Html.Should().Contain($"<a href=\"{url}\"").And.Contain(">Se d&#233;sinscrire</a>");
+        marketing.Html.IndexOf(url, StringComparison.Ordinal).Should().BeLessThan(marketing.Html.IndexOf("</body>", StringComparison.Ordinal))
+            .And.BeGreaterThan(marketing.Html.IndexOf("Vous recevez cet e-mail en tant que membre", StringComparison.Ordinal), "under the design's own footer");
+        marketing.UnsubscribeUrl.Should().Be(url);
+
+        var service = Mail().MemberBody(Org, "Pavillon 46", text, member, "anna@example.ch", marketing: false, "fr", html);
+        service.Html.Should().Be(html, "a service message carries no link: the member's choices do not stop it");
+        service.Text.Should().Be(text);
+    }
+
+    [Fact]
+    public void ALinkAtTheFootOfAnyOtherDesign_GoesUnderIt_AsBefore()
+    {
+        const string letter = "<!doctype html><html><body><div class=\"letter\">Founders' letter</div></body></html>";
+        var html = ACI.Application.Common.PlainTextEmail.WithFooter(letter, null, "Acme", [new ACI.Application.Common.UnsubscribeLink("a@x.ch", "https://x.ch/u/1")]);
+
+        html.Should().Contain("<div style=\"text-align:center;padding:0 16px 24px\">").And.Contain("<a href=\"https://x.ch/u/1\">Unsubscribe</a>");
+    }
 }

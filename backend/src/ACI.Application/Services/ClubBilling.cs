@@ -92,7 +92,8 @@ public interface IClubBilling
 public sealed record HouseholdStatementMember(Guid MemberId, string Name, string Role, bool RollsUp);
 
 /// <summary>A statement as a file to download or attach.</summary>
-public sealed record StatementFile(string FileName, byte[] Content, AccountStatementDto Statement, decimal AmountDue);
+/// <param name="PaymentSlip">Whether it ends with the club's QR-bill for what is due.</param>
+public sealed record StatementFile(string FileName, byte[] Content, AccountStatementDto Statement, decimal AmountDue, bool PaymentSlip = false);
 
 /// <summary>An invoice for one charge as a file to download.</summary>
 public sealed record InvoiceFile(string FileName, byte[] Content, decimal AmountDue);

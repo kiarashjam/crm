@@ -1232,19 +1232,15 @@ public sealed class ClubApplicationService : IClubApplications
         var workspace = await _db.Organizations.AsNoTracking().Where(o => o.Id == organizationId).Select(o => new { o.Name, o.Locale }).FirstOrDefaultAsync(ct);
         // In the member's language: the one they applied in, or staff set (English when none).
         var language = AppLanguages.ForMember(member.PreferredLanguage);
-        var club = workspace?.Name ?? MemberTexts.T(language, "theClub");
         if (!ValidationHelper.IsValidEmail(address))
         {
             notes.Add($"No welcome email: {Name(member)} has no valid email address.");
             return false;
         }
-        var subject = MemberTexts.T(language, "welcome.subject", ("club", club));
-        var body = new StringBuilder()
-            .Append(MemberTexts.T(language, "greeting", ("name", string.IsNullOrWhiteSpace(member.FirstName) ? Name(member) : member.FirstName.Trim()))).Append("\n\n")
-            .Append(MemberTexts.T(language, "welcome.approved", ("tier", tier.Name), ("club", club))).Append("\n\n")
-            .Append(MemberTexts.T(language, "welcome.closing")).Append("\n\n")
-            .Append(club)
-            .ToString();
+        var email = ClubEmails.Welcome(new WelcomeDetails(
+            workspace?.Name ?? "", language, string.IsNullOrWhiteSpace(member.FirstName) ? Name(member) : member.FirstName.Trim(), tier.Name));
+        var subject = email.Subject;
+        var body = email.Text;
         var log = new MemberMessage
         {
             Id = Guid.NewGuid(),
@@ -1271,6 +1267,7 @@ public sealed class ClubApplicationService : IClubApplications
             RecipientName = Name(member),
             Subject = subject,
             Body = body,
+            Design = _ => email.Design,
             CreatedByUserId = userId,
             ReplyToUserId = userId,
             MemberId = member.Id,

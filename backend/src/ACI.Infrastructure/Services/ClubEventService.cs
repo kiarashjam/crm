@@ -525,31 +525,22 @@ public sealed partial class ClubEventService : IClubEvents
 
         // In the member's language (English for a guest, or a member with none set, as before).
         var language = AppLanguages.ForMember(member?.PreferredLanguage);
-        var locale = language == AppLanguages.English ? null
-            : await _db.Organizations.AsNoTracking().Where(o => o.Id == org).Select(o => o.Locale).FirstOrDefaultAsync(ct);
-        string L(string key, params (string, object?)[] args) => MemberTexts.T(language, key, args);
+        var club = await _db.Organizations.AsNoTracking().Where(o => o.Id == org).Select(o => new { o.Name, o.Locale }).FirstOrDefaultAsync(ct);
+        var locale = club?.Locale;
         var english = language == AppLanguages.English;
         var when = english ? When(ev.StartAtUtc, zone)
-            : TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(ev.StartAtUtc, DateTimeKind.Utc), zone).ToString(L("event.when"), MemberTexts.Culture(language, locale));
-        var where = string.IsNullOrWhiteSpace(ev.Location) ? "" : L("event.atPlace", ("location", ev.Location));
+            : TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(ev.StartAtUtc, DateTimeKind.Utc), zone).ToString(MemberTexts.T(language, "event.when"), MemberTexts.Culture(language, locale));
         var ticket = registration.ChargeId != null
             ? $"{registration.Currency} {registration.TicketPrice.ToString("N2", english ? CultureInfo.InvariantCulture : NumberCulture(locale))}"
             : null;
-        string subject, body;
-        if (notice == Notice.Promoted)
-        {
-            subject = L("event.promotedSubject", ("event", ev.Name));
-            body = L("event.promotedBody", ("event", ev.Name), ("when", when), ("where", where))
-                + (ticket != null ? "\n\n" + L(registration.TicketTier == TicketTiers.Guest ? "event.ticketOnHostAccount" : "event.ticketOnAccount", ("ticket", ticket)) : "")
-                + "\n\n" + L("event.cantCome");
-        }
-        else
-        {
-            subject = L("event.cancelledSubject", ("event", ev.Name));
-            body = L("event.cancelledBody", ("event", ev.Name), ("when", when), ("where", where))
-                + (ticket != null && registration.ChargeReversedAtUtc != null ? "\n\n" + L("event.ticketTakenOff", ("ticket", ticket)) : "")
-                + "\n\n" + L("event.seeYou");
-        }
+        // Greeted by name: a member's first name, a guest's as they gave it.
+        var firstName = member != null ? member.FirstName?.Trim() : registration.Name?.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        var details = new EventNoticeDetails(
+            club?.Name ?? "", language, firstName, ev.Name, when, string.IsNullOrWhiteSpace(ev.Location) ? null : ev.Location.Trim(),
+            ticket, registration.TicketTier == TicketTiers.Guest, registration.ChargeReversedAtUtc != null, member != null);
+        var drawn = notice == Notice.Promoted ? ClubEmails.SeatFreed(details) : ClubEmails.EventCancelled(details);
+        var subject = drawn.Subject;
+        var body = drawn.Text;
         var email = new OutboundEmailRequest
         {
             OrganizationId = org,
@@ -557,8 +548,10 @@ public sealed partial class ClubEventService : IClubEvents
             SourceId = registration.Id,
             To = [address],
             RecipientName = registration.Name,
+            Language = language,
             Subject = Clip(subject, 300),
             Body = body,
+            Design = _ => drawn.Design,
             CreatedByUserId = _user.UserId,
             ReplyToUserId = _user.UserId,
             MemberId = member?.Id,

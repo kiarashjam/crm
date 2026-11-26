@@ -131,6 +131,23 @@ public interface IClubPayments
     Task<int> CollectAutoPayAsync(DateTime utcNow, CancellationToken ct = default);
 }
 
+/// <summary>A pay link put in an email the billing sends a member, and when it stops working.</summary>
+public sealed record MemberPayLink(string Url, DateTime ExpiresAtUtc);
+
+/// <summary>
+/// Pay links for the emails the billing sends (a statement, a payment reminder), so a member can
+/// pay from the email. Kept apart from <see cref="IClubPayments"/>, which reads the billing.
+/// </summary>
+public interface IMemberPayLinks
+{
+    /// <summary>
+    /// A link to pay online what the member's account owes, or the charges named (as many as a
+    /// link holds; the account otherwise). Null when the club takes no payments online, or the
+    /// server does not know the app's public address the link opens.
+    /// </summary>
+    Task<MemberPayLink?> ForEmailAsync(Guid organizationId, Guid memberId, IReadOnlyList<Guid>? chargeIds = null, CancellationToken ct = default);
+}
+
 /// <summary>The accounting journal: the ledger's entries for a period as bookings, for Bexio, Abacus or another program.</summary>
 public interface IClubAccounting
 {

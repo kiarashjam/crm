@@ -451,7 +451,8 @@ public class AuthService : IAuthService
 
         var rawToken = PasswordResetCrypto.CreateRawToken();
         var tokenHash = PasswordResetCrypto.HashRawToken(rawToken);
-        var expiresAt = DateTime.UtcNow.AddHours(1);
+        // What the email says: AccountEmailContent states this lifetime to the reader.
+        var expiresAt = DateTime.UtcNow.Add(AccountEmailContent.ResetLinkLifetime);
 
         if (!TryNormalizeFrontendBaseUrl(_emailSettings.FrontendBaseUrl, out var baseUrl))
         {
@@ -562,7 +563,7 @@ public class AuthService : IAuthService
     {
         var rawToken = PasswordResetCrypto.CreateRawToken();
         user.EmailVerificationTokenHash = PasswordResetCrypto.HashRawToken(rawToken);
-        user.EmailVerificationTokenExpiresAtUtc = DateTime.UtcNow.AddHours(24);
+        user.EmailVerificationTokenExpiresAtUtc = DateTime.UtcNow.Add(AccountEmailContent.VerificationLinkLifetime);
         return rawToken;
     }
 

@@ -55,6 +55,16 @@ public sealed record OutboundEmailRequest
     public string? Html { get; init; }
 
     /// <summary>
+    /// The email's design (<see cref="EmailLayout"/>), drawn for the person it is for once its
+    /// placeholders are filled: given the filled subject and body and the name it goes out under,
+    /// it answers the design, which becomes the HTML part and the plain-text part. The footer
+    /// (the unsubscribe link, where the email carries one) is added to both as to any other email,
+    /// and everything from a record is escaped by the design. Null: <see cref="Body"/> is the
+    /// plain-text part and the HTML part is made from it. Not with <see cref="Html"/>.
+    /// </summary>
+    public Func<EmailDraft, EmailDesign>? Design { get; init; }
+
+    /// <summary>
     /// Not sent before this: a newsletter to many leads is spread over minutes, so the mail
     /// server takes it at a steady rate rather than all at once. Null: as soon as it can go.
     /// </summary>
@@ -121,6 +131,10 @@ public sealed record OutboundEmailRequest
     /// <summary>Where replies go, when not to the person behind it (or the workspace's owner).</summary>
     public string? ReplyTo { get; init; }
 }
+
+/// <summary>What the outbox hands an email's design: its words with the placeholders filled for the one person it is for.</summary>
+/// <param name="WorkspaceName">The name it goes out under, which a club's design shows at its head.</param>
+public sealed record EmailDraft(string Subject, string Body, string? WorkspaceName);
 
 /// <summary>
 /// An email from the platform itself to the people who run it (a platform admin), such as the
@@ -324,6 +338,8 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
         if (request.Html != null && !request.ForOwnTeam
             && (request.LeadId == null || purpose != null || request.MemberId != null || to.Count != 1 || cc.Count > 0 || bcc.Count > 0))
             return new Error("Email.HtmlForTestsOnly", "Only a test copy, or an email to one lead, is sent with HTML of its own.");
+        if (request.Html != null && request.Design != null)
+            return new Error("Email.HtmlAndDesign", "An email is sent with HTML of its own or with a design, not both.");
 
         var organizationId = request.OrganizationId;
         if (await RefusalAsync(organizationId, to.Concat(cc).Concat(bcc).ToList(), request.LeadId, request.ContactId, purpose, request.MemberId, ct) is { } refusal)
@@ -343,17 +359,27 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
         if (subject.Length == 0) return new Error("Email.NoSubject", "Add a subject.");
         if (subject.Length > 300) subject = subject[..300];
 
+        // A designed email is drawn here, from its words as filled for this person: the design
+        // is both parts, and the footer below goes on them as on any other email.
+        var text = body;
+        var html = request.Html;
+        if (request.Design != null)
+        {
+            var drawn = EmailLayout.Render(request.Design(new EmailDraft(subject, body, sender.WorkspaceName)), subject);
+            (html, text) = (drawn.Html, drawn.Text.TrimEnd());
+        }
+
         // A link at the foot for each person it is visibly addressed to, to stop this
         // workspace's email. Not for Bcc: naming them would show everyone who else got it.
         // A member's marketing carries a link that withdraws their consent to it, and a
         // service message none: their choices do not stop their statements.
         var tracking = request.TrackOpens && request.LeadId is Guid leadId ? _outreach.TrackingUrl(leadId) : null;
         var mail = request.ForOwnTeam
-            ? new OutreachBody(body, request.Html ?? PlainTextEmail.ToHtml(body, null, sender.WorkspaceName), null)
+            ? new OutreachBody(text, html ?? PlainTextEmail.ToHtml(text, null, sender.WorkspaceName), null)
             : purpose != null && request.MemberId is Guid memberId
-                ? _outreach.MemberBody(organizationId, sender.WorkspaceName, body, memberId, to[0], purpose == ConsentPurposes.Marketing,
-                    purpose == ConsentPurposes.Marketing ? await MemberLanguageAsync(organizationId, memberId, ct) : AppLanguages.English)
-                : _outreach.Body(organizationId, sender.WorkspaceName, body, to.Concat(cc).ToList(), tracking, request.Language, request.Html);
+                ? _outreach.MemberBody(organizationId, sender.WorkspaceName, text, memberId, to[0], purpose == ConsentPurposes.Marketing,
+                    purpose == ConsentPurposes.Marketing ? await MemberLanguageAsync(organizationId, memberId, ct) : AppLanguages.English, html)
+                : _outreach.Body(organizationId, sender.WorkspaceName, text, to.Concat(cc).ToList(), tracking, request.Language, html);
         // A designed email to a lead goes with its unsubscribe link or not at all: without the
         // app's public address (Email:FrontendBaseUrl) there is none to give.
         if (request.Html != null && !request.ForOwnTeam && mail.UnsubscribeUrl == null)

@@ -36,7 +36,8 @@ public sealed partial class ClubPaymentsService : IClubPayments
     public const string Charges = "charges";
     public const string Setup = "setup";
 
-    private static readonly TimeSpan PayLinkLifetime = TimeSpan.FromDays(60);
+    /// <summary>How long a pay link works: staff's, and the one in a statement or reminder.</summary>
+    internal static readonly TimeSpan PayLinkLifetime = TimeSpan.FromDays(60);
     private static readonly TimeSpan SetupLinkLifetime = TimeSpan.FromDays(14);
 
     /// <summary>Stripe's page lasts at most a day; a member who opens it again later gets a new one.</summary>
@@ -107,28 +108,17 @@ public sealed partial class ClubPaymentsService : IClubPayments
         var setup = link.Purpose == Setup;
         // In the member's language (English when none is set).
         var language = AppLanguages.ForMember(member.PreferredLanguage);
-        string L(string key, params (string, object?)[] args) => MemberTexts.T(language, key, args);
-        var subject = setup ? L("payLink.subjectSetup", ("club", config.ClubName)) : L("payLink.subjectPay", ("club", config.ClubName));
-        var body = new StringBuilder();
-        body.Append(L("greeting", ("name", firstName))).Append("\n\n");
-        if (setup)
-        {
-            body.Append(request.AutoPay ? L("payLink.setupAutoPay") : L("payLink.setupPlain")).Append(' ');
-            body.Append(L("payLink.setupSecure")).Append("\n\n");
-        }
-        else
-        {
-            var methods = new List<string> { L("method.card") };
-            if (config.MethodsFor(link.Currency).Contains("twint")) methods.Add(L("method.twint"));
-            if (config.MethodsFor(link.Currency).Contains("sepa_debit")) methods.Add(L("method.sepa"));
-            body.Append(L("payLink.payOnline", ("amount", money), ("methods", MemberTexts.JoinOr(language, methods)))).Append("\n\n");
-        }
-        body.Append(link.Url).Append("\n\n");
+        string L(string key) => MemberTexts.T(language, key);
+        var methods = new List<string> { L("method.card") };
+        if (config.MethodsFor(link.Currency).Contains("twint")) methods.Add(L("method.twint"));
+        if (config.MethodsFor(link.Currency).Contains("sepa_debit")) methods.Add(L("method.sepa"));
         var until = language == AppLanguages.English
             ? link.ExpiresAtUtc.ToString("d MMMM yyyy", CultureInfo.InvariantCulture)
             : link.ExpiresAtUtc.ToString("d MMMM yyyy", MemberTexts.Culture(language, config.Locale));
-        body.Append(L("payLink.validUntil", ("date", until))).Append("\n\n");
-        body.Append(config.ClubName);
+        var email = ClubEmails.PayLink(new PayLinkDetails(
+            config.ClubName, language, firstName, setup, request.AutoPay, money, MemberTexts.JoinOr(language, methods), link.Url, until));
+        var subject = email.Subject;
+        var body = email.Text;
 
         var log = new MemberMessage
         {
@@ -141,7 +131,7 @@ public sealed partial class ClubPaymentsService : IClubPayments
             Category = "Dues",
             Purpose = ConsentPurposes.Service,
             Subject = subject,
-            Preview = Clip(body.ToString(), 500),
+            Preview = Clip(body, 500),
             Status = MemberMessageStatuses.Queued,
             CreatedByUserId = userId,
             CreatedAtUtc = DateTime.UtcNow,
@@ -156,7 +146,8 @@ public sealed partial class ClubPaymentsService : IClubPayments
             To = [address],
             RecipientName = NameOf(member),
             Subject = subject,
-            Body = body.ToString(),
+            Body = body,
+            Design = _ => email.Design,
             CreatedByUserId = userId,
             ReplyToUserId = userId,
             MemberId = member.Id,

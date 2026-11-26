@@ -93,6 +93,10 @@ public class ClubApplicationsTests
         var welcome = await Read(factory, db => db.OutboundMessages.Single(m => m.Source == OutboundSources.Welcome));
         (welcome.To, welcome.MemberId, welcome.Purpose).Should().Be(("claire@example.ch", memberId, ConsentPurposes.Service));
         welcome.Subject.Should().Be("Welcome to Pavillon46");
+        // In the club's look: the approval and the membership it brings, in both parts.
+        welcome.TextBody.Should().StartWith("Welcome to Pavillon46\n\nDear Claire,\n\nYour application has been approved, and you are now a Gold member of Pavillon46.")
+            .And.Contain("Kind regards,\nPavillon46");
+        welcome.HtmlBody.Should().Contain("Membership approved").And.Contain("you are now a Gold member of Pavillon46").And.Contain("#2c5545");
         (await Read(factory, db => db.MemberMessages.Count(m => m.MemberId == memberId))).Should().Be(1, "the welcome shows in the member's communications");
     }
 

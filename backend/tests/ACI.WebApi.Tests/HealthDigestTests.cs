@@ -74,12 +74,18 @@ public class HealthDigestTests
         var digest = digests.Single(d => d.To == "owner@alpine.example");
         digest.Subject.Should().Be("System health: 4 things to look at in Alpine");
         digest.Body.Should().Contain("In the last 24 hours in Alpine:")
-            .And.Contain("- 1 email could not be sent")
-            .And.Contain("- 1 automation run failed")
-            .And.Contain("- 1 email bounced")
-            .And.Contain("- 1 address added to the do-not-send list")
+            .And.Contain("Emails that could not be sent: 1")
+            .And.Contain("Automation runs that failed: 1")
+            .And.Contain("Emails that bounced: 1")
+            .And.Contain("Addresses added to the do-not-send list: 1")
+            .And.NotContain("Spam reports", "only what happened is listed")
             .And.Contain("/settings?tab=health")
             .And.NotContain("gone@example.ch").And.NotContain("lost@example.ch");
+        // The same in CadenceE's design, sent as it is: for the team, so no unsubscribe footer.
+        digest.HtmlBody.Should().StartWith("<!DOCTYPE html>").And.Contain("4 things to look at")
+            .And.Contain("Emails that could not be sent").And.Contain(">Open System health<")
+            .And.Contain("/settings?tab=health\"")
+            .And.NotContain("gone@example.ch").And.NotContain("lost@example.ch").And.NotContain("unsubscribe");
 
         var notices = await app.Services.Read(db => db.Notifications.Where(n => n.SourceKey == HealthDigestService.SourceKey(org, new DateOnly(2026, 11, 18))).ToList());
         notices.Select(n => n.UserId).Should().BeEquivalentTo(new[] { ownerId, managerId });
@@ -113,6 +119,6 @@ public class HealthDigestTests
         (await SendAsync(app, Morning)).Should().Be(1);
 
         var digest = (await DigestsAsync(app)).Should().ContainSingle().Subject;
-        digest.Body.Should().Contain("- 1 welcome handoff failed or was not delivered").And.Contain("- 1 email could not be sent");
+        digest.Body.Should().Contain("Welcome handoffs failed or not delivered: 1").And.Contain("Emails that could not be sent: 1");
     }
 }
