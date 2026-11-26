@@ -6,10 +6,12 @@ import type { SiteLang } from '../site';
 import { MarketingFooter } from './MarketingFooter';
 import { MarketingHeader } from './MarketingHeader';
 import { LaunchOfferStrip } from './LaunchOffer';
+import { StickySignupBar } from './StickySignupBar';
 
 /**
  * The frame of every public page: the header, the page's <main>, the launch offer (until
- * 31 December 2026; not repeated on the pricing page, which is about it), the footer. The page's
+ * 31 December 2026; not repeated on the pricing page, which is about it), the footer, and on a
+ * phone the bar that keeps "Start free" in reach. The page's
  * language is the address's (/fr/… French), and the app's language follows it while the
  * page is open, so <html lang> matches what is written.
  */
@@ -31,6 +33,7 @@ export function MarketingLayout({
       </main>
       {pageId !== 'pricing' && <LaunchOfferStrip lang={lang} />}
       <MarketingFooter lang={lang} pageId={pageId} />
+      <StickySignupBar lang={lang} />
     </div>
   );
 }

@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import { Info, RotateCcw } from 'lucide-react';
-import { isDemoMode } from '@/app/lib/auth';
+import { ArrowRight, Info, RotateCcw } from 'lucide-react';
+import { clearDemoUser, isDemoMode } from '@/app/lib/auth';
+import { isLaunchOfferActive } from '@/app/lib/launchOffer';
+import { useT } from '@/app/i18n';
 
 const DEMO_STORAGE_KEYS = [
   'crm.mock.leads.v1',
@@ -27,7 +29,15 @@ function resetDemoData(): void {
  */
 export default function DemoBanner() {
   const [resetting, setResetting] = useState(false);
+  const { t } = useT();
   if (!isDemoMode()) return null;
+
+  // From the sample workspace to a real one: leave the demo, then the sign-up form. A full
+  // load, so nothing of the demo session stays in memory.
+  const createAccount = () => {
+    clearDemoUser();
+    window.location.assign('/login?mode=register');
+  };
 
   const handleReset = () => {
     if (resetting) return;
@@ -48,9 +58,15 @@ export default function DemoBanner() {
     >
       <div className="flex items-center justify-center gap-3 text-amber-800 text-sm font-medium">
         <Info className="w-4 h-4 shrink-0 text-amber-600" aria-hidden />
-        <span className="flex-1 max-w-3xl text-center">
-          Demo mode — sample data only, saved locally in your browser. Connect an API or sign in to use real data.
-        </span>
+        <span className="flex-1 max-w-3xl text-center">{t('demo.banner')}</span>
+        <button
+          type="button"
+          onClick={createAccount}
+          className="inline-flex items-center gap-1 rounded-md bg-slate-900 px-2.5 py-1 text-xs font-semibold text-white hover:bg-slate-800 transition-colors"
+        >
+          {isLaunchOfferActive() ? t('demo.createAccount') : t('demo.createAccountAfterOffer')}
+          <ArrowRight className="w-3 h-3" aria-hidden />
+        </button>
         <button
           type="button"
           onClick={handleReset}

@@ -41,6 +41,9 @@ import { usePageLanguage } from '@/app/i18n';
 import { MarketingHeader } from '@/app/marketing/components/MarketingHeader';
 import { MarketingFooter } from '@/app/marketing/components/MarketingFooter';
 import { CtaLink } from '@/app/marketing/components/CtaLink';
+import { Reassurance } from '@/app/marketing/components/Reassurance';
+import { StickySignupBar } from '@/app/marketing/components/StickySignupBar';
+import { CTA_COPY } from '@/app/marketing/ctaCopy';
 import { LaunchOfferStrip, useLaunchOfferActive, useSignupLabel } from '@/app/marketing/components/LaunchOffer';
 import { LAUNCH_OFFER_COPY } from '@/app/lib/launchOffer';
 import { PageCard } from '@/app/marketing/components/PageCard';
@@ -175,7 +178,8 @@ export default function Homepage() {
                   <span className="block">Run your club.</span>{' '}
                   <span className="block">Close your sales.</span>{' '}
                   <span className="block">
-                    <GradientText>One Swiss CRM.</GradientText>
+                    {/* While the launch offer runs, the H1 says what searchers look for: a free CRM. */}
+                    <GradientText>{offerActive ? 'One free Swiss CRM.' : 'One Swiss CRM.'}</GradientText>
                   </span>
                 </h1>
 
@@ -199,14 +203,15 @@ export default function Homepage() {
                     <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" aria-hidden="true" />
                   </CtaLink>
                   <CtaLink
-                    kind="demo"
+                    kind="try"
                     lang="en"
                     className="group bg-white hover:bg-slate-50 text-slate-900 px-8 py-4 rounded-2xl font-semibold text-lg border-2 border-slate-200 hover:border-orange-300 flex items-center justify-center gap-3 shadow-lg transition-all duration-200"
                   >
                     <Play className="w-5 h-5 text-orange-600" aria-hidden="true" />
-                    Request a demo
+                    {CTA_COPY.en.tryDemo}
                   </CtaLink>
                 </div>
+                <Reassurance lang="en" className="-mt-6 mb-10" />
 
                 {/* Who uses it, and in which languages: only what is true */}
                 <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-6">
@@ -2442,11 +2447,12 @@ export default function Homepage() {
                 </MagneticButton>
                 <MagneticButton>
                   <CtaLink
-                    kind="demo"
+                    kind="try"
                     lang="en"
                     className="bg-slate-900/20 backdrop-blur-sm border-2 border-white/60 text-white px-10 py-5 rounded-2xl font-bold text-lg flex items-center justify-center gap-2 hover:bg-slate-900/30 hover:scale-105 transition-all duration-300"
                   >
-                    Request a demo
+                    <Play className="w-5 h-5" aria-hidden="true" />
+                    {CTA_COPY.en.tryDemo}
                   </CtaLink>
                 </MagneticButton>
               </div>
@@ -2466,6 +2472,7 @@ export default function Homepage() {
 
       {/* ==================== FOOTER ==================== */}
       <MarketingFooter lang="en" pageId="home" />
+      <StickySignupBar lang="en" />
 
       {/* Global styles */}
       <style>{`
