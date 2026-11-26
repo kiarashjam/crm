@@ -29,7 +29,7 @@ public sealed class PlatformAdmins : IPlatformAdmins
     /// <summary>The valid addresses in a comma- or semicolon-separated list, lower case, each once.</summary>
     public static IReadOnlyList<string> Parse(string? list) =>
         (list ?? "")
-            .Split([',', ';', ' ', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Split(new[] { ',', ';', ' ', '\n', '\r', '\t' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(a => a.ToLowerInvariant())
             .Where(ValidationHelper.IsValidEmail)
             .Distinct(StringComparer.Ordinal)

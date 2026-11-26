@@ -24,7 +24,11 @@ public static class PlainTextEmail
         var pixel = trackingUrl == null
             ? ""
             : $"\n<img src=\"{WebUtility.HtmlEncode(trackingUrl)}\" width=\"1\" height=\"1\" alt=\"\" style=\"display:block;border:0\">";
-        return $"<!doctype html><html><body><div style=\"font-family:sans-serif;font-size:15px;line-height:1.5\">{paragraphs}</div>{footer}{pixel}</body></html>";
+        // Written by a person, so it looks like a person's email: clean type, no card, no banner.
+        return "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"></head>" +
+               "<body style=\"margin:0;padding:0;\"><div style=\"max-width:640px;padding:8px 4px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto," +
+               "'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;line-height:24px;color:#1f2937;\">" +
+               $"{paragraphs}</div>{footer}{pixel}</body></html>";
     }
 
     /// <summary>
