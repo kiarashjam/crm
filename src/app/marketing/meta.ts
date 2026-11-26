@@ -1,8 +1,8 @@
 // What search results and link previews show for each public page, in each language, and
 // the few words the site's header, footer and 404 page share.
 //
-// Titles stay within 60 characters and descriptions within 155 (meta.test.ts checks both,
-// and that no two pages share either). They are written for what people in Switzerland
+// Titles stay within 60 characters and descriptions within 155 (content.test.ts checks both,
+// during the launch offer and after it, and that no two pages share either). They are written for what people in Switzerland
 // search: "CRM pour club privé", "Mitgliederverwaltung Software", "Swiss CRM", and the like.
 
 import { isLaunchOfferActive } from '@/app/lib/launchOffer';
@@ -27,6 +27,7 @@ export const PAGE_META: Record<SiteLang, Record<MarketingPageId, PageMeta>> = {
       title: 'CadenceE – Swiss CRM for Private Clubs and Sales Teams',
       description: 'The Swiss CRM that runs a whole club and its sales: leads, e-signed contracts, members, QR-bill and TWINT billing, email and AI. English, French, German.',
       nav: 'Home',
+      offerTitle: 'Free Swiss CRM for Clubs and Sales Teams | CadenceE',
       offerDescription: 'The Swiss CRM for private clubs and sales teams: leads, e-signed contracts, members, QR-bill and TWINT billing, email and AI. Free until end of 2026.',
     },
     features: {
@@ -39,46 +40,55 @@ export const PAGE_META: Record<SiteLang, Record<MarketingPageId, PageMeta>> = {
       title: "CRM for Private Members' Clubs | CadenceE",
       description: "Run a private members' club in one CRM: enquiries and applications, contracts and deposits, members and households, events, tabs and renewals.",
       nav: 'Private clubs',
+      offerDescription: "Run a private members' club in one CRM: enquiries, applications, contracts and deposits, members, events, tabs and renewals. Free until end of 2026.",
     },
     membership: {
       title: 'Membership Management Software for Clubs | CadenceE',
       description: 'Members, households, applications, renewals with at-risk scores and corporate memberships, with a member portal and recurring dues. Made for clubs.',
       nav: 'Membership management',
+      offerDescription: 'Membership management software for clubs: members, households, applications, renewals with at-risk scores and recurring dues. Free until end of 2026.',
     },
     hospitality: {
       title: 'Hospitality CRM for Restaurants, Hotels & Events | CadenceE',
       description: 'A CRM for restaurants, hotels and event venues: reservations with waitlists, private-event hire, bar and restaurant tabs, Lightspeed POS and guest email.',
       nav: 'Hospitality',
+      offerDescription: 'A CRM for restaurants, hotels and event venues: reservations with waitlists, private-event hire, tabs and Lightspeed POS. Free until end of 2026.',
     },
     sales: {
       title: 'Sales CRM with Lead Tracking and AI Sales Writer | CadenceE',
       description: 'Track every lead through five phases, from outreach to deposit, with lead scoring, assignment, duplicate protection, a deals board and an AI sales writer.',
       nav: 'Sales CRM',
+      offerDescription: 'A sales CRM that tracks every lead through five phases, from outreach to deposit, with scoring, a deals board and an AI writer. Free until end of 2026.',
     },
     'e-signature': {
       title: 'Contracts with E-Signature and Deposits | CadenceE',
       description: 'Send contracts from templates, let clients sign online without an account and collect the deposit at signing by card or Swiss QR-bill. Paper contracts too.',
       nav: 'E-signature contracts',
+      offerDescription: 'Send contracts from templates, have clients sign online without an account and collect the deposit at signing. Free until end of 2026.',
     },
     swiss: {
       title: 'Swiss CRM with QR-Bill, TWINT, Bexio and Abacus | CadenceE',
       description: 'A CRM built in Switzerland: Swiss QR-bill and TWINT payments, Bexio and Abacus exports, French, German and English, and privacy requests under the FADP.',
       nav: 'Swiss CRM',
+      offerDescription: 'A CRM built in Switzerland: QR-bill and TWINT, Bexio and Abacus exports, French, German and English, FADP requests. Free until end of 2026.',
     },
     billing: {
       title: 'Club Billing, Dues and Payments Software | CadenceE',
       description: 'Recurring dues, house accounts, bar tabs and monthly PDF statements. Card, TWINT, SEPA and QR-bill payments, bank-file matching and an append-only ledger.',
       nav: 'Billing and payments',
+      offerDescription: 'Recurring dues, house accounts, bar tabs and monthly PDF statements, paid by card, TWINT, SEPA or QR-bill. Free until end of 2026.',
     },
     email: {
       title: 'Email Automation CRM: Sequences and Newsletters | CadenceE',
       description: 'One outbox with retries and bounce handling, sequences, automations, newsletters with a booking page, and campaigns with consent and one-click unsubscribe.',
       nav: 'Email automation',
+      offerDescription: 'One outbox with retries and bounce handling, sequences, automations, newsletters and campaigns with consent. Free until end of 2026.',
     },
     ai: {
       title: 'AI CRM Assistant Built on Claude | CadenceE',
       description: 'An AI assistant inside your CRM that proposes changes for you to confirm, writes sales emails and prepares a morning brief every day. Built on Claude.',
       nav: 'AI assistant',
+      offerDescription: 'An AI assistant in your CRM, built on Claude: it proposes changes you confirm, writes sales emails and prepares a morning brief. Free until end of 2026.',
     },
     pricing: {
       title: 'CadenceE Pricing for Clubs and Sales Teams',
@@ -87,12 +97,20 @@ export const PAGE_META: Record<SiteLang, Record<MarketingPageId, PageMeta>> = {
       offerTitle: 'Pricing: CadenceE Is Free Until 31 December 2026',
       offerDescription: 'CadenceE is free until 31 December 2026: every feature, no credit card required. Sign up now; pricing for 2027 will be announced well before then.',
     },
+    'free-crm': {
+      title: 'The Free Launch Offer Has Ended | CadenceE',
+      description: 'CadenceE was free for everyone who signed up during its launch offer, which has now ended. Ask us for the current pricing, or sign in to your workspace.',
+      nav: 'Free CRM',
+      offerTitle: 'Free CRM Software: Every Feature, No Credit Card | CadenceE',
+      offerDescription: 'Free CRM software for clubs, hospitality and sales teams: every feature, your whole team, no credit card, no feature tiers. Free until end of 2026.',
+    },
   },
   fr: {
     home: {
       title: 'CadenceE – CRM suisse pour clubs privés et équipes de vente',
       description: 'Le CRM suisse qui gère tout un club et ses ventes : prospects, contrats signés en ligne, membres, facture QR et TWINT, e-mails et IA. En français.',
       nav: 'Accueil',
+      offerTitle: 'CRM gratuit pour clubs et équipes de vente | CadenceE',
       offerDescription: 'Le CRM suisse des clubs privés et équipes de vente : prospects, contrats signés en ligne, membres, facture QR, TWINT et IA. Gratuit jusqu’à fin 2026.',
     },
     features: {
@@ -105,46 +123,55 @@ export const PAGE_META: Record<SiteLang, Record<MarketingPageId, PageMeta>> = {
       title: 'CRM pour club privé et club de membres | CadenceE',
       description: 'Gérez votre club privé dans un seul CRM : candidatures, contrats et acomptes, membres et foyers, événements, notes de bar et renouvellements.',
       nav: 'Clubs privés',
+      offerDescription: 'Gérez votre club privé dans un seul CRM : candidatures, contrats et acomptes, membres, événements, notes de bar. Gratuit jusqu’à fin 2026.',
     },
     membership: {
       title: 'Logiciel de gestion des membres pour clubs | CadenceE',
       description: "Membres, foyers, candidatures, renouvellements avec score de risque, adhésions d'entreprise, portail membre et cotisations récurrentes.",
       nav: 'Gestion des membres',
+      offerDescription: 'Logiciel de gestion des membres : foyers, candidatures, renouvellements avec score de risque, portail et cotisations. Gratuit jusqu’à fin 2026.',
     },
     hospitality: {
       title: "CRM pour l'hôtellerie et la restauration | CadenceE",
       description: "Le CRM des restaurants, hôtels et lieux d'événements : réservations avec liste d'attente, privatisations, notes de bar et caisse Lightspeed.",
       nav: 'Hôtellerie-restauration',
+      offerDescription: 'Le CRM des restaurants, hôtels et lieux d’événements : réservations, privatisations, notes de bar, caisse Lightspeed. Gratuit jusqu’à fin 2026.',
     },
     sales: {
       title: 'CRM commercial avec suivi des prospects | CadenceE',
       description: "Suivez chaque prospect en cinq phases, du premier contact à l'acompte : score, attribution, protection contre les doublons, affaires et rédacteur IA.",
       nav: 'CRM commercial',
+      offerDescription: 'Suivez chaque prospect en cinq phases jusqu’à l’acompte : score, attribution, protection contre les doublons, rédacteur IA. Gratuit jusqu’à fin 2026.',
     },
     'e-signature': {
       title: 'Contrats avec signature électronique et acompte | CadenceE',
       description: "Envoyez vos contrats depuis des modèles, faites-les signer en ligne sans compte et encaissez l'acompte à la signature, par carte ou facture QR.",
       nav: 'Signature électronique',
+      offerDescription: 'Contrats depuis vos modèles, signés en ligne sans compte, acompte encaissé à la signature par carte ou facture QR. Gratuit jusqu’à fin 2026.',
     },
     swiss: {
       title: 'CRM suisse : facture QR, TWINT, Bexio et Abacus | CadenceE',
       description: "Un CRM conçu en Suisse : facture QR et TWINT, export vers Bexio et Abacus, français, allemand et anglais, demandes d'accès et d'effacement selon la nLPD.",
       nav: 'CRM suisse',
+      offerDescription: 'Un CRM conçu en Suisse : facture QR et TWINT, export Bexio et Abacus, français, allemand et anglais, nLPD. Gratuit jusqu’à fin 2026.',
     },
     billing: {
       title: 'Facturation et paiements pour clubs | CadenceE',
       description: 'Cotisations récurrentes, comptes maison, notes de bar et relevés PDF mensuels. Carte, TWINT, SEPA ou facture QR, et rapprochement bancaire.',
       nav: 'Facturation et paiements',
+      offerDescription: 'Cotisations, comptes maison, notes de bar et relevés PDF mensuels, payés par carte, TWINT, SEPA ou facture QR. Gratuit jusqu’à fin 2026.',
     },
     email: {
       title: 'CRM avec automatisation des e-mails | CadenceE',
       description: "Une boîte d'envoi unique avec relances et rebonds gérés, séquences, automatisations, newsletters avec page de réservation et campagnes avec consentement.",
       nav: 'Automatisation des e-mails',
+      offerDescription: 'Boîte d’envoi avec relances et rebonds gérés, séquences, automatisations, newsletters et campagnes. Gratuit jusqu’à fin 2026.',
     },
     ai: {
       title: 'Assistant IA pour votre CRM, basé sur Claude | CadenceE',
       description: 'Un assistant IA dans votre CRM : il propose des modifications que vous confirmez, rédige vos e-mails de vente et prépare un brief chaque matin.',
       nav: 'Assistant IA',
+      offerDescription: 'Un assistant IA basé sur Claude : il propose des modifications que vous confirmez, rédige vos e-mails, prépare un brief. Gratuit jusqu’à fin 2026.',
     },
     pricing: {
       title: 'Tarifs de CadenceE pour clubs et équipes de vente',
@@ -153,12 +180,20 @@ export const PAGE_META: Record<SiteLang, Record<MarketingPageId, PageMeta>> = {
       offerTitle: 'Tarifs : CadenceE est gratuit jusqu’au 31 décembre 2026',
       offerDescription: 'CadenceE est gratuit jusqu’au 31 décembre 2026 : toutes les fonctionnalités, sans carte de crédit. Les tarifs 2027 seront annoncés bien avant.',
     },
+    'free-crm': {
+      title: 'L’offre de lancement gratuite est terminée | CadenceE',
+      description: 'CadenceE était gratuit pour toutes les personnes inscrites pendant son offre de lancement, désormais terminée. Demandez-nous les tarifs actuels.',
+      nav: 'CRM gratuit',
+      offerTitle: 'Logiciel CRM gratuit, tout inclus, sans carte | CadenceE',
+      offerDescription: 'CRM gratuit pour clubs, associations et équipes de vente : toutes les fonctionnalités, toute l’équipe, sans carte. Gratuit jusqu’à fin 2026.',
+    },
   },
   de: {
     home: {
       title: 'CadenceE – Schweizer CRM für Privatclubs und Vertrieb',
       description: 'Das Schweizer CRM für Club und Vertrieb: Leads, elektronisch signierte Verträge, Mitglieder, QR-Rechnung und TWINT, E-Mail und KI. Auf Deutsch.',
       nav: 'Startseite',
+      offerTitle: 'Kostenloses CRM für Clubs und Vertrieb | CadenceE',
       offerDescription: 'Das Schweizer CRM für Privatclubs und Vertrieb: Leads, E-Signatur, Mitglieder, QR-Rechnung, TWINT, E-Mail und KI. Kostenlos bis Ende 2026.',
     },
     features: {
@@ -171,46 +206,55 @@ export const PAGE_META: Record<SiteLang, Record<MarketingPageId, PageMeta>> = {
       title: "CRM für Privatclubs und Members' Clubs | CadenceE",
       description: 'Führen Sie Ihren Privatclub in einem CRM: Anfragen und Aufnahmeanträge, Verträge und Anzahlungen, Mitglieder, Anlässe, Konsumationen und Erneuerungen.',
       nav: 'Privatclubs',
+      offerDescription: 'Ihr Privatclub in einem CRM: Anfragen, Aufnahmeanträge, Verträge und Anzahlungen, Mitglieder, Anlässe und Konsumationen. Kostenlos bis Ende 2026.',
     },
     membership: {
       title: 'Software für die Mitgliederverwaltung in Clubs | CadenceE',
       description: 'Mitglieder, Haushalte, Aufnahmeanträge, Erneuerungen mit Risikobewertung, Firmenmitgliedschaften, Mitgliederportal und wiederkehrende Beiträge.',
       nav: 'Mitgliederverwaltung',
+      offerDescription: 'Mitgliederverwaltung für Clubs: Haushalte, Aufnahmeanträge, Erneuerungen mit Risikobewertung, Mitgliederportal und Beiträge. Kostenlos bis Ende 2026.',
     },
     hospitality: {
       title: 'CRM für Gastronomie, Hotellerie und Events | CadenceE',
       description: 'Das CRM für Restaurants, Hotels und Eventlocations: Reservationen mit Warteliste, Privatanlässe, Bar- und Restaurantrechnungen und Lightspeed-Kasse.',
       nav: 'Gastronomie und Hotellerie',
+      offerDescription: 'Das CRM für Restaurants, Hotels und Eventlocations: Reservationen mit Warteliste, Privatanlässe, Konsumationen, Lightspeed. Kostenlos bis Ende 2026.',
     },
     sales: {
       title: 'Vertriebs-CRM mit Lead-Management und KI | CadenceE',
       description: 'Jeder Lead in fünf Phasen, vom Erstkontakt bis zur Anzahlung: Lead-Scoring, Zuweisung, Dublettenschutz, Deal-Board und ein KI-Texter für Ihre E-Mails.',
       nav: 'Vertriebs-CRM',
+      offerDescription: 'Jeder Lead in fünf Phasen bis zur Anzahlung: Lead-Scoring, Zuweisung, Dublettenschutz, Deal-Board und KI-Texter. Kostenlos bis Ende 2026.',
     },
     'e-signature': {
       title: 'Verträge mit elektronischer Signatur | CadenceE',
       description: 'Verträge aus Vorlagen versenden, online ohne Konto unterschreiben lassen und die Anzahlung bei der Unterzeichnung per Karte oder QR-Rechnung einziehen.',
       nav: 'Verträge und E-Signatur',
+      offerDescription: 'Verträge aus Vorlagen, online ohne Konto unterschrieben, Anzahlung bei Unterzeichnung per Karte oder QR-Rechnung. Kostenlos bis Ende 2026.',
     },
     swiss: {
       title: 'Schweizer CRM: QR-Rechnung, TWINT, Bexio, Abacus | CadenceE',
       description: 'Ein CRM aus der Schweiz: QR-Rechnung und TWINT, Export nach Bexio und Abacus, Deutsch, Französisch und Englisch, Auskunfts- und Löschbegehren nach DSG.',
       nav: 'Schweizer CRM',
+      offerDescription: 'Ein CRM aus der Schweiz: QR-Rechnung und TWINT, Export nach Bexio und Abacus, Deutsch, Französisch und Englisch, DSG. Kostenlos bis Ende 2026.',
     },
     billing: {
       title: 'Club-Abrechnung, Beiträge und Zahlungen | CadenceE',
       description: 'Wiederkehrende Beiträge, Hauskonten, Barrechnungen und monatliche PDF-Auszüge. Karte, TWINT, SEPA oder QR-Rechnung, mit Abgleich der Bankdatei.',
       nav: 'Abrechnung und Zahlungen',
+      offerDescription: 'Beiträge, Hauskonten, Barrechnungen und monatliche PDF-Auszüge, bezahlt per Karte, TWINT, SEPA oder QR-Rechnung. Kostenlos bis Ende 2026.',
     },
     email: {
       title: 'CRM mit E-Mail-Automatisierung | CadenceE',
       description: 'Ein Postausgang mit Wiederholungen und Bounce-Handling, Sequenzen und Automationen, Newsletter mit Buchungsseite und Kampagnen mit Einwilligung.',
       nav: 'E-Mail-Automatisierung',
+      offerDescription: 'Ein Postausgang mit Wiederholungen und Bounce-Handling, Sequenzen, Automationen, Newsletter und Kampagnen. Kostenlos bis Ende 2026.',
     },
     ai: {
       title: 'KI-Assistent für Ihr CRM, auf Basis von Claude | CadenceE',
       description: 'Ein KI-Assistent im CRM, der Änderungen nur vorschlägt und Sie bestätigen lässt, Verkaufs-E-Mails schreibt und jeden Morgen ein Briefing vorbereitet.',
       nav: 'KI-Assistent',
+      offerDescription: 'Ein KI-Assistent im CRM auf Basis von Claude: schlägt Änderungen vor, schreibt Verkaufs-E-Mails, bereitet ein Briefing vor. Kostenlos bis Ende 2026.',
     },
     pricing: {
       title: 'Preise von CadenceE für Clubs und Verkaufsteams',
@@ -218,6 +262,13 @@ export const PAGE_META: Record<SiteLang, Record<MarketingPageId, PageMeta>> = {
       nav: 'Preise',
       offerTitle: 'Preise: CadenceE ist bis 31. Dezember 2026 kostenlos',
       offerDescription: 'CadenceE ist bis 31. Dezember 2026 kostenlos: alle Funktionen, keine Kreditkarte nötig. Die Preise für 2027 geben wir lange vorher bekannt.',
+    },
+    'free-crm': {
+      title: 'Das kostenlose Einführungsangebot ist beendet | CadenceE',
+      description: 'CadenceE war für alle kostenlos, die sich während des Einführungsangebots registriert haben. Das Angebot ist beendet: Fragen Sie nach den Preisen.',
+      nav: 'Kostenloses CRM',
+      offerTitle: 'CRM-Software kostenlos: alle Funktionen inklusive | CadenceE',
+      offerDescription: 'Kostenloses CRM für Clubs, Vereine und Verkaufsteams: alle Funktionen, das ganze Team, keine Kreditkarte. Kostenlos bis Ende 2026.',
     },
   },
 };

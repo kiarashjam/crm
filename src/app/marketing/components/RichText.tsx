@@ -7,7 +7,8 @@ const LINK = /\[([^\]]+)\]\((page:[a-z-]+|\/[^)]*)\)/g;
 
 /**
  * Text with the content files' link markup turned into links: "[label](page:sales)" to a
- * marketing page in the same language, "[label](/login)" to a path on the site.
+ * marketing page in the same language, "[label](/login)" to a path on the site
+ * ("/login?demo=1": the demo workspace).
  */
 export function RichText({ text, lang }: { text: string; lang: SiteLang }) {
   const parts: ReactNode[] = [];
@@ -24,7 +25,8 @@ export function RichText({ text, lang }: { text: string; lang: SiteLang }) {
       to = marketingPath(id, lang);
       track = `nav-${id}`;
     } else if (target.startsWith('/login')) {
-      track = target.includes('mode=register') ? 'cta-signup' : 'cta-login';
+      // "/login?demo=1" opens the demo workspace (sample data, no account): counted apart from sign-ins.
+      track = target.includes('mode=register') ? 'cta-signup' : target.includes('demo=1') ? 'cta-try-demo' : 'cta-login';
     }
     parts.push(
       <Link key={at} to={to} data-track={track} className="font-semibold text-orange-700 underline decoration-orange-300 underline-offset-4 hover:decoration-orange-600">

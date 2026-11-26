@@ -69,8 +69,12 @@ export const ROBOTS_NOINDEX_FOLLOW = 'noindex, follow';
 
 export const DEFAULT_OG_IMAGE = '/og/default.png';
 
-/** Pages whose OG image carries the launch offer while it runs (a second image, -offer.png). */
-export const OFFER_OG_PAGES = ['home', 'pricing'] as const;
+/**
+ * Pages whose OG image carries the launch offer while it runs (a second image, -offer.png).
+ * Every page with afterOffer words belongs here, so its plain image (drawn from those words)
+ * is shown only once the offer has ended.
+ */
+export const OFFER_OG_PAGES = ['home', 'pricing', 'free-crm'] as const;
 
 export function ogImagePath(id: string, lang: SiteLang, offer = false): string {
   return offer ? `/og/${id}-${lang}-offer.png` : `/og/${id}-${lang}.png`;

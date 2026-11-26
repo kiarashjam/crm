@@ -3,6 +3,7 @@
 //
 // Only what CadenceE does today: no price, no customer but Pavillon 46, no rating, no award.
 
+import { enFreeCrm } from './freeCrm';
 import { enPricing } from './pricing';
 import type { LanguageContent } from './types';
 
@@ -1017,6 +1018,7 @@ const en: LanguageContent = {
     },
 
     pricing: enPricing,
+    'free-crm': enFreeCrm,
   },
 };
 
