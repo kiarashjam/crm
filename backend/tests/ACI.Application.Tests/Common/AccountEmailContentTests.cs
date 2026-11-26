@@ -52,8 +52,8 @@ public class AccountEmailContentTests
         e.Subject.Should().Be("Reset your CadenceE password");
         e.Html.Should().Contain($"href=\"{ResetUrl}\"").And.Contain(">Choose a new password<").And.Contain("copy this address into your browser");
         SaysInBoth(e, "Hi Anna Müller,", ResetUrl, "anna.muller@pavillon46.ch",
-            "This link expires in one hour and works once",
-            "you are signed out on every device",
+            "This link expires in one hour and works once. If you ask again, only the newest link works.",
+            "Choosing a new password signs you out on every device.",
             "If you did not ask for this, you can ignore this email: your password stays as it is.");
         // What the email says is what AuthService issues.
         AccountEmailContent.ResetLinkLifetime.Should().Be(TimeSpan.FromHours(1));
@@ -83,13 +83,13 @@ public class AccountEmailContentTests
 
         e.Subject.Should().Be("You have been invited to Pavillon 46 on CadenceE");
         e.Text.Should().Contain("Miguel van Ackere invited you to join Pavillon 46 on CadenceE.")
-            .And.Contain($"You'll join as: {role}").And.Contain($"As {role}: ").And.Contain(what)
+            .And.Contain($"You'll join as: {role}").And.Contain($"{role} \u2014 {char.ToLowerInvariant(what[0])}{what[1..]}")
             .And.Contain(AcceptUrl)
             .And.Contain("(luc.favre@pavillon46.ch)")
             .And.Contain("This invitation expires in 7 days. The link works only for you, so do not forward this email.")
             .And.Contain("If you were not expecting it, you can ignore this email.");
         e.Html.Should().Contain($"href=\"{AcceptUrl}\"").And.Contain(">Accept the invitation<");
-        SaysInBoth(e, "Miguel van Ackere", "Pavillon 46", role, what, "This invitation expires in 7 days.", "luc.favre@pavillon46.ch");
+        SaysInBoth(e, "Miguel van Ackere", "Pavillon 46", role, what[1..], "This invitation expires in 7 days.", "luc.favre@pavillon46.ch");
         AccountEmailContent.InvitationLifetime.Should().Be(TimeSpan.FromDays(7));
     }
 

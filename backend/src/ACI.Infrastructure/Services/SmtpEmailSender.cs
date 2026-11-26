@@ -300,7 +300,7 @@ public sealed class SmtpEmailSender : IEmailSender
 
     // ── Contracts ────────────────────────────────────────────────────────────
     //
-    // These three deliberately BREAK the convention used above. The other methods
+    // These four deliberately BREAK the convention used above. The other methods
     // return `true` when SmtpHost is unset and LogResetLinksWhenSmtpNotConfigured
     // is on, so a developer environment can pretend a reminder went out. For a
     // contract that is exactly the wrong answer: the caller would record a
@@ -333,6 +333,16 @@ public sealed class SmtpEmailSender : IEmailSender
             _options.FromName, recipientName, organizationName, contractTitle, signUrl,
             hasAttachment: attachment is not null);
         return await SendAsync(toEmail, recipientName, email.Subject, email.Text, email.Html, attachment, ct);
+    }
+
+    public async Task<bool> SendContractReminderEmailAsync(
+        string toEmail, string recipientName, string organizationName, string contractTitle,
+        DateTime? sentAtUtc, DateTime? linkExpiresAtUtc, CancellationToken ct = default)
+    {
+        if (!SmtpConfigured("contract reminder", toEmail, null)) return false;
+        var email = ContractEmailContent.Reminder(
+            _options.FromName, recipientName, organizationName, contractTitle, sentAtUtc, linkExpiresAtUtc);
+        return await SendAsync(toEmail, recipientName, email.Subject, email.Text, email.Html, null, ct);
     }
 
     public async Task<bool> SendContractSignedNotificationAsync(

@@ -161,6 +161,25 @@ public interface IEmailSender
         CancellationToken ct = default);
 
     /// <summary>
+    /// Reminds a counterparty, once, of a contract still unopened days after it was sent.
+    /// </summary>
+    /// <remarks>
+    /// Only the signing link's hash is kept, so the reminder points to the original email. Like
+    /// the other contract emails, an unconfigured mail server is a <c>false</c>, never a
+    /// pretended send: the reminder is then tried again rather than recorded as sent.
+    /// </remarks>
+    /// <param name="sentAtUtc">When the contract was sent.</param>
+    /// <param name="linkExpiresAtUtc">When the link in the original email stops working.</param>
+    Task<bool> SendContractReminderEmailAsync(
+        string toEmail,
+        string recipientName,
+        string organizationName,
+        string contractTitle,
+        DateTime? sentAtUtc,
+        DateTime? linkExpiresAtUtc,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Tells the CRM user the counterparty has signed and it is their turn.
     /// </summary>
     Task<bool> SendContractSignedNotificationAsync(

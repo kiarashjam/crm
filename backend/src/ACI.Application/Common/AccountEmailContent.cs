@@ -44,8 +44,8 @@ public static class AccountEmailContent
             .Paragraph($"We received a request to reset the password of your CadenceE account, {toEmail.Trim()}. " +
                        "Choose a new one with the button below.")
             .Button("Choose a new password", resetUrl)
-            .Note("This link expires in one hour and works once. Asking again sends a new link, and this one stops working. " +
-                  "Once you choose a new password, you are signed out on every device where you were signed in.")
+            .Note("This link expires in one hour and works once. If you ask again, only the newest link works. " +
+                  "Choosing a new password signs you out on every device.")
             .Paragraph("If you did not ask for this, you can ignore this email: your password stays as it is.", muted: true);
         return EmailLayout.Compose(design, subject);
     }
@@ -96,7 +96,7 @@ public static class AccountEmailContent
             .Paragraph("Hi,")
             .Paragraph($"{from ?? "Someone"} invited you to join {workspace} on CadenceE.")
             .Facts([("Workspace", workspace), ("Invited by", from), ("You'll join as", role)])
-            .Paragraph($"As {role}: {what}", muted: true)
+            .Paragraph($"{role} \u2014 {char.ToLowerInvariant(what[0])}{what[1..]}", muted: true)
             .Button("Accept the invitation", acceptUrl)
             .Paragraph($"Sign in, or create your account, with this email address ({toEmail.Trim()}), " +
                        "and confirm the address if CadenceE asks you to.")
