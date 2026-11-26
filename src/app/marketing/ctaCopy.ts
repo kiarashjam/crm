@@ -25,7 +25,7 @@ export const CTA_COPY: Record<SiteLang, CtaCopy> = {
     barNoteAfterOffer: 'Swiss CRM for clubs and sales',
   },
   fr: withFrenchSpacing({
-    tryDemo: 'Essayer la démo, sans inscription',
+    tryDemo: 'Essayer la démo sans compte',
     reassurance: ['Sans carte de crédit', 'Toutes les fonctionnalités', 'Prêt en quelques minutes', 'Français, allemand, anglais'],
     barNote: 'Gratuit jusqu’au 31.12.2026 · Sans carte',
     barNoteAfterOffer: 'Le CRM suisse des clubs et des ventes',
