@@ -49,7 +49,8 @@ public class RecapTextsTests
     [Fact]
     public void PlaceholdersAreFilled_AndAnyOtherLanguageReadsEnglish()
     {
-        RecapTexts.T("fr", "text.line", ("label", "Nouveaux prospects"), ("value", "12")).Should().Be("Nouveaux prospects : 12");
+        RecapTexts.T("fr", "conversions.withoutValue", ("count", "2"))
+            .Should().Be("Affaires gagnées sans montant lisible\u00a0: 2. Elles sont comptées, pas additionnées.");
         RecapTexts.T("de", "title.weekly").Should().Be("Wochenrückblick");
         RecapTexts.T("it", "title.weekly").Should().Be("Weekly recap");
         var act = () => RecapTexts.T("en", "no.such.key");

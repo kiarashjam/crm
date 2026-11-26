@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text;
 using ACI.Application.Common;
 using ACI.Application.Configuration;
 using ACI.Application.Services;
@@ -125,8 +124,8 @@ public sealed class HealthDigestService : IHealthDigest
         var any = false;
         foreach (var recipient in recipients)
         {
-            var (subject, body) = Compose(recipient.Name, workspaceName, counts, link);
-            var claim = await ClaimAsync(recipient.UserId, organizationId, key, subject, counts, nowUtc, ct);
+            var email = Compose(recipient.Name, workspaceName, counts, link);
+            var claim = await ClaimAsync(recipient.UserId, organizationId, key, email.Subject, counts, nowUtc, ct);
             if (claim == null) continue;
             any = true;
             try
@@ -139,8 +138,10 @@ public sealed class HealthDigestService : IHealthDigest
                     To = [recipient.Email!],
                     RecipientName = recipient.Name,
                     // A workspace's name is never read as a placeholder.
-                    Subject = subject.Replace("{{", "{ {", StringComparison.Ordinal),
-                    Body = body.Replace("{{", "{ {", StringComparison.Ordinal),
+                    Subject = email.Subject.Replace("{{", "{ {", StringComparison.Ordinal),
+                    Body = email.Text.Replace("{{", "{ {", StringComparison.Ordinal),
+                    // Finished, and never filled: the outbox sends a team member's own HTML as it is.
+                    Html = email.Html,
                     // For someone on the team about the workspace: nothing to unsubscribe from.
                     ForOwnTeam = true,
                 }, ct);
@@ -259,20 +260,36 @@ public sealed class HealthDigestService : IHealthDigest
         if (c.NewSuppressions > 0) yield return Count(c.NewSuppressions, "address added to the do-not-send list", "addresses added to the do-not-send list");
     }
 
-    /// <summary>The digest's subject and plain-text body: counts and a link, nothing about anyone.</summary>
-    public static (string Subject, string Body) Compose(string? recipientName, string workspaceName, DigestCounts counts, string link)
+    /// <summary>
+    /// The digest in CadenceE's design: what needs looking at, counted, and the System health page
+    /// a button away; counts and a link, nothing about anyone.
+    /// </summary>
+    public static EmailContent Compose(string? recipientName, string workspaceName, DigestCounts counts, string link)
     {
         var things = counts.Total == 1 ? "1 thing" : $"{counts.Total.ToString(CultureInfo.InvariantCulture)} things";
-        var body = new StringBuilder();
-        body.Append("Hi").Append(string.IsNullOrWhiteSpace(recipientName) ? "" : " " + recipientName.Trim()).AppendLine(",");
-        body.AppendLine();
-        body.AppendLine($"In the last 24 hours in {workspaceName}:");
-        foreach (var line in Lines(counts)) body.AppendLine("- " + line);
-        body.AppendLine();
-        body.AppendLine($"Open System health: {link}");
-        body.AppendLine();
-        body.AppendLine("You receive this because you manage this workspace's settings. It comes only on a day with something to look at.");
-        return ($"System health: {things} to look at in {workspaceName}", body.ToString());
+        int? Shown(int n) => n > 0 ? n : null;
+        var design = new EmailDesign(EmailLook.Product)
+            {
+                Language = "en",
+                Eyebrow = $"System health · {workspaceName}",
+                Title = $"{char.ToUpperInvariant(things[0])}{things[1..]} to look at",
+                Preheader = string.Join(" · ", Lines(counts)),
+                FooterNote = "You receive this because you manage this workspace's settings. It comes only on a day with something to look at.",
+            }
+            .Paragraph(string.IsNullOrWhiteSpace(recipientName) ? "Hi," : $"Hi {recipientName.Trim()},")
+            .Paragraph($"In the last 24 hours in {workspaceName}:")
+            .Facts(new (string Label, int? Count)[]
+                {
+                    ("Emails that could not be sent", Shown(counts.FailedEmails)),
+                    ("Welcome handoffs failed or not delivered", Shown(counts.Handoffs)),
+                    ("Automation runs that failed", Shown(counts.FailedRuns)),
+                    ("Emails that bounced", Shown(counts.Bounces)),
+                    ("Spam reports", Shown(counts.SpamReports)),
+                    ("Addresses added to the do-not-send list", Shown(counts.NewSuppressions)),
+                }
+                .Select(r => (r.Label, r.Count?.ToString(CultureInfo.InvariantCulture))))
+            .Button("Open System health", link);
+        return EmailLayout.Compose(design, $"System health: {things} to look at in {workspaceName}");
     }
 
     private static string Count(int n, string one, string many) => $"{n.ToString(CultureInfo.InvariantCulture)} {(n == 1 ? one : many)}";

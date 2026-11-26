@@ -22,8 +22,8 @@ public sealed class Mailbox : CustomWebApplicationFactory
             sender.Setup(s => s.SendEmailVerificationEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
                 .Callback((string to, string _, string url, CancellationToken _) => Keep("verify", to, url))
                 .ReturnsAsync(true);
-            sender.Setup(s => s.SendOrganizationInviteEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-                .Callback((string to, string _, string _, string url, CancellationToken _) => Keep("invite", to, url))
+            sender.Setup(s => s.SendOrganizationInviteEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+                .Callback((string to, string _, string _, string url, string? _, CancellationToken _) => Keep("invite", to, url))
                 .ReturnsAsync(true);
             sender.Setup(s => s.SendPasswordResetEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
                 .Callback((string to, string _, string url, CancellationToken _) => Keep("reset", to, url))

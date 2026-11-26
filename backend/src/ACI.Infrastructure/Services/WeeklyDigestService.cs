@@ -1,5 +1,5 @@
 using System.Globalization;
-using System.Text;
+using ACI.Application.Common;
 using ACI.Application.Configuration;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
@@ -151,8 +151,8 @@ public sealed class WeeklyDigestService
             }
 
             var baseUrl = (_emailSettings.FrontendBaseUrl ?? string.Empty).Trim().TrimEnd('/');
-            var (subject, body) = Compose(user.Name, week.FirstDay, week.LastDay, sections, $"{baseUrl}/reports");
-            delivered = sections.Count > 0 && await _email.SendMessageAsync(user.Email, user.Name, subject, body, ct);
+            var email = Compose(user.Name, week.FirstDay, week.LastDay, sections, $"{baseUrl}/reports");
+            delivered = sections.Count > 0 && await _email.SendMessageAsync(user.Email, user.Name, email, ct);
         }
         finally
         {
@@ -221,16 +221,26 @@ public sealed class WeeklyDigestService
     /// <summary>One workspace's figures in a digest.</summary>
     public sealed record DigestSection(string WorkspaceName, ReportSummaryDto Summary, ForecastDto Forecast);
 
-    /// <summary>The digest's subject and plain-text body.</summary>
-    public static (string Subject, string Body) Compose(
+    /// <summary>
+    /// The digest in CadenceE's design: per workspace, last week's headline figures, then the
+    /// detail with amounts per currency; subject, plain text and HTML.
+    /// </summary>
+    public static EmailContent Compose(
         string recipientName, DateOnly firstDay, DateOnly lastDay, IReadOnlyList<DigestSection> sections, string reportsUrl)
     {
         var inv = CultureInfo.InvariantCulture;
         var week = $"{firstDay.ToString("d MMM", inv)} – {lastDay.ToString("d MMM yyyy", inv)}";
-        var body = new StringBuilder();
-        body.Append("Hi").Append(string.IsNullOrWhiteSpace(recipientName) ? "" : " " + recipientName.Trim()).AppendLine(",");
-        body.AppendLine();
-        body.AppendLine($"Here is last week ({week}) for {(sections.Count == 1 ? sections[0].WorkspaceName : "your workspaces")}.");
+        var who = sections.Count == 1 ? sections[0].WorkspaceName : "your workspaces";
+        var design = new EmailDesign(EmailLook.Product)
+            {
+                Language = "en",
+                Eyebrow = $"Weekly report · {week}",
+                Title = sections.Count == 1 ? $"Last week at {sections[0].WorkspaceName}" : "Last week in your workspaces",
+                Preheader = $"Here is last week ({week}) for {who}.",
+                FooterNote = "You receive this because the weekly report digest is on in your notification settings. Turn it off there to stop it.",
+            }
+            .Paragraph(string.IsNullOrWhiteSpace(recipientName) ? "Hi," : $"Hi {recipientName.Trim()},")
+            .Paragraph($"Here is last week ({week}) for {who}.");
 
         foreach (var section in sections)
         {
@@ -241,40 +251,44 @@ public sealed class WeeklyDigestService
             var wonThisMonth = section.Forecast.Rows.Where(r => r.WonCount > 0).ToList();
             var weighted = s.Weighted.Where(w => w.Covered > 0).ToList();
             var missing = s.Weighted.Sum(w => w.Missing);
-
-            body.AppendLine();
-            body.AppendLine(section.WorkspaceName);
-            body.AppendLine(new string('-', Math.Min(section.WorkspaceName.Length, 60)));
-            body.AppendLine($"Won: {Deals(s.Won.Count)}{Money(s.Won.ByCurrency)}");
-            body.AppendLine($"Lost: {Deals(s.Lost.Count)}");
-            body.AppendLine($"New deals: {Deals(s.Created.Count)}{Money(s.Created.ByCurrency)}");
-            body.AppendLine($"Open pipeline now: {Deals(s.Open.Count)}{Money(s.Open.ByCurrency)}");
-            if (weighted.Count > 0)
-            {
-                body.AppendLine("  weighted: " + string.Join(" · ", weighted.Select(w => Amount(w.Currency, w.Value)))
-                    + (missing > 0 ? $" ({missing} without a probability, left out)" : ""));
-            }
-            body.AppendLine($"Expected to close in {monthName}: {Deals(expected.Sum(r => r.Count))}"
-                + (expected.Count == 0 ? "" : ", " + string.Join(" · ", expected.Select(r => Amount(r.Currency, r.Value)))
-                    + " (weighted " + string.Join(" · ", expected.Select(r => Amount(r.Currency, r.Weighted))) + ")"));
-            body.AppendLine($"Won so far in {monthName}: {Deals(wonThisMonth.Sum(r => r.WonCount))}"
-                + (wonThisMonth.Count == 0 ? "" : ", " + string.Join(" · ", wonThisMonth.Select(r => Amount(r.Currency, r.WonValue)))));
             var overdue = section.Forecast.Overdue;
-            if (overdue.Sum(r => r.Count) > 0)
-                body.AppendLine($"Past their close date and still open: {Deals(overdue.Sum(r => r.Count))}{Money(overdue)}");
-            body.AppendLine($"New leads: {s.Leads.Created} · converted: {s.Leads.Converted} · active leads now: {s.Leads.Active}");
-            body.AppendLine($"Activities logged: {s.Activities.Total}");
+
+            // With one workspace the title has named it already.
+            if (sections.Count > 1) design.Heading(section.WorkspaceName);
+            design
+                .Stats([
+                    ("Deals won", N(s.Won.Count)),
+                    ("New deals", N(s.Created.Count)),
+                    ("New leads", N(s.Leads.Created)),
+                ])
+                .Facts([
+                    ("Won", $"{Deals(s.Won.Count)}{Money(s.Won.ByCurrency)}"),
+                    ("Lost", Deals(s.Lost.Count)),
+                    ("New deals", $"{Deals(s.Created.Count)}{Money(s.Created.ByCurrency)}"),
+                    ("Open pipeline now", $"{Deals(s.Open.Count)}{Money(s.Open.ByCurrency)}"),
+                    ("Open pipeline, weighted", weighted.Count == 0 ? null
+                        : string.Join(" · ", weighted.Select(w => Amount(w.Currency, w.Value)))
+                          + (missing > 0 ? $" ({missing} without a probability, left out)" : "")),
+                    ($"Expected to close in {monthName}", Deals(expected.Sum(r => r.Count))
+                        + (expected.Count == 0 ? "" : ", " + string.Join(" · ", expected.Select(r => Amount(r.Currency, r.Value)))
+                            + " (weighted " + string.Join(" · ", expected.Select(r => Amount(r.Currency, r.Weighted))) + ")")),
+                    ($"Won so far in {monthName}", Deals(wonThisMonth.Sum(r => r.WonCount))
+                        + (wonThisMonth.Count == 0 ? "" : ", " + string.Join(" · ", wonThisMonth.Select(r => Amount(r.Currency, r.WonValue))))),
+                    ("Past their close date and still open", overdue.Sum(r => r.Count) > 0 ? $"{Deals(overdue.Sum(r => r.Count))}{Money(overdue)}" : null),
+                    ("New leads", N(s.Leads.Created)),
+                    ("Leads converted", N(s.Leads.Converted)),
+                    ("Active leads now", N(s.Leads.Active)),
+                    ("Activities logged", N(s.Activities.Total)),
+                ]);
         }
 
-        body.AppendLine();
-        body.AppendLine("Amounts are per currency and never converted. Deals whose value could not be read are counted but not added in.");
-        body.AppendLine();
-        body.AppendLine($"Open the reports: {reportsUrl}");
-        body.AppendLine();
-        body.AppendLine("You receive this because the weekly report digest is on in your notification settings. Turn it off there to stop it.");
-
-        return ($"Your weekly report, {week}", body.ToString());
+        design
+            .Paragraph("Amounts are per currency and never converted. Deals whose value could not be read are counted but not added in.", muted: true)
+            .Button("Open the reports", reportsUrl);
+        return EmailLayout.Compose(design, $"Your weekly report, {week}");
     }
+
+    private static string N(int n) => n.ToString("N0", CultureInfo.InvariantCulture);
 
     private static string Deals(int count) => count == 1 ? "1 deal" : $"{count.ToString(CultureInfo.InvariantCulture)} deals";
 

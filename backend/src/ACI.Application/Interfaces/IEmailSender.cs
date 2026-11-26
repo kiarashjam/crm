@@ -105,11 +105,16 @@ public interface IEmailSender
     /// <param name="organizationName">Organization they have been invited to.</param>
     /// <param name="invitedByName">Who sent the invitation (may be empty).</param>
     /// <param name="acceptUrl">Absolute URL of the accept page, carrying the invitation's one-time token.</param>
+    /// <param name="permissionPreset">
+    /// The preset they will join with (Invite.PermissionPreset), so the email can say what they
+    /// will be able to do; null joins them as a Member.
+    /// </param>
     Task<bool> SendOrganizationInviteEmailAsync(
         string toEmail,
         string organizationName,
         string invitedByName,
         string acceptUrl,
+        string? permissionPreset = null,
         CancellationToken ct = default);
 
     /// <summary>
@@ -156,6 +161,25 @@ public interface IEmailSender
         CancellationToken ct = default);
 
     /// <summary>
+    /// Reminds a counterparty, once, of a contract still unopened days after it was sent.
+    /// </summary>
+    /// <remarks>
+    /// Only the signing link's hash is kept, so the reminder points to the original email. Like
+    /// the other contract emails, an unconfigured mail server is a <c>false</c>, never a
+    /// pretended send: the reminder is then tried again rather than recorded as sent.
+    /// </remarks>
+    /// <param name="sentAtUtc">When the contract was sent.</param>
+    /// <param name="linkExpiresAtUtc">When the link in the original email stops working.</param>
+    Task<bool> SendContractReminderEmailAsync(
+        string toEmail,
+        string recipientName,
+        string organizationName,
+        string contractTitle,
+        DateTime? sentAtUtc,
+        DateTime? linkExpiresAtUtc,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Tells the CRM user the counterparty has signed and it is their turn.
     /// </summary>
     Task<bool> SendContractSignedNotificationAsync(
@@ -190,8 +214,11 @@ public interface IEmailSender
         EmailAttachment? attachment = null,
         CancellationToken ct = default);
 
-    /// <summary>A plain message under the product's name, e.g. a contract reminder.</summary>
-    Task<bool> SendMessageAsync(string toEmail, string recipientName, string subject, string body, CancellationToken ct = default);
+    /// <summary>
+    /// A message under the product's name, such as the weekly report digest: its subject and both
+    /// its parts, the plain text and the HTML, as composed (<see cref="Common.EmailLayout"/>).
+    /// </summary>
+    Task<bool> SendMessageAsync(string toEmail, string recipientName, Common.EmailContent message, CancellationToken ct = default);
 
     /// <summary>
     /// Sends one email from the outbox — composer, assistant, sequence and automation

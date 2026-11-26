@@ -304,6 +304,32 @@ public sealed class MorningBriefService : IMorningBrief
         return b.ToString().TrimEnd();
     }
 
+    /// <summary>
+    /// The brief as an email in CadenceE's design: the headline as its title, the summary under it
+    /// when one was written, each part with its lines, and the brief a button away.
+    /// </summary>
+    /// <param name="title">The subject: "Your morning brief for Thu 26 Nov".</param>
+    /// <param name="link">The brief's page in the app.</param>
+    public static EmailContent ComposeEmail(MorningBriefDto brief, string? summary, string title, string link)
+    {
+        var day = DateOnly.TryParseExact(brief.Day, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)
+            ? d.ToString("dddd d MMMM", CultureInfo.InvariantCulture)
+            : null;
+        var design = new EmailDesign(EmailLook.Product)
+            {
+                Language = "en",
+                Eyebrow = string.Join(" · ", new[] { "Morning brief", day, brief.WorkspaceName }.Where(p => !string.IsNullOrWhiteSpace(p))),
+                Title = brief.Headline,
+                Preheader = string.IsNullOrWhiteSpace(summary) ? brief.Headline : summary.Trim(),
+                FooterNote = "You receive this because the morning brief by email is on in your notification settings. Turn it off there to stop it.",
+            }
+            .Paragraphs(summary);
+        foreach (var section in brief.Sections)
+            design.Heading($"{section.Title} ({section.Count})").List(section.Lines.Select(l => l.Text));
+        design.Button("Open your brief", link);
+        return EmailLayout.Compose(design, title);
+    }
+
     public async Task<MorningBriefView> TodayAsync(Guid organizationId, Guid userId, CancellationToken ct = default)
     {
         var now = await BuildAsync(organizationId, userId, DateTime.UtcNow, ct);
@@ -427,7 +453,7 @@ public sealed class MorningBriefService : IMorningBrief
             await _db.SaveChangesAsync(ct);
             done = true;
 
-            await EmailAsync(organizationId, userId, user?.Name, user?.Email, title, text, claim, ct);
+            await EmailAsync(organizationId, userId, user?.Name, user?.Email, title, brief, summary, claim, ct);
             return true;
         }
         finally
@@ -484,13 +510,15 @@ public sealed class MorningBriefService : IMorningBrief
         return Clip(reply.Text.Trim(), 1200, keepLines: true);
     }
 
-    private async Task EmailAsync(Guid organizationId, Guid userId, string? name, string? email, string title, string text, AssistantBrief claim, CancellationToken ct)
+    private async Task EmailAsync(Guid organizationId, Guid userId, string? name, string? email, string title,
+        MorningBriefDto brief, string? summary, AssistantBrief claim, CancellationToken ct)
     {
         var wanted = await _db.UserSettings.AsNoTracking().Where(s => s.UserId == userId).Select(s => s.MorningBriefEmail).FirstOrDefaultAsync(ct);
         if (!wanted || string.IsNullOrWhiteSpace(email)) return;
         try
         {
             var link = $"{(_email.FrontendBaseUrl ?? "").Trim().TrimEnd('/')}/brief";
+            var composed = ComposeEmail(brief, summary, title, link);
             var queued = await _outbox.QueueEmailAsync(new OutboundEmailRequest
             {
                 OrganizationId = organizationId,
@@ -500,8 +528,9 @@ public sealed class MorningBriefService : IMorningBrief
                 RecipientName = name,
                 Subject = title,
                 // Record text is never read as a placeholder: "{{name}}" in a task title stays as written.
-                Body = $"{text.Replace("{{", "{ {", StringComparison.Ordinal)}\n\nOpen your brief: {link}\n\n" +
-                    "You receive this because the morning brief by email is on in your notification settings. Turn it off there to stop it.",
+                Body = composed.Text.Replace("{{", "{ {", StringComparison.Ordinal),
+                // Finished, and never filled: the outbox sends a team member's own HTML as it is.
+                Html = composed.Html,
                 // For someone on the team about their own work: nothing to unsubscribe from.
                 ForOwnTeam = true,
             }, ct);

@@ -123,6 +123,30 @@ public sealed class EmailDesign
         return this;
     }
 
+    /// <summary>
+    /// A table of figures: a header row naming the columns, then a row per label with its
+    /// figures right-aligned, the first column in bold and the others quieter beside it (this
+    /// week beside the week before). A row can sit indented under the one above, as a part of it.
+    /// </summary>
+    /// <param name="columns">The figure columns' headings, left to right.</param>
+    /// <param name="rows">Each row's label and its figures, one per column; missing ones are left blank.</param>
+    /// <param name="labelColumn">A heading over the labels; none leaves that corner empty.</param>
+    /// <remarks>
+    /// Its cells are text, never links: a table often holds what visitors' browsers sent
+    /// (a page, a source), which must not become something to click.
+    /// </remarks>
+    public EmailDesign Table(IEnumerable<string> columns, IEnumerable<EmailTableRow> rows, string? labelColumn = null)
+    {
+        var heads = columns.Select(c => (c ?? "").Trim()).ToList();
+        var kept = rows.Where(r => !string.IsNullOrWhiteSpace(r.Label))
+            .Select(r => new EmailTableRow(r.Label.Trim(),
+                heads.Select((_, i) => i < r.Values.Count ? (r.Values[i] ?? "").Trim() : "").ToList(), r.Indented))
+            .ToList();
+        if (heads.Count > 0 && kept.Count > 0)
+            Blocks.Add(new Block(BlockKind.Table, Text: string.IsNullOrWhiteSpace(labelColumn) ? null : labelColumn.Trim(), Items: heads, Table: kept));
+        return this;
+    }
+
     /// <summary>A bulleted list.</summary>
     public EmailDesign List(IEnumerable<string> items)
     {
@@ -161,7 +185,7 @@ public sealed class EmailDesign
         return this;
     }
 
-    internal enum BlockKind { Paragraph, Heading, Button, Note, Facts, Stats, List, Links, Divider, Pre, SignOff }
+    internal enum BlockKind { Paragraph, Heading, Button, Note, Facts, Stats, List, Links, Divider, Pre, SignOff, Table }
 
     internal sealed record Block(
         BlockKind Kind,
@@ -170,11 +194,16 @@ public sealed class EmailDesign
         bool Muted = false,
         EmailTone Tone = EmailTone.Neutral,
         List<(string Label, string Value)>? Rows = null,
-        List<string>? Items = null);
+        List<string>? Items = null,
+        List<EmailTableRow>? Table = null);
 }
 
 /// <summary>The colour of a note: plain, good news, or a warning.</summary>
 public enum EmailTone { Neutral, Success, Warning }
+
+/// <summary>One row of an <see cref="EmailDesign.Table"/>: its label and its figures, left to right.</summary>
+/// <param name="Indented">Set under the row above, as a part of it (a lead source under "New leads").</param>
+public sealed record EmailTableRow(string Label, IReadOnlyList<string> Values, bool Indented = false);
 
 /// <summary>
 /// Draws an <see cref="EmailDesign"/> as email HTML and as plain text.
@@ -400,7 +429,59 @@ public static class EmailLayout
                 b.Append("<p class=\"em-body\" style=\"margin:24px 0 0;").Append(body).Append("\">")
                     .Append(string.Join("<br>", block.Items!.Select(E))).Append("</p>");
                 break;
+            case EmailDesign.BlockKind.Table:
+                AppendTable(b, block, p);
+                break;
         }
+    }
+
+    /// <summary>
+    /// A table of figures, styled as the facts are: a tinted box, a quiet header row in small
+    /// capitals, the labels on the left and the figures right-aligned in even digits, the first
+    /// column bold. A real table (header cells with their scope), so a screen reader reads each
+    /// figure with its column.
+    /// </summary>
+    private static void AppendTable(StringBuilder b, EmailDesign.Block block, Palette p)
+    {
+        var heads = block.Items!;
+        var rows = block.Table!;
+        var radius = p.Radius == 4 ? 2 : 12;
+        var head = $"padding:12px 18px 9px 10px;font-family:{Sans};font-size:11px;line-height:15px;font-weight:600;letter-spacing:0.6px;" +
+                   $"text-transform:uppercase;color:{p.Muted};border-bottom:1px solid {p.SoftBorder};vertical-align:bottom;";
+        b.Append("<table class=\"em-facts em-table\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"margin:4px 0 22px;")
+            .Append("border-collapse:separate;border-spacing:0;background-color:").Append(p.Soft).Append(";border:1px solid ").Append(p.SoftBorder)
+            .Append(";border-radius:").Append(radius).Append("px;\"><thead><tr>")
+            .Append("<th scope=\"col\" align=\"left\" class=\"em-muted em-tl\" style=\"").Append(head).Append("padding-left:18px;text-align:left;\">")
+            .Append(E(block.Text)).Append("</th>");
+        for (var c = 0; c < heads.Count; c++)
+            b.Append("<th scope=\"col\" align=\"right\" class=\"em-muted").Append(c == heads.Count - 1 ? " em-tr" : "").Append("\" style=\"").Append(head)
+                .Append("text-align:right;\">").Append(E(heads[c])).Append("</th>");
+        b.Append("</tr></thead><tbody>");
+        for (var r = 0; r < rows.Count; r++)
+        {
+            var row = rows[r];
+            var line = r == 0 ? "" : $"border-top:1px solid {p.SoftBorder};";
+            var cell = $"padding:11px 18px 11px 10px;{line}font-family:{Sans};vertical-align:top;";
+            b.Append("<tr><td class=\"").Append(row.Indented ? "em-muted em-tl em-indent" : "em-body em-tl").Append("\" style=\"").Append(cell)
+                .Append(row.Indented
+                    ? $"padding-left:34px;font-size:13px;line-height:20px;color:{p.Muted};"
+                    : $"padding-left:18px;font-size:14px;line-height:20px;color:{p.Body};")
+                // A long label with no space in it (a page's path) wraps rather than widen the email.
+                .Append("text-align:left;word-break:break-word;\">").Append(E(row.Label)).Append("</td>");
+            for (var c = 0; c < heads.Count; c++)
+            {
+                // The first figure in bold; a part's (an indented row's) in plain type, under its whole.
+                var (ink, weight) = c > 0 ? ("em-muted", $"color:{p.Muted};")
+                    : row.Indented ? ("em-body", $"color:{p.Body};")
+                    : ("em-title", $"font-weight:600;color:{p.Title};");
+                b.Append("<td align=\"right\" class=\"").Append(ink).Append(c == heads.Count - 1 ? " em-tr" : "")
+                    .Append("\" style=\"").Append(cell).Append(row.Indented ? "font-size:13px;" : "font-size:14px;")
+                    .Append("line-height:20px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;")
+                    .Append(weight).Append("\">").Append(E(row.Values[c])).Append("</td>");
+            }
+            b.Append("</tr>");
+        }
+        b.Append("</tbody></table>");
     }
 
     /// <summary>The words under a button, before the address written out, in the email's language.</summary>
@@ -433,6 +514,12 @@ public static class EmailLayout
                 case EmailDesign.BlockKind.SignOff:
                     b.Append("<p style=\"margin:18px 0 0;\">").Append(string.Join("<br>", block.Items!.Select(E))).Append("</p>");
                     break;
+                case EmailDesign.BlockKind.Table:
+                    // No boxes in a person's email: the table's lines, as its text part has them.
+                    var lines = new StringBuilder();
+                    TableText(lines, block, d.Language);
+                    b.Append("<p style=\"margin:0 0 14px;\">").Append(E(lines.ToString().TrimEnd()).Replace("\n", "<br>")).Append("</p>");
+                    break;
                 default:
                     if (block.Text != null) b.Append("<p style=\"margin:0 0 14px;\">").Append(Inline(block.Text, PersonalLink)).Append("</p>");
                     break;
@@ -453,10 +540,10 @@ public static class EmailLayout
         var dark = club
             ? ".em-page{background-color:#141816 !important}.em-card{background-color:#1c211e !important;border-color:#2b332f !important}" +
               ".em-title{color:#eef2ef !important}.em-body{color:#cfd7d2 !important}.em-muted{color:#9aa69f !important}" +
-              ".em-note{background-color:#232a26 !important;border-color:#313a35 !important;color:#cfd7d2 !important}.em-facts{background-color:#232a26 !important;border-color:#313a35 !important}.em-facts td{border-color:#313a35 !important}"
+              ".em-note{background-color:#232a26 !important;border-color:#313a35 !important;color:#cfd7d2 !important}.em-facts{background-color:#232a26 !important;border-color:#313a35 !important}.em-facts td,.em-table th{border-color:#313a35 !important}"
             : ".em-page{background-color:#0b0b0e !important}.em-card{background-color:#18181b !important;border-color:#27272a !important}" +
               ".em-title{color:#fafafa !important}.em-body{color:#d4d4d8 !important}.em-muted{color:#a1a1aa !important}" +
-              ".em-note{background-color:#202024 !important;border-color:#2e2e33 !important;color:#d4d4d8 !important}.em-facts{background-color:#202024 !important;border-color:#2e2e33 !important}.em-facts td{border-color:#2e2e33 !important}";
+              ".em-note{background-color:#202024 !important;border-color:#2e2e33 !important;color:#d4d4d8 !important}.em-facts{background-color:#202024 !important;border-color:#2e2e33 !important}.em-facts td,.em-table th{border-color:#2e2e33 !important}";
         return "<style>" +
                ":root{color-scheme:light dark;supported-color-schemes:light dark}" +
                "body{margin:0 !important;padding:0 !important}table,td{mso-table-lspace:0pt;mso-table-rspace:0pt}" +
@@ -465,6 +552,11 @@ public static class EmailLayout
                "@media screen and (max-width:620px){.em-outer{padding:20px 10px !important}.em-pad{padding:30px 22px 26px !important}" +
                ".em-title{word-break:break-word}h1.em-title{font-size:24px !important;line-height:30px !important}" +
                ".em-stat{display:block !important;width:100% !important;padding:0 0 10px 0 !important}" +
+               // A table keeps to the screen: tighter edges, and a long figure may break at a space.
+               // A figure breaks only at a space ("CHF" / "14 400,00"), never inside its digits; a label anywhere it must.
+               ".em-table td,.em-table th{white-space:normal !important;word-break:normal !important;padding-left:6px !important;padding-right:10px !important}" +
+               ".em-table .em-tl{padding-left:12px !important;word-break:break-word !important}.em-table .em-tl.em-indent{padding-left:24px !important}" +
+               ".em-table .em-tr{padding-right:12px !important}" +
                ".em-btn-wrap{width:100% !important}.em-btn{display:block !important;text-align:center !important}}" +
                "</style>";
     }
@@ -511,11 +603,40 @@ public static class EmailLayout
                 case EmailDesign.BlockKind.SignOff:
                     t.Append(string.Join("\n", block.Items!)).Append("\n\n");
                     break;
+                case EmailDesign.BlockKind.Table:
+                    TableText(t, block, d.Language);
+                    break;
             }
         }
         if (!string.IsNullOrWhiteSpace(d.FooterNote)) t.Append("--\n").Append(d.FooterNote.Trim()).Append('\n');
         return t.ToString().TrimEnd() + "\n";
     }
+
+    /// <summary>
+    /// A table as lines a plain-text reader can follow without columns lining up (most show
+    /// the text part in a proportional font): "- New leads: Week 12, Week before 8", an
+    /// indented row under its parent, and with one column just "- Outreach: 20".
+    /// </summary>
+    private static void TableText(StringBuilder t, EmailDesign.Block block, string? language)
+    {
+        var heads = block.Items!;
+        // French sets a no-break space before a colon.
+        var colon = string.Equals((language ?? "").Trim(), "fr", StringComparison.OrdinalIgnoreCase) ? " : " : ": ";
+        foreach (var row in block.Table!)
+        {
+            var figures = heads.Count == 1
+                ? row.Values[0]
+                : string.Join(", ", heads.Select((head, i) => (head, value: row.Values[i]))
+                    .Where(c => c.value.Length > 0)
+                    .Select(c => c.head.Length == 0 ? c.value : $"{c.head} {c.value}"));
+            t.Append(row.Indented ? "  - " : "- ").Append(OneLine(row.Label)).Append(colon).Append(OneLine(figures)).Append('\n');
+        }
+        t.Append('\n');
+    }
+
+    /// <summary>Text on one line, so a label typed with a line break stays in its row.</summary>
+    private static string OneLine(string text) =>
+        string.Join(' ', text.Split(new[] { '\r', '\n', '\t' }, StringSplitOptions.RemoveEmptyEntries)).Trim();
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 

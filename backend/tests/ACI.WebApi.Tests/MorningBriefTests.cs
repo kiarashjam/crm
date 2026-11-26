@@ -279,8 +279,13 @@ public class MorningBriefTests
         var emails = await db.OutboundMessages.Where(m => m.Source == "brief").ToListAsync();
         emails.Should().ContainSingle("only the owner asked for it by email");
         emails[0].To.Should().Be("pavillon@example.ch");
-        emails[0].Body.Should().Contain("Call Ada about the renewal").And.Contain("/brief");
+        emails[0].Body.Should().Contain("Call Ada about the renewal").And.Contain("/brief")
+            .And.Contain("Your tasks due (2)\n------------------\n- Overdue since");
         emails[0].UnsubscribeUrl.Should().BeNull("it is for someone on the team, about their own work");
+        // In CadenceE's design, the headline as its title, sent as it is.
+        emails[0].HtmlBody.Should().StartWith("<!DOCTYPE html>").And.Contain("2 tasks due, 1 deal gone quiet")
+            .And.Contain("Call Ada about the renewal").And.Contain(">Open your brief<").And.Contain("/brief\"")
+            .And.NotContain("unsubscribe");
 
         var rows = await db.AssistantBriefs.Where(b => b.OrganizationId == club.Org).ToListAsync();
         rows.Single(b => b.UserId == club.OwnerId).Should().Match<AssistantBrief>(b => b.Status == "sent" && b.Emailed && !b.WrittenByModel && b.Items == 7 && b.Day == Today);

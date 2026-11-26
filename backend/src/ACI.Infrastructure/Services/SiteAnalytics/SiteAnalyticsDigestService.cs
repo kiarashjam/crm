@@ -1,6 +1,5 @@
 using System.Globalization;
-using System.Net;
-using System.Text;
+using ACI.Application.Common;
 using ACI.Application.Configuration;
 using ACI.Application.Services;
 using ACI.Domain.Entities;
@@ -176,7 +175,15 @@ public sealed class SiteAnalyticsDigestService : ISiteAnalyticsDigest
     /// <summary>Visitor-sent text with every dot written "[.]" ("example[.]com"), so a mail client makes no link of it.</summary>
     public static string Defang(string text) => text.Replace(".", "[.]", StringComparison.Ordinal);
 
-    /// <summary>The subject, the plain text and the HTML of the email: counts and pages, nothing about anyone.</summary>
+    /// <summary>
+    /// The subject, the plain text and the HTML of the email, in CadenceE's design: yesterday's
+    /// figures, each against the day before and the same weekday a week earlier, the week, and
+    /// the top pages and sources; counts and pages, nothing about anyone.
+    /// </summary>
+    /// <remarks>
+    /// What visitors' browsers sent (a page, a source) goes only into table cells, which the
+    /// design never makes into links, and defanged (<see cref="Defang"/>) as well.
+    /// </remarks>
     public static (string Subject, string Text, string Html) Compose(Digest d, string link)
     {
         d = d with { TopPages = d.TopPages.Take(TopRows).ToList(), TopSources = ShownSources(d.TopSources) };
@@ -194,98 +201,44 @@ public sealed class SiteAnalyticsDigestService : ISiteAnalyticsDigest
             ("Sign-ups", r => r.Signups),
         };
 
-        var text = new StringBuilder();
-        text.AppendLine($"cadencee.ai on {dayName} (Europe/Zurich)");
-        text.AppendLine();
-        foreach (var (label, of) in metrics)
-        {
-            text.AppendLine($"{label}: {N(of(y))}   ({Change(of(y), of(d.DayBefore))} vs the day before, {Change(of(y), of(d.WeekBefore))} vs last {weekday})");
-        }
-        text.AppendLine();
-        text.AppendLine($"Last 7 days (visitors): {Sparkline(d.Week.Select(w => w.Visitors).ToList())}");
-        foreach (var w in d.Week)
-        {
-            var date = SiteAnalyticsRules.ParseDay(w.Date)!.Value;
-            text.AppendLine($"  {date.ToString("ddd d MMM", CultureInfo.InvariantCulture),-11} {N(w.Visitors),5} visitors {N(w.PageViews),6} page views {N(w.Signups),4} sign-ups");
-        }
-        text.AppendLine();
-        text.AppendLine("Top pages");
-        if (d.TopPages.Count == 0) text.AppendLine("  (none)");
-        for (var i = 0; i < d.TopPages.Count; i++)
-            text.AppendLine($"  {i + 1}. {Defang(d.TopPages[i].Path)}  {Count(d.TopPages[i].Views, "view", "views")}, {Visitors(d.TopPages[i].Visitors)}");
-        text.AppendLine();
-        text.AppendLine("Top sources");
-        if (d.TopSources.Count == 0) text.AppendLine("  (none)");
-        for (var i = 0; i < d.TopSources.Count; i++)
-            text.AppendLine($"  {i + 1}. {Defang(d.TopSources[i].Source)}  {Count(d.TopSources[i].Sessions, "session", "sessions")}, {Visitors(d.TopSources[i].Visitors)}");
-        if (d.BotHits > 0)
-        {
-            text.AppendLine();
-            text.AppendLine($"Robots: {Count(d.BotHits, "hit", "hits")} counted and left out of the figures above.");
-        }
-        text.AppendLine();
-        text.AppendLine($"Open the dashboard: {link}");
-        text.AppendLine();
-        text.AppendLine("Website visitors only: what is done signed in to the app is left out, sign-ups excepted.");
-        text.AppendLine("Counted without cookies. A visitor is counted once a day and cannot be followed from one day to the next.");
-        text.AppendLine("You receive this because your address is a platform admin of CadenceE (Platform:AdminEmails).");
-
-        return (subject, text.ToString(), Html(d, dayName, weekday, metrics, link));
-    }
-
-    private static string Html(Digest d, string dayName, string weekday, (string Label, Func<SiteDailyDto, int> Of)[] metrics, string link)
-    {
-        static string E(string s) => WebUtility.HtmlEncode(s);
-        const string cell = "padding:6px 10px;border-bottom:1px solid #e5e7eb;";
-        var y = d.Yesterday;
-        var html = new StringBuilder();
-        html.Append("<!doctype html><html><body style=\"margin:0;padding:24px;background:#f8fafc;\">");
-        html.Append("<div style=\"max-width:600px;margin:0 auto;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;font-size:14px;line-height:1.5;color:#0f172a;\">");
-        html.Append($"<h1 style=\"font-size:20px;margin:0 0 4px;\">cadencee.ai yesterday</h1><p style=\"margin:0 0 16px;color:#475569;\">{E(dayName)} (Europe/Zurich)</p>");
-
-        html.Append("<table role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\" style=\"width:100%;border-collapse:collapse;background:#fff;border:1px solid #e5e7eb;\">");
-        html.Append($"<tr style=\"background:#f1f5f9;text-align:left;\"><th style=\"{cell}\"></th><th style=\"{cell}text-align:right;\">Yesterday</th><th style=\"{cell}text-align:right;\">vs the day before</th><th style=\"{cell}text-align:right;\">vs last {E(weekday)}</th></tr>");
-        foreach (var (label, of) in metrics)
-        {
-            html.Append($"<tr><td style=\"{cell}\">{E(label)}</td><td style=\"{cell}text-align:right;font-weight:600;\">{E(N(of(y)))}</td>");
-            html.Append($"<td style=\"{cell}text-align:right;\">{E(Change(of(y), of(d.DayBefore)))}</td><td style=\"{cell}text-align:right;\">{E(Change(of(y), of(d.WeekBefore)))}</td></tr>");
-        }
-        html.Append("</table>");
-
-        html.Append($"<h2 style=\"font-size:16px;margin:24px 0 8px;\">Last 7 days <span style=\"font-family:monospace;letter-spacing:2px;\">{E(Sparkline(d.Week.Select(w => w.Visitors).ToList()))}</span></h2>");
-        html.Append("<table role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\" style=\"width:100%;border-collapse:collapse;background:#fff;border:1px solid #e5e7eb;\">");
-        html.Append($"<tr style=\"background:#f1f5f9;text-align:left;\"><th style=\"{cell}\">Day</th><th style=\"{cell}text-align:right;\">Visitors</th><th style=\"{cell}text-align:right;\">Page views</th><th style=\"{cell}text-align:right;\">Sign-ups</th></tr>");
-        foreach (var w in d.Week)
-        {
-            var date = SiteAnalyticsRules.ParseDay(w.Date)!.Value;
-            html.Append($"<tr><td style=\"{cell}\">{E(date.ToString("ddd d MMM", CultureInfo.InvariantCulture))}</td><td style=\"{cell}text-align:right;\">{E(N(w.Visitors))}</td>");
-            html.Append($"<td style=\"{cell}text-align:right;\">{E(N(w.PageViews))}</td><td style=\"{cell}text-align:right;\">{E(N(w.Signups))}</td></tr>");
-        }
-        html.Append("</table>");
-
-        void List(string title, IReadOnlyList<(string Name, string Figures)> rows)
-        {
-            html.Append($"<h2 style=\"font-size:16px;margin:24px 0 8px;\">{E(title)}</h2>");
-            if (rows.Count == 0)
+        var design = new EmailDesign(EmailLook.Product)
             {
-                html.Append("<p style=\"margin:0;color:#64748b;\">None yesterday.</p>");
-                return;
+                Language = "en",
+                Eyebrow = "Site analytics",
+                Title = "Yesterday on cadencee.ai",
+                Preheader = subject,
+                FooterNote = "You receive this because your address is a platform admin of CadenceE (Platform:AdminEmails).",
             }
-            html.Append("<table role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\" style=\"width:100%;border-collapse:collapse;background:#fff;border:1px solid #e5e7eb;\">");
-            foreach (var (name, figures) in rows)
-                html.Append($"<tr><td style=\"{cell}word-break:break-all;\">{E(name)}</td><td style=\"{cell}text-align:right;white-space:nowrap;\">{E(figures)}</td></tr>");
-            html.Append("</table>");
-        }
-        List("Top pages", d.TopPages.Select(p => (Defang(p.Path), $"{Count(p.Views, "view", "views")}, {Visitors(p.Visitors)}")).ToList());
-        List("Top sources", d.TopSources.Select(s => (Defang(s.Source), $"{Count(s.Sessions, "session", "sessions")}, {Visitors(s.Visitors)}")).ToList());
-        if (d.BotHits > 0)
-            html.Append($"<p style=\"margin:16px 0 0;color:#64748b;\">Robots: {E(Count(d.BotHits, "hit", "hits"))} counted and left out of the figures above.</p>");
+            .Paragraph($"{dayName} (Europe/Zurich)", muted: true)
+            .Stats([("Visitors", N(y.Visitors)), ("Page views", N(y.PageViews)), ("Sign-ups", N(y.Signups))])
+            .Heading("Against the days before")
+            .Table(["Yesterday", "vs the day before", $"vs last {weekday}"],
+                metrics.Select(m => new EmailTableRow(m.Label, [N(m.Of(y)), Change(m.Of(y), m.Of(d.DayBefore)), Change(m.Of(y), m.Of(d.WeekBefore))])))
+            .Heading("Last 7 days")
+            .Paragraph($"Visitors, day by day: {Sparkline(d.Week.Select(w => w.Visitors).ToList())}", muted: true)
+            .Table(["Visitors", "Page views", "Sign-ups"],
+                d.Week.Select(w => new EmailTableRow(
+                    SiteAnalyticsRules.ParseDay(w.Date)!.Value.ToString("ddd d MMM", CultureInfo.InvariantCulture),
+                    [N(w.Visitors), N(w.PageViews), N(w.Signups)])),
+                labelColumn: "Day");
 
-        html.Append($"<p style=\"margin:24px 0;\"><a href=\"{E(link)}\" style=\"display:inline-block;background:#ea580c;color:#fff;text-decoration:none;padding:10px 16px;border-radius:8px;font-weight:600;\">Open the dashboard</a></p>");
-        html.Append("<p style=\"margin:0;color:#64748b;font-size:12px;\">Website visitors only: what is done signed in to the app is left out, sign-ups excepted. Counted without cookies. A visitor is counted once a day and cannot be followed from one day to the next. ");
-        html.Append("You receive this because your address is a platform admin of CadenceE (Platform:AdminEmails).</p>");
-        html.Append("</div></body></html>");
-        return html.ToString();
+        design.Heading("Top pages");
+        if (d.TopPages.Count == 0) design.Paragraph("None yesterday.", muted: true);
+        design.Table(["Views", "Visitors"], d.TopPages.Select(p => new EmailTableRow(Defang(p.Path), [N(p.Views), N(p.Visitors)])), labelColumn: "Page");
+
+        design.Heading("Top sources");
+        if (d.TopSources.Count == 0) design.Paragraph("None yesterday.", muted: true);
+        design.Table(["Sessions", "Visitors"], d.TopSources.Select(s => new EmailTableRow(Defang(s.Source), [N(s.Sessions), N(s.Visitors)])), labelColumn: "Source");
+
+        if (d.BotHits > 0)
+            design.Paragraph($"Robots: {Count(d.BotHits, "hit", "hits")} counted and left out of the figures above.", muted: true);
+        design
+            .Button("Open the dashboard", link)
+            .Paragraph("Website visitors only: what is done signed in to the app is left out, sign-ups excepted. " +
+                       "Counted without cookies. A visitor is counted once a day and cannot be followed from one day to the next.", muted: true);
+
+        var (html, text) = EmailLayout.Render(design, subject);
+        return (subject, text, html);
     }
 
     /// <summary>"+4 (+50%)", "-2 (-20%)", "+3 (new)", "no change".</summary>

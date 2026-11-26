@@ -46,15 +46,8 @@ public sealed class SmtpEmailSender : IEmailSender
             return false;
         }
 
-        var greeting = string.IsNullOrWhiteSpace(recipientName) ? "" : " " + recipientName;
-        var body =
-            $"Hi{greeting},\n\n" +
-            "We received a request to reset your password. Open the link below to choose a new password. " +
-            "This link expires in one hour.\n\n" +
-            $"{resetUrl}\n\n" +
-            "If you did not request this, you can ignore this email.\n";
-
-        return await SendAsync(toEmail, recipientName, "Reset your CadenceE password", body, ct);
+        var email = AccountEmailContent.PasswordReset(toEmail, recipientName, resetUrl);
+        return await SendAsync(toEmail, recipientName, email.Subject, email.Text, email.Html, null, ct);
     }
 
     public async Task<bool> SendEmailVerificationEmailAsync(string toEmail, string recipientName, string verifyUrl, CancellationToken ct = default)
@@ -74,16 +67,8 @@ public sealed class SmtpEmailSender : IEmailSender
             return false;
         }
 
-        var greeting = string.IsNullOrWhiteSpace(recipientName) ? "" : " " + recipientName;
-        var body =
-            $"Hi{greeting},\n\n" +
-            "Please confirm that this is your email address by opening the link below. " +
-            "This link expires in 24 hours.\n\n" +
-            $"{verifyUrl}\n\n" +
-            "Until you confirm it, you can use your own workspace but cannot join anyone else's.\n\n" +
-            "If you did not create a CadenceE account, you can ignore this email.\n";
-
-        return await SendAsync(toEmail, recipientName, "Confirm your email address for CadenceE", body, ct);
+        var email = AccountEmailContent.EmailVerification(toEmail, recipientName, verifyUrl);
+        return await SendAsync(toEmail, recipientName, email.Subject, email.Text, email.Html, null, ct);
     }
 
     public async Task<bool> SendOrganizationInviteEmailAsync(
@@ -91,6 +76,7 @@ public sealed class SmtpEmailSender : IEmailSender
         string organizationName,
         string invitedByName,
         string acceptUrl,
+        string? permissionPreset = null,
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(_options.SmtpHost))
@@ -107,17 +93,8 @@ public sealed class SmtpEmailSender : IEmailSender
             return false;
         }
 
-        var from = string.IsNullOrWhiteSpace(invitedByName) ? "Someone" : invitedByName;
-        var body =
-            $"Hi,\n\n" +
-            $"{from} invited you to join \"{organizationName}\" on CadenceE.\n\n" +
-            $"Open the link below to accept. It works only for you, so do not forward this email:\n\n" +
-            $"{acceptUrl}\n\n" +
-            $"Sign in (or create your account) with this email address — {toEmail} — " +
-            "and confirm the address if CadenceE asks you to.\n\n" +
-            "This invitation expires in 7 days. If you were not expecting it, you can ignore this email.\n";
-
-        return await SendAsync(toEmail, recipientName: "", subject: $"You have been invited to {organizationName} on CadenceE", body: body, ct: ct);
+        var email = AccountEmailContent.WorkspaceInvitation(toEmail, organizationName, invitedByName, acceptUrl, permissionPreset);
+        return await SendAsync(toEmail, "", email.Subject, email.Text, email.Html, null, ct);
     }
 
     public async Task<bool> SendTaskReminderEmailAsync(
@@ -142,30 +119,12 @@ public sealed class SmtpEmailSender : IEmailSender
             return false;
         }
 
-        var greeting = string.IsNullOrWhiteSpace(recipientName) ? "" : " " + recipientName;
-        var due = dueDateUtc.HasValue
-            ? $"Due: {dueDateUtc.Value:dddd d MMMM yyyy 'at' HH:mm} UTC\n"
-            : string.Empty;
-        var body =
-            $"Hi{greeting},\n\n" +
-            $"Reminder about your task:\n\n" +
-            $"  {taskTitle}\n\n" +
-            due +
-            $"\nOpen it here:\n{taskUrl}\n\n" +
-            "You are receiving this because task reminders are on in your notification settings.\n";
-
-        return await SendAsync(toEmail, recipientName, $"Reminder: {taskTitle}", body, ct);
+        var email = AccountEmailContent.TaskReminder(recipientName, taskTitle, dueDateUtc, taskUrl);
+        return await SendAsync(toEmail, recipientName, email.Subject, email.Text, email.Html, null, ct);
     }
 
-    public Task<bool> SendMessageAsync(string toEmail, string recipientName, string subject, string body, CancellationToken ct = default) =>
-        SendAsync(toEmail, recipientName, subject, body, ct);
-
-    /// <summary>
-    /// Builds and delivers one plain-text message. Returns false (never throws) so a
-    /// delivery problem cannot fail the caller's operation.
-    /// </summary>
-    private async Task<bool> SendAsync(string toEmail, string recipientName, string subject, string body, CancellationToken ct)
-        => await SendAsync(toEmail, recipientName, subject, body, null, null, ct);
+    public Task<bool> SendMessageAsync(string toEmail, string recipientName, EmailContent message, CancellationToken ct = default) =>
+        SendAsync(toEmail, recipientName, message.Subject, message.Text, message.Html, null, ct);
 
     /// <summary>
     /// Builds and delivers one message, with an optional HTML alternative.
@@ -334,7 +293,7 @@ public sealed class SmtpEmailSender : IEmailSender
 
     // ── Contracts ────────────────────────────────────────────────────────────
     //
-    // These three deliberately BREAK the convention used above. The other methods
+    // These four deliberately BREAK the convention used above. The other methods
     // return `true` when SmtpHost is unset and LogResetLinksWhenSmtpNotConfigured
     // is on, so a developer environment can pretend a reminder went out. For a
     // contract that is exactly the wrong answer: the caller would record a
@@ -367,6 +326,16 @@ public sealed class SmtpEmailSender : IEmailSender
             _options.FromName, recipientName, organizationName, contractTitle, signUrl,
             hasAttachment: attachment is not null);
         return await SendAsync(toEmail, recipientName, email.Subject, email.Text, email.Html, attachment, ct);
+    }
+
+    public async Task<bool> SendContractReminderEmailAsync(
+        string toEmail, string recipientName, string organizationName, string contractTitle,
+        DateTime? sentAtUtc, DateTime? linkExpiresAtUtc, CancellationToken ct = default)
+    {
+        if (!SmtpConfigured("contract reminder", toEmail, null)) return false;
+        var email = ContractEmailContent.Reminder(
+            _options.FromName, recipientName, organizationName, contractTitle, sentAtUtc, linkExpiresAtUtc);
+        return await SendAsync(toEmail, recipientName, email.Subject, email.Text, email.Html, null, ct);
     }
 
     public async Task<bool> SendContractSignedNotificationAsync(

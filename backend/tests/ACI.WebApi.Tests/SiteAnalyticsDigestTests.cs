@@ -79,17 +79,21 @@ public class SiteAnalyticsDigestTests
             && d.Channel == OutboundChannels.Email && d.UnsubscribeUrl == null);
         var digest = digests[0];
         digest.Subject.Should().Be("cadencee.ai yesterday: 3 visitors, 4 page views, 1 sign-up");
-        digest.TextBody.Should().Contain("cadencee.ai on Tuesday 24 November 2026 (Europe/Zurich)")
-            .And.Contain("Visitors: 3   (+1 (+50%) vs the day before, +2 (+200%) vs last Tuesday)")
-            .And.Contain("Sessions: 3   (+1 (+50%) vs the day before, +2 (+200%) vs last Tuesday)")
-            .And.Contain("Page views: 4   (+2 (+100%) vs the day before, +3 (+300%) vs last Tuesday)")
-            .And.Contain("Sign-ups: 1   (+1 (new) vs the day before, +1 (new) vs last Tuesday)")
-            .And.Contain("Last 7 days (visitors): ▁▁▁▁▁▆█")
-            .And.Contain("1. /  2 views, 2 visitors")
-            .And.Contain("1. direct  1 session, 1 visitor")
+        digest.TextBody.Should().StartWith("Yesterday on cadencee.ai\n\nTuesday 24 November 2026 (Europe/Zurich)")
+            .And.Contain("Visitors: 3\nPage views: 4\nSign-ups: 1\n")
+            .And.Contain("- Visitors: Yesterday 3, vs the day before +1 (+50%), vs last Tuesday +2 (+200%)")
+            .And.Contain("- Sessions: Yesterday 3, vs the day before +1 (+50%), vs last Tuesday +2 (+200%)")
+            .And.Contain("- Page views: Yesterday 4, vs the day before +2 (+100%), vs last Tuesday +3 (+300%)")
+            .And.Contain("- Sign-ups: Yesterday 1, vs the day before +1 (new), vs last Tuesday +1 (new)")
+            .And.Contain("Visitors, day by day: ▁▁▁▁▁▆█")
+            .And.Contain("- Tue 24 Nov: Visitors 3, Page views 4, Sign-ups 1")
+            .And.Contain("- /: Views 2, Visitors 2")
+            .And.Contain("- direct: Sessions 1, Visitors 1")
             .And.Contain($"{AnalyticsApp.FrontendBaseUrl}/admin/analytics")
             .And.NotContain("/today");
-        digest.HtmlBody.Should().Contain($"href=\"{AnalyticsApp.FrontendBaseUrl}/admin/analytics\"").And.Contain("<table");
+        // CadenceE's design: the figures large, then tables with their headers.
+        digest.HtmlBody.Should().Contain($"href=\"{AnalyticsApp.FrontendBaseUrl}/admin/analytics\"").And.Contain("<table")
+            .And.Contain("class=\"em-stat\"").And.Contain(">vs last Tuesday<").And.Contain(">Open the dashboard<").And.Contain("&#10022;");
 
         var claim = (await app.Services.Read(db => db.SiteAnalyticsDigests.ToList())).Should().ContainSingle().Subject;
         (claim.Day, claim.Recipients).Should().Be((Yesterday, 2));
@@ -129,10 +133,9 @@ public class SiteAnalyticsDigestTests
 
         var digest = (await DigestsAsync(app)).Should().ContainSingle().Subject;
         digest.Subject.Should().Be("cadencee.ai yesterday: 2 visitors, 2 page views, 1 sign-up");
-        digest.TextBody.Should().Contain("Visitors: 2   (+2 (new) vs the day before, +2 (new) vs last Tuesday)")
+        digest.TextBody.Should().Contain("- Visitors: Yesterday 2, vs the day before +2 (new), vs last Tuesday +2 (new)")
             .And.Contain("Sign-ups: 1")
-            .And.Contain("1. /  1 view, 1 visitor")
-            .And.Contain("2. /pricing  1 view, 1 visitor")
+            .And.Contain("- /: Views 1, Visitors 1\n- /pricing: Views 1, Visitors 1")
             .And.Contain("Website visitors only")
             .And.NotContain("/deals").And.NotContain("/leads/:id").And.NotContain("/dashboard");
         digest.HtmlBody.Should().Contain("Website visitors only").And.NotContain("/deals");
@@ -156,9 +159,9 @@ public class SiteAnalyticsDigestTests
             body.Should().Contain("/go/evil[.]example").And.Contain("pavillon46[.]ch").And.Contain("linkedin");
             body.Should().NotContain("evil.example").And.NotContain("pavillon46.ch").And.NotContain("newsletter").And.NotContain("visit evil");
         }
-        digest.TextBody.Should().Contain("1. other  2 sessions, 2 visitors")
-            .And.Contain("2. linkedin  1 session, 1 visitor")
-            .And.Contain("3. pavillon46[.]ch  1 session, 1 visitor");
+        digest.TextBody.Should().Contain("- other: Sessions 2, Visitors 2\n- linkedin: Sessions 1, Visitors 1\n- pavillon46[.]ch: Sessions 1, Visitors 1");
+        // Never something to click: a table's cells are text.
+        digest.HtmlBody.Should().NotContain("href=\"http://evil").And.NotContain("href=\"/go");
         digest.HtmlBody.Should().Contain($"href=\"{AnalyticsApp.FrontendBaseUrl}/admin/analytics\"", "the dashboard's own link is not defanged");
     }
 
@@ -196,8 +199,9 @@ public class SiteAnalyticsDigestTests
 
         var digest = (await DigestsAsync(app)).Should().ContainSingle().Subject;
         digest.Subject.Should().Be("cadencee.ai yesterday: 0 visitors, 0 page views");
-        digest.TextBody.Should().Contain("Visitors: 0   (no change vs the day before, no change vs last Tuesday)")
-            .And.Contain("Last 7 days (visitors): ▁▁▁▁▁▁▁");
+        digest.TextBody.Should().Contain("- Visitors: Yesterday 0, vs the day before no change, vs last Tuesday no change")
+            .And.Contain("Visitors, day by day: ▁▁▁▁▁▁▁")
+            .And.Contain("Top pages\n---------\nNone yesterday.");
     }
 
     [Fact]
