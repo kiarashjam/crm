@@ -1,8 +1,19 @@
 import type { GuideMeta } from './types';
 
-// Placeholder: replaced when the guide is written.
 export const memberRetentionMeta: GuideMeta = {
-  en: { title: 'Guide guide-member-retention (en) | CadenceE', description: 'Placeholder description for guide-member-retention in English.', nav: 'guide-member-retention en' },
-  fr: { title: 'Guide guide-member-retention (fr) | CadenceE', description: 'Placeholder description for guide-member-retention in French.', nav: 'guide-member-retention fr' },
-  de: { title: 'Guide guide-member-retention (de) | CadenceE', description: 'Placeholder description for guide-member-retention in German.', nav: 'guide-member-retention de' },
+  en: {
+    title: 'Membership Renewal and Member Retention Guide | CadenceE',
+    description: 'Membership renewal and member retention for clubs: measure churn, spot at-risk members early, plan reminders, ease payment and win back former members.',
+    nav: 'Member retention',
+  },
+  fr: {
+    title: 'Renouvellement des adhésions et fidélisation | CadenceE',
+    description: 'Fidélisation des membres d’un club : suivre le renouvellement des adhésions, repérer les membres à risque, planifier la relance de cotisation.',
+    nav: 'Fidélisation des membres',
+  },
+  de: {
+    title: 'Mitgliederbindung: Verlängern statt Kündigen | CadenceE',
+    description: 'Mitgliederbindung im Club und Verein: Kündigungen früh erkennen, Mitgliedschaften verlängern, Beiträge einfach einziehen und Ehemalige zurückgewinnen.',
+    nav: 'Mitgliederbindung',
+  },
 };
