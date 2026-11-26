@@ -8,6 +8,7 @@ import { MARKETING_PAGES, matchMarketingPath, normalizePath, langOfPath } from '
 import { SITE_LANGS } from './site';
 
 const BEFORE_END = Date.parse('2026-11-25T12:00:00Z');
+const AFTER_END = Date.parse('2027-01-02T12:00:00Z');
 
 const meta = (head: HeadData, key: string) =>
   head.metas.find((m) => m.name === key || m.property === key)?.content;
@@ -17,7 +18,11 @@ describe('headForPath', () => {
   it('gives the home page its title, a canonical on www with a trailing slash, and index', () => {
     const head = headForPath('/', BEFORE_END);
     expect(head.kind).toBe('marketing');
-    expect(head.title).toBe('CadenceE – Swiss CRM for Private Clubs and Sales Teams');
+    // "Free" leads the title while the launch offer runs, and is gone after it.
+    expect(head.title).toBe('Free Swiss CRM for Clubs and Sales Teams | CadenceE');
+    expect(headForPath('/', AFTER_END).title).toBe('CadenceE – Swiss CRM for Private Clubs and Sales Teams');
+    expect(headForPath('/fr', BEFORE_END).title).toBe('CRM gratuit pour clubs et équipes de vente | CadenceE');
+    expect(headForPath('/de', BEFORE_END).title).toBe('Kostenloses CRM für Clubs und Vertrieb | CadenceE');
     expect(link(head, 'canonical')).toBe('https://www.cadencee.ai/');
     expect(meta(head, 'robots')).toBe(ROBOTS_INDEX);
     expect(head.lang).toBe('en');

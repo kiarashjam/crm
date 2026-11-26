@@ -2,6 +2,7 @@
 // Seulement ce que CadenceE fait aujourd’hui : pas de prix, pas d’autre client que le
 // Pavillon 46, pas de note ni de récompense.
 
+import { frFreeCrm } from './freeCrm';
 import { frPricing } from './pricing';
 import type { LanguageContent } from './types';
 import { withFrenchSpacing } from './typography';
@@ -17,8 +18,13 @@ const fr: LanguageContent = {
   pages: {
     home: {
       eyebrow: 'CRM suisse',
-      h1: 'Le CRM suisse qui gère votre club',
+      // Pendant l’offre de lancement, le H1 dit que le CRM est gratuit ; dès le 1er janvier 2027, afterOffer.
+      h1: 'Le CRM suisse gratuit qui gère votre club',
       h1Accent: 'et vos ventes',
+      afterOffer: {
+        h1: 'Le CRM suisse qui gère votre club',
+        h1Accent: 'et vos ventes',
+      },
       lead: 'CadenceE réunit dans un seul outil tout ce qui fait tourner un club privé, un établissement ou une équipe de vente : prospects et contrats signés en ligne, membres et événements, notes de bar et facturation avec facture QR et TWINT, e-mails et assistant IA. Conçu en Suisse, en français, en allemand et en anglais.',
       heroCardTitle: 'Dans un seul espace de travail',
       heroPoints: [
@@ -1100,6 +1106,7 @@ const fr: LanguageContent = {
     },
 
     pricing: frPricing,
+    'free-crm': frFreeCrm,
   },
 };
 

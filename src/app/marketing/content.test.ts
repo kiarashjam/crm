@@ -4,7 +4,7 @@ import en from './content/en';
 import fr from './content/fr';
 import type { LanguageContent, PageContent } from './content/types';
 import { PAGE_META, PUBLIC_PAGE_META, pageMeta } from './meta';
-import { MARKETING_PAGES, MARKETING_PAGE_IDS } from './routes';
+import { LANDING_PAGE_IDS, MARKETING_PAGES, MARKETING_PAGE_IDS } from './routes';
 import { SITE_LANGS, type SiteLang } from './site';
 
 const CONTENT: Record<SiteLang, LanguageContent> = { en, fr, de };
@@ -63,6 +63,25 @@ describe('titles and descriptions', () => {
     expect(pageMeta('en', 'pricing', DURING_OFFER).title).toMatch(/Free Until 31 December 2026/);
   });
 
+  it('lead the home titles with "free" while the offer runs, and drop it after', () => {
+    const FREE: Record<SiteLang, RegExp> = { en: /^Free\b/, fr: /^CRM gratuit\b/, de: /^Kostenloses CRM\b/ };
+    for (const lang of SITE_LANGS) {
+      expect(pageMeta(lang, 'home', DURING_OFFER).title).toMatch(FREE[lang]);
+      expect(pageMeta(lang, 'home', AFTER_OFFER).title).not.toMatch(/free|gratuit|kostenlos/i);
+    }
+  });
+
+  it('end every topic page description with the offer while it runs', () => {
+    const SUFFIX: Record<SiteLang, string> = { en: 'Free until end of 2026.', fr: 'Gratuit jusqu’à fin 2026.', de: 'Kostenlos bis Ende 2026.' };
+    for (const lang of SITE_LANGS) {
+      for (const id of [...LANDING_PAGE_IDS, 'free-crm'] as const) {
+        expect(PAGE_META[lang][id].offerDescription, `${lang}/${id}`).toBeDefined();
+        expect(pageMeta(lang, id, DURING_OFFER).description.endsWith(SUFFIX[lang]), `${lang}/${id}`).toBe(true);
+        expect(pageMeta(lang, id, AFTER_OFFER).description, `${lang}/${id}`).toBe(PAGE_META[lang][id].description);
+      }
+    }
+  });
+
   it('cover the public pages too, uniquely', () => {
     const all = Object.values(PUBLIC_PAGE_META);
     expect(new Set(all.map((m) => m.title)).size).toBe(all.length);
@@ -83,6 +102,14 @@ describe('page content', () => {
         expect(content, `${lang}/${page.id}`).toBeDefined();
         h1s.push(fullH1(content!));
       }
+      expect(new Set(h1s).size).toBe(h1s.length);
+    });
+
+    it(`keeps one distinct H1 per page in ${lang} after the offer, too`, () => {
+      const h1s = MARKETING_PAGES.flatMap((page) => {
+        const content = CONTENT[lang].pages[page.id];
+        return content ? [fullH1({ ...content, ...content.afterOffer })] : [];
+      });
       expect(new Set(h1s).size).toBe(h1s.length);
     });
 

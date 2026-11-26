@@ -1,12 +1,22 @@
 import { Link } from 'react-router-dom';
 import { PAGE_META, SITE_STRINGS } from '../meta';
-import { marketingPath, type MarketingPageId } from '../routes';
+import { MARKETING_PAGES, marketingPath, type MarketingPageId } from '../routes';
 import { SITE_LANGS, SITE_LANG_NAMES, type SiteLang } from '../site';
 import { BrandMark } from './BrandMark';
 import { CtaLink } from './CtaLink';
+import { useLaunchOfferActive } from './LaunchOffer';
 
 export const FOOTER_PRODUCT: MarketingPageId[] = ['features', 'pricing', 'ai', 'e-signature', 'email', 'billing'];
 export const FOOTER_SOLUTIONS: MarketingPageId[] = ['private-clubs', 'membership', 'hospitality', 'sales', 'swiss'];
+/** The pages about the launch offer (the free-CRM page): in the Product column, after Pricing, only while it runs. */
+export const FOOTER_OFFER: MarketingPageId[] = MARKETING_PAGES.filter((p) => p.offerOnly).map((p) => p.id);
+
+/** The Product column at a moment: with the launch offer's pages while it runs. */
+export function footerProduct(offer: boolean): MarketingPageId[] {
+  if (!offer) return FOOTER_PRODUCT;
+  const after = FOOTER_PRODUCT.indexOf('pricing') + 1;
+  return [...FOOTER_PRODUCT.slice(0, after), ...FOOTER_OFFER, ...FOOTER_PRODUCT.slice(after)];
+}
 
 const linkClass = 'hover:text-white transition-colors inline-block py-0.5';
 
@@ -15,11 +25,14 @@ export function MarketingFooter({ lang, pageId }: { lang: SiteLang; pageId?: Mar
   const strings = SITE_STRINGS[lang];
   const meta = PAGE_META[lang];
   const year = new Date().getFullYear();
+  const offer = useLaunchOfferActive();
 
   const pageLinks = (ids: MarketingPageId[]) => (
     <ul className="space-y-2.5">
       {ids.map((id) => (
-        <li key={id}>
+        // A link to a page about the offer is hidden before the first paint if HTML built in
+        // 2026 is served after it has ended (index.html hides [data-launch-offer]).
+        <li key={id} data-launch-offer={FOOTER_OFFER.includes(id) ? '' : undefined}>
           <Link to={marketingPath(id, lang)} className={linkClass} data-track={`nav-${id}`}>
             {meta[id].nav}
           </Link>
@@ -42,7 +55,7 @@ export function MarketingFooter({ lang, pageId }: { lang: SiteLang; pageId?: Mar
 
           <div>
             <h2 className="text-sm font-semibold uppercase tracking-wider text-white mb-4">{strings.footerProduct}</h2>
-            {pageLinks(FOOTER_PRODUCT)}
+            {pageLinks(footerProduct(offer))}
           </div>
 
           <div>

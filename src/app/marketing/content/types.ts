@@ -69,8 +69,10 @@ export interface PageContent {
   showSolutions?: { heading: string; intro: string };
   cta: { heading: string; text: string };
   /**
-   * Where a page is about the launch offer (the pricing page), its words once the offer
-   * has ended (from 1 January 2027): they replace the ones above.
+   * Where a page's words depend on the launch offer (the pricing and free-CRM pages, the
+   * French and German home H1s), its words once the offer has ended (from 1 January 2027):
+   * they replace the ones above. Such a page belongs in OFFER_OG_PAGES (seo.ts), so its
+   * plain OG image, drawn from these words, is used only after the offer.
    */
   afterOffer?: Partial<Omit<PageContent, 'afterOffer'>>;
 }
