@@ -33,7 +33,8 @@ public class ClubEmailsTests
     /// <summary>The button: its words and address in the text, a link to the address in the HTML.</summary>
     private static void HasButton(ClubEmail email, string label, string url)
     {
-        email.Text.Should().Contain($"{label}:\n{url}");
+        // French sets a no-break space before the colon.
+        email.Text.Should().ContainAny($"{label}:\n{url}", $"{label}\u00a0:\n{url}");
         email.Html.Should().Contain($"href=\"{WebUtility.HtmlEncode(url)}\"").And.Contain(WebUtility.HtmlEncode(label));
     }
 

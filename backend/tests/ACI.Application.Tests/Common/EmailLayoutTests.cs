@@ -172,6 +172,48 @@ public class EmailLayoutTests
         EmailLayout.Text(design).Trim().Should().BeEmpty();
     }
 
+    [Fact]
+    public void InFrench_TheTextPartSetsANoBreakSpaceBeforeEachColon()
+    {
+        var text = EmailLayout.Text(new EmailDesign(EmailLook.Club, "Pavillon 46") { Language = "fr" }
+            .Facts([("Montant dû", "CHF 480.00"), ("Échéance\u00a0", "30 nov. 2026")])
+            .Stats([("Membres", "212")])
+            .Button("Payer en ligne", "https://crm.example.ch/pay/abc")
+            .Links([("Ouvrir le portail", "https://crm.example.ch/portal")]));
+
+        text.Should().Contain("Montant dû\u00a0: CHF 480.00").And.Contain("Échéance\u00a0: 30 nov. 2026").And.Contain("Membres\u00a0: 212")
+            .And.Contain("Payer en ligne\u00a0:\nhttps://crm.example.ch/pay/abc").And.Contain("Ouvrir le portail\u00a0: https://crm.example.ch/portal");
+        text.Should().NotContain("\u00a0\u00a0").And.NotContain("dû:");
+        EmailLayout.Text(new EmailDesign(EmailLook.Club).Facts([("Amount due", "CHF 480.00")])).Should().Contain("Amount due: CHF 480.00");
+    }
+
+    [Fact]
+    public void InTheDark_TheEyebrowLinksAndColouredNotesStayReadable()
+    {
+        foreach (var look in new[] { EmailLook.Product, EmailLook.Club })
+        {
+            var html = EmailLayout.Html(new EmailDesign(look, "Pavillon 46") { Eyebrow = "Statement" }
+                .Paragraph("See https://cadencee.ai/help")
+                .Button("Open", "https://a.ch/x")
+                .Note("Signed.", EmailTone.Success)
+                .Note("Overdue.", EmailTone.Warning), "s");
+            var dark = html[html.IndexOf("prefers-color-scheme:dark", StringComparison.Ordinal)..html.IndexOf("@media screen", StringComparison.Ordinal)];
+
+            dark.Should().Contain(".em-eyebrow,.em-link{color:").And.Contain(".em-ok{").And.Contain(".em-warn{");
+            html.Should().Contain("class=\"em-link\"").And.Contain("class=\"em-note em-ok\"").And.Contain("class=\"em-note em-warn\"");
+        }
+    }
+
+    [Fact]
+    public void AWordTooLongForAPhone_WrapsInsteadOfWideningTheEmail()
+    {
+        var hash = new string('a', 64);
+        var html = EmailLayout.Html(new EmailDesign(EmailLook.Club, "Pavillon 46").Preformatted("SHA-256: " + hash).Note(hash), "s");
+
+        html.Split(hash).Length.Should().Be(3);
+        html.Split("overflow-wrap:anywhere").Length.Should().Be(3, "the record's box and the note each wrap a long word");
+    }
+
     /// <summary>
     /// Writes each look to EMAIL_PREVIEW_DIR, when it is set, to be opened in a browser or
     /// screenshotted: email design is checked by looking at it.

@@ -351,7 +351,7 @@ public static class EmailLayout
                 if (!block.Muted)
                     b.Append("<p class=\"em-muted\" style=\"margin:0 0 24px;font-family:").Append(Sans).Append(";font-size:13px;line-height:20px;color:")
                         .Append(p.Muted).Append(";\">").Append(E(LinkHint(language))).Append("<br><a href=\"").Append(E(block.Url))
-                        .Append("\" style=\"color:").Append(p.Link).Append(";text-decoration:underline;word-break:break-all;\">").Append(E(block.Url)).Append("</a></p>");
+                        .Append("\" class=\"em-link\" style=\"color:").Append(p.Link).Append(";text-decoration:underline;word-break:break-all;\">").Append(E(block.Url)).Append("</a></p>");
                 break;
             case EmailDesign.BlockKind.Note:
                 var (bg, edge, ink) = block.Tone switch
@@ -361,9 +361,10 @@ public static class EmailLayout
                     _ => (p.Soft, p.SoftBorder, p.Body),
                 };
                 b.Append("<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"margin:4px 0 20px;\"><tr>")
-                    .Append("<td class=\"em-note\" style=\"padding:14px 18px;background-color:").Append(bg).Append(";border:1px solid ").Append(edge == p.SoftBorder ? edge : bg)
+                    .Append("<td class=\"em-note").Append(block.Tone switch { EmailTone.Success => " em-ok", EmailTone.Warning => " em-warn", _ => "" })
+                    .Append("\" style=\"padding:14px 18px;background-color:").Append(bg).Append(";border:1px solid ").Append(edge == p.SoftBorder ? edge : bg)
                     .Append(";border-left:3px solid ").Append(edge).Append(";border-radius:").Append(p.Radius == 4 ? 2 : 10).Append("px;font-family:").Append(Sans)
-                    .Append(";font-size:14px;line-height:22px;color:").Append(ink).Append(";\">").Append(Inline(block.Text, p)).Append("</td></tr></table>");
+                    .Append(";font-size:14px;line-height:22px;color:").Append(ink).Append(";word-break:break-word;overflow-wrap:anywhere;\">").Append(Inline(block.Text, p)).Append("</td></tr></table>");
                 break;
             case EmailDesign.BlockKind.Facts:
                 b.Append("<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" class=\"em-facts\" style=\"margin:4px 0 22px;border-collapse:separate;background-color:")
@@ -411,8 +412,8 @@ public static class EmailLayout
                 for (var i = 0; i < block.Rows!.Count; i++)
                 {
                     if (i > 0) b.Append("<span class=\"em-muted\" style=\"color:").Append(p.Muted).Append(";\">&nbsp;&nbsp;&middot;&nbsp;&nbsp;</span>");
-                    b.Append("<a href=\"").Append(E(block.Rows[i].Value)).Append("\" style=\"color:").Append(p.Link)
-                        .Append(";font-weight:600;text-decoration:none;\">").Append(E(block.Rows[i].Label)).Append(" &rarr;</a>");
+                    b.Append("<a href=\"").Append(E(block.Rows[i].Value)).Append("\" class=\"em-link\" style=\"color:").Append(p.Link)
+                        .Append(";font-weight:600;text-decoration:none;\">").Append(E(block.Rows[i].Label)).Append("&nbsp;&rarr;</a>");
                 }
                 b.Append("</p>");
                 break;
@@ -421,7 +422,7 @@ public static class EmailLayout
                     .Append("<td height=\"1\" style=\"height:1px;font-size:1px;line-height:1px;background-color:").Append(p.Rule).Append(";\">&nbsp;</td></tr></table>");
                 break;
             case EmailDesign.BlockKind.Pre:
-                b.Append("<div class=\"em-note\" style=\"margin:0 0 20px;padding:16px 18px;white-space:pre-wrap;word-wrap:break-word;font-family:").Append(Mono)
+                b.Append("<div class=\"em-note\" style=\"margin:0 0 20px;padding:16px 18px;white-space:pre-wrap;word-wrap:break-word;word-break:break-word;overflow-wrap:anywhere;font-family:").Append(Mono)
                     .Append(";font-size:13px;line-height:21px;color:").Append(p.Body).Append(";background-color:").Append(p.Soft).Append(";border:1px solid ")
                     .Append(p.SoftBorder).Append(";border-radius:").Append(p.Radius == 4 ? 2 : 10).Append("px;\">").Append(E(block.Text)).Append("</div>");
                 break;
@@ -540,10 +541,15 @@ public static class EmailLayout
         var dark = club
             ? ".em-page{background-color:#141816 !important}.em-card{background-color:#1c211e !important;border-color:#2b332f !important}" +
               ".em-title{color:#eef2ef !important}.em-body{color:#cfd7d2 !important}.em-muted{color:#9aa69f !important}" +
-              ".em-note{background-color:#232a26 !important;border-color:#313a35 !important;color:#cfd7d2 !important}.em-facts{background-color:#232a26 !important;border-color:#313a35 !important}.em-facts td,.em-table th{border-color:#313a35 !important}"
+              ".em-note{background-color:#232a26 !important;border-color:#313a35 !important;color:#cfd7d2 !important}.em-facts{background-color:#232a26 !important;border-color:#313a35 !important}.em-facts td,.em-table th{border-color:#313a35 !important}" +
+              ".em-eyebrow,.em-link{color:#8cc7ad !important}"
             : ".em-page{background-color:#0b0b0e !important}.em-card{background-color:#18181b !important;border-color:#27272a !important}" +
               ".em-title{color:#fafafa !important}.em-body{color:#d4d4d8 !important}.em-muted{color:#a1a1aa !important}" +
-              ".em-note{background-color:#202024 !important;border-color:#2e2e33 !important;color:#d4d4d8 !important}.em-facts{background-color:#202024 !important;border-color:#2e2e33 !important}.em-facts td,.em-table th{border-color:#2e2e33 !important}";
+              ".em-note{background-color:#202024 !important;border-color:#2e2e33 !important;color:#d4d4d8 !important}.em-facts{background-color:#202024 !important;border-color:#2e2e33 !important}.em-facts td,.em-table th{border-color:#2e2e33 !important}" +
+              ".em-eyebrow,.em-link{color:#fb923c !important}";
+        // A good-news or warning note keeps its colour in the dark, on a dark tint of it.
+        dark += ".em-ok{background-color:#10251c !important;border-color:#10251c !important;border-left-color:#10b981 !important;color:#a7f3d0 !important}" +
+                ".em-warn{background-color:#2a1d0e !important;border-color:#2a1d0e !important;border-left-color:#f59e0b !important;color:#fde2b0 !important}";
         return "<style>" +
                ":root{color-scheme:light dark;supported-color-schemes:light dark}" +
                "body{margin:0 !important;padding:0 !important}table,td{mso-table-lspace:0pt;mso-table-rspace:0pt}" +
@@ -566,6 +572,7 @@ public static class EmailLayout
     public static string Text(EmailDesign d)
     {
         var t = new StringBuilder();
+        var colon = Colon(d.Language);
         if (!string.IsNullOrWhiteSpace(d.Title)) t.Append(d.Title.Trim()).Append("\n\n");
         foreach (var block in d.Blocks)
         {
@@ -579,11 +586,11 @@ public static class EmailLayout
                     t.Append(block.Text).Append('\n').Append(new string('-', Math.Min(block.Text!.Length, 60))).Append('\n');
                     break;
                 case EmailDesign.BlockKind.Button:
-                    t.Append(block.Text).Append(":\n").Append(block.Url).Append("\n\n");
+                    t.Append(block.Text!.TrimEnd()).Append(colon.TrimEnd()).Append('\n').Append(block.Url).Append("\n\n");
                     break;
                 case EmailDesign.BlockKind.Facts:
                 case EmailDesign.BlockKind.Stats:
-                    foreach (var (label, value) in block.Rows!) t.Append(label).Append(": ").Append(value).Append('\n');
+                    foreach (var (label, value) in block.Rows!) t.Append(label.TrimEnd()).Append(colon).Append(value).Append('\n');
                     t.Append('\n');
                     break;
                 case EmailDesign.BlockKind.List:
@@ -591,7 +598,7 @@ public static class EmailLayout
                     t.Append('\n');
                     break;
                 case EmailDesign.BlockKind.Links:
-                    foreach (var (label, url) in block.Rows!) t.Append(label).Append(": ").Append(url).Append('\n');
+                    foreach (var (label, url) in block.Rows!) t.Append(label.TrimEnd()).Append(colon).Append(url).Append('\n');
                     t.Append('\n');
                     break;
                 case EmailDesign.BlockKind.Divider:
@@ -620,8 +627,7 @@ public static class EmailLayout
     private static void TableText(StringBuilder t, EmailDesign.Block block, string? language)
     {
         var heads = block.Items!;
-        // French sets a no-break space before a colon.
-        var colon = string.Equals((language ?? "").Trim(), "fr", StringComparison.OrdinalIgnoreCase) ? " : " : ": ";
+        var colon = Colon(language);
         foreach (var row in block.Table!)
         {
             var figures = heads.Count == 1
@@ -629,10 +635,17 @@ public static class EmailLayout
                 : string.Join(", ", heads.Select((head, i) => (head, value: row.Values[i]))
                     .Where(c => c.value.Length > 0)
                     .Select(c => c.head.Length == 0 ? c.value : $"{c.head} {c.value}"));
-            t.Append(row.Indented ? "  - " : "- ").Append(OneLine(row.Label)).Append(colon).Append(OneLine(figures)).Append('\n');
+            t.Append(row.Indented ? "  - " : "- ").Append(OneLine(row.Label).TrimEnd()).Append(colon).Append(OneLine(figures)).Append('\n');
         }
         t.Append('\n');
     }
+
+    /// <summary>
+    /// The colon after a label in the plain-text part: French sets a no-break space before it
+    /// ("Montant dû : CHF 480.00"); a label that already ends with one is trimmed first.
+    /// </summary>
+    private static string Colon(string? language) =>
+        string.Equals((language ?? "").Trim(), "fr", StringComparison.OrdinalIgnoreCase) ? "\u00a0: " : ": ";
 
     /// <summary>Text on one line, so a label typed with a line break stays in its row.</summary>
     private static string OneLine(string text) =>
@@ -651,7 +664,7 @@ public static class EmailLayout
         foreach (Match m in WebAddress.Matches(text))
         {
             b.Append(E(text[last..m.Index]));
-            b.Append("<a href=\"").Append(E(m.Value)).Append("\" style=\"color:").Append(p.Link).Append(";text-decoration:underline;word-break:break-all;\">")
+            b.Append("<a href=\"").Append(E(m.Value)).Append("\" class=\"em-link\" style=\"color:").Append(p.Link).Append(";text-decoration:underline;word-break:break-all;\">")
                 .Append(E(m.Value)).Append("</a>");
             last = m.Index + m.Length;
         }
