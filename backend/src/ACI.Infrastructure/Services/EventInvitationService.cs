@@ -109,6 +109,16 @@ public sealed partial class EventInvitationService : IEventInvitations
 
     public async Task<Result<InvitationPreviewDto>> PreviewAsync(Guid organizationId, Guid userId, Guid eventId, InvitationPreviewRequest request, CancellationToken ct = default)
     {
+        var drafted = await DraftAsync(organizationId, userId, eventId, request, ct);
+        if (drafted.IsFailure) return drafted.Error;
+        return drafted.Value.Preview;
+    }
+
+    /// <summary>The letter as a member (or the sample member) gets it, with the values it was filled with and the club's name.</summary>
+    private sealed record Draft(InvitationPreviewDto Preview, InvitationTemplate.Values Values, string? Club);
+
+    private async Task<Result<Draft>> DraftAsync(Guid organizationId, Guid userId, Guid eventId, InvitationPreviewRequest request, CancellationToken ct)
+    {
         var ev = await EventAsync(organizationId, eventId, ct);
         if (ev == null) return DomainErrors.ClubEvent.NotFound;
         if (LettersProblem(request.Letters, sending: false) is { } problem) return problem;
@@ -121,28 +131,30 @@ public sealed partial class EventInvitationService : IEventInvitations
         var sender = await _outreach.SenderAsync(organizationId, userId, ct);
         var letter = LetterIn(request.Letters, language);
         var values = ValuesFor(ev, club, language, member?.FirstName ?? Sample.First, member?.LastName ?? Sample.Last, SampleLink());
-        return new InvitationPreviewDto(
+        return new Draft(new InvitationPreviewDto(
             language,
             OneLine(InvitationTemplate.Fill(letter.Subject, values)),
             InvitationTemplate.Fill(letter.Body, values),
             $"{member?.FirstName ?? Sample.First} {member?.LastName ?? Sample.Last}".Trim(),
             member == null ? Sample.Email : string.IsNullOrWhiteSpace(member.Email) ? null : member.Email.Trim(),
             InvitationTemplate.Unknown(letter.Subject, letter.Body),
-            sender.WorkspaceName, sender.ReplyTo);
+            sender.WorkspaceName, sender.ReplyTo), values, club.Name);
     }
 
     public async Task<Result<InvitationTestDto>> SendTestAsync(Guid organizationId, Guid userId, Guid eventId, InvitationPreviewRequest request, CancellationToken ct = default)
     {
         var to = (await _users.GetByIdAsync(userId, ct))?.Email?.Trim() ?? "";
         if (!ValidationHelper.IsValidEmail(to)) return new Error("Invitation.NoTestAddress", "Your account has no email address to send the test to.");
-        var preview = await PreviewAsync(organizationId, userId, eventId, request, ct);
-        if (preview.IsFailure) return preview.Error;
-        var email = preview.Value;
+        var drafted = await DraftAsync(organizationId, userId, eventId, request, ct);
+        if (drafted.IsFailure) return drafted.Error;
+        var email = drafted.Value.Preview;
         if (email.Unknown.Count > 0) return Unfilled(email.Unknown);
         if (!InvitationTemplate.HasReplyLink(LetterIn(request.Letters, email.Language).Body)) return NoReplyLink(email.Language);
 
         var note = $"This is a test of the invitation, as {email.SampleName} will receive it ({LanguageName(email.Language)}). "
             + "Its reply link is a sample: it answers for nobody. Members' copies end with the link that stops news and invitations.";
+        // As the member will see it, its reply button on the sample link, with the note on top.
+        var design = Designed(drafted.Value.Club, email.Language, false, email.Subject, email.Body, drafted.Value.Values, note);
         var queued = await _outbox.QueueEmailAsync(new OutboundEmailRequest
         {
             OrganizationId = organizationId,
@@ -152,6 +164,7 @@ public sealed partial class EventInvitationService : IEventInvitations
             Language = email.Language,
             Subject = $"[Test] {email.Subject}",
             Body = $"{note}\n\n{email.Body}",
+            Design = _ => design,
             CreatedByUserId = userId,
             ReplyToUserId = userId,
             ForOwnTeam = true,
@@ -287,6 +300,7 @@ public sealed partial class EventInvitationService : IEventInvitations
                 Language = language,
                 Subject = subject,
                 Body = body,
+                Design = _ => Designed(club.Name, language, false, subject, body, values),
                 CreatedByUserId = userId,
                 ReplyToUserId = userId,
                 MemberId = member.Id,
@@ -545,6 +559,7 @@ public sealed partial class EventInvitationService : IEventInvitations
                 Language = language,
                 Subject = subject,
                 Body = body,
+                Design = _ => Designed(club.Name, language, true, subject, body, values),
                 CreatedByUserId = userId,
                 ReplyToUserId = userId,
                 MemberId = member.Id,
@@ -637,6 +652,15 @@ public sealed partial class EventInvitationService : IEventInvitations
             return CultureInfo.GetCultureInfo(RegionalSettings.DefaultLocale);
         }
     }
+
+    /// <summary>
+    /// The invitation in the club's look: the filled letter as paragraphs, the event's details as
+    /// facts and the member's reply link as the button (see <see cref="ClubEmails.Invitation"/>).
+    /// </summary>
+    private static EmailDesign Designed(string? club, string language, bool reminder, string subject, string letter, InvitationTemplate.Values values,
+        string? testNote = null) =>
+        ClubEmails.Invitation(new InvitationDetails(club ?? "", language, reminder, subject, letter, values.EventName, values.EventDate,
+            values.EventPlace, values.MemberPrice, values.ReplyLink, testNote)).Design;
 
     private static InvitationLetterDto DefaultLetter(string language) =>
         new(MemberTexts.T(language, "invite.subject"), MemberTexts.T(language, "invite.body"));

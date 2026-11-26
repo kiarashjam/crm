@@ -117,6 +117,7 @@ public static class DependencyInjection
         services.AddScoped<IClubBankFiles, ACI.Infrastructure.Services.Payments.ClubBankFileService>();
         services.AddSingleton<ACI.Infrastructure.Services.Payments.PayLinkSigner>();
         services.AddScoped<IClubPayments, ACI.Infrastructure.Services.Payments.ClubPaymentsService>();
+        services.AddScoped<IMemberPayLinks, ACI.Infrastructure.Services.Payments.MemberPayLinks>();
         // A membership contract's deposit: paid on the signing page or by QR-bill, and put on the
         // member's account once the club's approval has admitted them.
         services.AddScoped<IContractDeposits, ACI.Infrastructure.Services.Payments.ContractDepositService>();

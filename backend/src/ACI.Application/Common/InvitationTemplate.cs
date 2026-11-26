@@ -7,7 +7,8 @@ namespace ACI.Application.Common;
 /// before the email is queued, as a newsletter's are (<see cref="NewsletterTemplate"/>).
 /// </summary>
 /// <remarks>
-/// The letter is plain text; the outbox makes its HTML part, encoding every character. A
+/// The letter is plain text, drawn in the club's look by <see cref="ClubEmails.Invitation"/> (its
+/// paragraphs, its details as facts, its reply link as the button), every character escaped. A
 /// placeholder may give a fallback for a member without the value: <c>{{eventPlace|the club}}</c>.
 /// </remarks>
 public static partial class InvitationTemplate

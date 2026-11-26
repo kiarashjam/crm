@@ -216,6 +216,9 @@ public class ClubEventsTests
         mail[0].Purpose.Should().Be(ConsentPurposes.Service, "a seat is a booking message, not marketing");
         mail[0].Subject.Should().Be("A place for you at Wine night");
         mail[0].Body.Should().Contain("CHF 35.00").And.Contain("house account");
+        // In the club's look: the event as its title, when and where set out, in both parts.
+        mail[0].TextBody.Should().StartWith("Wine night\n\nDear Marie,\n\nGood news: a place has come free at Wine night, and it is yours.").And.Contain("When: ");
+        mail[0].HtmlBody.Should().Contain("From the waiting list").And.Contain(">Wine night</h1>").And.Contain("The ticket, CHF 35.00, is on your house account.");
         var logged = await factory.Services.Read(db => db.MemberMessages.Where(m => m.OrganizationId == org).ToList());
         logged.Should().ContainSingle().Which.Category.Should().Be("Event", "it shows in Marie's communications");
         var ev = await EventOf(client, eventId);

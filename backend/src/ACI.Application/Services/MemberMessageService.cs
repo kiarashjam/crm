@@ -1,4 +1,5 @@
 using ACI.Application.Common;
+using ACI.Application.Common.I18n;
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
 using Microsoft.Extensions.Logging;
@@ -178,6 +179,8 @@ public sealed class MemberMessageService : IMemberMessageService
                 RecipientName = row.MemberName,
                 Subject = subject,
                 Body = body,
+                // From the club to one member: its look, light, the message as paragraphs.
+                Design = draft => ClubEmails.Letter(draft.WorkspaceName, AppLanguages.ForMember(member.PreferredLanguage), draft.Subject, draft.Body, title: false),
                 CreatedByUserId = userId,
                 ReplyToUserId = userId,
                 MemberId = member.Id,

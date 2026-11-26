@@ -236,6 +236,59 @@ public class StripePaymentsTests
             "a link for 51 charges")).Should().Contain("50");
     }
 
+    /// <summary>The address under the button a designed email's text part names.</summary>
+    private static string ButtonUrl(string text, string label)
+    {
+        var at = text.IndexOf(label + ":\n", StringComparison.Ordinal);
+        at.Should().BeGreaterThan(0, $"the email should have a \"{label}\" button:\n{text}");
+        return text[(at + label.Length + 2)..].Split('\n')[0];
+    }
+
+    [Fact]
+    public async Task TheStatementOfAClubThatTakesPaymentsOnline_HasAPayButton_WhoseLinkPaysTheAccount()
+    {
+        await using var app = new PaymentsApp();
+        var club = await ClubAsync(app);
+        var memberId = await MemberAsync(club.Owner);
+        await ChargeAsync(club.Owner, memberId, 120m);
+        var period = new { from = DateTime.UtcNow.AddDays(-1), to = DateTime.UtcNow.AddDays(1) };
+
+        await Json(await club.Owner.PostAsync($"/api/members/{memberId}/statement/email", Body(period)), "email the statement");
+
+        var message = await app.Services.Read(db => db.OutboundMessages.IgnoreQueryFilters()
+            .Single(m => m.OrganizationId == club.Org && m.Source == OutboundSources.Statement));
+        var url = ButtonUrl(message.TextBody!, "Pay online");
+        message.HtmlBody.Should().Contain($"href=\"{url}\"").And.Contain("The link works until");
+        (await app.Services.Read(db => db.OutboundAttachments.IgnoreQueryFilters().Count(a => a.OutboundMessageId == message.Id))).Should().Be(1, "the PDF stays attached");
+        var page = await Json(await OpenAsync(app.CreateClient(), TokenOf(url)), "the member opens the link");
+        page.GetProperty("amount").GetDecimal().Should().Be(120m, "it pays what the account owes");
+    }
+
+    [Fact]
+    public async Task APaymentReminderOfAClubThatTakesPaymentsOnline_HasAPayButton_ForTheChargesItRemindsOf()
+    {
+        await using var app = new PaymentsApp();
+        var club = await ClubAsync(app);
+        var memberId = await MemberAsync(club.Owner);
+        await Json(await club.Owner.PostAsync("/api/charges", Body(new
+        {
+            memberId, kind = "Bar", description = "Bar tab", amount = 30m, dueAtUtc = DateTime.UtcNow.AddDays(-5).ToString("o"),
+        })), "an overdue charge");
+        await ChargeAsync(club.Owner, memberId, 200m, description: "Not due yet");
+        await Json(await club.Owner.PutAsync("/api/hospitality/settings", Body(new { billing = new { remindersEnabled = true, reminderDays = new[] { 3 } } })),
+            "remind three days after the due date");
+
+        using (var scope = app.Services.CreateScope())
+            await scope.ServiceProvider.GetRequiredService<IClubBilling>().RunScheduledAsync(DateTime.UtcNow.Date.AddHours(12));
+
+        var message = await app.Services.Read(db => db.OutboundMessages.IgnoreQueryFilters()
+            .Single(m => m.OrganizationId == club.Org && m.Source == OutboundSources.PaymentReminder));
+        var url = ButtonUrl(message.TextBody!, "Pay online");
+        message.HtmlBody.Should().Contain($"href=\"{url}\"");
+        var page = await Json(await OpenAsync(app.CreateClient(), TokenOf(url)), "the member opens the link");
+        page.GetProperty("amount").GetDecimal().Should().Be(30m, "it pays the overdue charge, not what is not due yet");
+    }
+
     [Fact]
     public async Task APayLinkIsEmailedToTheMemberThroughTheOutbox_AsAServiceMessage()
     {
@@ -252,6 +305,10 @@ public class StripePaymentsTests
         message.To.Should().Contain("jean@example.ch");
         message.Purpose.Should().Be("service", "a member's own account is not marketing");
         message.Body.Should().Contain(sent.GetProperty("url").GetString()).And.Contain("120");
+        // In the club's look: the link is its button, its address written out, in both parts.
+        var url = sent.GetProperty("url").GetString()!;
+        message.TextBody.Should().Contain($"Pay CHF 120.00:\n{url}").And.Contain("The link works until");
+        message.HtmlBody.Should().Contain($"href=\"{url}\"").And.Contain("Pay CHF 120.00").And.Contain("Pay your account online").And.Contain("#2c5545");
         (await app.Services.Read(db => db.MemberMessages.IgnoreQueryFilters().Count(m => m.MemberId == memberId))).Should().Be(1, "it is in the member's communications");
         var paidUp = await MemberAsync(club.Owner, "Ana");
         (await Refused(await club.Owner.PostAsync($"/api/members/{paidUp}/pay-link/email", Body(new { purpose = "account" })), HttpStatusCode.BadRequest,

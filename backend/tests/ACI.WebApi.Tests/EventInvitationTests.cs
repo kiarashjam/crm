@@ -155,6 +155,14 @@ public class EventInvitationTests
         // Each its own link; only the hash of each is kept.
         var tokens = new[] { await LinkOfAsync(app, anna), await LinkOfAsync(app, bruno), await LinkOfAsync(app, clara) };
         tokens.Distinct().Should().HaveCount(3);
+        // In the club's look: the letter as paragraphs, the event's details as facts, the reply link as
+        // the button (in both parts), and the link that withdraws consent at the foot.
+        var annasLink = $"https://crm.example.ch/invitation/{tokens[0]}";
+        annas.TextBody.Should().StartWith("Wine night\n\nDear Anna,").And.Contain("Where: Library Bar").And.Contain("Price for members: CHF 40.00")
+            .And.Contain($"Reply to the invitation:\n{annasLink}").And.Contain("Unsubscribe: https://crm.example.ch/unsubscribe/");
+        annas.HtmlBody.Should().Contain($"href=\"{annasLink}\"").And.Contain("Reply to the invitation").And.Contain("Library Bar").And.Contain("#2c5545")
+            .And.Contain(">Unsubscribe</a>");
+        brunos.HtmlBody.Should().Contain("lang=\"de\"").And.Contain("Auf die Einladung antworten").And.Contain(">Abmelden</a>");
         var hashes = await app.Services.Read(db => db.ClubEventInvitations.Select(i => i.TokenHash).ToList());
         hashes.Should().BeEquivalentTo(tokens.Select(InvitationReplyToken.Hash));
         hashes.Should().NotIntersectWith(tokens, "the token itself is never stored");
@@ -195,6 +203,11 @@ public class EventInvitationTests
         test.GetProperty("to").GetString().Should().Be("olga@pavillon46.ch");
         app.Mail.SentTo.Should().Equal("olga@pavillon46.ch");
         (await app.Services.Read(db => db.ClubEventInvitations.Count())).Should().Be(0, "a test invites nobody");
+        // As Bruno will see it, in German, its button on the sample link, the note on top and no unsubscribe link.
+        var copy = app.Mail.Sent.Single();
+        copy.Subject.Should().Be("[Test] Einladung: Wine night");
+        copy.TextBody.Should().StartWith("Wine night\n\nThis is a test of the invitation, as Bruno").And.Contain("Auf die Einladung antworten:\nhttps://crm.example.ch/invitation/sample");
+        copy.HtmlBody.Should().Contain("lang=\"de\"").And.Contain("href=\"https://crm.example.ch/invitation/sample\"").And.NotContain("Abmelden");
     }
 
     [Fact]

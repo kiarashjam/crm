@@ -5,9 +5,9 @@ namespace ACI.Application.Common.I18n;
 
 /// <summary>
 /// What the server writes to a member, in English, German (Swiss spelling: "ss", never "ß") and
-/// French (as written in Romandy): the statement and invoice PDFs with their Swiss QR-bill, the
-/// statement, reminder, welcome, event and pay-link emails, the marketing footer, and the
-/// defaults of the public forms.
+/// French (as written in Romandy): the statement and invoice PDFs with their Swiss QR-bill, every
+/// email the club sends a member (ClubEmails: statements, reminders, pay links, events, invitations,
+/// the welcome, portal links), the marketing footer, and the defaults of the public forms.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -44,6 +44,21 @@ public static partial class MemberTexts
         ["us"] = new("us", "uns", "nous"),
         ["theClub"] = new("the club", "dem Club", "le club"),
 
+        // ── shared by the club's emails (ClubEmails) ───────────────────────────
+        ["signOff"] = new("Kind regards,", "Freundliche Grüsse", "Avec nos meilleures salutations"),
+        ["footer.member"] = new(
+            "You are receiving this email as a member of {club}.",
+            "Sie erhalten diese E-Mail als Mitglied von {club}.",
+            "Vous recevez cet e-mail en tant que membre de {club}."),
+        ["footer.guest"] = new(
+            "You are receiving this email because you are on the list for {event}.",
+            "Sie erhalten diese E-Mail, weil Sie auf der Liste für {event} stehen.",
+            "Vous recevez cet e-mail car vous êtes inscrit(e) à {event}."),
+        ["fact.when"] = new("When", "Wann", "Quand"),
+        ["fact.where"] = new("Where", "Wo", "Où"),
+        ["fact.memberPrice"] = new("Price for members", "Preis für Mitglieder", "Prix pour les membres"),
+        ["button.payOnline"] = new("Pay online", "Online bezahlen", "Payer en ligne"),
+
         // ── the public forms' defaults ─────────────────────────────────────────
         ["form.applicationConsent"] = new(
             "Yes, I would like to hear about news, events and offers from the club by email. I can change my mind at any time.",
@@ -73,6 +88,7 @@ public static partial class MemberTexts
 
         // ── welcome, on approval ───────────────────────────────────────────────
         ["welcome.subject"] = new("Welcome to {club}", "Willkommen bei {club}", "Bienvenue chez {club}"),
+        ["welcome.eyebrow"] = new("Membership approved", "Mitgliedschaft bestätigt", "Adhésion confirmée"),
         ["welcome.approved"] = new(
             "Your application has been approved, and you are now a {tier} member of {club}.",
             "Ihr Antrag wurde angenommen: Sie sind jetzt Mitglied von {club} ({tier}).",
@@ -102,12 +118,23 @@ public static partial class MemberTexts
             "Your statement for {period} is attached.",
             "Im Anhang finden Sie Ihren Kontoauszug für {period}.",
             "Vous trouverez en pièce jointe votre relevé de compte pour {period}."),
-        ["statement.broughtForward"] = new("Brought forward: {amount}", "Saldovortrag: {amount}", $"Solde reporté{Nb}: {{amount}}"),
-        ["statement.charges"] = new("Charges: {amount}", "Belastungen: {amount}", $"Débits{Nb}: {{amount}}"),
-        ["statement.payments"] = new("Payments and credits: {amount}", "Zahlungen und Gutschriften: {amount}", $"Paiements et crédits{Nb}: {{amount}}"),
+        ["statement.eyebrow"] = new("Account statement", "Kontoauszug", "Relevé de compte"),
+        // What the statement email's preview line says.
         ["statement.amountDue"] = new("Amount due: {amount}", "Offener Betrag: {amount}", $"Montant dû{Nb}: {{amount}}"),
         ["statement.inCredit"] = new("In credit: {amount}", "Guthaben: {amount}", $"Solde en votre faveur{Nb}: {{amount}}"),
         ["statement.balance"] = new("Balance: {amount}", "Saldo: {amount}", $"Solde{Nb}: {{amount}}"),
+        // The rows of its figures, as the attached PDF names them.
+        ["statement.labelBroughtForward"] = new("Brought forward", "Saldovortrag", "Solde reporté"),
+        ["statement.labelCharges"] = new("Charges", "Belastungen", "Débits"),
+        ["statement.labelPayments"] = new("Payments and credits", "Zahlungen und Gutschriften", "Paiements et crédits"),
+        ["statement.labelAmountDue"] = new("Amount due", "Offener Betrag", "Montant dû"),
+        ["statement.labelInCredit"] = new("In credit", "Guthaben", "Solde en votre faveur"),
+        ["statement.labelBalance"] = new("Balance", "Saldo", "Solde"),
+        ["statement.labelDueDate"] = new("Due date", "Fällig am", "Échéance"),
+        ["statement.qrBillToo"] = new(
+            "You can also pay with the QR-bill at the foot of the attached statement: scan it in your banking app, or quote its reference.",
+            "Sie können auch mit der QR-Rechnung am Fuss des beiliegenden Auszugs bezahlen: Scannen Sie sie in Ihrer Banking-App, oder geben Sie ihre Referenz an.",
+            $"Vous pouvez aussi payer avec la QR-facture au bas du relevé ci-joint{Nb}: scannez-la dans votre application bancaire ou indiquez sa référence."),
         ["statement.question"] = new(
             "If you have a question about it, reply to this email.",
             "Bei Fragen dazu antworten Sie einfach auf diese E-Mail.",
@@ -130,7 +157,14 @@ public static partial class MemberTexts
             "We have still not received payment for the following on your account:",
             "Für Folgendes auf Ihrem Konto haben wir noch keine Zahlung erhalten:",
             $"Nous n’avons toujours pas reçu le paiement des montants suivants de votre compte{Nb}:"),
-        ["reminder.line"] = new("- {description}: {amount}, due {date}", "- {description}: {amount}, fällig am {date}", $"- {{description}}{Nb}: {{amount}}, échu le {{date}}"),
+        // Firm but courteous: the headline of the first, a later and the last reminder.
+        ["reminder.titleFirst"] = new("A gentle reminder", "Eine freundliche Erinnerung", "Un petit rappel"),
+        ["reminder.titleLater"] = new("Your payment is still outstanding", "Ihre Zahlung ist noch ausstehend", "Votre paiement est toujours attendu"),
+        ["reminder.titleFinal"] = new("Please settle your account", "Bitte begleichen Sie Ihr Konto", "Merci de régler votre compte"),
+        ["reminder.chargeLabel"] = new("{description} · due {date}", "{description} · fällig am {date}", "{description} · échu le {date}"),
+        ["reminder.labelTotal"] = new("Total overdue", "Total überfällig", "Total en retard"),
+        ["reminder.labelDays"] = new("Days overdue", "Tage überfällig", "Jours de retard"),
+        // The reminder's preview line.
         ["reminder.total"] = new("Total overdue: {amount}", "Total überfällig: {amount}", $"Total en retard{Nb}: {{amount}}"),
         ["reminder.lapse"] = new(
             "A membership is suspended when a charge is still unpaid {days} days after its due date, until it is paid.",
@@ -143,12 +177,13 @@ public static partial class MemberTexts
 
         // ── events ─────────────────────────────────────────────────────────────
         ["event.when"] = new("dddd d MMMM yyyy 'at' HH:mm", "dddd, d. MMMM yyyy 'um' HH:mm", "dddd d MMMM yyyy 'à' HH:mm"),
-        ["event.atPlace"] = new(" at {location}", " ({location})", " ({location})"),
         ["event.promotedSubject"] = new("A place for you at {event}", "Ein Platz für Sie: {event}", $"Une place pour vous{Nb}: {{event}}"),
-        ["event.promotedBody"] = new(
-            "Good news: a place has come free at {event} on {when}{where}, and it is yours.",
-            "Gute Nachricht: Für {event} am {when}{where} ist ein Platz frei geworden, und er gehört Ihnen.",
-            $"Bonne nouvelle{Nb}: une place s’est libérée pour {{event}} le {{when}}{{where}}, et elle est à vous."),
+        ["event.eyebrowPromoted"] = new("From the waiting list", "Von der Warteliste", "Depuis la liste d’attente"),
+        // When and where follow it, set out as the email's facts.
+        ["event.promotedLead"] = new(
+            "Good news: a place has come free at {event}, and it is yours.",
+            "Gute Nachricht: Für {event} ist ein Platz frei geworden, und er gehört Ihnen.",
+            $"Bonne nouvelle{Nb}: une place s’est libérée pour {{event}}, et elle est à vous."),
         ["event.ticketOnAccount"] = new(
             "The ticket, {ticket}, is on your house account.",
             "Das Ticket ({ticket}) wurde Ihrem Clubkonto belastet.",
@@ -162,10 +197,11 @@ public static partial class MemberTexts
             "Falls Sie nicht mehr kommen können, geben Sie uns bitte Bescheid, damit die nächste Person auf der Warteliste den Platz erhält.",
             "Si vous ne pouvez plus venir, merci de nous le faire savoir afin que la personne suivante sur la liste d’attente puisse en profiter."),
         ["event.cancelledSubject"] = new("{event} is cancelled", "{event} ist abgesagt", $"Annulation{Nb}: {{event}}"),
-        ["event.cancelledBody"] = new(
-            "We are sorry: {event} on {when}{where} is cancelled.",
-            "Es tut uns leid: {event} am {when}{where} ist abgesagt.",
-            $"Nous sommes désolés{Nb}: {{event}} du {{when}}{{where}} n’aura pas lieu."),
+        ["event.eyebrowCancelled"] = new("Event cancelled", "Anlass abgesagt", "Événement annulé"),
+        ["event.cancelledLead"] = new(
+            "We are sorry: {event} is cancelled.",
+            "Es tut uns leid: {event} ist abgesagt.",
+            $"Nous sommes désolés{Nb}: {{event}} n’aura pas lieu."),
         ["event.ticketTakenOff"] = new(
             "The ticket, {ticket}, has been taken off the house account it was on.",
             "Das Ticket ({ticket}) wurde dem Clubkonto wieder gutgeschrieben.",
@@ -206,6 +242,9 @@ public static partial class MemberTexts
             + "Quand" + Nb + ": {{eventDate}}\nOù" + Nb + ": {{eventPlace|au club}}\nPrix pour les membres" + Nb + ": {{memberPrice}}\n\n"
             + "Serez-vous des nôtres" + Nb + "? Répondez en un clic" + Nb + ":\n{{replyLink}}\n\n{{club}}"),
         ["invite.free"] = new("Free", "Kostenlos", "Gratuit"),
+        ["invite.eyebrow"] = new("Invitation", "Einladung", "Invitation"),
+        ["invite.eyebrowReminder"] = new("Reminder", "Erinnerung", "Rappel"),
+        ["invite.button"] = new("Reply to the invitation", "Auf die Einladung antworten", "Répondre à l’invitation"),
 
         // ── pay links ──────────────────────────────────────────────────────────
         ["payLink.subjectSetup"] = new("Save a card with {club}", "Karte bei {club} speichern", "Enregistrer une carte auprès de {club}"),
@@ -227,24 +266,34 @@ public static partial class MemberTexts
             "Sie können {amount} online mit {methods} auf der sicheren Seite von Stripe bezahlen.",
             "Vous pouvez payer {amount} en ligne, par {methods}, sur la page sécurisée de Stripe."),
         ["payLink.validUntil"] = new("The link works until {date}.", "Der Link ist gültig bis {date}.", "Le lien est valable jusqu’au {date}."),
+        ["payLink.eyebrowPay"] = new("Online payment", "Online-Zahlung", "Paiement en ligne"),
+        ["payLink.eyebrowSetup"] = new("Card on file", "Hinterlegte Karte", "Carte enregistrée"),
+        ["payLink.titlePay"] = new("Pay your account online", "Ihr Konto online bezahlen", "Réglez votre compte en ligne"),
+        ["payLink.titleSetup"] = new("Save a card with the club", "Eine Karte beim Club hinterlegen", "Enregistrez une carte auprès du club"),
+        ["payLink.buttonPay"] = new("Pay {amount}", "{amount} bezahlen", "Payer {amount}"),
+        ["payLink.buttonSetup"] = new("Save a card", "Karte speichern", "Enregistrer une carte"),
         // ── the member portal ──────────────────────────────────────────────────
         ["portal.inviteSubject"] = new("{club}: your member account", "{club}: Ihr Mitgliederkonto", $"{{club}}{Nb}: votre espace membre"),
         ["portal.inviteIntro"] = new(
             "{club} has a member portal: see your statements and pay them, sign up for events, book, and choose what you hear from the club.",
             "{club} hat ein Mitgliederportal: Dort sehen und bezahlen Sie Ihre Kontoauszüge, melden sich für Anlässe an, reservieren und bestimmen, was Sie vom Club erhalten.",
             $"{{club}} a un espace membre{Nb}: consultez et réglez vos relevés, inscrivez-vous aux événements, réservez et choisissez ce que vous recevez du club."),
-        ["portal.inviteOpen"] = new("Open your account:", "Öffnen Sie Ihr Konto:", $"Ouvrir votre espace{Nb}:"),
-        ["portal.inviteOpenFor"] = new("Open the account of {name}:", "Konto von {name} öffnen:", $"Ouvrir l’espace de {{name}}{Nb}:"),
+        ["portal.eyebrow"] = new("Member portal", "Mitgliederportal", "Espace membre"),
+        ["portal.inviteTitle"] = new("Your member account is ready", "Ihr Mitgliederkonto ist bereit", "Votre espace membre est prêt"),
+        ["portal.inviteButton"] = new("Open your account", "Ihr Konto öffnen", "Ouvrir votre espace"),
+        ["portal.inviteButtonFor"] = new("Open the account of {name}", "Konto von {name} öffnen", "Ouvrir l’espace de {name}"),
         ["portal.inviteValid"] = new(
             "Each link works once, until {date}. After that, ask for a new one on the portal's page: {portal}",
             "Jeder Link funktioniert einmal, bis am {date}. Danach können Sie auf der Seite des Portals einen neuen anfordern: {portal}",
             $"Chaque lien fonctionne une fois, jusqu’au {{date}}. Ensuite, demandez-en un nouveau sur la page de l’espace{Nb}: {{portal}}"),
         ["portal.signInSubject"] = new("Your sign-in link for {club}", "Ihr Anmeldelink für {club}", "Votre lien de connexion pour {club}"),
-        ["portal.signInIntro"] = new(
-            "Here is your link to sign in to the member portal of {club}:",
-            "Hier ist Ihr Link für die Anmeldung im Mitgliederportal von {club}:",
-            $"Voici votre lien pour vous connecter à l’espace membre de {{club}}{Nb}:"),
-        ["portal.signInAs"] = new("Sign in as {name}:", "Als {name} anmelden:", $"Se connecter en tant que {{name}}{Nb}:"),
+        ["portal.signInTitle"] = new("Your sign-in link", "Ihr Anmeldelink", "Votre lien de connexion"),
+        ["portal.signInLead"] = new(
+            "Here is your link to sign in to the member portal of {club}.",
+            "Hier ist Ihr Link für die Anmeldung im Mitgliederportal von {club}.",
+            "Voici votre lien pour vous connecter à l’espace membre de {club}."),
+        ["portal.signInButton"] = new("Sign in", "Anmelden", "Se connecter"),
+        ["portal.signInButtonAs"] = new("Sign in as {name}", "Als {name} anmelden", "Se connecter en tant que {name}"),
         ["portal.signInValid"] = new(
             "Each link works once, for {minutes} minutes. If you did not ask for it, you can ignore this email: nobody can sign in without the link.",
             "Jeder Link funktioniert einmal, während {minutes} Minuten. Falls Sie ihn nicht angefordert haben, können Sie diese E-Mail ignorieren: Ohne den Link kann sich niemand anmelden.",
