@@ -9,9 +9,33 @@ do, how to add a page, and what to expect. Code lives in `src/app/marketing/` an
 CadenceE is **free until 31 December 2026** for everyone who signs up. The offer appears on
 the home page (hero ribbon, "Start free" buttons, a strip by the final call to action), on
 every landing page (a badge in the hero, "Start free", a strip above the footer), on
-`/pricing`, `/fr/tarifs` and `/de/preise`, in the meta descriptions of the home, features and
-pricing pages, in the home and pricing OG images, in `llms.txt`, and as a schema.org `Offer`
+`/pricing`, `/fr/tarifs` and `/de/preise`, on the free-CRM page (below), in the titles of the
+home pages ("Free Swiss CRM for Clubs and Sales Teams", "CRM gratuit pour clubs et équipes de
+vente", "Kostenloses CRM für Clubs und Vertrieb"), in the H1 of the French and German home
+pages, in the meta description of every page (ending "Free until end of 2026." / "Gratuit
+jusqu’à fin 2026." / "Kostenlos bis Ende 2026."), in the home, pricing and free-CRM OG images,
+in the footer (a link to the free-CRM page), in `llms.txt`, and as a schema.org `Offer`
 (CHF 0, `priceValidUntil` 2026-12-31) on the SoftwareApplication data.
+
+### The free-CRM page (offer only)
+
+`/free-crm`, `/fr/crm-gratuit`, `/de/kostenloses-crm` (`id: 'free-crm'`, words in
+`src/app/marketing/content/freeCrm.ts`) is for people who search for a free CRM. Its angle is
+not the price (that is the pricing page, so the two do not compete) but what the free offer
+is: every feature, the whole team, no credit card, sign up in minutes, built in Switzerland,
+English, French and German, data exportable, and "try the demo" (`/login?demo=1`, a demo
+workspace with sample data, no account). It is a `landing` page marked `offerOnly` in
+`routes.ts`, so it is never in the topic grids, menus or 404 suggestions (`LANDING_PAGE_IDS`);
+it is linked from the footer's Product column and from the pricing page (a related card and a
+FAQ answer) while the offer runs.
+
+On 1 January 2027 it turns itself off: the page shows its `afterOffer` words ("the launch
+offer has ended", ask for pricing, try the demo), its robots meta becomes `noindex, follow`,
+it leaves `sitemap.xml` (42 URLs → 39) and `llms.txt`, its OG image becomes the plain one,
+and the footer and pricing links to it disappear. The URL keeps answering (no 404), so old
+links still land somewhere true. **Owner to-do in 2027:** once Search Console shows the
+three URLs dropped from the index, either keep them as they are, redirect them to the pricing
+page, or, if 2027 brings a real free plan, rewrite the page for it and remove `offerOnly`.
 
 It ends by itself. Everything asks `isLaunchOfferActive()` in `src/app/lib/launchOffer.ts`
 (true through 31 December 2026, 23:59:59 Europe/Zurich), which also holds the offer's words in
@@ -26,7 +50,9 @@ the three languages:
   commit; any push to `main` after New Year does the same job.)
 
 From 1 January 2027 the pricing pages show their `afterOffer` words ("ask us for the current
-pricing"). **Owner to-do before 2027:** decide the 2027 pricing, announce it well before
+pricing"), the French and German home pages their former H1 ("Le CRM suisse qui gère votre
+club et vos ventes", "Das Schweizer CRM für Ihren Club und Ihren Vertrieb"), and every title
+and description its plain wording. **Owner to-do before 2027:** decide the 2027 pricing, announce it well before
 31 December as the pages promise, and replace `afterOffer` in
 `src/app/marketing/content/pricing.ts` (and the pricing meta in `meta.ts`) with the real
 plans. When a real price exists, add an `offers` with it in `softwareApplicationJsonLd`
@@ -77,12 +103,13 @@ BreadcrumbList on every subpage, FAQPage on every page with an FAQ. Tests check 
 has what it should.
 
 **Social images**: `public/og/<page>-<lang>.png` for every page and language, offer versions
-for home and pricing, and `default.png`; `logo-512.png`, `apple-touch-icon.png`,
+for home, pricing and free CRM (`OFFER_OG_PAGES` in `seo.ts`: every page with `afterOffer`
+words belongs there, its plain image drawn from those words), and `default.png`; `logo-512.png`, `apple-touch-icon.png`,
 `favicon-32.png`. Redraw with `npm run seo:og-images` (needs Playwright:
 `npm i -D playwright` or `NODE_PATH=$(npm root -g)` with a global install) and commit.
 
-**Content**: twelve pages in each language, French and German written for Switzerland with
-their own slugs; 600 to 1,300 words each, one H1, sections tied to real features, how it
+**Content**: twelve pages in each language, plus the free-CRM page while the launch offer
+runs, French and German written for Switzerland with their own slugs; 600 to 1,300 words each, one H1, sections tied to real features, how it
 works, five to seven FAQ questions, related pages, tagged calls to action. The home page lost
 every claim CadenceE cannot back (ratings, user counts, SOC 2, "#1", AES-256 zero-knowledge,
 uptime SLA, data centres, "free forever") and gained one keyword H1, descriptive headings and
@@ -101,7 +128,8 @@ the key file `public/c1393c209ec461dc12a843b6d71362b0.txt` (public by design) an
 URLs; it never fails a deploy. `llms.txt` describes the site for AI search, built at deploy.
 
 **Analytics hooks**: calls to action carry `data-track="cta-signup"`, `cta-login`,
-`cta-demo`, `cta-contact`; internal navigation `nav-<page>` (`nav-features`, `nav-pricing`,
+`cta-demo`, `cta-contact`, and `cta-try-demo` for "try the demo" links in the copy
+(`/login?demo=1`); internal navigation `nav-<page>` (`nav-features`, `nav-pricing`,
 `nav-private-clubs`, …) and the language switch `nav-lang-<en|fr|de>`.
 
 ## Owner's to-do list
@@ -138,7 +166,9 @@ URLs; it never fails a deploy. `llms.txt` describes the site for AI search, buil
 
 1. `src/app/marketing/routes.ts`: add the id to `MARKETING_PAGE_IDS` and an entry to
    `MARKETING_PAGES` with its address in each language and `lastmod` (today). Kind
-   `landing` puts it in the menus and the solutions grids.
+   `landing` puts it in the menus and the solutions grids, unless it is `offerOnly` (a page
+   about the launch offer: indexed and listed only while it runs, with `afterOffer` words
+   for after, and its id in `OFFER_OG_PAGES`).
 2. `src/app/marketing/meta.ts`: its title (≤ 60 characters, ending "| CadenceE"),
    description (≤ 155) and short `nav` name in `en`, `fr` and `de`.
 3. `src/app/marketing/content/{en,fr,de}.ts`: its words (see `content/types.ts`: eyebrow, H1,
@@ -156,7 +186,7 @@ When a page's words change, bump its `lastmod` so the sitemap and IndexNow say s
 
 | Page | English | French | German |
 |---|---|---|---|
-| Home | Swiss CRM, CRM for private clubs, CRM for sales teams | CRM suisse, CRM club privé | Schweizer CRM, CRM für Privatclubs |
+| Home | Swiss CRM, CRM for private clubs, CRM for sales teams (until 2027: free Swiss CRM) | CRM suisse, CRM club privé (until 2027: CRM gratuit) | Schweizer CRM, CRM für Privatclubs (until 2027: kostenloses CRM) |
 | Features | CRM features, club management software | fonctionnalités CRM, logiciel de gestion de club | CRM-Funktionen, Clubsoftware |
 | Private clubs | CRM for private members' clubs, members club software | CRM pour club privé, club de membres | CRM für Privatclubs, Members' Club Software |
 | Membership | membership management software, member renewals | logiciel de gestion des membres, gestion des adhésions | Mitgliederverwaltung Software, Mitgliederverwaltung Club |
@@ -167,7 +197,8 @@ When a page's words change, bump its `lastmod` so the sitemap and IndexNow say s
 | Billing | club billing software, membership dues, statements | facturation club, cotisations | Club-Abrechnung, Mitgliederbeiträge |
 | Email | email automation CRM, newsletters, sequences | CRM automatisation e-mails, newsletter | E-Mail-Automatisierung CRM, Newsletter |
 | AI | AI CRM assistant, AI sales writer, Claude | assistant IA CRM | KI-Assistent CRM, KI-Texter |
-| Pricing | CadenceE pricing, free CRM | tarifs CRM, CRM gratuit | CRM Preise, kostenloses CRM |
+| Pricing | CadenceE pricing, CRM price | tarifs CRM, prix CRM | CRM Preise, CRM Kosten |
+| Free CRM (until 2027) | free CRM, free CRM software, free CRM Switzerland, free CRM for clubs, free membership management software, free sales CRM | CRM gratuit, logiciel CRM gratuit, CRM gratuit Suisse, CRM gratuit pour club / association | kostenloses CRM, CRM kostenlos, CRM Software kostenlos, kostenloses CRM Schweiz, Mitgliederverwaltung kostenlos |
 
 These come from what the product does and how Swiss buyers describe it, not from a keyword
 tool's volumes; check them against Search Console's queries after a few weeks and adjust.

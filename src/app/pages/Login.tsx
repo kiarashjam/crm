@@ -4,11 +4,12 @@ import { useQuery } from '@tanstack/react-query';
 import {
   ArrowLeft, ArrowRight, Sparkles, Play, Mail, Lock, User as UserIcon,
   Eye, EyeOff, Loader2, AlertCircle, ShieldCheck, Workflow, BarChart3, Bot,
-  AlertTriangle, WifiOff, Info, ShieldAlert, ServerCrash, Clock, RefreshCw,
+  AlertTriangle, WifiOff, Info, ShieldAlert, ServerCrash, Clock, RefreshCw, Gift,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { login, loginWithTwoFactor, register, messages } from '@/app/api';
-import { setSession, setDemoUser } from '@/app/lib/auth';
+import { setSession, setDemoUser, isLoggedIn, isDemoMode } from '@/app/lib/auth';
+import { isLaunchOfferActive } from '@/app/lib/launchOffer';
 import { trackEvent } from '@/app/lib/siteAnalytics';
 import { isUsingRealApi } from '@/app/api/apiClient';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/app/components/ui/input-otp';
@@ -173,6 +174,19 @@ export default function Login() {
 
   const switchMode = (next: 'login' | 'register') => { setMode(next); setError(null); };
 
+  // "Try the demo" on the public site links here with ?demo=1: straight into the sample
+  // workspace, no form. Someone already signed in to a real account goes to it instead,
+  // so the demo never replaces their session.
+  const demoRequested = useRef(new URLSearchParams(location.search).get('demo') === '1');
+  useEffect(() => {
+    if (!demoRequested.current) return;
+    demoRequested.current = false;
+    if (isLoggedIn() && !isDemoMode()) navigate('/organizations', { replace: true });
+    else startDemo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on arrival
+  }, []);
+  const offer = isLaunchOfferActive();
+
   return (
     <div className="min-h-screen bg-gradient-subtle lg:grid lg:grid-cols-[1.05fr_0.95fr]">
       {/* ---------- Brand panel (lg+) ---------- */}
@@ -254,6 +268,15 @@ export default function Login() {
                     ? t('login.leadRegister')
                     : t('login.leadLogin')}
               </p>
+              {/* The launch offer, where an account is made: free, and no card asked for. */}
+              {!requires2fa && mode === 'register' && offer && (
+                <div data-launch-offer="" className="mt-4 flex flex-col items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-center lg:items-start lg:text-left">
+                  <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-800">
+                    <Gift className="h-4 w-4" aria-hidden /> {t('login.offerBadge')}
+                  </span>
+                  <span className="text-sm text-emerald-900/80">{t('login.offerNote')}</span>
+                </div>
+              )}
             </div>
 
             <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-[0_2px_4px_rgba(15,23,42,0.04),0_18px_40px_-24px_rgba(15,23,42,0.2)] sm:p-8">

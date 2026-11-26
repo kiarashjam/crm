@@ -89,14 +89,14 @@ export const enPricing: PageContent = {
     heading: 'Pricing questions',
     items: [
       { q: 'How much does CadenceE cost?', a: 'Nothing until 31 December 2026. During the launch offer every feature is free for everyone who signs up. Pricing from 2027 will be announced well before then.' },
-      { q: 'Is it really free?', a: 'Yes. There is one plan during the launch period, with every feature area included, and no payment details are asked for when you sign up.' },
+      { q: 'Is it really free?', a: 'Yes. There is one plan during the launch period, with every feature area included, and no payment details are asked for when you sign up. More on what the [free CRM](page:free-crm) includes.' },
       { q: 'What happens after 2026?', a: 'Pricing for 2027 will be announced well before the offer ends. Because no payment details are stored, nothing is charged automatically: you decide whether to continue.' },
       { q: 'Do I need a credit card?', a: 'No. Signing up asks only for your name, your email address and a password, and then a name for your workspace.' },
       { q: 'Can I export my data?', a: 'Yes. Lists such as leads and activities export to CSV, the accounting export goes to Bexio or Abacus, and a privacy request exports everything held about a person, under the GDPR and the Swiss FADP.' },
       { q: 'Which features are included?', a: 'All of them: leads and sales, contracts with e-signature, membership, events and hospitality, billing and payments, email automation, reports and the AI assistant. See all [features](page:features).' },
     ],
   },
-  related: ['features', 'private-clubs', 'swiss'],
+  related: ['free-crm', 'features', 'private-clubs'],
   cta: {
     heading: 'Start free today',
     text: 'Sign up now and use every feature of CadenceE free until 31 December 2026.',
@@ -119,6 +119,8 @@ export const enPricing: PageContent = {
       ],
     },
     sections: [enIncluded, enData],
+    // The free-CRM page is about the offer: no longer linked once it has ended.
+    related: ['features', 'private-clubs', 'swiss'],
     faq: {
       heading: 'Pricing questions',
       items: [
@@ -215,14 +217,14 @@ export const frPricing: PageContent = {
     heading: 'Questions sur les tarifs',
     items: [
       { q: 'Combien coûte CadenceE ?', a: 'Rien jusqu’au 31 décembre 2026. Pendant l’offre de lancement, toutes les fonctionnalités sont gratuites pour toute personne qui s’inscrit. Les tarifs à partir de 2027 seront annoncés bien avant.' },
-      { q: 'Est-ce vraiment gratuit ?', a: 'Oui. Il n’y a qu’une formule pendant la période de lancement, avec toutes les fonctionnalités, et aucune coordonnée de paiement n’est demandée à l’inscription.' },
+      { q: 'Est-ce vraiment gratuit ?', a: 'Oui. Il n’y a qu’une formule pendant la période de lancement, avec toutes les fonctionnalités, et aucune coordonnée de paiement n’est demandée à l’inscription. Plus de détails sur notre [CRM gratuit](page:free-crm).' },
       { q: 'Que se passe-t-il après 2026 ?', a: 'Les tarifs 2027 seront annoncés bien avant la fin de l’offre. Comme aucune coordonnée de paiement n’est enregistrée, rien n’est prélevé automatiquement : vous décidez de continuer ou non.' },
       { q: 'Faut-il une carte de crédit ?', a: 'Non. L’inscription demande seulement votre nom, votre adresse e-mail et un mot de passe, puis un nom pour votre espace de travail.' },
       { q: 'Puis-je exporter mes données ?', a: 'Oui. Les listes comme les prospects et les activités s’exportent en CSV, l’export comptable part vers Bexio ou Abacus, et une demande d’accès exporte tout ce qui concerne une personne, selon le RGPD et la nLPD.' },
       { q: 'Quelles fonctionnalités sont incluses ?', a: 'Toutes : prospects et ventes, contrats en signature électronique, membres, événements et hôtellerie-restauration, facturation et paiements, automatisation des e-mails, rapports et assistant IA. Voir toutes les [fonctionnalités](page:features).' },
     ],
   },
-  related: ['features', 'private-clubs', 'swiss'],
+  related: ['free-crm', 'features', 'private-clubs'],
   cta: {
     heading: 'Commencez gratuitement dès aujourd’hui',
     text: 'Inscrivez-vous maintenant et utilisez toutes les fonctionnalités de CadenceE gratuitement jusqu’au 31 décembre 2026.',
@@ -245,6 +247,8 @@ export const frPricing: PageContent = {
       ],
     },
     sections: [frIncluded, frData],
+    // The free-CRM page is about the offer: no longer linked once it has ended.
+    related: ['features', 'private-clubs', 'swiss'],
     faq: {
       heading: 'Questions sur les tarifs',
       items: [
@@ -341,14 +345,14 @@ export const dePricing: PageContent = {
     heading: 'Fragen zu den Preisen',
     items: [
       { q: 'Was kostet CadenceE?', a: 'Bis 31. Dezember 2026 nichts. Während des Einführungsangebots sind alle Funktionen für alle kostenlos, die sich registrieren. Die Preise ab 2027 geben wir lange vorher bekannt.' },
-      { q: 'Ist es wirklich kostenlos?', a: 'Ja. Während der Einführungsphase gibt es ein Paket mit allen Funktionen, und bei der Registrierung werden keine Zahlungsangaben verlangt.' },
+      { q: 'Ist es wirklich kostenlos?', a: 'Ja. Während der Einführungsphase gibt es ein Paket mit allen Funktionen, und bei der Registrierung werden keine Zahlungsangaben verlangt. Mehr zu unserem [kostenlosen CRM](page:free-crm).' },
       { q: 'Was passiert nach 2026?', a: 'Die Preise für 2027 geben wir lange vor dem Ende des Angebots bekannt. Weil keine Zahlungsangaben gespeichert sind, wird nichts automatisch belastet: Sie entscheiden, ob Sie weitermachen.' },
       { q: 'Brauche ich eine Kreditkarte?', a: 'Nein. Die Registrierung verlangt nur Ihren Namen, Ihre E-Mail-Adresse und ein Passwort, danach einen Namen für Ihren Arbeitsbereich.' },
       { q: 'Kann ich meine Daten exportieren?', a: 'Ja. Listen wie Leads und Aktivitäten lassen sich als CSV exportieren, der Buchhaltungsexport geht nach Bexio oder Abacus, und ein Auskunftsbegehren exportiert alles, was zu einer Person gespeichert ist, nach DSGVO und DSG.' },
       { q: 'Welche Funktionen sind enthalten?', a: 'Alle: Leads und Vertrieb, Verträge mit E-Signatur, Mitglieder, Anlässe und Gastronomie, Abrechnung und Zahlungen, E-Mail-Automatisierung, Berichte und KI-Assistent. Alle [Funktionen](page:features) im Überblick.' },
     ],
   },
-  related: ['features', 'private-clubs', 'swiss'],
+  related: ['free-crm', 'features', 'private-clubs'],
   cta: {
     heading: 'Heute kostenlos starten',
     text: 'Registrieren Sie sich jetzt und nutzen Sie alle Funktionen von CadenceE bis 31. Dezember 2026 kostenlos.',
@@ -371,6 +375,8 @@ export const dePricing: PageContent = {
       ],
     },
     sections: [deIncluded, deData],
+    // The free-CRM page is about the offer: no longer linked once it has ended.
+    related: ['features', 'private-clubs', 'swiss'],
     faq: {
       heading: 'Fragen zu den Preisen',
       items: [

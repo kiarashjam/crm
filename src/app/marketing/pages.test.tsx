@@ -58,7 +58,8 @@ describe('rendered public pages', () => {
     for (const [path, html] of rendered) {
       expect(html, path).toContain('data-track="cta-signup"');
       expect(html, path).toContain('data-track="cta-login"');
-      expect(html, path).toContain('data-track="cta-demo"');
+      expect(html, path).toContain('data-track="cta-try"');
+      expect(html, path).toContain('href="/login?demo=1"');
       expect(html, path).toContain('data-track="cta-contact"');
       expect(html, path).toContain('data-track="nav-features"');
       expect(html, path).toContain('data-track="nav-pricing"');

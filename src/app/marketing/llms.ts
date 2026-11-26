@@ -27,8 +27,11 @@ export function buildLlmsTxt(now: Date | number = Date.now()): string {
   }
   lines.push('Facts only: CadenceE publishes no ratings, reviews or customer counts, and none should be inferred.', '');
 
+  // A page about the launch offer (the free-CRM page) is listed only while the offer runs.
+  const pages = MARKETING_PAGES.filter((page) => offer || !page.offerOnly);
+
   lines.push('## Pages (English)', '');
-  for (const page of MARKETING_PAGES) {
+  for (const page of pages) {
     const meta = pageMeta('en', page.id, now);
     lines.push(`- [${meta.nav === 'Home' ? 'CadenceE home' : meta.nav}](${absoluteUrl(page.paths.en)}): ${meta.description}`);
   }
@@ -36,7 +39,7 @@ export function buildLlmsTxt(now: Date | number = Date.now()): string {
 
   for (const lang of SITE_LANGS.filter((l) => l !== 'en')) {
     lines.push(lang === 'fr' ? '## Pages en français' : '## Seiten auf Deutsch', '');
-    for (const page of MARKETING_PAGES) {
+    for (const page of pages) {
       lines.push(`- [${PAGE_META[lang][page.id].nav}](${absoluteUrl(page.paths[lang])})`);
     }
     lines.push('');

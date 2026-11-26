@@ -1,12 +1,16 @@
 import { Link } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
-import { PAGE_META, SITE_STRINGS } from '../meta';
-import { marketingPath, type MarketingPageId } from '../routes';
+import { PAGE_META, SITE_STRINGS, pageMeta } from '../meta';
+import { marketingPage, marketingPath, type MarketingPageId } from '../routes';
 import type { SiteLang } from '../site';
+import { useLaunchOfferActive } from './LaunchOffer';
 
 /** A card that leads to another page of the site: its name, what it covers, a link. */
 export function PageCard({ id, lang, headingLevel = 3 }: { id: MarketingPageId; lang: SiteLang; headingLevel?: 2 | 3 }) {
-  const meta = PAGE_META[lang][id];
+  const offer = useLaunchOfferActive();
+  // A page about the launch offer is described in the offer's words while it runs (its plain
+  // description is the after-offer one); the other cards keep their plain description.
+  const meta = marketingPage(id).offerOnly && offer ? pageMeta(lang, id) : PAGE_META[lang][id];
   const Heading = headingLevel === 2 ? 'h2' : 'h3';
   return (
     <Link

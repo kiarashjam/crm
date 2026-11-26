@@ -17,6 +17,7 @@ export const MARKETING_PAGE_IDS = [
   'email',
   'ai',
   'pricing',
+  'free-crm',
 ] as const;
 
 export type MarketingPageId = (typeof MARKETING_PAGE_IDS)[number];
@@ -31,25 +32,32 @@ export interface MarketingPageDef {
   paths: Record<SiteLang, string>;
   /** When the page's words last changed (YYYY-MM-DD): the sitemap's lastmod. Bump it with the copy. */
   lastmod: string;
+  /**
+   * A page about the launch offer itself ("free CRM"): listed and indexed only while the offer
+   * runs (until 31 December 2026). Afterwards it shows its afterOffer words, is marked noindex
+   * and leaves the sitemap; it is never in the topic grids (LANDING_PAGE_IDS).
+   */
+  offerOnly?: boolean;
 }
 
 export const MARKETING_PAGES: readonly MarketingPageDef[] = [
-  { id: 'home', kind: 'home', lastmod: '2026-11-25', paths: { en: '/', fr: '/fr', de: '/de' } },
+  { id: 'home', kind: 'home', lastmod: '2026-11-26', paths: { en: '/', fr: '/fr', de: '/de' } },
   { id: 'features', kind: 'hub', lastmod: '2026-11-25', paths: { en: '/features', fr: '/fr/fonctionnalites', de: '/de/funktionen' } },
-  { id: 'private-clubs', kind: 'landing', lastmod: '2026-11-25', paths: { en: '/crm-for-private-clubs', fr: '/fr/crm-club-prive', de: '/de/crm-fuer-privatclubs' } },
-  { id: 'membership', kind: 'landing', lastmod: '2026-11-25', paths: { en: '/membership-management-software', fr: '/fr/logiciel-gestion-membres', de: '/de/mitgliederverwaltung-software' } },
-  { id: 'hospitality', kind: 'landing', lastmod: '2026-11-25', paths: { en: '/crm-for-hospitality', fr: '/fr/crm-hotellerie-restauration', de: '/de/crm-gastronomie-hotellerie' } },
-  { id: 'sales', kind: 'landing', lastmod: '2026-11-25', paths: { en: '/sales-crm', fr: '/fr/crm-commercial', de: '/de/vertriebs-crm' } },
-  { id: 'e-signature', kind: 'landing', lastmod: '2026-11-25', paths: { en: '/e-signature-contracts', fr: '/fr/contrats-signature-electronique', de: '/de/vertraege-elektronische-signatur' } },
-  { id: 'swiss', kind: 'landing', lastmod: '2026-11-25', paths: { en: '/swiss-crm', fr: '/fr/crm-suisse', de: '/de/schweizer-crm' } },
-  { id: 'billing', kind: 'landing', lastmod: '2026-11-25', paths: { en: '/club-billing-and-payments', fr: '/fr/facturation-paiements-club', de: '/de/club-abrechnung-zahlungen' } },
-  { id: 'email', kind: 'landing', lastmod: '2026-11-25', paths: { en: '/email-automation-crm', fr: '/fr/crm-automatisation-email', de: '/de/crm-e-mail-automatisierung' } },
-  { id: 'ai', kind: 'landing', lastmod: '2026-11-25', paths: { en: '/ai-crm-assistant', fr: '/fr/assistant-ia-crm', de: '/de/ki-crm-assistent' } },
-  { id: 'pricing', kind: 'pricing', lastmod: '2026-11-25', paths: { en: '/pricing', fr: '/fr/tarifs', de: '/de/preise' } },
+  { id: 'private-clubs', kind: 'landing', lastmod: '2026-11-26', paths: { en: '/crm-for-private-clubs', fr: '/fr/crm-club-prive', de: '/de/crm-fuer-privatclubs' } },
+  { id: 'membership', kind: 'landing', lastmod: '2026-11-26', paths: { en: '/membership-management-software', fr: '/fr/logiciel-gestion-membres', de: '/de/mitgliederverwaltung-software' } },
+  { id: 'hospitality', kind: 'landing', lastmod: '2026-11-26', paths: { en: '/crm-for-hospitality', fr: '/fr/crm-hotellerie-restauration', de: '/de/crm-gastronomie-hotellerie' } },
+  { id: 'sales', kind: 'landing', lastmod: '2026-11-26', paths: { en: '/sales-crm', fr: '/fr/crm-commercial', de: '/de/vertriebs-crm' } },
+  { id: 'e-signature', kind: 'landing', lastmod: '2026-11-26', paths: { en: '/e-signature-contracts', fr: '/fr/contrats-signature-electronique', de: '/de/vertraege-elektronische-signatur' } },
+  { id: 'swiss', kind: 'landing', lastmod: '2026-11-26', paths: { en: '/swiss-crm', fr: '/fr/crm-suisse', de: '/de/schweizer-crm' } },
+  { id: 'billing', kind: 'landing', lastmod: '2026-11-26', paths: { en: '/club-billing-and-payments', fr: '/fr/facturation-paiements-club', de: '/de/club-abrechnung-zahlungen' } },
+  { id: 'email', kind: 'landing', lastmod: '2026-11-26', paths: { en: '/email-automation-crm', fr: '/fr/crm-automatisation-email', de: '/de/crm-e-mail-automatisierung' } },
+  { id: 'ai', kind: 'landing', lastmod: '2026-11-26', paths: { en: '/ai-crm-assistant', fr: '/fr/assistant-ia-crm', de: '/de/ki-crm-assistent' } },
+  { id: 'pricing', kind: 'pricing', lastmod: '2026-11-26', paths: { en: '/pricing', fr: '/fr/tarifs', de: '/de/preise' } },
+  { id: 'free-crm', kind: 'landing', offerOnly: true, lastmod: '2026-11-26', paths: { en: '/free-crm', fr: '/fr/crm-gratuit', de: '/de/kostenloses-crm' } },
 ];
 
 /** The topic pages, in the order the navigation and the hub list them. */
-export const LANDING_PAGE_IDS = MARKETING_PAGES.filter((p) => p.kind === 'landing').map((p) => p.id);
+export const LANDING_PAGE_IDS = MARKETING_PAGES.filter((p) => p.kind === 'landing' && !p.offerOnly).map((p) => p.id);
 
 export interface PublicPageDef {
   path: string;

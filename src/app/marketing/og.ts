@@ -1,6 +1,7 @@
 // What each Open Graph image (1200×630, public/og/) says: generated once by
 // scripts/seo/og-images.mjs from these specs and committed. The head picks the -offer
-// image of the home and pricing pages only while the launch offer runs.
+// image of the pages in OFFER_OG_PAGES (home, pricing, free CRM) only while the launch
+// offer runs.
 
 import { LAUNCH_OFFER_COPY } from '@/app/lib/launchOffer';
 import de from './content/de';
@@ -29,23 +30,34 @@ const CONTENT: Record<SiteLang, LanguageContent> = { en, fr, de };
 
 /** The English home page is the animated Homepage, not a content entry: its words are here. */
 const EN_HOME = { kicker: 'Swiss CRM for private clubs and sales teams', title: 'Run your club. Close your sales.', accent: 'One Swiss CRM.' };
+/** Its H1 while the launch offer runs, on its -offer image. */
+const EN_HOME_OFFER = { ...EN_HOME, accent: 'One free Swiss CRM.' };
 
 export function ogImageSpecs(): OgImageSpec[] {
   const specs: OgImageSpec[] = [];
   for (const page of MARKETING_PAGES) {
     for (const lang of SITE_LANGS) {
       const words = CONTENT[lang].pages[page.id];
-      const base = lang === 'en' && page.id === 'home'
+      const enHome = lang === 'en' && page.id === 'home';
+      const base = enHome
         ? EN_HOME
         : { kicker: words?.eyebrow ?? PAGE_META[lang][page.id].nav, title: words?.h1 ?? PAGE_META[lang][page.id].title, accent: words?.h1Accent };
       const footer = `www.cadencee.ai · ${SITE_STRINGS[lang].builtIn}`;
-      // The pricing page's own words are the offer's; its plain image uses the after-offer ones.
-      const plain = page.id === 'pricing' && words?.afterOffer
-        ? { ...base, title: words.afterOffer.h1 ?? base.title, accent: words.afterOffer.h1Accent ?? base.accent }
+      // A page whose words change when the offer ends (pricing, the free-CRM page, the French
+      // and German home pages) says its offer words on the -offer image and its after-offer
+      // words on the plain one, which is the only one shown from 1 January 2027.
+      const after = words?.afterOffer;
+      const plain = after
+        ? {
+            kicker: after.eyebrow ?? base.kicker,
+            title: after.h1 ?? base.title,
+            accent: after.h1 !== undefined ? after.h1Accent : base.accent,
+          }
         : base;
       specs.push({ path: ogImagePath(page.id, lang), lang, footer, ...plain });
       if ((OFFER_OG_PAGES as readonly string[]).includes(page.id)) {
-        specs.push({ path: ogImagePath(page.id, lang, true), lang, footer, ...base, badge: LAUNCH_OFFER_COPY[lang].badge });
+        const offer = enHome ? EN_HOME_OFFER : base;
+        specs.push({ path: ogImagePath(page.id, lang, true), lang, footer, ...offer, badge: LAUNCH_OFFER_COPY[lang].badge });
       }
     }
   }

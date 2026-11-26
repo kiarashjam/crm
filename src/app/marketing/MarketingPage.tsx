@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ArrowRight, CheckCircle2, Compass, MapPin, MessageSquare, Rocket, Sparkles } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Compass, MapPin, MessageSquare, Play, Rocket, Sparkles } from 'lucide-react';
 import { Breadcrumbs } from './components/Breadcrumbs';
 import { CtaLink } from './components/CtaLink';
 import { FaqList } from './components/FaqList';
@@ -7,6 +7,8 @@ import { FEATURE_ICON } from './components/featureIcons';
 import { LaunchOfferBadge, useLaunchOfferActive, useSignupLabel } from './components/LaunchOffer';
 import { LAUNCH_OFFER_COPY } from '@/app/lib/launchOffer';
 import { MarketingLayout } from './components/MarketingLayout';
+import { Reassurance } from './components/Reassurance';
+import { CTA_COPY } from './ctaCopy';
 import { PageCard } from './components/PageCard';
 import { RichText } from './components/RichText';
 import type { PageContent, TemplateStrings } from './content/types';
@@ -77,14 +79,15 @@ export function MarketingPage({ id, lang, content, template }: MarketingPageProp
                 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" aria-hidden="true" />
               </CtaLink>
               <CtaLink
-                kind="demo"
+                kind="try"
                 lang={lang}
                 className="bg-white hover:bg-slate-50 text-slate-900 px-8 py-4 rounded-2xl font-semibold text-lg border-2 border-slate-200 hover:border-orange-300 flex items-center justify-center gap-3 shadow-lg transition-all duration-200"
               >
-                <MessageSquare className="w-5 h-5 text-orange-600" aria-hidden="true" />
-                {strings.requestDemo}
+                <Play className="w-5 h-5 text-orange-600" aria-hidden="true" />
+                {CTA_COPY[lang].tryDemo}
               </CtaLink>
             </div>
+            <Reassurance lang={lang} className="mb-6" />
             <p className="flex items-start justify-center lg:justify-start gap-2 text-sm text-slate-600 max-w-xl mx-auto lg:mx-0">
               <MapPin className="h-4 w-4 mt-0.5 shrink-0 text-orange-600" aria-hidden="true" />
               <span>
@@ -305,11 +308,12 @@ export function MarketingPage({ id, lang, content, template }: MarketingPageProp
               <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" aria-hidden="true" />
             </CtaLink>
             <CtaLink
-              kind="demo"
+              kind="try"
               lang={lang}
               className="bg-slate-900/20 border-2 border-white/60 text-white px-10 py-5 rounded-2xl font-bold text-lg flex items-center justify-center gap-2 hover:bg-slate-900/30 transition-colors duration-300"
             >
-              {strings.requestDemo}
+              <Play className="h-5 w-5" aria-hidden="true" />
+              {CTA_COPY[lang].tryDemo}
             </CtaLink>
           </div>
           {offer && (

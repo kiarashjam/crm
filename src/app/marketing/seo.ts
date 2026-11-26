@@ -69,8 +69,12 @@ export const ROBOTS_NOINDEX_FOLLOW = 'noindex, follow';
 
 export const DEFAULT_OG_IMAGE = '/og/default.png';
 
-/** Pages whose OG image carries the launch offer while it runs (a second image, -offer.png). */
-export const OFFER_OG_PAGES = ['home', 'pricing'] as const;
+/**
+ * Pages whose OG image carries the launch offer while it runs (a second image, -offer.png).
+ * Every page with afterOffer words belongs here, so its plain image (drawn from those words)
+ * is shown only once the offer has ended.
+ */
+export const OFFER_OG_PAGES = ['home', 'pricing', 'free-crm'] as const;
 
 export function ogImagePath(id: string, lang: SiteLang, offer = false): string {
   return offer ? `/og/${id}-${lang}-offer.png` : `/og/${id}-${lang}.png`;
@@ -139,7 +143,7 @@ function marketingHead(match: MarketingMatch, now: Date | number): HeadData {
   const jsonLd: JsonLd[] = [];
   if (page.kind === 'home') {
     jsonLd.push(graphJsonLd([organizationJsonLd(), websiteJsonLd(), softwareApplicationJsonLd(lang, meta.description, now, pricingPath)]));
-  } else if (page.kind === 'hub' || page.kind === 'pricing') {
+  } else if (page.kind === 'hub' || page.kind === 'pricing' || page.offerOnly) {
     jsonLd.push(graphJsonLd([softwareApplicationJsonLd(lang, meta.description, now, pricingPath), organizationJsonLd()]));
   }
   const crumbs = breadcrumbsFor(match);
@@ -150,7 +154,8 @@ function marketingHead(match: MarketingMatch, now: Date | number): HeadData {
     lang,
     metas: [
       { name: 'description', content: meta.description },
-      { name: 'robots', content: ROBOTS_INDEX },
+      // A page about the launch offer is not to be found once the offer has ended.
+      { name: 'robots', content: page.offerOnly && !offer ? ROBOTS_NOINDEX_FOLLOW : ROBOTS_INDEX },
       ...socialMetas({
         title: meta.title,
         description: meta.description,
