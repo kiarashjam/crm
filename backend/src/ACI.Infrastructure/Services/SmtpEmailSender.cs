@@ -123,15 +123,8 @@ public sealed class SmtpEmailSender : IEmailSender
         return await SendAsync(toEmail, recipientName, email.Subject, email.Text, email.Html, null, ct);
     }
 
-    public Task<bool> SendMessageAsync(string toEmail, string recipientName, string subject, string body, CancellationToken ct = default) =>
-        SendAsync(toEmail, recipientName, subject, body, ct);
-
-    /// <summary>
-    /// Builds and delivers one plain-text message. Returns false (never throws) so a
-    /// delivery problem cannot fail the caller's operation.
-    /// </summary>
-    private async Task<bool> SendAsync(string toEmail, string recipientName, string subject, string body, CancellationToken ct)
-        => await SendAsync(toEmail, recipientName, subject, body, null, null, ct);
+    public Task<bool> SendMessageAsync(string toEmail, string recipientName, EmailContent message, CancellationToken ct = default) =>
+        SendAsync(toEmail, recipientName, message.Subject, message.Text, message.Html, null, ct);
 
     /// <summary>
     /// Builds and delivers one message, with an optional HTML alternative.

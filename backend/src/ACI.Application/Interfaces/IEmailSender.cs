@@ -214,8 +214,11 @@ public interface IEmailSender
         EmailAttachment? attachment = null,
         CancellationToken ct = default);
 
-    /// <summary>A plain message under the product's name, e.g. a contract reminder.</summary>
-    Task<bool> SendMessageAsync(string toEmail, string recipientName, string subject, string body, CancellationToken ct = default);
+    /// <summary>
+    /// A message under the product's name, such as the weekly report digest: its subject and both
+    /// its parts, the plain text and the HTML, as composed (<see cref="Common.EmailLayout"/>).
+    /// </summary>
+    Task<bool> SendMessageAsync(string toEmail, string recipientName, Common.EmailContent message, CancellationToken ct = default);
 
     /// <summary>
     /// Sends one email from the outbox — composer, assistant, sequence and automation

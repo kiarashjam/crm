@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using ACI.Application.Common;
 using ACI.Application.Configuration;
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
@@ -27,16 +28,16 @@ public class WeeklyDigestTests
 
     private sealed class Outbox
     {
-        public List<(string To, string Subject, string Body)> Sent { get; } = new();
+        public List<(string To, string Subject, string Body, string Html)> Sent { get; } = new();
         public bool Accepts { get; set; } = true;
 
         public IEmailSender Sender()
         {
             var sender = new Mock<IEmailSender>();
-            sender.Setup(s => s.SendMessageAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-                .Returns((string to, string _, string subject, string body, CancellationToken _) =>
+            sender.Setup(s => s.SendMessageAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<EmailContent>(), It.IsAny<CancellationToken>()))
+                .Returns((string to, string _, EmailContent email, CancellationToken _) =>
                 {
-                    if (Accepts) Sent.Add((to, subject, body));
+                    if (Accepts) Sent.Add((to, email.Subject, email.Text, email.Html));
                     return Task.FromResult(Accepts);
                 });
             return sender.Object;
@@ -130,13 +131,18 @@ public class WeeklyDigestTests
 
         (await SendDueAsync(factory.Services, outbox, MondayMorning)).Should().Be(1);
 
-        var (to, subject, body) = outbox.Sent.Single();
+        var (to, subject, body, html) = outbox.Sent.Single();
         to.Should().Be("owner@example.ch");
         subject.Should().Contain("26 Oct").And.Contain("1 Nov 2026");
         body.Should().Contain("Pavillon46");
         body.Should().Contain("Won: 1 deal, CHF 45,000");
         body.Should().Contain("Expected to close in November: 1 deal, EUR 20,000 (weighted EUR 10,000)");
         body.Should().Contain("https://crm.example.ch/reports");
+        // The same figures in CadenceE's design, with the reports a button away.
+        html.Should().Contain("Last week at Pavillon46").And.Contain("1 deal, CHF 45,000")
+            .And.Contain("1 deal, EUR 20,000 (weighted EUR 10,000)")
+            .And.Contain("href=\"https://crm.example.ch/reports\"").And.Contain(">Open the reports<")
+            .And.Contain("&#10022;").And.Contain("weekly report digest is on in your notification settings");
 
         (await SendDueAsync(factory.Services, outbox, MondayMorning.AddHours(5))).Should().Be(0, "this week's has gone");
         (await SendDueAsync(factory.Services, outbox, MondayMorning.AddDays(7))).Should().Be(1, "and next week's goes next Monday");
