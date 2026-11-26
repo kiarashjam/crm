@@ -32,6 +32,8 @@ public class InviteAcceptanceTests : IDisposable
     private readonly AppDbContext _db;
     private readonly InviteService _invites;
     private readonly List<string> _acceptUrls = new();
+    /// <summary>The preset each invitation email was told the invitee joins with.</summary>
+    private readonly List<string?> _emailedPresets = new();
     /// <summary>False: the mail server refuses, and the invitee receives nothing.</summary>
     private bool _mailGoesOut = true;
     private readonly Guid _ownerId = Guid.NewGuid();
@@ -41,10 +43,12 @@ public class InviteAcceptanceTests : IDisposable
     {
         _db = SqliteDb.Open(_connection);
         var sender = new Mock<IEmailSender>();
-        sender.Setup(s => s.SendOrganizationInviteEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .Callback((string _, string _, string _, string url, CancellationToken _) =>
+        sender.Setup(s => s.SendOrganizationInviteEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Callback((string _, string _, string _, string url, string? preset, CancellationToken _) =>
             {
-                if (_mailGoesOut) _acceptUrls.Add(url);
+                if (!_mailGoesOut) return;
+                _acceptUrls.Add(url);
+                _emailedPresets.Add(preset);
             })
             .ReturnsAsync(() => _mailGoesOut);
         _invites = new InviteService(
@@ -181,6 +185,19 @@ public class InviteAcceptanceTests : IDisposable
         var joined = _db.OrganizationMembers.AsNoTracking().Single(m => m.OrganizationId == _orgId && m.UserId == founder);
         (joined.Role, joined.PermissionPreset).Should().Be((OrgMemberRole.Viewer, "read_only"),
             "they join with the preset they were invited with, never first as a Member who can edit, delete and export");
+    }
+
+    [Fact]
+    public async Task TheInvitationEmailIsToldThePresetTheyJoinWith_AndSoIsItsResend()
+    {
+        // So the email can say what they will be able to do: "You'll join as Read-only".
+        await InviteAsync("founder@club.ch", "read_only");
+        (await _invites.ResendInviteAsync(_db.Invites.Single().Id, _ownerId)).IsSuccess.Should().BeTrue();
+        await InviteAsync("newhire@club.ch");
+
+        _emailedPresets.Should().Equal("read_only", "read_only", null);
+        AccountEmailContent.WorkspaceInvitation("founder@club.ch", "Pavillon 46", "Manager", _acceptUrls[0], _emailedPresets[0])
+            .Text.Should().Contain("You'll join as: Read-only");
     }
 
     [Fact]

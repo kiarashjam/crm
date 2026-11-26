@@ -105,11 +105,16 @@ public interface IEmailSender
     /// <param name="organizationName">Organization they have been invited to.</param>
     /// <param name="invitedByName">Who sent the invitation (may be empty).</param>
     /// <param name="acceptUrl">Absolute URL of the accept page, carrying the invitation's one-time token.</param>
+    /// <param name="permissionPreset">
+    /// The preset they will join with (Invite.PermissionPreset), so the email can say what they
+    /// will be able to do; null joins them as a Member.
+    /// </param>
     Task<bool> SendOrganizationInviteEmailAsync(
         string toEmail,
         string organizationName,
         string invitedByName,
         string acceptUrl,
+        string? permissionPreset = null,
         CancellationToken ct = default);
 
     /// <summary>
