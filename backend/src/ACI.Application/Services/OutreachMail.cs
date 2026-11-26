@@ -57,8 +57,12 @@ public interface IOutreachMail
     /// booking) carries none, since the member's choices do not stop it.
     /// </summary>
     /// <remarks>The footer of a marketing email is in <paramref name="language"/>, the member's.</remarks>
+    /// <param name="html">
+    /// A designed email's own HTML (the club's look), used for the HTML part in place of the text's,
+    /// with a marketing email's footer added at the foot of its body.
+    /// </param>
     OutreachBody MemberBody(Guid organizationId, string? workspaceName, string text, Guid memberId, string address, bool marketing,
-        string language = AppLanguages.English);
+        string language = AppLanguages.English, string? html = null);
 
     /// <summary>The email-open image for a lead, or null when this API has no public address to give.</summary>
     string? TrackingUrl(Guid leadId);
@@ -170,10 +174,10 @@ public sealed class OutreachMail : IOutreachMail
     }
 
     public OutreachBody MemberBody(Guid organizationId, string? workspaceName, string text, Guid memberId, string address, bool marketing,
-        string language = AppLanguages.English)
+        string language = AppLanguages.English, string? html = null)
     {
         if (!marketing)
-            return new OutreachBody(text, PlainTextEmail.ToHtml(text, null, workspaceName), null);
+            return new OutreachBody(text, html ?? PlainTextEmail.ToHtml(text, null, workspaceName), null);
 
         var token = _links.CreateMemberToken(organizationId, memberId, address);
         var links = new List<UnsubscribeLink>();
@@ -185,7 +189,9 @@ public sealed class OutreachMail : IOutreachMail
         var oneClick = OneClickUrl(token);
         return new OutreachBody(
             text + PlainTextEmail.TextFooter(workspaceName, links, question, language),
-            PlainTextEmail.ToHtml(text, null, workspaceName, links, question, language),
+            html != null
+                ? PlainTextEmail.WithFooter(html, null, workspaceName, links, question, language)
+                : PlainTextEmail.ToHtml(text, null, workspaceName, links, question, language),
             oneClick ?? links.FirstOrDefault()?.Url,
             oneClick != null);
     }
