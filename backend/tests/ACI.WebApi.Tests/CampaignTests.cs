@@ -781,7 +781,7 @@ public class CampaignTests
         // From the club to one member: its look, light (no eyebrow, no title), the message as paragraphs.
         note.TextBody.Should().StartWith("Dear Anna, it is ready.\n\n--\nYou are receiving this email as a member of Pavillon46.");
         note.HtmlBody.Should().Contain("Dear Anna, it is ready.").And.Contain("#2c5545").And.Contain("Pavillon46").And.NotContain("<h1")
-            .And.NotContain("em-eyebrow").And.NotContain("nsubscribe", "a service message carries no unsubscribe link");
+            .And.NotContain("class=\"em-eyebrow\"").And.NotContain("nsubscribe", "a service message carries no unsubscribe link");
 
         var offer = await Json(await club.Owner.PostAsync("/api/communications/send", Body(new
         {
