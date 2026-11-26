@@ -58,6 +58,13 @@ public interface IClubBilling
     Task<Result<StatementDeliveryDto>> EmailStatementAsync(Guid organizationId, Guid userId, Guid memberId, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default);
 
     /// <summary>
+    /// Sends the member's statement for [fromUtc, toUtc), as they would get it (their language,
+    /// the PDF attached), to the person asking alone, marked as a test: nothing is sent to the
+    /// member or recorded on their account.
+    /// </summary>
+    Task<Result<StatementTestDto>> EmailStatementTestAsync(Guid organizationId, Guid userId, Guid memberId, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default);
+
+    /// <summary>
     /// Puts back a member the billing lapsed, once nothing of theirs is overdue: called after
     /// a payment so they are reinstated at once rather than by the next daily run. Does
     /// nothing for a member the billing did not lapse.
@@ -133,6 +140,9 @@ public sealed record BillingPreviewItemDto(
 
 public sealed record BillingPreviewDto(
     int Subscriptions, int Periods, IReadOnlyDictionary<string, decimal> AmountByCurrency, IReadOnlyList<BillingPreviewItemDto> Items);
+
+/// <summary>A test copy of a statement: the message, the address it went to, and "sent" or "queued".</summary>
+public sealed record StatementTestDto(Guid MessageId, string To, string Status);
 
 public sealed record StatementDeliveryDto(
     Guid Id, Guid MemberId, DateTime PeriodStartUtc, DateTime PeriodEndUtc, string Status, string? Reason,

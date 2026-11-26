@@ -775,6 +775,51 @@ public sealed class ClubBillingService : IClubBilling
         return ToDto(sent.Value);
     }
 
+    public async Task<Result<StatementTestDto>> EmailStatementTestAsync(Guid organizationId, Guid userId, Guid memberId, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default)
+    {
+        var member = await _db.ClubMembers.AsNoTracking().FirstOrDefaultAsync(m => m.Id == memberId && m.OrganizationId == organizationId, ct);
+        if (member == null) return DomainErrors.Club.MemberNotFound;
+        var user = await _db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => new { u.Email, u.Name }).FirstOrDefaultAsync(ct);
+        var address = (user?.Email ?? "").Trim();
+        if (!ValidationHelper.IsValidEmail(address))
+            return new Error("Statement.NoTestAddress", "Your account has no email address to send the test copy to.");
+
+        // As the member would get it, the pay button included: it opens their real payment page.
+        var note = $"This is a test copy of the statement {NameOf(member)} would receive, sent to you alone. "
+            + "The member has not received it, and nothing was recorded on their account."
+            + " Its Pay online button, when it has one, opens the member's real payment page.";
+        var composed = await ComposeStatementAsync(organizationId, member, fromUtc, toUtc, payLink: true, note, ct);
+        if (!composed.IsSuccess) return composed.Error;
+        var (file, email) = composed.Value;
+        var queued = await _outbox.QueueEmailAsync(new OutboundEmailRequest
+        {
+            OrganizationId = organizationId,
+            Source = OutboundSources.StatementTest,
+            SourceId = member.Id,
+            To = [address],
+            RecipientName = user!.Name,
+            Subject = "[Test] " + email.Subject,
+            Body = email.Text,
+            Design = _ => email.Design,
+            CreatedByUserId = userId,
+            ReplyToUserId = userId,
+            ForOwnTeam = true,
+            PersonWaiting = true,
+            Attachments = [new EmailAttachment(file.FileName, "application/pdf", file.Content)],
+        }, ct);
+        if (queued.IsFailure) return queued.Error;
+
+        // Not the request's token: a browser that hangs up must not cut the attempt off halfway.
+        var attempt = await _outbox.SendNowAsync(queued.Value, CancellationToken.None);
+        return attempt.Result switch
+        {
+            OutboxAttemptResult.NotConfigured => new Error("Email.NotConfigured", "Sending email is not set up on the server yet."),
+            OutboxAttemptResult.Suppressed => new Error(attempt.Code ?? "Email.Suppressed", attempt.Error ?? "Your address is on the suppression list, so the test copy was not sent."),
+            OutboxAttemptResult.Failed => new Error("Email.SendFailed", $"The test copy was not sent. {attempt.Error ?? "The mail server refused it."}"),
+            _ => new StatementTestDto(queued.Value.Id, address, attempt.Result == OutboxAttemptResult.Sent ? "sent" : "queued"),
+        };
+    }
+
     /// <summary>
     /// Sends last month's statements, on and after the club's statement day, to every member
     /// with something on their account that month or a balance at its end, once each.
@@ -835,37 +880,16 @@ public sealed class ClubBillingService : IClubBilling
     private async Task<Result<ClubStatementDelivery>> SendStatementAsync(Guid organizationId, ClubMember member, DateTime fromUtc, DateTime toUtc,
         string source, Guid? runId, Guid? userId, CancellationToken ct)
     {
-        var file = await StatementPdfAsync(organizationId, member.Id, fromUtc, toUtc, ct);
-        if (!file.IsSuccess) return file.Error;
-        var workspace = await WorkspaceAsync(organizationId, ct);
-        var culture = Culture(workspace.Locale);
-        var zone = RegionalSettings.ZoneOf(workspace.TimeZone);
-        var statement = file.Value.Statement;
-        // In the member's language, as the attached statement is.
-        var language = LanguageOf(member);
-        var period = MemberTexts.Period(language, workspace.Locale,
-            TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(fromUtc, DateTimeKind.Utc), zone),
-            TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(toUtc, DateTimeKind.Utc), zone));
         var address = (member.Email ?? "").Trim();
         var reachable = ValidationHelper.IsValidEmail(address);
         var now = DateTime.UtcNow;
-
-        var closing = Owed(statement.ClosingBalance);
-        // What is owed falls due with the earliest charge of the period still open, and the
-        // button pays the account online, when the club takes payments online.
-        var due = closing > 0 ? await ClubOverdue.EarliestDueAsync(_db, organizationId, member.Id, toUtc, ct) : null;
-        var pay = closing > 0 && reachable ? await PayLinkAsync(organizationId, member.Id, null, ct) : null;
-        var email = ClubEmails.Statement(new StatementDetails(
-            workspace.Name, language, string.IsNullOrWhiteSpace(member.FirstName) ? NameOf(member) : member.FirstName.Trim(), period,
-            Money(Owed(statement.OpeningBalance), statement.Currency, culture),
-            Money(statement.TotalDebits, statement.Currency, culture),
-            Money(statement.TotalCredits, statement.Currency, culture),
-            closing, Money(Math.Abs(closing), statement.Currency, culture),
-            due is DateTime dueAt ? Date(dueAt, zone, language, workspace.Locale) : null,
-            file.Value.PaymentSlip,
-            pay?.Url, pay == null ? null : Date(pay.ExpiresAtUtc, zone, language, workspace.Locale)));
+        var composed = await ComposeStatementAsync(organizationId, member, fromUtc, toUtc, payLink: reachable, null, ct);
+        if (!composed.IsSuccess) return composed.Error;
+        var (statementFile, email) = composed.Value;
+        var statement = statementFile.Statement;
         var subject = email.Subject;
         var body = email.Text;
+
 
         var delivery = new ClubStatementDelivery
         {
@@ -877,7 +901,7 @@ public sealed class ClubBillingService : IClubBilling
             Source = source,
             Status = reachable ? ReminderStatuses.Queued : ReminderStatuses.Skipped,
             Reason = reachable ? null : "The member has no valid email address on their record.",
-            AmountDue = file.Value.AmountDue,
+            AmountDue = statementFile.AmountDue,
             Currency = statement.Currency,
             RunId = runId,
             CreatedAtUtc = now,
@@ -923,7 +947,7 @@ public sealed class ClubBillingService : IClubBilling
                     ReplyToUserId = userId,
                     MemberId = member.Id,
                     Purpose = ConsentPurposes.Service,
-                    Attachments = [new EmailAttachment(file.Value.FileName, "application/pdf", file.Value.Content)],
+                    Attachments = [new EmailAttachment(statementFile.FileName, "application/pdf", statementFile.Content)],
                 }, ct);
                 if (queued.IsSuccess)
                 {
@@ -948,6 +972,44 @@ public sealed class ClubBillingService : IClubBilling
             return new Error("Statement.Sent.Conflict", "This member has already been sent this month's statement.");
         }
         return delivery;
+    }
+
+    /// <summary>
+    /// The member's statement for [fromUtc, toUtc): the PDF and the email that carries it, in the
+    /// member's language as the PDF is, with what is owed, when it falls due, and (with
+    /// <paramref name="payLink"/>, when the club takes payments online) a button to pay it.
+    /// </summary>
+    /// <param name="testNote">For a test copy: what it tells the person who sent it to themselves.</param>
+    private async Task<Result<(StatementFile File, ClubEmail Email)>> ComposeStatementAsync(Guid organizationId, ClubMember member,
+        DateTime fromUtc, DateTime toUtc, bool payLink, string? testNote, CancellationToken ct)
+    {
+        var file = await StatementPdfAsync(organizationId, member.Id, fromUtc, toUtc, ct);
+        if (!file.IsSuccess) return file.Error;
+        var workspace = await WorkspaceAsync(organizationId, ct);
+        var culture = Culture(workspace.Locale);
+        var zone = RegionalSettings.ZoneOf(workspace.TimeZone);
+        var statement = file.Value.Statement;
+        var language = LanguageOf(member);
+        var period = MemberTexts.Period(language, workspace.Locale,
+            TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(fromUtc, DateTimeKind.Utc), zone),
+            TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(toUtc, DateTimeKind.Utc), zone));
+
+        var closing = Owed(statement.ClosingBalance);
+        // What is owed falls due with the earliest charge of the period still open, and the
+        // button pays the account online, when the club takes payments online.
+        var due = closing > 0 ? await ClubOverdue.EarliestDueAsync(_db, organizationId, member.Id, toUtc, ct) : null;
+        var pay = closing > 0 && payLink ? await PayLinkAsync(organizationId, member.Id, null, ct) : null;
+        var email = ClubEmails.Statement(new StatementDetails(
+            workspace.Name, language, string.IsNullOrWhiteSpace(member.FirstName) ? NameOf(member) : member.FirstName.Trim(), period,
+            Money(Owed(statement.OpeningBalance), statement.Currency, culture),
+            Money(statement.TotalDebits, statement.Currency, culture),
+            Money(statement.TotalCredits, statement.Currency, culture),
+            closing, Money(Math.Abs(closing), statement.Currency, culture),
+            due is DateTime dueAt ? Date(dueAt, zone, language, workspace.Locale) : null,
+            file.Value.PaymentSlip,
+            pay?.Url, pay == null ? null : Date(pay.ExpiresAtUtc, zone, language, workspace.Locale),
+            testNote));
+        return (file.Value, email);
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────

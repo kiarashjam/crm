@@ -315,6 +315,7 @@ public class ClubBillingRunTests
             public Task<int> RunScheduledAsync(DateTime utcNow, CancellationToken ct = default) => throw new NotSupportedException();
             public Task<ACI.Application.Common.Result<StatementFile>> StatementPdfAsync(Guid organizationId, Guid memberId, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default) => throw new NotSupportedException();
             public Task<ACI.Application.Common.Result<StatementDeliveryDto>> EmailStatementAsync(Guid organizationId, Guid userId, Guid memberId, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default) => throw new NotSupportedException();
+            public Task<ACI.Application.Common.Result<StatementTestDto>> EmailStatementTestAsync(Guid organizationId, Guid userId, Guid memberId, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default) => throw new NotSupportedException();
             public Task<ACI.Application.Common.Result<StatementFile>> HouseholdStatementPdfAsync(Guid organizationId, Guid primaryMemberId, string householdName,
                 IReadOnlyList<HouseholdStatementMember> others, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default) => throw new NotSupportedException();
             public Task<ACI.Application.Common.Result<InvoiceFile>> ChargeInvoicePdfAsync(Guid organizationId, Guid chargeId, CancellationToken ct = default) => throw new NotSupportedException();
@@ -415,6 +416,42 @@ public class ClubBillingRunTests
         await Refused(await client.PostAsync($"/api/members/{noAddress}/statement/email", Body(period)), HttpStatusCode.BadRequest, "emailing a member with no address");
         var desk = await JoinAsync(app, client, org, "desk@example.ch", "front_desk");
         await Refused(await desk.PostAsync($"/api/members/{memberId}/statement/email", Body(period)), HttpStatusCode.Forbidden, "the front desk emailing a statement");
+    }
+
+    [Fact]
+    public async Task ATestCopyOfAStatementGoesToWhoeverAsked_WithItsPdf_MarkedAsATest_AndNothingReachesTheMember()
+    {
+        await using var app = new App();
+        var (client, _, org) = await ClubAsync(app);
+        var memberId = await MemberAsync(client);
+        await PostChargeAsync(client, memberId, 299, DateTime.UtcNow.AddDays(14), "Gold dues");
+        var period = new { from = DateTime.UtcNow.AddDays(-1), to = DateTime.UtcNow.AddDays(1) };
+
+        var test = await Json(await client.PostAsync($"/api/members/{memberId}/statement/email-test", Body(period)), "send a test copy");
+        test.GetProperty("to").GetString().Should().Be("manager@example.ch");
+        test.GetProperty("status").GetString().Should().BeOneOf("sent", "queued");
+        await app.DispatchOutboxAsync();
+
+        // To the person who asked alone, as Jean would get it, PDF and all, and said to be a test.
+        var email = app.Mail.Sent.Should().ContainSingle().Subject;
+        email.To.Should().Equal("manager@example.ch");
+        email.Subject.Should().StartWith("[Test] Your statement for");
+        email.TextBody.Should().Contain("test copy of the statement Jean Dupont would receive").And.Contain("Amount due: CHF");
+        email.HtmlBody.Should().Contain("test copy of the statement Jean Dupont would receive").And.Contain("Account statement");
+        var pdf = email.Attachments.Should().ContainSingle().Subject;
+        System.Text.Encoding.ASCII.GetString(pdf.Content, 0, 5).Should().Be("%PDF-");
+        email.UnsubscribeUrl.Should().BeNull();
+
+        // Nothing on Jean's record: no message in his communications, so a real statement still goes.
+        (await Json(await client.GetAsync($"/api/communications?memberId={memberId}"), "Jean's messages")).EnumerateArray().Should().BeEmpty();
+        (await Json(await client.PostAsync($"/api/members/{memberId}/statement/email", Body(period)), "email the real statement"))
+            .GetProperty("status").GetString().Should().Be("queued");
+
+        var desk = await JoinAsync(app, client, org, "desk@example.ch", "front_desk");
+        await Refused(await desk.PostAsync($"/api/members/{memberId}/statement/email-test", Body(period)), HttpStatusCode.Forbidden,
+            "the front desk sending a test copy of a statement");
+        await Refused(await client.PostAsync($"/api/members/{Guid.NewGuid()}/statement/email-test", Body(period)), HttpStatusCode.NotFound,
+            "a test copy of a member who does not exist");
     }
 
     [Fact]
